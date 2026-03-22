@@ -187,6 +187,12 @@ function bindEvents() {
 
   // Export as image
   document.getElementById('slide-export-img')?.addEventListener('click', exportSlideAsImage);
+  // Print handout
+  document.getElementById('slide-print-handout')?.addEventListener('click', printHandout);
+  // Auto-advance
+  document.getElementById('slide-auto-advance')?.addEventListener('change', (e) => {
+    slides[activeSlideIdx].autoAdvance = parseInt(e.target.value) || 0;
+  });
 
   // Thumbnail click
   panelEl?.addEventListener('click', (e) => {
@@ -988,4 +994,42 @@ function insertVideoInSlide(url) {
   document.execCommand('insertHTML', false, html);
   slides[activeSlideIdx].content = canvasEl.innerHTML;
   updateThumb(activeSlideIdx);
+}
+
+/* ==================== Print Handout ==================== */
+
+function printHandout() {
+  saveCurrentSlide();
+  const win = window.open('', '_blank');
+  let html = `<!DOCTYPE html><html><head><title>Slide Handout</title><style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, sans-serif; padding: 20px; }
+    .handout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .handout-slide { border: 1px solid #ccc; border-radius: 4px; padding: 16px; aspect-ratio: 16/9; overflow: hidden; font-size: 10px; line-height: 1.4; page-break-inside: avoid; }
+    .handout-slide h1 { font-size: 16px; margin-bottom: 4px; }
+    .handout-slide h2 { font-size: 13px; margin-bottom: 4px; }
+    .handout-slide p { font-size: 10px; margin: 2px 0; }
+    .handout-slide li { font-size: 10px; }
+    .handout-slide img { max-width: 100%; max-height: 80px; }
+    .handout-number { font-size: 9px; color: #999; text-align: right; margin-top: 4px; }
+    .handout-notes { font-size: 9px; color: #666; font-style: italic; padding: 4px 8px; border-top: 1px dashed #ccc; margin-top: 4px; }
+    @media print { body { padding: 10px; } .handout-grid { gap: 10px; } }
+  </style></head><body>
+    <h2 style="text-align:center;margin-bottom:16px;font-size:14px">Presentation Handout</h2>
+    <div class="handout-grid">`;
+
+  slides.forEach((slide, i) => {
+    const bg = slide.theme === 'dark' ? '#1a1a2e' : slide.theme === 'blue' ? '#0f3460' : '';
+    const fg = ['default', 'minimal'].includes(slide.theme) ? '#333' : '#eee';
+    html += `<div class="handout-slide" style="${bg ? 'background:' + bg + ';color:' + fg : ''}">
+      ${slide.content}
+      <div class="handout-number">Slide ${i + 1}</div>
+      ${slide.notes ? '<div class="handout-notes">' + slide.notes + '</div>' : ''}
+    </div>`;
+  });
+
+  html += '</div></body></html>';
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 300);
 }

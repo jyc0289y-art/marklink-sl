@@ -332,6 +332,9 @@
         <button class="toolbar-btn" id="sheet-export-csv" title="Export CSV" style="font-size:11px">CSV↓</button>
         <button class="toolbar-btn" id="sheet-export-xlsx" title="Export XLSX" style="font-size:11px">XLSX↓</button>
         <button class="toolbar-btn" id="sheet-sparkline" title="Insert Sparkline" style="font-size:11px">📊</button>
+        <button class="toolbar-btn" id="sheet-remove-dups" title="Remove Duplicates" style="font-size:11px">🔄</button>
+        <button class="toolbar-btn" id="sheet-text-to-cols" title="Text to Columns" style="font-size:11px">↔️</button>
+        <button class="toolbar-btn" id="sheet-print" title="Print Sheet" style="font-size:11px">🖨</button>
       </div>
       <div class="sheet-container" id="sheet-container">
         <table class="sheet-grid" id="sheet-grid"></table>
@@ -401,6 +404,8 @@
         <button class="toolbar-btn" id="slide-present" title="Present (F5)">▶ Present</button>
         <button class="toolbar-btn" id="slide-speaker-view" title="Speaker View" style="font-size:11px">🎤</button>
         <button class="toolbar-btn" id="slide-export-img" title="Export as Image" style="font-size:11px">📷</button>
+        <button class="toolbar-btn" id="slide-print-handout" title="Print Handout" style="font-size:11px">🖨</button>
+        <label style="font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:4px" title="Auto-advance (seconds, 0=manual)">⏱<input type="number" id="slide-auto-advance" min="0" max="60" value="0" style="width:40px;padding:2px 4px;font-size:11px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">s</label>
       </div>
       <div class="slide-workspace">
         <div class="slide-panel" id="slide-panel"></div>

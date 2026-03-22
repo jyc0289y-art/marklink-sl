@@ -410,7 +410,9 @@ function updateWordCount() {
   const chars = text.length;
   const charsNoSpace = text.replace(/\s/g, '').length;
   const paras = editorEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li').length || 1;
-  statusEl.textContent = `Words: ${words}  |  Characters: ${chars} (${charsNoSpace})  |  Paragraphs: ${paras}`;
+  const readingTime = Math.max(1, Math.ceil(words / 200)); // ~200 WPM average
+  const pages = Math.max(1, Math.ceil(words / 250)); // ~250 words per page
+  statusEl.textContent = `Words: ${words.toLocaleString()}  |  Chars: ${chars.toLocaleString()} (${charsNoSpace.toLocaleString()})  |  ¶${paras}  |  ~${readingTime} min read  |  ~${pages} pg`;
 }
 
 // ─── Helpers ────────────────────────────────────────────────

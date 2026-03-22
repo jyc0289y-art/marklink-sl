@@ -535,6 +535,12 @@ function bindEvents() {
   document.getElementById('sheet-redo')?.addEventListener('click', () => sheetRedo());
   // Sparkline
   document.getElementById('sheet-sparkline')?.addEventListener('click', () => insertSparkline());
+  // Remove Duplicates
+  document.getElementById('sheet-remove-dups')?.addEventListener('click', () => removeDuplicates());
+  // Text to Columns
+  document.getElementById('sheet-text-to-cols')?.addEventListener('click', () => textToColumns());
+  // Print Sheet
+  document.getElementById('sheet-print')?.addEventListener('click', () => printSheet());
 
   // CSV Import
   document.getElementById('sheet-import-csv')?.addEventListener('click', () => importCSV());
@@ -1830,6 +1836,112 @@ function showDataValidationDialog(r, c) {
     renderGrid(); updateSelection();
     dialog.remove();
   });
+}
+
+/* ==================== Remove Duplicates ==================== */
+
+function removeDuplicates() {
+  const sheet = getSheet();
+  const { r1, r2, c1, c2 } = getSelectionRange();
+
+  saveUndoState();
+
+  const seen = new Set();
+  let removed = 0;
+
+  for (let r = r1; r <= r2; r++) {
+    // Build key from all selected columns
+    let rowKey = '';
+    for (let c = c1; c <= c2; c++) {
+      rowKey += getDisplayValue(sheet, r, c) + '|';
+    }
+
+    if (seen.has(rowKey)) {
+      // Clear this duplicate row
+      for (let c = c1; c <= c2; c++) {
+        setCell(sheet, r, c, '');
+      }
+      removed++;
+    } else {
+      seen.add(rowKey);
+    }
+  }
+
+  renderGrid();
+  updateSelection();
+  alert(`Removed ${removed} duplicate row(s). ${seen.size} unique rows remain.`);
+}
+
+/* ==================== Text to Columns ==================== */
+
+function textToColumns() {
+  const sheet = getSheet();
+  const { r1, r2, c1 } = getSelectionRange();
+
+  const delimiter = prompt('Delimiter (comma, semicolon, tab, space, or custom):', ',');
+  if (!delimiter) return;
+
+  const delim = delimiter === 'tab' ? '\t' : delimiter === 'space' ? ' ' : delimiter;
+
+  saveUndoState();
+
+  let maxCols = 0;
+  for (let r = r1; r <= r2; r++) {
+    const val = getDisplayValue(sheet, r, c1);
+    const parts = val.split(delim);
+    maxCols = Math.max(maxCols, parts.length);
+    for (let i = 0; i < parts.length; i++) {
+      setCell(sheet, r, c1 + i, parts[i].trim());
+    }
+  }
+
+  // Ensure enough columns
+  while (sheet.cols < c1 + maxCols + 2) {
+    addCols(sheet);
+  }
+
+  recalcAll(sheet);
+  renderGrid();
+  updateSelection();
+}
+
+/* ==================== Print Sheet ==================== */
+
+function printSheet() {
+  const sheet = getSheet();
+  let maxR = 0, maxC = 0;
+  for (const key of Object.keys(sheet.cells)) {
+    const [r, c] = key.split(',').map(Number);
+    if (r > maxR) maxR = r;
+    if (c > maxC) maxC = c;
+  }
+
+  const win = window.open('', '_blank');
+  let html = `<!DOCTYPE html><html><head><title>Print Sheet</title><style>
+    body { font-family: -apple-system, sans-serif; margin: 20px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; font-size: 12px; text-align: left; }
+    th { background: #f5f5f5; font-weight: 600; font-size: 11px; }
+    @media print { body { margin: 0; } }
+  </style></head><body><table><thead><tr><th></th>`;
+
+  for (let c = 0; c <= maxC; c++) {
+    html += `<th>${colToLetter(c)}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  for (let r = 0; r <= maxR; r++) {
+    html += `<tr><th>${r + 1}</th>`;
+    for (let c = 0; c <= maxC; c++) {
+      html += `<td>${getDisplayValue(sheet, r, c)}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table></body></html>';
+
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 300);
 }
 
 /* ==================== Sparklines ==================== */
