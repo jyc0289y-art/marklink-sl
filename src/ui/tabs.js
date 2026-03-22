@@ -20,7 +20,9 @@ export function switchTab(tabName) {
 
   // Update tab buttons
   document.querySelectorAll('.tab-item').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.tab === tabName);
+    const isActive = btn.dataset.tab === tabName;
+    btn.classList.toggle('active', isActive);
+    if (isActive) btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   });
 
   // Update views

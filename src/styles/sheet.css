@@ -212,3 +212,45 @@
   background: var(--hover-bg);
   color: var(--text-primary);
 }
+
+/* Formula Autocomplete Dropdown */
+.sheet-ac-dropdown {
+  position: fixed;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 2000;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.sheet-ac-item {
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.sheet-ac-item:hover,
+.sheet-ac-item.active {
+  background: var(--hover-bg);
+  color: var(--brand-color);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sheet-toolbar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+  }
+  .sheet-toolbar::-webkit-scrollbar { display: none; }
+  .sheet-toolbar .toolbar-btn {
+    flex-shrink: 0;
+  }
+  .sheet-cell-ref { flex-shrink: 0; }
+  .sheet-fx-label { flex-shrink: 0; }
+  .sheet-formula-bar { min-width: 120px; }
+}

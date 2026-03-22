@@ -1,7 +1,10 @@
 import { defineConfig } from 'vite';
 
+// GitHub Pages needs /officelink-sl/, Vercel needs /
+const base = process.env.VITE_BASE_PATH || '/';
+
 export default defineConfig({
-  base: '/officelink-sl/',
+  base,
   build: {
     outDir: 'dist',
     assetsDir: 'assets',

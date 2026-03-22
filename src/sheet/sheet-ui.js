@@ -12,6 +12,25 @@ let selectedRow = 0;
 let selectedCol = 0;
 let isEditing = false;
 
+// Range selection
+let selAnchorRow = 0;
+let selAnchorCol = 0;
+let isDragging = false;
+
+// Formula autocomplete
+const FORMULA_LIST = [
+  'SUM','AVERAGE','COUNT','COUNTA','MIN','MAX','IF','SUMIF','COUNTIF',
+  'VLOOKUP','CONCATENATE','CONCAT','LEFT','RIGHT','MID','LEN','TRIM',
+  'UPPER','LOWER','ROUND','ABS','TODAY','NOW',
+  'SIN','COS','TAN','ASIN','ACOS','ATAN','ATAN2','SINH','COSH','TANH',
+  'SQRT','CBRT','POWER','POW','EXP','LN','LOG','LOG10','LOG2',
+  'CEILING','CEIL','FLOOR','MOD','PI','E','DEGREES','RADIANS','SIGN',
+  'FACT','COMBIN','PERMUT','GCD','LCM','RAND','RANDBETWEEN',
+  'CONVERT','MEDIAN','STDEV','VAR','PRODUCT',
+];
+let acEl = null; // autocomplete dropdown element
+let acIndex = -1; // highlighted autocomplete index
+
 // DOM refs
 let gridEl, cellRefEl, formulaBarEl, containerEl;
 
@@ -88,16 +107,45 @@ function escapeHTML(s) {
  * Bind all events
  */
 function bindEvents() {
-  // Cell click → select
+  // Cell click → select (with drag support)
   gridEl.addEventListener('mousedown', (e) => {
     const td = e.target.closest('td[data-row]');
     if (td) {
       if (isEditing) commitEdit();
-      selectedRow = parseInt(td.dataset.row, 10);
-      selectedCol = parseInt(td.dataset.col, 10);
+      const r = parseInt(td.dataset.row, 10);
+      const c = parseInt(td.dataset.col, 10);
+      if (e.shiftKey) {
+        // Shift-click: extend selection from anchor
+        selectedRow = r;
+        selectedCol = c;
+      } else {
+        selectedRow = r;
+        selectedCol = c;
+        selAnchorRow = r;
+        selAnchorCol = c;
+      }
+      isDragging = true;
       updateSelection();
       e.preventDefault();
     }
+  });
+
+  gridEl.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const td = e.target.closest('td[data-row]');
+    if (td) {
+      const r = parseInt(td.dataset.row, 10);
+      const c = parseInt(td.dataset.col, 10);
+      if (r !== selectedRow || c !== selectedCol) {
+        selectedRow = r;
+        selectedCol = c;
+        updateSelection();
+      }
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
   });
 
   // Double-click → edit
@@ -108,20 +156,54 @@ function bindEvents() {
 
   // Formula bar
   formulaBarEl.addEventListener('keydown', (e) => {
+    // Autocomplete navigation
+    if (acEl && acEl.style.display !== 'none') {
+      const items = acEl.querySelectorAll('.sheet-ac-item');
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        acIndex = Math.min(acIndex + 1, items.length - 1);
+        updateAcHighlight(items);
+        return;
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        acIndex = Math.max(acIndex - 1, 0);
+        updateAcHighlight(items);
+        return;
+      } else if ((e.key === 'Tab' || e.key === 'Enter') && acIndex >= 0 && items[acIndex]) {
+        e.preventDefault();
+        acceptAutocomplete(items[acIndex].dataset.fn);
+        return;
+      } else if (e.key === 'Escape') {
+        hideAutocomplete();
+        return;
+      }
+    }
+
     if (e.key === 'Enter') {
+      hideAutocomplete();
       setCell(getSheet(), selectedRow, selectedCol, formulaBarEl.value);
       recalcAll(getSheet());
       renderGrid();
       updateSelection();
       formulaBarEl.blur();
     } else if (e.key === 'Escape') {
+      hideAutocomplete();
       formulaBarEl.value = getRawValue(getSheet(), selectedRow, selectedCol);
       formulaBarEl.blur();
     }
   });
 
+  formulaBarEl.addEventListener('input', () => {
+    showAutocomplete();
+  });
+
   formulaBarEl.addEventListener('focus', () => {
     formulaBarEl.value = getRawValue(getSheet(), selectedRow, selectedCol);
+  });
+
+  formulaBarEl.addEventListener('blur', () => {
+    // Delay to allow click on autocomplete item
+    setTimeout(() => hideAutocomplete(), 150);
   });
 
   // Keyboard navigation
@@ -148,10 +230,10 @@ function bindEvents() {
     }
 
     switch (e.key) {
-      case 'ArrowUp': e.preventDefault(); moveSelection(-1, 0); break;
-      case 'ArrowDown': e.preventDefault(); moveSelection(1, 0); break;
-      case 'ArrowLeft': e.preventDefault(); moveSelection(0, -1); break;
-      case 'ArrowRight': e.preventDefault(); moveSelection(0, 1); break;
+      case 'ArrowUp': e.preventDefault(); moveSelection(-1, 0, e.shiftKey); break;
+      case 'ArrowDown': e.preventDefault(); moveSelection(1, 0, e.shiftKey); break;
+      case 'ArrowLeft': e.preventDefault(); moveSelection(0, -1, e.shiftKey); break;
+      case 'ArrowRight': e.preventDefault(); moveSelection(0, 1, e.shiftKey); break;
       case 'Tab':
         e.preventDefault();
         moveSelection(0, e.shiftKey ? -1 : 1);
@@ -162,13 +244,19 @@ function bindEvents() {
         else startEdit();
         break;
       case 'Delete':
-      case 'Backspace':
+      case 'Backspace': {
         e.preventDefault();
-        setCell(sheet, selectedRow, selectedCol, '');
+        const { r1, r2, c1, c2 } = getSelectionRange();
+        for (let r = r1; r <= r2; r++) {
+          for (let c = c1; c <= c2; c++) {
+            setCell(sheet, r, c, '');
+          }
+        }
         recalcAll(sheet);
-        renderCell(selectedRow, selectedCol);
+        renderGrid();
         updateSelection();
         break;
+      }
       case 'F2':
         e.preventDefault();
         startEdit();
@@ -251,24 +339,55 @@ function bindEvents() {
   });
 }
 
-function moveSelection(dr, dc) {
+function moveSelection(dr, dc, extend = false) {
   const sheet = getSheet();
   selectedRow = Math.max(0, Math.min(sheet.rows - 1, selectedRow + dr));
   selectedCol = Math.max(0, Math.min(sheet.cols - 1, selectedCol + dc));
+  if (!extend) {
+    selAnchorRow = selectedRow;
+    selAnchorCol = selectedCol;
+  }
   updateSelection();
   scrollIntoView();
 }
 
+function getSelectionRange() {
+  const r1 = Math.min(selAnchorRow, selectedRow);
+  const r2 = Math.max(selAnchorRow, selectedRow);
+  const c1 = Math.min(selAnchorCol, selectedCol);
+  const c2 = Math.max(selAnchorCol, selectedCol);
+  return { r1, r2, c1, c2 };
+}
+
 function updateSelection() {
   // Clear old selection
-  gridEl.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+  gridEl.querySelectorAll('.selected, .in-range').forEach(el => {
+    el.classList.remove('selected', 'in-range');
+  });
 
-  // Highlight selected cell
+  const { r1, r2, c1, c2 } = getSelectionRange();
+  const isRange = r1 !== r2 || c1 !== c2;
+
+  // Highlight range
+  if (isRange) {
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        const td = gridEl.querySelector(`td[data-row="${r}"][data-col="${c}"]`);
+        if (td) td.classList.add('in-range');
+      }
+    }
+  }
+
+  // Highlight active cell
   const td = gridEl.querySelector(`td[data-row="${selectedRow}"][data-col="${selectedCol}"]`);
   if (td) td.classList.add('selected');
 
   // Update cell ref display
-  if (cellRefEl) cellRefEl.textContent = rcToRef(selectedRow, selectedCol);
+  if (cellRefEl) {
+    cellRefEl.textContent = isRange
+      ? `${rcToRef(r1, c1)}:${rcToRef(r2, c2)}`
+      : rcToRef(selectedRow, selectedCol);
+  }
 
   // Update formula bar
   if (formulaBarEl && document.activeElement !== formulaBarEl) {
@@ -354,6 +473,90 @@ function renderSheetTabs() {
     selectedRow = 0; selectedCol = 0;
     updateSelection();
   });
+}
+
+/* ── Formula Autocomplete ── */
+
+function ensureAcEl() {
+  if (acEl) return;
+  acEl = document.createElement('div');
+  acEl.className = 'sheet-ac-dropdown';
+  acEl.style.display = 'none';
+  document.body.appendChild(acEl);
+
+  acEl.addEventListener('mousedown', (e) => {
+    const item = e.target.closest('.sheet-ac-item');
+    if (item) {
+      e.preventDefault();
+      acceptAutocomplete(item.dataset.fn);
+    }
+  });
+}
+
+function positionAcEl() {
+  if (!acEl || !formulaBarEl) return;
+  const rect = formulaBarEl.getBoundingClientRect();
+  acEl.style.top = rect.bottom + 'px';
+  acEl.style.left = rect.left + 'px';
+  acEl.style.width = rect.width + 'px';
+}
+
+function getFormulaToken() {
+  const val = formulaBarEl.value;
+  const cursor = formulaBarEl.selectionStart;
+  // Find the last function-like token before cursor
+  const before = val.substring(0, cursor);
+  const match = before.match(/(?:^=|[,(+\-*/])([A-Z]+)$/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
+function showAutocomplete() {
+  ensureAcEl();
+  const token = getFormulaToken();
+  if (!token || token.length < 1) {
+    hideAutocomplete();
+    return;
+  }
+  const matches = FORMULA_LIST.filter(f => f.startsWith(token));
+  if (matches.length === 0 || (matches.length === 1 && matches[0] === token)) {
+    hideAutocomplete();
+    return;
+  }
+  acIndex = 0;
+  acEl.innerHTML = matches.slice(0, 8).map((f, i) =>
+    `<div class="sheet-ac-item${i === 0 ? ' active' : ''}" data-fn="${f}">${f}()</div>`
+  ).join('');
+  acEl.style.display = 'block';
+  positionAcEl();
+}
+
+function hideAutocomplete() {
+  if (acEl) {
+    acEl.style.display = 'none';
+    acEl.innerHTML = '';
+  }
+  acIndex = -1;
+}
+
+function updateAcHighlight(items) {
+  items.forEach((el, i) => el.classList.toggle('active', i === acIndex));
+}
+
+function acceptAutocomplete(fnName) {
+  const val = formulaBarEl.value;
+  const cursor = formulaBarEl.selectionStart;
+  const before = val.substring(0, cursor);
+  const after = val.substring(cursor);
+  const match = before.match(/(?:^=|[,(+\-*/])([A-Z]+)$/i);
+  if (match) {
+    const start = cursor - match[1].length;
+    const newVal = val.substring(0, start) + fnName + '(' + after;
+    formulaBarEl.value = newVal;
+    const newCursor = start + fnName.length + 1;
+    formulaBarEl.setSelectionRange(newCursor, newCursor);
+    formulaBarEl.focus();
+  }
+  hideAutocomplete();
 }
 
 /** Export current sheets data for file saving */

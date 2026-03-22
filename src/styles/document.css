@@ -250,4 +250,41 @@ mark.doc-find-highlight.doc-find-current {
     min-height: auto;
     padding: 16px;
   }
+  /* Scrollable doc toolbar */
+  .doc-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 4px 8px;
+    gap: 2px;
+    min-height: 34px;
+  }
+  .doc-toolbar::-webkit-scrollbar { display: none; }
+  .doc-toolbar .toolbar-divider {
+    margin: 0 2px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+  .doc-toolbar select {
+    font-size: 11px;
+    padding: 2px 4px;
+    flex-shrink: 0;
+  }
+  .doc-toolbar .toolbar-btn {
+    width: 26px;
+    height: 26px;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+  .doc-toolbar .doc-insert-btn {
+    font-size: 10px !important;
+    padding: 0 5px !important;
+  }
+  .doc-toolbar input[type="color"] {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+  }
 }

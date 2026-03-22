@@ -683,4 +683,62 @@ html.rtl .lang-picker-grid {
     min-width: 0;
     min-height: 100px;
   }
+
+  /* Compact toolbar */
+  .toolbar {
+    height: 40px;
+    padding: 0 6px;
+  }
+  .toolbar-brand {
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .toolbar-left, .toolbar-right {
+    gap: 1px;
+  }
+  .toolbar-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+  .toolbar-btn .icon {
+    font-size: 13px;
+  }
+  .toolbar-divider {
+    margin: 0 2px;
+    height: 16px;
+  }
+  /* Hide less essential toolbar buttons on mobile */
+  #btn-bold, #btn-italic, #btn-heading, #btn-code, #btn-list, #btn-link, #btn-table,
+  #btn-sidebar, #btn-export, #btn-tutorial,
+  .toolbar-filename {
+    display: none !important;
+  }
+  .lang-btn {
+    font-size: 10px;
+    padding: 1px 5px;
+  }
+  #btn-ai {
+    font-size: 11px;
+    padding: 0 7px;
+  }
+  .toolbar-btn-fullscreen {
+    padding: 0 6px;
+    font-size: 14px;
+  }
+
+  /* Compact tab bar */
+  .tab-bar {
+    height: 30px;
+    padding: 0 4px;
+  }
+  .tab-item {
+    padding: 4px 10px;
+    font-size: 11px;
+  }
+
+  /* App container height adjustment */
+  .app-container {
+    height: calc(100vh - 40px - 30px);
+  }
 }

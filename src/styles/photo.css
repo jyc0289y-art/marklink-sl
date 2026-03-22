@@ -242,5 +242,11 @@
   .photo-toolbar {
     overflow-x: auto;
     flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .photo-toolbar::-webkit-scrollbar { display: none; }
+  .photo-toolbar .toolbar-btn {
+    flex-shrink: 0;
   }
 }
