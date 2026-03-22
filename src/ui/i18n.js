@@ -169,6 +169,14 @@ const T = {
     th: 'ติดตั้งแอป', it: 'Installa App', pl: 'Zainstaluj', uk: 'Встановити додаток',
     sw: 'Sakinisha App',
   },
+  'tip.feedback': {
+    en: 'Feedback', ko: '의견 보내기', ja: 'フィードバック', zh: '反馈',
+    es: 'Comentarios', fr: 'Avis', pt: 'Feedback',
+    de: 'Feedback', ru: 'Отзыв', ar: 'ملاحظات',
+    hi: 'प्रतिक्रिया', id: 'Masukan', tr: 'Geri bildirim', vi: 'Phản hồi',
+    th: 'ข้อเสนอแนะ', it: 'Feedback', pl: 'Opinia', uk: 'Відгук',
+    sw: 'Maoni',
+  },
   'tip.fullscreen': {
     en: 'Fullscreen', ko: '전체 화면', ja: '全画面', zh: '全屏',
     es: 'Pantalla completa', fr: 'Plein écran', pt: 'Tela cheia',

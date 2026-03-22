@@ -430,6 +430,11 @@ export async function initApp() {
   // 23. PWA Install (Add to Home Screen / Desktop shortcut)
   initPwaInstall();
 
+  // 24-b. Feedback button
+  document.getElementById('btn-feedback')?.addEventListener('click', () => {
+    showFeedbackDialog();
+  });
+
   // 24. URL query: auto-switch tab (for PWA shortcuts)
   const params = new URLSearchParams(window.location.search);
   const tabParam = params.get('tab');
@@ -882,6 +887,79 @@ function showInstallGuide() {
   document.body.appendChild(overlay);
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay || e.target.id === 'install-guide-close') overlay.remove();
+  });
+}
+
+/**
+ * Feedback dialog — collects user feedback and opens GitHub Issues
+ */
+function showFeedbackDialog() {
+  const existing = document.querySelector('.feedback-dialog-overlay');
+  if (existing) { existing.remove(); return; }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'feedback-dialog-overlay';
+  overlay.style.cssText = `
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0,0,0,0.5); display: flex;
+    align-items: center; justify-content: center;
+  `;
+  overlay.innerHTML = `
+    <div style="background:var(--bg-primary,#fff);color:var(--text-primary,#222);
+      border-radius:16px;padding:28px 32px;max-width:440px;width:90%;
+      box-shadow:0 8px 32px rgba(0,0,0,0.25);font-size:14px;line-height:1.7;">
+      <h3 style="margin:0 0 12px;font-size:18px">💬 Feedback / 의견 보내기</h3>
+      <p style="font-size:13px;color:var(--text-secondary,#666);margin:0 0 12px">
+        Help us improve OfficeLink SL! / 개선 의견을 보내주세요.
+      </p>
+      <select id="fb-type" style="width:100%;padding:8px;margin-bottom:10px;border:1px solid var(--border-color,#ddd);border-radius:8px;font-size:14px;background:var(--bg-primary,#fff);color:var(--text-primary,#222)">
+        <option value="feature">✨ Feature Request / 기능 요청</option>
+        <option value="bug">🐛 Bug Report / 버그 신고</option>
+        <option value="improve">💡 Improvement / 개선사항</option>
+        <option value="other">💬 Other / 기타</option>
+      </select>
+      <textarea id="fb-msg" rows="4" placeholder="Describe your feedback... / 의견을 작성해주세요..." style="width:100%;padding:8px;border:1px solid var(--border-color,#ddd);border-radius:8px;font-size:14px;resize:vertical;background:var(--bg-primary,#fff);color:var(--text-primary,#222);box-sizing:border-box"></textarea>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button id="fb-cancel" style="flex:1;padding:10px;border:1px solid var(--border-color,#ddd);
+          border-radius:8px;background:transparent;color:var(--text-primary,#222);
+          font-size:14px;cursor:pointer;">Cancel</button>
+        <button id="fb-submit" style="flex:1;padding:10px;border:none;
+          border-radius:8px;background:#0071e3;color:#fff;
+          font-size:14px;font-weight:600;cursor:pointer;">Submit via GitHub</button>
+      </div>
+      <p style="font-size:11px;color:var(--text-tertiary,#999);margin:8px 0 0;text-align:center">
+        Opens a GitHub Issue with your feedback pre-filled
+      </p>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  overlay.querySelector('#fb-cancel')?.addEventListener('click', () => overlay.remove());
+
+  overlay.querySelector('#fb-submit')?.addEventListener('click', () => {
+    const type = overlay.querySelector('#fb-type')?.value || 'other';
+    const msg = overlay.querySelector('#fb-msg')?.value?.trim() || '';
+    if (!msg) {
+      overlay.querySelector('#fb-msg').style.borderColor = 'red';
+      overlay.querySelector('#fb-msg').focus();
+      return;
+    }
+
+    const labels = { feature: 'enhancement', bug: 'bug', improve: 'enhancement', other: '' };
+    const prefixes = { feature: '[Feature Request]', bug: '[Bug Report]', improve: '[Improvement]', other: '[Feedback]' };
+    const title = encodeURIComponent(`${prefixes[type]} ${msg.slice(0, 80)}`);
+    const body = encodeURIComponent(`## Feedback\n\n${msg}\n\n---\n*Sent from OfficeLink SL web app*`);
+    const label = labels[type] ? `&labels=${labels[type]}` : '';
+
+    window.open(
+      `https://github.com/jyc0289y-art/marklink-sl/issues/new?title=${title}&body=${body}${label}`,
+      '_blank'
+    );
+    overlay.remove();
   });
 }
 

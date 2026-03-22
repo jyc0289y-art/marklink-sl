@@ -125,6 +125,11 @@ export function initDocEditor() {
     showHeaderFooterDialog();
   });
 
+  // Page Setup
+  document.getElementById('doc-page-setup')?.addEventListener('click', () => {
+    showPageSetupDialog();
+  });
+
   // HWPX import
   document.getElementById('doc-import-hwpx')?.addEventListener('click', async () => {
     const { importHwpx } = await import('./hwpx.js');
@@ -572,6 +577,93 @@ function applyHeaderFooter(headerText, footerText) {
     footer.textContent = footerText;
     wrapper.appendChild(footer);
   }
+}
+
+// ─── Page Setup Dialog ───────────────────────────────────────
+const PAGE_SIZES = {
+  'A4':      { w: '210mm',   h: '297mm',   label: 'A4 (210 × 297 mm)' },
+  'A3':      { w: '297mm',   h: '420mm',   label: 'A3 (297 × 420 mm)' },
+  'B5':      { w: '176mm',   h: '250mm',   label: 'B5 (176 × 250 mm)' },
+  'Letter':  { w: '8.5in',   h: '11in',    label: 'Letter (8.5 × 11 in)' },
+  'Legal':   { w: '8.5in',   h: '14in',    label: 'Legal (8.5 × 14 in)' },
+  '16K':     { w: '195mm',   h: '270mm',   label: '16절 (195 × 270 mm)' },
+};
+
+let currentPageSize = 'A4';
+let currentMargins = { top: 25.4, right: 25.4, bottom: 25.4, left: 25.4 }; // mm
+
+function showPageSetupDialog() {
+  document.querySelector('.doc-ps-dialog')?.remove();
+
+  const dialog = document.createElement('div');
+  dialog.className = 'ai-setup-modal doc-ps-dialog';
+  dialog.innerHTML = `
+    <div class="ai-setup-content" style="width:400px">
+      <div class="ai-setup-header">
+        <h3>Page Layout / 용지 설정</h3>
+        <button class="ai-setup-close">&times;</button>
+      </div>
+      <div class="ai-setup-body">
+        <div style="margin-bottom:16px">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Paper Size / 용지 크기</label>
+          <select id="ps-size" style="width:100%;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:14px;background:var(--bg-primary);color:var(--text-primary)">
+            ${Object.entries(PAGE_SIZES).map(([k, v]) =>
+              `<option value="${k}" ${k === currentPageSize ? 'selected' : ''}>${v.label}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Margins (mm) / 여백</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">Top / 위
+              <input type="number" id="ps-mt" value="${currentMargins.top}" min="0" max="100" step="1" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+            </label>
+            <label style="font-size:12px;color:var(--text-secondary)">Bottom / 아래
+              <input type="number" id="ps-mb" value="${currentMargins.bottom}" min="0" max="100" step="1" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+            </label>
+            <label style="font-size:12px;color:var(--text-secondary)">Left / 왼쪽
+              <input type="number" id="ps-ml" value="${currentMargins.left}" min="0" max="100" step="1" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+            </label>
+            <label style="font-size:12px;color:var(--text-secondary)">Right / 오른쪽
+              <input type="number" id="ps-mr" value="${currentMargins.right}" min="0" max="100" step="1" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+            </label>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="ai-pull-btn" id="ps-cancel">Cancel</button>
+          <button class="ai-pull-btn" id="ps-apply" style="background:var(--brand-color);color:#fff">Apply</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(dialog);
+
+  dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
+  dialog.querySelector('#ps-cancel')?.addEventListener('click', () => dialog.remove());
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
+
+  dialog.querySelector('#ps-apply')?.addEventListener('click', () => {
+    const size = dialog.querySelector('#ps-size').value;
+    const mt = parseFloat(dialog.querySelector('#ps-mt').value) || 25.4;
+    const mb = parseFloat(dialog.querySelector('#ps-mb').value) || 25.4;
+    const ml = parseFloat(dialog.querySelector('#ps-ml').value) || 25.4;
+    const mr = parseFloat(dialog.querySelector('#ps-mr').value) || 25.4;
+
+    currentPageSize = size;
+    currentMargins = { top: mt, right: mr, bottom: mb, left: ml };
+
+    applyPageLayout();
+    dialog.remove();
+  });
+}
+
+function applyPageLayout() {
+  if (!editorEl) return;
+  const ps = PAGE_SIZES[currentPageSize];
+  editorEl.style.width = ps.w;
+  editorEl.style.minHeight = ps.h;
+  editorEl.style.padding = `${currentMargins.top}mm ${currentMargins.right}mm ${currentMargins.bottom}mm ${currentMargins.left}mm`;
 }
 
 // ─── Image Insert Dialog ────────────────────────────────────
