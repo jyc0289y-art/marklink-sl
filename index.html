@@ -225,6 +225,8 @@
           <option value="2.5">2.5</option>
           <option value="3">3.0</option>
         </select>
+        <button class="toolbar-btn" id="doc-para-spacing" title="Paragraph Spacing" style="font-size:11px">¶ Space</button>
+        <button class="toolbar-btn" id="doc-clear-format" title="Clear Formatting" style="font-size:11px">⊘</button>
         <button class="toolbar-btn" id="doc-styles" title="Quick Styles" style="font-size:11px">🎨 Styles</button>
         <button class="toolbar-btn" id="doc-section-break" title="Section Break" style="font-size:11px">§ Break</button>
         <button class="toolbar-btn" id="doc-columns" title="Columns Layout" style="font-size:11px">⫞ Cols</button>
@@ -336,6 +338,13 @@
         <button class="toolbar-btn doc-cmd" id="sheet-align-right" title="Align Right">&#9776;</button>
         <button class="toolbar-btn" id="sheet-indent-inc" title="Increase Indent" style="font-size:11px">→|</button>
         <button class="toolbar-btn" id="sheet-indent-dec" title="Decrease Indent" style="font-size:11px">|←</button>
+        <select id="sheet-valign" title="Vertical Align" style="padding:2px;font-size:10px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+          <option value="">V-Align</option>
+          <option value="top">Top</option>
+          <option value="middle">Middle</option>
+          <option value="bottom">Bottom</option>
+        </select>
+        <button class="toolbar-btn" id="sheet-clear-format" title="Clear Formatting" style="font-size:10px">⊘ Clear</button>
         <div class="toolbar-divider"></div>
         <input type="color" id="sheet-bg-color" value="#ffffff" title="Cell Background">
         <input type="color" id="sheet-text-color" value="#000000" title="Text Color">

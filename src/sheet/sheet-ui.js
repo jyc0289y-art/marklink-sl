@@ -702,6 +702,30 @@ function bindEvents() {
     renderGrid(); updateSelection();
   });
 
+  // Vertical alignment
+  document.getElementById('sheet-valign')?.addEventListener('change', (e) => {
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        setCellFormat(getSheet(), r, c, 'valign', e.target.value);
+      }
+    }
+    renderGrid(); updateSelection();
+  });
+
+  // Clear formatting
+  document.getElementById('sheet-clear-format')?.addEventListener('click', () => {
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    const sheet = getSheet();
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        const cell = getCell(sheet, r, c);
+        if (cell) cell.format = {};
+      }
+    }
+    renderGrid(); updateSelection();
+  });
+
   // Background color
   document.getElementById('sheet-bg-color')?.addEventListener('input', (e) => {
     const { r1, r2, c1, c2 } = getSelectionRange();

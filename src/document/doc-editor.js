@@ -190,6 +190,17 @@ export function initDocEditor() {
     showMailMergeDialog();
   });
 
+  // Paragraph spacing
+  document.getElementById('doc-para-spacing')?.addEventListener('click', () => {
+    showParagraphSpacingDialog();
+  });
+
+  // Clear formatting
+  document.getElementById('doc-clear-format')?.addEventListener('click', () => {
+    document.execCommand('removeFormat');
+    editorEl?.focus();
+  });
+
   // Quick Styles
   document.getElementById('doc-styles')?.addEventListener('click', () => {
     showStyleGallery();
@@ -1912,3 +1923,60 @@ function startImageResize(e, img, cursor) {
   document.addEventListener('mouseup', onUp);
 }
 
+/* ==================== Paragraph Spacing ==================== */
+
+function showParagraphSpacingDialog() {
+  const sel = window.getSelection();
+  const node = sel?.anchorNode;
+  const block = node?.nodeType === 3 ? node.parentElement?.closest('p, h1, h2, h3, h4, h5, h6, li, div') : node?.closest('p, h1, h2, h3, h4, h5, h6, li, div');
+
+  const dlg = document.createElement('div');
+  dlg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:10px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.25);z-index:10000;width:320px;font-size:14px;color:#333;';
+  dlg.innerHTML = `
+    <h3 style="margin:0 0 16px">Paragraph Spacing</h3>
+    <div style="display:flex;gap:16px;margin-bottom:16px">
+      <div style="flex:1">
+        <label style="font-weight:600;font-size:12px">Before (px):</label>
+        <input type="number" id="ps-before" value="${parseInt(block?.style.marginTop) || 0}" min="0" max="100" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;margin-top:4px">
+      </div>
+      <div style="flex:1">
+        <label style="font-weight:600;font-size:12px">After (px):</label>
+        <input type="number" id="ps-after" value="${parseInt(block?.style.marginBottom) || 0}" min="0" max="100" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;margin-top:4px">
+      </div>
+    </div>
+    <div style="margin-bottom:16px">
+      <label style="font-weight:600;font-size:12px">Quick Presets:</label>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button class="ps-preset" data-before="0" data-after="0" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:11px">Compact</button>
+        <button class="ps-preset" data-before="6" data-after="6" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:11px">Normal</button>
+        <button class="ps-preset" data-before="12" data-after="12" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:11px">Open</button>
+        <button class="ps-preset" data-before="24" data-after="24" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:11px">Double</button>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <button id="ps-cancel" style="padding:6px 16px;margin-right:8px;border:1px solid #ccc;border-radius:4px;cursor:pointer">Cancel</button>
+      <button id="ps-apply" style="padding:6px 16px;background:#3b82f6;color:#fff;border:none;border-radius:4px;cursor:pointer">Apply</button>
+    </div>
+  `;
+  document.body.appendChild(dlg);
+
+  dlg.querySelectorAll('.ps-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      dlg.querySelector('#ps-before').value = btn.dataset.before;
+      dlg.querySelector('#ps-after').value = btn.dataset.after;
+    });
+  });
+
+  dlg.querySelector('#ps-cancel').addEventListener('click', () => dlg.remove());
+  dlg.querySelector('#ps-apply').addEventListener('click', () => {
+    const before = dlg.querySelector('#ps-before').value + 'px';
+    const after = dlg.querySelector('#ps-after').value + 'px';
+    if (block) {
+      block.style.marginTop = before;
+      block.style.marginBottom = after;
+    }
+    dlg.remove();
+    editorEl?.focus();
+    dirty = true;
+  });
+}
