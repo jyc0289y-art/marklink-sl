@@ -352,8 +352,14 @@
         <select id="sheet-number-format" title="Number Format" style="padding:2px;font-size:11px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
           <option value="">Auto</option>
           <option value="number">Number (1,234.56)</option>
-          <option value="currency">Currency ($1,234.56)</option>
+          <option value="currency">Currency $ (USD)</option>
+          <option value="currency-krw">Currency ₩ (KRW)</option>
+          <option value="currency-eur">Currency € (EUR)</option>
+          <option value="currency-jpy">Currency ¥ (JPY)</option>
+          <option value="currency-gbp">Currency £ (GBP)</option>
           <option value="percent">Percent (12.34%)</option>
+          <option value="scientific">Scientific (1.23E+4)</option>
+          <option value="fraction">Fraction (1/4)</option>
           <option value="date">Date</option>
           <option value="text">Plain Text</option>
         </select>
@@ -399,6 +405,7 @@
         <button class="toolbar-btn" id="sheet-transpose" title="Transpose Selection" style="font-size:11px">⤡ T</button>
         <button class="toolbar-btn" id="sheet-remove-dups" title="Remove Duplicates" style="font-size:11px">🔄</button>
         <button class="toolbar-btn" id="sheet-text-to-cols" title="Text to Columns" style="font-size:11px">↔️</button>
+        <button class="toolbar-btn" id="sheet-flash-fill" title="Flash Fill (Ctrl+E)" style="font-size:11px">⚡ Fill</button>
         <button class="toolbar-btn" id="sheet-print" title="Print Sheet" style="font-size:11px">🖨</button>
         <button class="toolbar-btn" id="sheet-protect" title="Protect Sheet" style="font-size:11px">🔒 Protect</button>
       </div>

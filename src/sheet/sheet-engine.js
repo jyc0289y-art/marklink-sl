@@ -59,7 +59,26 @@ export function getDisplayValue(sheet, r, c) {
     switch (fmt) {
       case 'number': return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       case 'currency': return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      case 'currency-krw': return '₩' + Math.round(v).toLocaleString('ko-KR');
+      case 'currency-eur': return '€' + v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      case 'currency-jpy': return '¥' + Math.round(v).toLocaleString('ja-JP');
+      case 'currency-gbp': return '£' + v.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       case 'percent': return (v * 100).toFixed(1) + '%';
+      case 'scientific': return v.toExponential(2);
+      case 'fraction': {
+        if (v === Math.floor(v)) return String(v);
+        const sign = v < 0 ? '-' : '';
+        const abs = Math.abs(v);
+        const whole = Math.floor(abs);
+        const frac = abs - whole;
+        let bestNum = 1, bestDen = 1, bestErr = 1;
+        for (let d = 2; d <= 16; d++) {
+          const n = Math.round(frac * d);
+          const err = Math.abs(frac - n / d);
+          if (err < bestErr) { bestErr = err; bestNum = n; bestDen = d; }
+        }
+        return bestNum === 0 ? `${sign}${whole}` : whole > 0 ? `${sign}${whole} ${bestNum}/${bestDen}` : `${sign}${bestNum}/${bestDen}`;
+      }
       case 'date': {
         // Excel serial date → JS date (epoch 1900-01-01)
         if (v > 25569) {

@@ -504,6 +504,13 @@ function bindEvents() {
       return;
     }
 
+    // Flash Fill
+    if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
+      e.preventDefault();
+      flashFill();
+      return;
+    }
+
     // Select All
     if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
       e.preventDefault();
@@ -848,6 +855,9 @@ function bindEvents() {
   document.getElementById('sheet-text-to-cols')?.addEventListener('click', () => textToColumns());
   // Print Sheet
   document.getElementById('sheet-print')?.addEventListener('click', () => printSheet());
+
+  // Flash Fill
+  document.getElementById('sheet-flash-fill')?.addEventListener('click', () => flashFill());
 
   // Sheet Protection
   document.getElementById('sheet-protect')?.addEventListener('click', () => toggleSheetProtection());
@@ -4244,6 +4254,136 @@ function toggleGroupCollapse(groupIdx) {
   group.collapsed = !group.collapsed;
   renderGrid();
   updateSelection();
+}
+
+/* ==================== Flash Fill ==================== */
+
+function flashFill() {
+  const sheet = getSheet();
+  const c = selectedCol;
+  const r = selectedRow;
+
+  // Find example pairs: cells in the current column that have values,
+  // and corresponding cells in adjacent columns
+  // Strategy: look for a pattern between source column (left) and target column (current)
+  const srcCol = c - 1;
+  if (srcCol < 0) { alert('Flash Fill needs source data in the column to the left.'); return; }
+
+  // Collect example pairs (source → result)
+  const examples = [];
+  for (let row = 0; row < sheet.rows; row++) {
+    const src = getDisplayValue(sheet, row, srcCol);
+    const result = getDisplayValue(sheet, row, c);
+    if (src && result) {
+      examples.push({ src, result, row });
+    }
+  }
+
+  if (examples.length === 0) {
+    alert('Enter at least one example in this column to use Flash Fill.');
+    return;
+  }
+
+  // Try to detect pattern from examples
+  const pattern = detectFlashFillPattern(examples);
+  if (!pattern) {
+    alert('Could not detect a pattern. Try adding more examples.');
+    return;
+  }
+
+  // Apply pattern to empty cells
+  let filled = 0;
+  for (let row = 0; row < sheet.rows; row++) {
+    const existing = getDisplayValue(sheet, row, c);
+    if (existing) continue; // skip cells with values
+    const src = getDisplayValue(sheet, row, srcCol);
+    if (!src) continue;
+    const result = pattern(src);
+    if (result !== null) {
+      setCell(sheet, row, c, result);
+      filled++;
+    }
+  }
+
+  if (filled > 0) {
+    recalcAll(sheet);
+    renderGrid();
+    updateSelection();
+    alert(`Flash Fill: ${filled} cells filled.`);
+  } else {
+    alert('No empty cells to fill.');
+  }
+}
+
+function detectFlashFillPattern(examples) {
+  // Try several heuristic patterns:
+
+  // 1. Substring extraction: if all results are substrings of source
+  const allSubstring = examples.every(e => e.src.includes(e.result));
+  if (allSubstring && examples.length >= 1) {
+    const e = examples[0];
+    const start = e.src.indexOf(e.result);
+    const len = e.result.length;
+    // Check if consistent position
+    const consistent = examples.every(ex => ex.src.substring(start, start + len) === ex.result);
+    if (consistent) {
+      return (src) => src.length >= start + len ? src.substring(start, start + len) : null;
+    }
+  }
+
+  // 2. Split pattern (e.g., "first last" → "first" or "last")
+  const firstExample = examples[0];
+  const srcParts = firstExample.src.split(/[\s,;.\-_@]+/);
+  for (let i = 0; i < srcParts.length; i++) {
+    if (srcParts[i] === firstExample.result) {
+      const consistent = examples.every(ex => {
+        const parts = ex.src.split(/[\s,;.\-_@]+/);
+        return parts[i] === ex.result;
+      });
+      if (consistent) {
+        return (src) => { const parts = src.split(/[\s,;.\-_@]+/); return parts[i] || null; };
+      }
+    }
+  }
+
+  // 3. Prefix/suffix pattern
+  if (examples.every(e => e.result.startsWith(e.src))) {
+    const suffix = firstExample.result.substring(firstExample.src.length);
+    if (examples.every(e => e.result === e.src + suffix)) {
+      return (src) => src + suffix;
+    }
+  }
+  if (examples.every(e => e.result.endsWith(e.src))) {
+    const prefix = firstExample.result.substring(0, firstExample.result.length - firstExample.src.length);
+    if (examples.every(e => e.result === prefix + e.src)) {
+      return (src) => prefix + src;
+    }
+  }
+
+  // 4. Case transformation
+  if (examples.every(e => e.result === e.src.toUpperCase())) {
+    return (src) => src.toUpperCase();
+  }
+  if (examples.every(e => e.result === e.src.toLowerCase())) {
+    return (src) => src.toLowerCase();
+  }
+  if (examples.every(e => e.result === e.src.charAt(0).toUpperCase() + e.src.slice(1).toLowerCase())) {
+    return (src) => src.charAt(0).toUpperCase() + src.slice(1).toLowerCase();
+  }
+
+  // 5. Initial extraction (e.g., "John Smith" → "J.S.")
+  if (examples.every(e => {
+    const initials = e.src.split(/\s+/).map(w => w[0]?.toUpperCase()).join('.');
+    return e.result === initials || e.result === initials + '.';
+  })) {
+    const withDot = firstExample.result.endsWith('.');
+    return (src) => {
+      const initials = src.split(/\s+/).map(w => w[0]?.toUpperCase()).join('.');
+      return withDot ? initials + '.' : initials;
+    };
+  }
+
+  return null;
 }
 
 /* ==================== Cell Hyperlinks ==================== */
