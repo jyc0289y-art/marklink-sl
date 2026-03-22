@@ -254,6 +254,24 @@
   color: var(--brand-color);
 }
 
+/* Fill handle */
+.fill-handle {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  background: var(--brand-color);
+  border: 1px solid #fff;
+  cursor: crosshair;
+  z-index: 5;
+}
+
+.sheet-grid td.fill-preview {
+  background: rgba(59, 130, 246, 0.15) !important;
+  outline: 1px dashed rgba(59, 130, 246, 0.5);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sheet-toolbar {

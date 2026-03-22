@@ -164,27 +164,83 @@ function bindEvents() {
     e.preventDefault();
   });
 
-  gridEl.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
-    const td = e.target.closest('td[data-row]');
-    if (td) {
-      const r = parseInt(td.dataset.row, 10);
-      const c = parseInt(td.dataset.col, 10);
-      if (r !== selectedRow || c !== selectedCol) {
-        selectedRow = r;
-        selectedCol = c;
+  // Fill handle drag start
+  gridEl.addEventListener('mousedown', (e) => {
+    if (e.target.classList.contains('fill-handle')) {
+      e.preventDefault();
+      e.stopPropagation();
+      isFilling = true;
+      const { r1, r2, c1, c2 } = getSelectionRange();
+      fillStartRow = r1; fillStartCol = c1;
+      fillEndRow = r2; fillEndCol = c2;
+    }
+  });
 
-        // If dragging during formula mode, extend range reference
-        if (isEditing && isFormulaMode) {
-          updateRangeReference(r, c);
-        } else {
-          updateSelection();
+  gridEl.addEventListener('mousemove', (e) => {
+    const td = e.target.closest('td[data-row]');
+    if (!td) return;
+    const r = parseInt(td.dataset.row, 10);
+    const c = parseInt(td.dataset.col, 10);
+
+    // Fill handle drag
+    if (isFilling) {
+      // Show fill preview
+      gridEl.querySelectorAll('.fill-preview').forEach(el => el.classList.remove('fill-preview'));
+      const dr = r - fillEndRow;
+      const dc = c - fillEndCol;
+      // Determine direction: vertical or horizontal
+      if (Math.abs(dr) >= Math.abs(dc)) {
+        // Vertical fill
+        const startR = Math.min(fillEndRow, r);
+        const endR = Math.max(fillEndRow, r);
+        for (let fr = startR; fr <= endR; fr++) {
+          if (fr >= fillStartRow && fr <= fillEndRow) continue;
+          for (let fc = fillStartCol; fc <= fillEndCol; fc++) {
+            const ftd = gridEl.querySelector(`td[data-row="${fr}"][data-col="${fc}"]`);
+            if (ftd) ftd.classList.add('fill-preview');
+          }
         }
+      } else {
+        // Horizontal fill
+        const startC = Math.min(fillEndCol, c);
+        const endC = Math.max(fillEndCol, c);
+        for (let fr = fillStartRow; fr <= fillEndRow; fr++) {
+          for (let fc = startC; fc <= endC; fc++) {
+            if (fc >= fillStartCol && fc <= fillEndCol) continue;
+            const ftd = gridEl.querySelector(`td[data-row="${fr}"][data-col="${fc}"]`);
+            if (ftd) ftd.classList.add('fill-preview');
+          }
+        }
+      }
+      return;
+    }
+
+    if (!isDragging) return;
+    if (r !== selectedRow || c !== selectedCol) {
+      selectedRow = r;
+      selectedCol = c;
+
+      // If dragging during formula mode, extend range reference
+      if (isEditing && isFormulaMode) {
+        updateRangeReference(r, c);
+      } else {
+        updateSelection();
       }
     }
   });
 
-  document.addEventListener('mouseup', () => {
+  document.addEventListener('mouseup', (e) => {
+    if (isFilling) {
+      // Execute fill
+      const td = document.elementFromPoint(e.clientX, e.clientY)?.closest('td[data-row]');
+      if (td) {
+        const r = parseInt(td.dataset.row, 10);
+        const c = parseInt(td.dataset.col, 10);
+        executeFill(r, c);
+      }
+      isFilling = false;
+      gridEl.querySelectorAll('.fill-preview').forEach(el => el.classList.remove('fill-preview'));
+    }
     isDragging = false;
   });
 
@@ -430,6 +486,14 @@ function bindEvents() {
     showSheetFindReplace();
   });
 
+  // Data validation (right-click context menu)
+  gridEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const td = e.target.closest('td[data-row]');
+    if (!td) return;
+    showCellContextMenu(e.clientX, e.clientY, parseInt(td.dataset.row), parseInt(td.dataset.col));
+  });
+
   // Sheet tabs
   document.getElementById('sheet-add-tab')?.addEventListener('click', () => {
     sheets.push(createSheetData());
@@ -472,10 +536,20 @@ function getSelectionRange() {
   return { r1, r2, c1, c2 };
 }
 
+// Drag-to-fill state
+let isFilling = false;
+let fillStartRow = -1;
+let fillStartCol = -1;
+let fillEndRow = -1;
+let fillEndCol = -1;
+
 function updateSelection() {
-  gridEl.querySelectorAll('.selected, .in-range').forEach((el) => {
-    el.classList.remove('selected', 'in-range');
+  gridEl.querySelectorAll('.selected, .in-range, .fill-preview').forEach((el) => {
+    el.classList.remove('selected', 'in-range', 'fill-preview');
   });
+
+  // Remove old fill handle
+  gridEl.querySelector('.fill-handle')?.remove();
 
   const { r1, r2, c1, c2 } = getSelectionRange();
   const isRange = r1 !== r2 || c1 !== c2;
@@ -490,7 +564,19 @@ function updateSelection() {
   }
 
   const td = gridEl.querySelector(`td[data-row="${selectedRow}"][data-col="${selectedCol}"]`);
-  if (td) td.classList.add('selected');
+  if (td) {
+    td.classList.add('selected');
+
+    // Add fill handle to the bottom-right cell of selection
+    const anchorTd = isRange
+      ? gridEl.querySelector(`td[data-row="${r2}"][data-col="${c2}"]`)
+      : td;
+    if (anchorTd) {
+      const handle = document.createElement('div');
+      handle.className = 'fill-handle';
+      anchorTd.appendChild(handle);
+    }
+  }
 
   if (cellRefEl) {
     cellRefEl.textContent = isRange
@@ -1028,6 +1114,88 @@ function acceptAutocomplete(fnName) {
   hideAutocomplete();
 }
 
+/* ==================== Drag-to-Fill ==================== */
+
+function executeFill(targetR, targetC) {
+  const sheet = getSheet();
+  const dr = targetR - fillEndRow;
+  const dc = targetC - fillEndCol;
+
+  // Gather source data
+  const srcRows = fillEndRow - fillStartRow + 1;
+  const srcCols = fillEndCol - fillStartCol + 1;
+  const srcData = [];
+  for (let r = fillStartRow; r <= fillEndRow; r++) {
+    const row = [];
+    for (let c = fillStartCol; c <= fillEndCol; c++) {
+      row.push({
+        raw: getRawValue(sheet, r, c),
+        val: getDisplayValue(sheet, r, c),
+      });
+    }
+    srcData.push(row);
+  }
+
+  if (Math.abs(dr) >= Math.abs(dc) && dr !== 0) {
+    // Vertical fill
+    const direction = dr > 0 ? 1 : -1;
+    const count = Math.abs(dr);
+    for (let i = 1; i <= count; i++) {
+      const fillR = direction > 0 ? fillEndRow + i : fillStartRow - i;
+      for (let c = fillStartCol; c <= fillEndCol; c++) {
+        const srcIdx = (direction > 0 ? (i - 1) : (count - i)) % srcRows;
+        const src = srcData[srcIdx][c - fillStartCol];
+        const newVal = smartFill(src.raw, src.val, i * direction);
+        if (fillR >= 0 && fillR < sheet.rows) {
+          setCell(sheet, fillR, c, newVal);
+        }
+      }
+    }
+  } else if (dc !== 0) {
+    // Horizontal fill
+    const direction = dc > 0 ? 1 : -1;
+    const count = Math.abs(dc);
+    for (let r = fillStartRow; r <= fillEndRow; r++) {
+      for (let i = 1; i <= count; i++) {
+        const fillC = direction > 0 ? fillEndCol + i : fillStartCol - i;
+        const srcIdx = (direction > 0 ? (i - 1) : (count - i)) % srcCols;
+        const src = srcData[r - fillStartRow][srcIdx];
+        const newVal = smartFill(src.raw, src.val, i * direction);
+        if (fillC >= 0 && fillC < sheet.cols) {
+          setCell(sheet, r, fillC, newVal);
+        }
+      }
+    }
+  }
+
+  recalcAll(sheet);
+  renderGrid();
+  updateSelection();
+}
+
+function smartFill(raw, displayVal, offset) {
+  // If formula, adjust references
+  if (raw.startsWith('=')) {
+    return adjustFormulaReferences(raw, offset, 0);
+  }
+
+  // If number, increment
+  const num = parseFloat(displayVal);
+  if (!isNaN(num) && displayVal.trim() !== '') {
+    return String(num + offset);
+  }
+
+  // If date-like (YYYY-MM-DD), increment days
+  if (/^\d{4}-\d{2}-\d{2}$/.test(displayVal)) {
+    const d = new Date(displayVal);
+    d.setDate(d.getDate() + offset);
+    return d.toISOString().split('T')[0];
+  }
+
+  // Otherwise copy as-is
+  return raw;
+}
+
 /* ==================== Cell Merge ==================== */
 
 function toggleMerge() {
@@ -1439,6 +1607,134 @@ function showSheetFindReplace() {
   findInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { bar.querySelector('#sf-next').click(); e.preventDefault(); }
     if (e.key === 'Escape') { bar.remove(); }
+  });
+}
+
+/* ==================== Cell Context Menu ==================== */
+
+function showCellContextMenu(x, y, r, c) {
+  document.querySelector('.sheet-ctx-menu')?.remove();
+
+  const menu = document.createElement('div');
+  menu.className = 'sheet-ctx-menu';
+  menu.style.cssText = `position:fixed;top:${y}px;left:${x}px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:4px 0;z-index:2000;min-width:180px`;
+
+  const items = [
+    { label: '✂️ Cut', action: () => { copySelection(); clearSelection(); } },
+    { label: '📋 Copy', action: () => copySelection() },
+    { label: '📥 Paste', action: () => pasteSelection() },
+    { divider: true },
+    { label: '⊞ Merge Cells', action: () => toggleMerge() },
+    { label: '🎨 Conditional Format', action: () => showCondFmtDialog() },
+    { label: '📈 Insert Chart', action: () => showChartDialog() },
+    { divider: true },
+    { label: '📋 Set Data Validation', action: () => showDataValidationDialog(r, c) },
+    { divider: true },
+    { label: '+R Insert Row', action: () => { addRows(getSheet()); renderGrid(); updateSelection(); } },
+    { label: '+C Insert Column', action: () => { addCols(getSheet()); renderGrid(); updateSelection(); } },
+    { label: '-R Delete Row', action: () => { deleteRow(getSheet(), r); renderGrid(); updateSelection(); } },
+    { label: '-C Delete Column', action: () => { deleteCol(getSheet(), c); renderGrid(); updateSelection(); } },
+  ];
+
+  items.forEach(item => {
+    if (item.divider) {
+      const div = document.createElement('div');
+      div.style.cssText = 'height:1px;background:var(--border-color);margin:4px 0';
+      menu.appendChild(div);
+      return;
+    }
+    const btn = document.createElement('button');
+    btn.style.cssText = 'display:block;width:100%;text-align:left;padding:6px 16px;border:none;background:transparent;color:var(--text-primary);font-size:13px;cursor:pointer';
+    btn.textContent = item.label;
+    btn.addEventListener('mouseenter', () => btn.style.background = 'var(--hover-bg)');
+    btn.addEventListener('mouseleave', () => btn.style.background = 'transparent');
+    btn.addEventListener('click', () => { item.action(); menu.remove(); });
+    menu.appendChild(btn);
+  });
+
+  document.body.appendChild(menu);
+
+  // Close on click outside
+  setTimeout(() => {
+    document.addEventListener('click', function close() {
+      menu.remove();
+      document.removeEventListener('click', close);
+    });
+  }, 50);
+}
+
+/* ==================== Data Validation ==================== */
+
+let validations = {}; // "r,c" → { type, values }
+
+function showDataValidationDialog(r, c) {
+  const existing = document.querySelector('.sheet-dv-dialog');
+  if (existing) existing.remove();
+
+  const key = `${r},${c}`;
+  const current = validations[key];
+
+  const dialog = document.createElement('div');
+  dialog.className = 'ai-setup-modal sheet-dv-dialog';
+  dialog.innerHTML = `
+    <div class="ai-setup-content" style="width:380px">
+      <div class="ai-setup-header">
+        <h3>Data Validation — ${rcToRef(r, c)}</h3>
+        <button class="ai-setup-close">&times;</button>
+      </div>
+      <div class="ai-setup-body">
+        <div style="margin-bottom:12px">
+          <select id="dv-type" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+            <option value="list" ${current?.type === 'list' ? 'selected' : ''}>Dropdown List</option>
+            <option value="number" ${current?.type === 'number' ? 'selected' : ''}>Number only</option>
+            <option value="text" ${current?.type === 'text' ? 'selected' : ''}>Text only</option>
+          </select>
+        </div>
+        <div id="dv-list-row" style="margin-bottom:12px">
+          <label style="font-size:12px;color:var(--text-secondary)">List items (comma-separated)</label>
+          <input type="text" id="dv-list" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box" placeholder="Yes, No, Maybe" value="${current?.type === 'list' ? current.values.join(', ') : ''}">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="ai-pull-btn" id="dv-remove">Remove</button>
+          <button class="ai-pull-btn" id="dv-apply" style="background:var(--brand-color);color:#fff">Apply</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(dialog);
+
+  dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
+
+  dialog.querySelector('#dv-remove')?.addEventListener('click', () => {
+    delete validations[key];
+    renderGrid(); updateSelection();
+    dialog.remove();
+  });
+
+  dialog.querySelector('#dv-apply')?.addEventListener('click', () => {
+    const type = dialog.querySelector('#dv-type').value;
+    if (type === 'list') {
+      const vals = dialog.querySelector('#dv-list').value.split(',').map(s => s.trim()).filter(Boolean);
+      if (vals.length === 0) return;
+      // Apply to entire selection range
+      const { r1, r2, c1, c2 } = getSelectionRange();
+      for (let rr = r1; rr <= r2; rr++) {
+        for (let cc = c1; cc <= c2; cc++) {
+          validations[`${rr},${cc}`] = { type: 'list', values: vals };
+        }
+      }
+    } else {
+      const { r1, r2, c1, c2 } = getSelectionRange();
+      for (let rr = r1; rr <= r2; rr++) {
+        for (let cc = c1; cc <= c2; cc++) {
+          validations[`${rr},${cc}`] = { type };
+        }
+      }
+    }
+    renderGrid(); updateSelection();
+    dialog.remove();
   });
 }
 
