@@ -356,8 +356,9 @@ export function initDocEditor() {
     }
   });
 
-  // Initial word count
+  // Initial word count + ruler
   updateWordCount();
+  setTimeout(() => renderRuler(), 100);
 
   // Table context toolbar
   editorEl.addEventListener('click', (e) => {
@@ -1166,6 +1167,48 @@ function applyPageLayout() {
   editorEl.style.width = ps.w;
   editorEl.style.minHeight = ps.h;
   editorEl.style.padding = `${currentMargins.top}mm ${currentMargins.right}mm ${currentMargins.bottom}mm ${currentMargins.left}mm`;
+  renderRuler();
+}
+
+// ─── Document Ruler ──────────────────────────────────────────
+function renderRuler() {
+  const ruler = document.getElementById('doc-ruler');
+  if (!ruler || !editorEl) return;
+
+  const editorWidth = editorEl.offsetWidth;
+  const leftMarginPx = currentMargins.left * 3.78; // mm to px (approx)
+  const rightMarginPx = currentMargins.right * 3.78;
+  const contentWidth = editorWidth - leftMarginPx - rightMarginPx;
+
+  ruler.style.width = editorWidth + 'px';
+  ruler.style.marginLeft = 'auto';
+  ruler.style.marginRight = 'auto';
+
+  let html = '';
+  // Draw ruler marks every 1cm (approximately 37.8px)
+  const cmPx = 37.8;
+  const totalCm = Math.floor(editorWidth / cmPx);
+
+  // Left margin indicator
+  html += `<div class="ruler-margin-left" style="position:absolute;left:0;top:0;width:${leftMarginPx}px;height:100%;background:var(--border-color);opacity:0.3"></div>`;
+  // Right margin indicator
+  html += `<div class="ruler-margin-right" style="position:absolute;right:0;top:0;width:${rightMarginPx}px;height:100%;background:var(--border-color);opacity:0.3"></div>`;
+
+  for (let cm = 0; cm <= totalCm; cm++) {
+    const x = cm * cmPx;
+    // Full cm marks
+    html += `<div style="position:absolute;left:${x}px;bottom:0;width:1px;height:${cm % 5 === 0 ? 12 : 8}px;background:var(--text-tertiary)"></div>`;
+    // Labels every 5cm
+    if (cm > 0 && cm % 5 === 0) {
+      html += `<span style="position:absolute;left:${x - 5}px;top:1px;font-size:8px;color:var(--text-secondary)">${cm}</span>`;
+    }
+    // Half cm marks
+    if (cm < totalCm) {
+      html += `<div style="position:absolute;left:${x + cmPx / 2}px;bottom:0;width:1px;height:5px;background:var(--text-tertiary);opacity:0.5"></div>`;
+    }
+  }
+
+  ruler.innerHTML = html;
 }
 
 // ─── Columns Layout ─────────────────────────────────────────

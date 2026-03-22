@@ -716,6 +716,46 @@ function bindEvents() {
     renderGrid(); updateSelection();
   });
 
+  // Format Painter
+  let formatPainterData = null;
+  document.getElementById('sheet-format-painter')?.addEventListener('click', () => {
+    const btn = document.getElementById('sheet-format-painter');
+    if (formatPainterData) {
+      // Cancel format painter
+      formatPainterData = null;
+      btn.classList.remove('active');
+      gridEl.style.cursor = '';
+      return;
+    }
+    // Copy format from selected cell
+    const cell = getCell(getSheet(), selectedRow, selectedCol);
+    formatPainterData = cell?.format ? { ...cell.format } : {};
+    // Remove non-format properties
+    delete formatPainterData.merged;
+    delete formatPainterData.mergeSpan;
+    delete formatPainterData.merge;
+    btn.classList.add('active');
+    gridEl.style.cursor = 'cell';
+  });
+
+  // Apply format painter on cell click (handled in mousedown)
+  gridEl.addEventListener('mouseup', () => {
+    if (!formatPainterData) return;
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    const sheet = getSheet();
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        for (const [key, val] of Object.entries(formatPainterData)) {
+          setCellFormat(sheet, r, c, key, val);
+        }
+      }
+    }
+    formatPainterData = null;
+    document.getElementById('sheet-format-painter')?.classList.remove('active');
+    gridEl.style.cursor = '';
+    renderGrid(); updateSelection();
+  });
+
   // Wrap Text
   document.getElementById('sheet-wrap')?.addEventListener('click', () => {
     const { r1, r2, c1, c2 } = getSelectionRange();
