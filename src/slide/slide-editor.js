@@ -548,8 +548,87 @@ function startPresentation() {
   };
   document.addEventListener('keydown', handler);
 
-  // Click to advance
+  // Presenter toolbar (bottom)
+  const presToolbar = document.createElement('div');
+  presToolbar.style.cssText = 'position:fixed;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:4px;z-index:10002;opacity:0;transition:opacity 0.3s;padding:6px 12px;background:rgba(0,0,0,0.6);border-radius:20px';
+  overlay.addEventListener('mousemove', () => { presToolbar.style.opacity = '1'; clearTimeout(presToolbar._hideTimer); presToolbar._hideTimer = setTimeout(() => presToolbar.style.opacity = '0', 3000); });
+
+  let presMode = 'pointer'; // 'pointer' | 'laser' | 'pen' | 'eraser'
+  let penColor = '#ff0000';
+
+  const toolBtns = [
+    { icon: '🖱', mode: 'pointer', title: 'Pointer' },
+    { icon: '🔴', mode: 'laser', title: 'Laser Pointer' },
+    { icon: '🖊', mode: 'pen', title: 'Pen' },
+    { icon: '🧹', mode: 'eraser', title: 'Clear Annotations' },
+  ];
+  toolBtns.forEach(t => {
+    const btn = document.createElement('button');
+    btn.style.cssText = 'width:32px;height:32px;border:none;border-radius:50%;cursor:pointer;font-size:14px;background:transparent;display:flex;align-items:center;justify-content:center';
+    btn.title = t.title;
+    btn.textContent = t.icon;
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      if (t.mode === 'eraser') {
+        penCanvas.getContext('2d').clearRect(0, 0, penCanvas.width, penCanvas.height);
+        return;
+      }
+      presMode = t.mode;
+      presToolbar.querySelectorAll('button').forEach(b => b.style.background = 'transparent');
+      btn.style.background = 'rgba(255,255,255,0.2)';
+      overlay.style.cursor = presMode === 'laser' ? 'none' : presMode === 'pen' ? 'crosshair' : 'default';
+    };
+    presToolbar.appendChild(btn);
+  });
+
+  // Pen canvas overlay
+  const penCanvas = document.createElement('canvas');
+  penCanvas.width = window.innerWidth;
+  penCanvas.height = window.innerHeight;
+  penCanvas.style.cssText = 'position:fixed;inset:0;z-index:10001;pointer-events:none';
+  overlay.appendChild(penCanvas);
+
+  // Laser pointer element
+  const laser = document.createElement('div');
+  laser.style.cssText = 'position:fixed;width:12px;height:12px;background:red;border-radius:50%;box-shadow:0 0 16px 4px rgba(255,0,0,0.6);z-index:10003;pointer-events:none;display:none';
+  overlay.appendChild(laser);
+
+  let isPenDown = false;
+  const penCtx = penCanvas.getContext('2d');
+
+  overlay.addEventListener('mousemove', (e) => {
+    if (presMode === 'laser') {
+      laser.style.display = 'block';
+      laser.style.left = (e.clientX - 6) + 'px';
+      laser.style.top = (e.clientY - 6) + 'px';
+    } else {
+      laser.style.display = 'none';
+    }
+    if (presMode === 'pen' && isPenDown) {
+      penCtx.lineTo(e.clientX, e.clientY);
+      penCtx.stroke();
+    }
+  });
+
+  overlay.addEventListener('mousedown', (e) => {
+    if (presMode === 'pen') {
+      e.stopPropagation();
+      isPenDown = true;
+      penCtx.beginPath();
+      penCtx.moveTo(e.clientX, e.clientY);
+      penCtx.strokeStyle = penColor;
+      penCtx.lineWidth = 3;
+      penCtx.lineCap = 'round';
+    }
+  });
+
+  overlay.addEventListener('mouseup', () => { isPenDown = false; });
+
+  overlay.appendChild(presToolbar);
+
+  // Click to advance (only in pointer mode)
   overlay.addEventListener('click', () => {
+    if (presMode !== 'pointer') return;
     if (presIdx < slides.length - 1) {
       presIdx++;
       showSlide(presIdx, 1);

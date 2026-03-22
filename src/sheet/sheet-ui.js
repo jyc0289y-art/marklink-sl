@@ -605,6 +605,10 @@ function bindEvents() {
   document.getElementById('sheet-cond-format')?.addEventListener('click', () => showConditionalFormatDialog());
   // Goal Seek
   document.getElementById('sheet-goal-seek')?.addEventListener('click', () => showGoalSeekDialog());
+  // Subtotals
+  document.getElementById('sheet-subtotals')?.addEventListener('click', () => showSubtotalsDialog());
+  // Transpose
+  document.getElementById('sheet-transpose')?.addEventListener('click', () => transposeSelection());
   // Remove Duplicates
   document.getElementById('sheet-remove-dups')?.addEventListener('click', () => removeDuplicates());
   // Text to Columns
@@ -3456,6 +3460,148 @@ function showGoalSeekDialog() {
       resultEl.innerHTML = `<strong>Approximate solution:</strong><br>${changeRef} = ${bestVal.toFixed(4)}<br>Result: ${getDisplayValue(sheet, setRC.r, setRC.c)} (target: ${target})`;
     }
   };
+}
+
+/* ==================== Subtotals ==================== */
+
+function showSubtotalsDialog() {
+  const sheet = getSheet();
+  const headers = [];
+  for (let c = 0; c < sheet.cols; c++) {
+    const v = getDisplayValue(sheet, 0, c);
+    if (v) headers.push({ c, label: v });
+  }
+  if (headers.length < 2) { alert('Need at least 2 columns with headers in row 1.'); return; }
+
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay';
+  dlg.innerHTML = `<div class="modal-content" style="width:380px">
+    <h3 style="margin:0 0 12px">Subtotals</h3>
+    <div style="margin-bottom:8px">
+      <label style="font-size:12px;font-weight:600">Group by column:</label>
+      <select id="st-group" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);margin-top:2px">
+        ${headers.map(h => `<option value="${h.c}">${h.label}</option>`).join('')}
+      </select>
+    </div>
+    <div style="margin-bottom:8px">
+      <label style="font-size:12px;font-weight:600">Subtotal column:</label>
+      <select id="st-value" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);margin-top:2px">
+        ${headers.map((h, i) => `<option value="${h.c}"${i === headers.length - 1 ? ' selected' : ''}>${h.label}</option>`).join('')}
+      </select>
+    </div>
+    <div style="margin-bottom:8px">
+      <label style="font-size:12px;font-weight:600">Function:</label>
+      <select id="st-fn" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);margin-top:2px">
+        <option value="sum">SUM</option><option value="count">COUNT</option><option value="average">AVERAGE</option><option value="min">MIN</option><option value="max">MAX</option>
+      </select>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="toolbar-btn" id="st-cancel" style="padding:6px 16px">Cancel</button>
+      <button class="toolbar-btn" id="st-apply" style="padding:6px 16px;background:var(--accent-color);color:white;border-radius:4px">Apply</button>
+    </div>
+  </div>`;
+  document.body.appendChild(dlg);
+
+  dlg.querySelector('#st-cancel').onclick = () => dlg.remove();
+  dlg.querySelector('#st-apply').onclick = () => {
+    const groupCol = parseInt(dlg.querySelector('#st-group').value);
+    const valueCol = parseInt(dlg.querySelector('#st-value').value);
+    const fn = dlg.querySelector('#st-fn').value;
+    saveUndoState();
+
+    // Sort by group column first
+    multiLevelSort([{ col: groupCol, asc: true }], true);
+
+    // Insert subtotal rows
+    let lastGroup = null;
+    let groupVals = [];
+    const insertions = []; // [{afterRow, groupName, result}]
+
+    for (let r = 1; r < sheet.rows; r++) {
+      const groupVal = getDisplayValue(sheet, r, groupCol);
+      if (!groupVal && !lastGroup) continue;
+      if (lastGroup !== null && groupVal !== lastGroup) {
+        // Insert subtotal for previous group
+        const result = calcAggregate(groupVals, fn);
+        insertions.push({ afterRow: r, groupName: lastGroup, result });
+        groupVals = [];
+      }
+      lastGroup = groupVal;
+      const v = parseFloat(getDisplayValue(sheet, r, valueCol));
+      if (!isNaN(v)) groupVals.push(v);
+    }
+    // Last group
+    if (lastGroup !== null && groupVals.length > 0) {
+      insertions.push({ afterRow: sheet.rows, groupName: lastGroup, result: calcAggregate(groupVals, fn) });
+    }
+
+    // Insert rows from bottom up
+    for (let i = insertions.length - 1; i >= 0; i--) {
+      const ins = insertions[i];
+      addRows(sheet, ins.afterRow, 1);
+      setCell(sheet, ins.afterRow, groupCol, `${ins.groupName} ${fn.toUpperCase()}`);
+      setCell(sheet, ins.afterRow, valueCol, String(ins.result));
+      setCellFormat(sheet, ins.afterRow, groupCol, 'bold', true);
+      setCellFormat(sheet, ins.afterRow, valueCol, 'bold', true);
+      setCellFormat(sheet, ins.afterRow, groupCol, 'bg', '#f0f0f0');
+      setCellFormat(sheet, ins.afterRow, valueCol, 'bg', '#f0f0f0');
+    }
+
+    recalcAll(sheet);
+    renderGrid();
+    updateSelection();
+    dlg.remove();
+  };
+}
+
+function calcAggregate(vals, fn) {
+  if (vals.length === 0) return 0;
+  if (fn === 'sum') return vals.reduce((a, b) => a + b, 0);
+  if (fn === 'count') return vals.length;
+  if (fn === 'average') return parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2));
+  if (fn === 'min') return Math.min(...vals);
+  if (fn === 'max') return Math.max(...vals);
+  return 0;
+}
+
+/* ==================== Transpose ==================== */
+
+function transposeSelection() {
+  const sheet = getSheet();
+  const { r1, c1, r2, c2 } = getSelectionRange();
+  saveUndoState();
+
+  // Read data
+  const data = [];
+  for (let r = r1; r <= r2; r++) {
+    const row = [];
+    for (let c = c1; c <= c2; c++) {
+      row.push({ raw: getRawValue(sheet, r, c), format: { ...getCell(sheet, r, c)?.format } });
+    }
+    data.push(row);
+  }
+
+  // Clear original range
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      setCell(sheet, r, c, '');
+    }
+  }
+
+  // Write transposed
+  for (let r = 0; r < data.length; r++) {
+    for (let c = 0; c < data[r].length; c++) {
+      const tr = r1 + c;
+      const tc = c1 + r;
+      if (tr < sheet.rows && tc < sheet.cols) {
+        setCell(sheet, tr, tc, data[r][c].raw);
+      }
+    }
+  }
+
+  recalcAll(sheet);
+  renderGrid();
+  updateSelection();
 }
 
 /* ==================== Multi-Level Sort ==================== */

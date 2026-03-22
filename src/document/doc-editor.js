@@ -191,6 +191,11 @@ export function initDocEditor() {
     insertSectionBreak();
   });
 
+  // Columns layout
+  document.getElementById('doc-columns')?.addEventListener('click', () => {
+    showColumnsMenu();
+  });
+
   // Print
   document.getElementById('doc-print')?.addEventListener('click', () => {
     printDocument();
@@ -1031,6 +1036,109 @@ function insertSectionBreak() {
   ">— Section Break —</div>`;
   editorEl.focus();
   document.execCommand('insertHTML', false, html);
+  dirty = true;
+}
+
+// ─── Columns Layout ─────────────────────────────────────────
+function showColumnsMenu() {
+  const existing = document.querySelector('.doc-cols-menu');
+  if (existing) { existing.remove(); return; }
+
+  const btn = document.getElementById('doc-columns');
+  const rect = btn.getBoundingClientRect();
+
+  const menu = document.createElement('div');
+  menu.className = 'doc-cols-menu';
+  menu.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${rect.left}px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.12);padding:8px;z-index:2000;display:flex;flex-direction:column;gap:2px;min-width:160px`;
+
+  const layouts = [
+    { label: '1 Column', cols: 1, icon: '▮' },
+    { label: '2 Columns', cols: 2, icon: '▮▮' },
+    { label: '3 Columns', cols: 3, icon: '▮▮▮' },
+    { label: '2 Columns (Left wide)', cols: '2-left', icon: '▮▯' },
+    { label: '2 Columns (Right wide)', cols: '2-right', icon: '▯▮' },
+  ];
+
+  layouts.forEach(l => {
+    const item = document.createElement('button');
+    item.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;border:none;background:transparent;text-align:left;cursor:pointer;font-size:12px;color:var(--text-primary);border-radius:4px;width:100%';
+    item.innerHTML = `<span style="font-family:monospace;letter-spacing:2px;font-size:14px">${l.icon}</span> ${l.label}`;
+    item.onmouseenter = () => item.style.background = 'var(--hover-bg)';
+    item.onmouseleave = () => item.style.background = 'transparent';
+    item.onclick = () => {
+      applyColumnLayout(l.cols);
+      menu.remove();
+    };
+    menu.appendChild(item);
+  });
+
+  document.body.appendChild(menu);
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!menu.contains(e.target) && e.target !== btn) { menu.remove(); document.removeEventListener('click', close); }
+    });
+  }, 50);
+}
+
+function applyColumnLayout(cols) {
+  if (!editorEl) return;
+  const sel = window.getSelection();
+  let target = editorEl;
+
+  // If text is selected, wrap it in a column container
+  if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+    const range = sel.getRangeAt(0);
+    const content = range.extractContents();
+    const wrapper = document.createElement('div');
+
+    if (cols === 1) {
+      wrapper.style.cssText = 'column-count:1';
+    } else if (cols === 2) {
+      wrapper.style.cssText = 'column-count:2;column-gap:24px;column-rule:1px solid var(--border-color)';
+    } else if (cols === 3) {
+      wrapper.style.cssText = 'column-count:3;column-gap:20px;column-rule:1px solid var(--border-color)';
+    } else if (cols === '2-left') {
+      wrapper.style.cssText = 'display:flex;gap:24px';
+      const left = document.createElement('div');
+      left.style.cssText = 'flex:2';
+      const right = document.createElement('div');
+      right.style.cssText = 'flex:1;border-left:1px solid var(--border-color);padding-left:16px';
+      left.appendChild(content);
+      right.innerHTML = '<p>Right column content...</p>';
+      wrapper.appendChild(left);
+      wrapper.appendChild(right);
+      range.insertNode(wrapper);
+      dirty = true;
+      return;
+    } else if (cols === '2-right') {
+      wrapper.style.cssText = 'display:flex;gap:24px';
+      const left = document.createElement('div');
+      left.style.cssText = 'flex:1;border-right:1px solid var(--border-color);padding-right:16px';
+      const right = document.createElement('div');
+      right.style.cssText = 'flex:2';
+      left.innerHTML = '<p>Left column content...</p>';
+      right.appendChild(content);
+      wrapper.appendChild(left);
+      wrapper.appendChild(right);
+      range.insertNode(wrapper);
+      dirty = true;
+      return;
+    }
+
+    wrapper.appendChild(content);
+    range.insertNode(wrapper);
+  } else {
+    // Apply to entire editor
+    if (cols === 1) {
+      editorEl.style.columnCount = '1';
+      editorEl.style.columnGap = '';
+      editorEl.style.columnRule = '';
+    } else if (typeof cols === 'number') {
+      editorEl.style.columnCount = String(cols);
+      editorEl.style.columnGap = '24px';
+      editorEl.style.columnRule = '1px solid var(--border-color)';
+    }
+  }
   dirty = true;
 }
 
