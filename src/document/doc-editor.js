@@ -2,16 +2,22 @@
 
 let editorEl = null;
 let dirty = false;
+let outlineVisible = false;
 
 export function initDocEditor() {
   editorEl = document.getElementById('doc-editor');
   if (!editorEl) return;
 
-  // Track dirty state + word count
+  // Track dirty state + word count + outline
   editorEl.addEventListener('input', () => {
     dirty = true;
     updateWordCount();
+    if (outlineVisible) updateDocOutline();
   });
+
+  // Document Outline toggle
+  document.getElementById('doc-outline-toggle')?.addEventListener('click', toggleDocOutline);
+  document.getElementById('doc-outline-close')?.addEventListener('click', toggleDocOutline);
 
   // Undo / Redo buttons
   const undoBtn = document.getElementById('doc-undo');
@@ -997,5 +1003,48 @@ function showImageInsertDialog() {
     }
     dirty = true;
     dialog.remove();
+  });
+}
+
+/* ==================== Document Outline ==================== */
+
+function toggleDocOutline() {
+  const panel = document.getElementById('doc-outline');
+  if (!panel) return;
+  outlineVisible = !outlineVisible;
+  panel.classList.toggle('hidden', !outlineVisible);
+  if (outlineVisible) updateDocOutline();
+}
+
+function updateDocOutline() {
+  const list = document.getElementById('doc-outline-list');
+  if (!list || !editorEl) return;
+
+  const headings = editorEl.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  if (!headings.length) {
+    list.innerHTML = '<div style="padding:12px;color:var(--text-tertiary);font-size:12px;text-align:center">No headings found.<br>Add headings (H1-H6) to see the outline.</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  headings.forEach((h, idx) => {
+    const level = parseInt(h.tagName[1]);
+    const btn = document.createElement('button');
+    btn.className = 'doc-outline-item';
+    btn.dataset.level = level;
+    btn.textContent = h.textContent || `Heading ${idx + 1}`;
+    btn.title = h.textContent;
+    btn.addEventListener('click', () => {
+      h.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Brief highlight
+      const origBg = h.style.background;
+      h.style.background = 'rgba(59, 130, 246, 0.15)';
+      h.style.borderRadius = '4px';
+      setTimeout(() => {
+        h.style.background = origBg;
+        h.style.borderRadius = '';
+      }, 1500);
+    });
+    list.appendChild(btn);
   });
 }

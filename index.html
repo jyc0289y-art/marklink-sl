@@ -238,6 +238,7 @@
         <button class="toolbar-btn" id="doc-insert-footnote" title="Insert Footnote" style="font-size:11px">fn</button>
         <button class="toolbar-btn" id="doc-watermark" title="Watermark" style="font-size:11px">💧</button>
         <button class="toolbar-btn" id="doc-print" title="Print (⌘P)" style="font-size:11px">🖨</button>
+        <button class="toolbar-btn" id="doc-outline-toggle" title="Document Outline" style="font-size:11px">📑</button>
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="doc-undo" title="Undo (⌘Z)">↩</button>
         <button class="toolbar-btn" id="doc-redo" title="Redo (⌘⇧Z)">↪</button>
@@ -262,10 +263,19 @@
           <button class="toolbar-btn" id="doc-replace-all" title="Replace All">All</button>
         </div>
       </div>
-      <div class="doc-page-wrapper">
-        <div id="doc-editor" class="doc-editor" contenteditable="true" spellcheck="true">
-          <h1>Untitled Document</h1>
-          <p>Start typing here...</p>
+      <div class="doc-main-wrapper">
+        <aside id="doc-outline" class="doc-outline hidden">
+          <div class="doc-outline-header">
+            <span>Outline</span>
+            <button id="doc-outline-close" class="toolbar-btn" style="font-size:12px">&times;</button>
+          </div>
+          <div id="doc-outline-list" class="doc-outline-list"></div>
+        </aside>
+        <div class="doc-page-wrapper">
+          <div id="doc-editor" class="doc-editor" contenteditable="true" spellcheck="true">
+            <h1>Untitled Document</h1>
+            <p>Start typing here...</p>
+          </div>
         </div>
       </div>
       <div id="doc-status-bar" class="doc-status-bar">Words: 0  |  Characters: 0  |  Paragraphs: 0</div>
@@ -306,6 +316,10 @@
         <button class="toolbar-btn" id="sheet-chart" title="Insert Chart" style="font-size:11px">📈</button>
         <button class="toolbar-btn" id="sheet-filter" title="Auto Filter" style="font-size:11px">🔽</button>
         <button class="toolbar-btn" id="sheet-find" title="Find & Replace (⌘F)" style="font-size:11px">🔍</button>
+        <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" id="sheet-import-csv" title="Import CSV" style="font-size:11px">CSV↑</button>
+        <button class="toolbar-btn" id="sheet-export-csv" title="Export CSV" style="font-size:11px">CSV↓</button>
+        <button class="toolbar-btn" id="sheet-export-xlsx" title="Export XLSX" style="font-size:11px">XLSX↓</button>
       </div>
       <div class="sheet-container" id="sheet-container">
         <table class="sheet-grid" id="sheet-grid"></table>
@@ -359,7 +373,17 @@
         <button class="toolbar-btn" id="slide-insert-shape" title="Insert Shape">⬜</button>
         <button class="toolbar-btn" id="slide-insert-table" title="Insert Table">▦</button>
         <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" id="slide-anim" title="Animations" style="font-size:11px">✨ Anim</button>
+        <div class="toolbar-divider"></div>
+        <select id="slide-size" title="Slide Size" style="font-size:11px;padding:2px 4px">
+          <option value="16:9" selected>16:9 (Widescreen)</option>
+          <option value="4:3">4:3 (Standard)</option>
+          <option value="16:10">16:10</option>
+          <option value="a4">A4 Portrait</option>
+        </select>
+        <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="slide-present" title="Present (F5)">▶ Present</button>
+        <button class="toolbar-btn" id="slide-speaker-view" title="Speaker View" style="font-size:11px">🎤</button>
         <button class="toolbar-btn" id="slide-export-img" title="Export as Image" style="font-size:11px">📷</button>
       </div>
       <div class="slide-workspace">

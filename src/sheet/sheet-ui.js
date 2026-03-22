@@ -32,14 +32,20 @@ let freezeCols = 0;
 
 // Formula autocomplete
 const FORMULA_LIST = [
-  'SUM','AVERAGE','COUNT','COUNTA','MIN','MAX','IF','SUMIF','COUNTIF',
-  'VLOOKUP','CONCATENATE','CONCAT','LEFT','RIGHT','MID','LEN','TRIM',
+  'SUM','AVERAGE','COUNT','COUNTA','MIN','MAX','IF','SUMIF','COUNTIF','AVERAGEIF',
+  'VLOOKUP','HLOOKUP','INDEX','MATCH','INDIRECT','OFFSET','ROW','COLUMN','ROWS','COLUMNS',
+  'CONCATENATE','CONCAT','LEFT','RIGHT','MID','LEN','TRIM','TEXTJOIN','SUBSTITUTE',
+  'REPT','FIND','SEARCH','REPLACE','PROPER','EXACT','VALUE','TEXT',
   'UPPER','LOWER','ROUND','ABS','TODAY','NOW',
   'SIN','COS','TAN','ASIN','ACOS','ATAN','ATAN2','SINH','COSH','TANH',
   'SQRT','CBRT','POWER','POW','EXP','LN','LOG','LOG10','LOG2',
   'CEILING','CEIL','FLOOR','MOD','PI','E','DEGREES','RADIANS','SIGN',
   'FACT','COMBIN','PERMUT','GCD','LCM','RAND','RANDBETWEEN',
-  'CONVERT','MEDIAN','STDEV','VAR','PRODUCT',
+  'CONVERT','MEDIAN','STDEV','VAR','PRODUCT','SUMPRODUCT',
+  'UNIQUE','SORT','FILTER','TRANSPOSE',
+  'AND','OR','NOT','IFERROR','IFS','SWITCH','CHOOSE',
+  'DATE','YEAR','MONTH','DAY','HOUR','MINUTE','SECOND','WEEKDAY','DATEDIF','EDATE',
+  'LARGE','SMALL','RANK','ISBLANK','ISNUMBER','ISTEXT',
 ];
 let acEl = null;
 let acIndex = -1;
@@ -57,6 +63,7 @@ export function initSheetEditor() {
 
   renderGrid();
   bindEvents();
+  initResize();
   updateSelection();
 }
 
@@ -71,15 +78,29 @@ function renderGrid() {
   let html = '<thead><tr><th class="sheet-corner"></th>';
 
   for (let c = 0; c < sheet.cols; c++) {
+    if (hiddenCols.has(c)) {
+      html += `<th class="sheet-col-header sheet-hidden-col" data-col="${c}" style="display:none">${colToLetter(c)}</th>`;
+      continue;
+    }
     const cls = c < freezeCols ? 'sheet-col-header sheet-frozen-col-header' : 'sheet-col-header';
-    html += `<th class="${cls}" data-col="${c}">${colToLetter(c)}</th>`;
+    const w = getColWidth(c);
+    html += `<th class="${cls}" data-col="${c}" style="width:${w}px;min-width:${w}px">${colToLetter(c)}</th>`;
   }
   html += '</tr></thead><tbody>';
 
   for (let r = 0; r < sheet.rows; r++) {
+    if (hiddenRows.has(r)) {
+      html += `<tr style="display:none" data-hidden-row="${r}"><th class="sheet-row-header" data-row="${r}">${r + 1}</th></tr>`;
+      continue;
+    }
     const rowCls = r < freezeRows ? 'sheet-frozen-row' : '';
-    html += `<tr class="${rowCls}"><th class="sheet-row-header" data-row="${r}">${r + 1}</th>`;
+    const rh = getRowHeight(r);
+    html += `<tr class="${rowCls}"><th class="sheet-row-header" data-row="${r}" style="height:${rh}px">${r + 1}</th>`;
     for (let c = 0; c < sheet.cols; c++) {
+      if (hiddenCols.has(c)) {
+        html += `<td data-row="${r}" data-col="${c}" style="display:none"></td>`;
+        continue;
+      }
       const cell = getCell(sheet, r, c);
       // Skip merged cells (hidden by merge)
       if (cell?.format?.merged) continue;
@@ -90,7 +111,8 @@ function renderGrid() {
       const spanAttrs = mergeSpan
         ? ` rowspan="${mergeSpan.rows}" colspan="${mergeSpan.cols}"`
         : '';
-      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="${style}"${spanAttrs}>${escapeHTML(String(val))}</td>`;
+      const w = getColWidth(c);
+      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="width:${w}px;min-width:${w}px;height:${rh}px;${style}"${spanAttrs}>${escapeHTML(String(val))}</td>`;
     }
     html += '</tr>';
   }
@@ -485,6 +507,13 @@ function bindEvents() {
   document.getElementById('sheet-find')?.addEventListener('click', () => {
     showSheetFindReplace();
   });
+
+  // CSV Import
+  document.getElementById('sheet-import-csv')?.addEventListener('click', () => importCSV());
+  // CSV Export
+  document.getElementById('sheet-export-csv')?.addEventListener('click', () => exportCSV());
+  // XLSX Export
+  document.getElementById('sheet-export-xlsx')?.addEventListener('click', () => exportXLSX());
 
   // Data validation (right-click context menu)
   gridEl.addEventListener('contextmenu', (e) => {
@@ -1634,6 +1663,11 @@ function showCellContextMenu(x, y, r, c) {
     { label: '+C Insert Column', action: () => { addCols(getSheet()); renderGrid(); updateSelection(); } },
     { label: '-R Delete Row', action: () => { deleteRow(getSheet(), r); renderGrid(); updateSelection(); } },
     { label: '-C Delete Column', action: () => { deleteCol(getSheet(), c); renderGrid(); updateSelection(); } },
+    { divider: true },
+    { label: '👁️‍🗨️ Hide Row(s)', action: () => hideSelectedRows() },
+    { label: '👁️‍🗨️ Hide Column(s)', action: () => hideSelectedCols() },
+    { label: '👁️ Show All Rows', action: () => showAllRows() },
+    { label: '👁️ Show All Columns', action: () => showAllCols() },
   ];
 
   items.forEach(item => {
@@ -1736,6 +1770,433 @@ function showDataValidationDialog(r, c) {
     renderGrid(); updateSelection();
     dialog.remove();
   });
+}
+
+/* ==================== CSV Import/Export ==================== */
+
+function importCSV() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.csv,.tsv,.txt';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target.result;
+      const delimiter = file.name.endsWith('.tsv') ? '\t' : ',';
+      const rows = parseCSV(text, delimiter);
+      const sheet = getSheet();
+      // Clear current sheet
+      sheet.cells = {};
+      sheet.rows = Math.max(rows.length + 5, 50);
+      sheet.cols = Math.max((rows[0]?.length || 0) + 3, 26);
+      // Fill data
+      for (let r = 0; r < rows.length; r++) {
+        for (let c = 0; c < rows[r].length; c++) {
+          const val = rows[r][c].trim();
+          if (val) setCell(sheet, r, c, val);
+        }
+      }
+      renderGrid();
+      selectedRow = 0; selectedCol = 0;
+      updateSelection();
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function parseCSV(text, delimiter = ',') {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        field += '"';
+        i++; // skip next quote
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        field += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === delimiter) {
+        row.push(field);
+        field = '';
+      } else if (ch === '\n' || (ch === '\r' && next === '\n')) {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+        if (ch === '\r') i++; // skip \n
+      } else if (ch === '\r') {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+      } else {
+        field += ch;
+      }
+    }
+  }
+  // Last field/row
+  if (field || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function exportCSV() {
+  const sheet = getSheet();
+  let maxR = 0, maxC = 0;
+  for (const key of Object.keys(sheet.cells)) {
+    const [r, c] = key.split(',').map(Number);
+    if (r > maxR) maxR = r;
+    if (c > maxC) maxC = c;
+  }
+  const lines = [];
+  for (let r = 0; r <= maxR; r++) {
+    const cols = [];
+    for (let c = 0; c <= maxC; c++) {
+      let val = getDisplayValue(sheet, r, c);
+      // Escape CSV: wrap in quotes if contains comma, quote, or newline
+      if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
+        val = '"' + val.replace(/"/g, '""') + '"';
+      }
+      cols.push(val);
+    }
+    lines.push(cols.join(','));
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'spreadsheet.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportXLSX() {
+  // Generate a simple XLSX using XML (Office Open XML minimal format)
+  const sheet = getSheet();
+  let maxR = 0, maxC = 0;
+  for (const key of Object.keys(sheet.cells)) {
+    const [r, c] = key.split(',').map(Number);
+    if (r > maxR) maxR = r;
+    if (c > maxC) maxC = c;
+  }
+
+  // Build sheet XML
+  let sheetData = '';
+  for (let r = 0; r <= maxR; r++) {
+    let rowXml = `<row r="${r + 1}">`;
+    for (let c = 0; c <= maxC; c++) {
+      const val = getDisplayValue(sheet, r, c);
+      if (!val && val !== 0) continue;
+      const ref = colToLetter(c) + (r + 1);
+      const num = Number(val);
+      if (!isNaN(num) && val !== '') {
+        rowXml += `<c r="${ref}"><v>${num}</v></c>`;
+      } else {
+        rowXml += `<c r="${ref}" t="inlineStr"><is><t>${escapeXml(String(val))}</t></is></c>`;
+      }
+    }
+    rowXml += '</row>';
+    sheetData += rowXml;
+  }
+
+  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetData>${sheetData}</sheetData>
+</worksheet>`;
+
+  const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`;
+
+  const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+
+  const wbRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`;
+
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`;
+
+  // Create ZIP using JSZip-free approach (minimal zip)
+  // Use Blob-based approach
+  const files = {
+    '_rels/.rels': relsXml,
+    'xl/workbook.xml': workbookXml,
+    'xl/_rels/workbook.xml.rels': wbRelsXml,
+    'xl/worksheets/sheet1.xml': sheetXml,
+    '[Content_Types].xml': contentTypesXml,
+  };
+
+  createMinimalZip(files).then(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'spreadsheet.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+function escapeXml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function createMinimalZip(files) {
+  // Minimal ZIP file creator (no external dependencies)
+  const encoder = new TextEncoder();
+  const parts = [];
+  const centralDir = [];
+  let offset = 0;
+
+  for (const [name, content] of Object.entries(files)) {
+    const nameBytes = encoder.encode(name);
+    const dataBytes = encoder.encode(content);
+    const crc = crc32(dataBytes);
+
+    // Local file header
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+    const lhView = new DataView(localHeader.buffer);
+    lhView.setUint32(0, 0x04034b50, true); // signature
+    lhView.setUint16(4, 20, true); // version needed
+    lhView.setUint16(6, 0, true); // flags
+    lhView.setUint16(8, 0, true); // compression (store)
+    lhView.setUint16(10, 0, true); // mod time
+    lhView.setUint16(12, 0, true); // mod date
+    lhView.setUint32(14, crc, true); // crc32
+    lhView.setUint32(18, dataBytes.length, true); // compressed size
+    lhView.setUint32(22, dataBytes.length, true); // uncompressed size
+    lhView.setUint16(26, nameBytes.length, true); // filename length
+    lhView.setUint16(28, 0, true); // extra length
+    localHeader.set(nameBytes, 30);
+
+    // Central directory entry
+    const cdEntry = new Uint8Array(46 + nameBytes.length);
+    const cdView = new DataView(cdEntry.buffer);
+    cdView.setUint32(0, 0x02014b50, true);
+    cdView.setUint16(4, 20, true);
+    cdView.setUint16(6, 20, true);
+    cdView.setUint16(8, 0, true);
+    cdView.setUint16(10, 0, true);
+    cdView.setUint16(12, 0, true);
+    cdView.setUint16(14, 0, true);
+    cdView.setUint32(16, crc, true);
+    cdView.setUint32(20, dataBytes.length, true);
+    cdView.setUint32(24, dataBytes.length, true);
+    cdView.setUint16(28, nameBytes.length, true);
+    cdView.setUint16(30, 0, true);
+    cdView.setUint16(32, 0, true);
+    cdView.setUint16(34, 0, true);
+    cdView.setUint16(36, 0, true);
+    cdView.setUint32(38, 0, true);
+    cdView.setUint32(42, offset, true);
+    cdEntry.set(nameBytes, 46);
+
+    parts.push(localHeader, dataBytes);
+    centralDir.push(cdEntry);
+    offset += localHeader.length + dataBytes.length;
+  }
+
+  const cdOffset = offset;
+  let cdSize = 0;
+  for (const cd of centralDir) {
+    parts.push(cd);
+    cdSize += cd.length;
+  }
+
+  // End of central directory
+  const eocd = new Uint8Array(22);
+  const eocdView = new DataView(eocd.buffer);
+  eocdView.setUint32(0, 0x06054b50, true);
+  eocdView.setUint16(4, 0, true);
+  eocdView.setUint16(6, 0, true);
+  eocdView.setUint16(8, centralDir.length, true);
+  eocdView.setUint16(10, centralDir.length, true);
+  eocdView.setUint32(12, cdSize, true);
+  eocdView.setUint32(16, cdOffset, true);
+  eocdView.setUint16(20, 0, true);
+  parts.push(eocd);
+
+  return new Blob(parts, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+function crc32(data) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i];
+    for (let j = 0; j < 8; j++) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0);
+    }
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+/* ==================== Column/Row Resize ==================== */
+
+let isResizingCol = false;
+let resizeColIdx = -1;
+let resizeStartX = 0;
+let resizeStartWidth = 80;
+let colWidths = {}; // colIdx → width
+let rowHeights = {}; // rowIdx → height
+let isResizingRow = false;
+let resizeRowIdx = -1;
+let resizeStartY = 0;
+let resizeStartHeight = 24;
+
+function getColWidth(c) { return colWidths[c] || 80; }
+function getRowHeight(r) { return rowHeights[r] || 24; }
+
+function initResize() {
+  const container = document.getElementById('sheet-container');
+  if (!container) return;
+
+  container.addEventListener('mousedown', (e) => {
+    // Check if on column header border (right edge)
+    const th = e.target.closest('th.sheet-col-header');
+    if (th) {
+      const rect = th.getBoundingClientRect();
+      if (Math.abs(e.clientX - rect.right) < 5) {
+        e.preventDefault();
+        isResizingCol = true;
+        resizeColIdx = parseInt(th.dataset.col);
+        resizeStartX = e.clientX;
+        resizeStartWidth = getColWidth(resizeColIdx);
+        document.body.style.cursor = 'col-resize';
+        return;
+      }
+    }
+    // Check if on row header border (bottom edge)
+    const rh = e.target.closest('th.sheet-row-header');
+    if (rh) {
+      const rect = rh.getBoundingClientRect();
+      if (Math.abs(e.clientY - rect.bottom) < 5) {
+        e.preventDefault();
+        isResizingRow = true;
+        resizeRowIdx = parseInt(rh.dataset.row);
+        resizeStartY = e.clientY;
+        resizeStartHeight = getRowHeight(resizeRowIdx);
+        document.body.style.cursor = 'row-resize';
+        return;
+      }
+    }
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (isResizingCol) {
+      const diff = e.clientX - resizeStartX;
+      const newWidth = Math.max(30, resizeStartWidth + diff);
+      colWidths[resizeColIdx] = newWidth;
+      applyColumnWidth(resizeColIdx, newWidth);
+    }
+    if (isResizingRow) {
+      const diff = e.clientY - resizeStartY;
+      const newHeight = Math.max(16, resizeStartHeight + diff);
+      rowHeights[resizeRowIdx] = newHeight;
+      applyRowHeight(resizeRowIdx, newHeight);
+    }
+
+    // Cursor hint on column header right edge
+    if (!isResizingCol && !isResizingRow) {
+      const th = e.target.closest('th.sheet-col-header');
+      if (th) {
+        const rect = th.getBoundingClientRect();
+        if (Math.abs(e.clientX - rect.right) < 5) {
+          th.style.cursor = 'col-resize';
+          return;
+        }
+        th.style.cursor = 'pointer';
+      }
+      const rh = e.target.closest('th.sheet-row-header');
+      if (rh) {
+        const rect = rh.getBoundingClientRect();
+        if (Math.abs(e.clientY - rect.bottom) < 5) {
+          rh.style.cursor = 'row-resize';
+          return;
+        }
+        rh.style.cursor = 'pointer';
+      }
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isResizingCol || isResizingRow) {
+      isResizingCol = false;
+      isResizingRow = false;
+      document.body.style.cursor = '';
+    }
+  });
+}
+
+function applyColumnWidth(colIdx, width) {
+  if (!gridEl) return;
+  const cells = gridEl.querySelectorAll(`th[data-col="${colIdx}"], td[data-col="${colIdx}"]`);
+  cells.forEach(cell => {
+    cell.style.width = width + 'px';
+    cell.style.minWidth = width + 'px';
+  });
+}
+
+function applyRowHeight(rowIdx, height) {
+  if (!gridEl) return;
+  const cells = gridEl.querySelectorAll(`th[data-row="${rowIdx}"], td[data-row="${rowIdx}"]`);
+  cells.forEach(cell => {
+    cell.style.height = height + 'px';
+  });
+}
+
+/* ==================== Hide/Show Rows & Columns ==================== */
+
+let hiddenRows = new Set();
+let hiddenCols = new Set();
+
+function hideSelectedRows() {
+  const { r1, r2 } = getSelectionRange();
+  for (let r = r1; r <= r2; r++) hiddenRows.add(r);
+  renderGrid();
+  updateSelection();
+}
+
+function hideSelectedCols() {
+  const { c1, c2 } = getSelectionRange();
+  for (let c = c1; c <= c2; c++) hiddenCols.add(c);
+  renderGrid();
+  updateSelection();
+}
+
+function showAllRows() {
+  hiddenRows.clear();
+  renderGrid();
+  updateSelection();
+}
+
+function showAllCols() {
+  hiddenCols.clear();
+  renderGrid();
+  updateSelection();
 }
 
 /* ==================== Export ==================== */

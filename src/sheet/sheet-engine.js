@@ -473,6 +473,393 @@ function evalFormula(sheet, expr) {
         const vals = resolveRange(sheet, argsStr).filter(v => typeof v === 'number');
         return vals.length ? vals.reduce((a, b) => a * b, 1) : 0;
       }
+
+      // ─── Lookup & Reference ───
+      case 'INDEX': {
+        const args = splitArgs(argsStr);
+        if (args.length < 3) return '#ERROR';
+        const table = resolveRangeAsTable(sheet, args[0]);
+        const rowNum = Number(evalSimpleExpr(sheet, args[1]));
+        const colNum = Number(evalSimpleExpr(sheet, args[2]));
+        if (rowNum < 1 || rowNum > table.length) return '#REF';
+        if (colNum < 1 || colNum > (table[0]?.length || 0)) return '#REF';
+        return table[rowNum - 1][colNum - 1];
+      }
+      case 'MATCH': {
+        const args = splitArgs(argsStr);
+        if (args.length < 2) return '#ERROR';
+        const lookupVal = evalSimpleExpr(sheet, args[0]);
+        const range = resolveRange(sheet, args[1]);
+        const matchType = args[2] ? Number(evalSimpleExpr(sheet, args[2])) : 1;
+        if (matchType === 0) {
+          // Exact match
+          const idx = range.findIndex(v => String(v).toLowerCase() === String(lookupVal).toLowerCase() || v == lookupVal);
+          return idx >= 0 ? idx + 1 : '#N/A';
+        } else if (matchType === 1) {
+          // Largest value <= lookup (assumes sorted ascending)
+          let lastIdx = -1;
+          for (let i = 0; i < range.length; i++) {
+            if (typeof range[i] === 'number' && range[i] <= lookupVal) lastIdx = i;
+          }
+          return lastIdx >= 0 ? lastIdx + 1 : '#N/A';
+        } else {
+          // Smallest value >= lookup (assumes sorted descending)
+          let lastIdx = -1;
+          for (let i = 0; i < range.length; i++) {
+            if (typeof range[i] === 'number' && range[i] >= lookupVal) lastIdx = i;
+          }
+          return lastIdx >= 0 ? lastIdx + 1 : '#N/A';
+        }
+      }
+      case 'HLOOKUP': {
+        const args = splitArgs(argsStr);
+        if (args.length < 3) return '#ERROR';
+        const lookupVal = evalSimpleExpr(sheet, args[0]);
+        const table = resolveRangeAsTable(sheet, args[1]);
+        const rowIndex = Number(evalSimpleExpr(sheet, args[2])) - 1;
+        if (!table.length || rowIndex < 0 || rowIndex >= table.length) return '#REF';
+        const firstRow = table[0];
+        for (let c = 0; c < firstRow.length; c++) {
+          if (firstRow[c] == lookupVal || String(firstRow[c]) === String(lookupVal)) {
+            return table[rowIndex][c];
+          }
+        }
+        return '#N/A';
+      }
+      case 'INDIRECT': {
+        const ref = String(evalSimpleExpr(sheet, argsStr)).replace(/"/g, '').toUpperCase();
+        const rc = refToRC(ref);
+        if (!rc) return '#REF';
+        const v = getDisplayValue(sheet, rc[0], rc[1]);
+        const num = Number(v);
+        return isNaN(num) || v === '' ? v : num;
+      }
+      case 'OFFSET': {
+        const args = splitArgs(argsStr);
+        if (args.length < 3) return '#ERROR';
+        const baseRef = args[0].trim();
+        const rc = refToRC(baseRef);
+        if (!rc) return '#REF';
+        const rowOff = Number(evalSimpleExpr(sheet, args[1]));
+        const colOff = Number(evalSimpleExpr(sheet, args[2]));
+        const newR = rc[0] + rowOff;
+        const newC = rc[1] + colOff;
+        if (newR < 0 || newC < 0) return '#REF';
+        const v = getDisplayValue(sheet, newR, newC);
+        const num = Number(v);
+        return isNaN(num) || v === '' ? v : num;
+      }
+      case 'ROW': {
+        if (!argsStr.trim()) return '#ERROR';
+        const rc = refToRC(argsStr.trim());
+        return rc ? rc[0] + 1 : '#REF';
+      }
+      case 'COLUMN': {
+        if (!argsStr.trim()) return '#ERROR';
+        const rc = refToRC(argsStr.trim());
+        return rc ? rc[1] + 1 : '#REF';
+      }
+      case 'ROWS': {
+        const parts = argsStr.trim().split(':');
+        if (parts.length !== 2) return '#ERROR';
+        const s = refToRC(parts[0].trim());
+        const e = refToRC(parts[1].trim());
+        return s && e ? Math.abs(e[0] - s[0]) + 1 : '#ERROR';
+      }
+      case 'COLUMNS': {
+        const parts = argsStr.trim().split(':');
+        if (parts.length !== 2) return '#ERROR';
+        const s = refToRC(parts[0].trim());
+        const e = refToRC(parts[1].trim());
+        return s && e ? Math.abs(e[1] - s[1]) + 1 : '#ERROR';
+      }
+
+      // ─── Text Functions ───
+      case 'TEXTJOIN': {
+        const args = splitArgs(argsStr);
+        if (args.length < 3) return '#ERROR';
+        const delim = String(evalSimpleExpr(sheet, args[0])).replace(/^"|"$/g, '');
+        const ignoreEmpty = String(evalSimpleExpr(sheet, args[1])).toUpperCase() === 'TRUE' || evalSimpleExpr(sheet, args[1]) === 1;
+        const vals = [];
+        for (let i = 2; i < args.length; i++) {
+          if (args[i].includes(':')) {
+            vals.push(...resolveRange(sheet, args[i]));
+          } else {
+            vals.push(evalSimpleExpr(sheet, args[i]));
+          }
+        }
+        const filtered = ignoreEmpty ? vals.filter(v => v !== '' && v != null) : vals;
+        return filtered.map(v => String(v).replace(/^"|"$/g, '')).join(delim);
+      }
+      case 'SUBSTITUTE': {
+        const args = splitArgs(argsStr);
+        if (args.length < 3) return '#ERROR';
+        const text = String(evalSimpleExpr(sheet, args[0])).replace(/^"|"$/g, '');
+        const oldText = String(evalSimpleExpr(sheet, args[1])).replace(/^"|"$/g, '');
+        const newText = String(evalSimpleExpr(sheet, args[2])).replace(/^"|"$/g, '');
+        return text.split(oldText).join(newText);
+      }
+      case 'REPT': {
+        const args = splitArgs(argsStr);
+        const text = String(evalSimpleExpr(sheet, args[0])).replace(/^"|"$/g, '');
+        const n = Number(evalSimpleExpr(sheet, args[1]));
+        return text.repeat(Math.max(0, Math.floor(n)));
+      }
+      case 'FIND':
+      case 'SEARCH': {
+        const args = splitArgs(argsStr);
+        const needle = String(evalSimpleExpr(sheet, args[0])).replace(/^"|"$/g, '');
+        const haystack = String(evalSimpleExpr(sheet, args[1])).replace(/^"|"$/g, '');
+        const start = args[2] ? Number(evalSimpleExpr(sheet, args[2])) - 1 : 0;
+        const idx = fn === 'FIND'
+          ? haystack.indexOf(needle, start)
+          : haystack.toLowerCase().indexOf(needle.toLowerCase(), start);
+        return idx >= 0 ? idx + 1 : '#VALUE';
+      }
+      case 'REPLACE': {
+        const args = splitArgs(argsStr);
+        if (args.length < 4) return '#ERROR';
+        const text = String(evalSimpleExpr(sheet, args[0])).replace(/^"|"$/g, '');
+        const start = Number(evalSimpleExpr(sheet, args[1])) - 1;
+        const numChars = Number(evalSimpleExpr(sheet, args[2]));
+        const newText = String(evalSimpleExpr(sheet, args[3])).replace(/^"|"$/g, '');
+        return text.substring(0, start) + newText + text.substring(start + numChars);
+      }
+      case 'PROPER': {
+        const text = String(evalSimpleExpr(sheet, argsStr)).replace(/^"|"$/g, '');
+        return text.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+      }
+      case 'EXACT': {
+        const args = splitArgs(argsStr);
+        const a = String(evalSimpleExpr(sheet, args[0])).replace(/^"|"$/g, '');
+        const b = String(evalSimpleExpr(sheet, args[1])).replace(/^"|"$/g, '');
+        return a === b ? true : false;
+      }
+      case 'VALUE': {
+        const text = String(evalSimpleExpr(sheet, argsStr)).replace(/^"|"$/g, '');
+        const n = Number(text);
+        return isNaN(n) ? '#VALUE' : n;
+      }
+      case 'TEXT': {
+        const args = splitArgs(argsStr);
+        const val = Number(evalSimpleExpr(sheet, args[0]));
+        const fmt = String(evalSimpleExpr(sheet, args[1])).replace(/^"|"$/g, '');
+        if (fmt === '0') return Math.round(val).toString();
+        if (fmt === '0.00') return val.toFixed(2);
+        if (fmt === '#,##0') return Math.round(val).toLocaleString();
+        if (fmt === '0%') return Math.round(val * 100) + '%';
+        if (fmt === '0.0%') return (val * 100).toFixed(1) + '%';
+        return String(val);
+      }
+
+      // ─── Array / Modern Functions ───
+      case 'UNIQUE': {
+        const vals = resolveRange(sheet, argsStr);
+        return [...new Set(vals.map(v => String(v)))].join(', ');
+      }
+      case 'SORT': {
+        const args = splitArgs(argsStr);
+        const vals = resolveRange(sheet, args[0]).filter(v => v !== '' && v != null);
+        const ascending = args[1] ? Number(evalSimpleExpr(sheet, args[1])) !== -1 : true;
+        const sorted = [...vals].sort((a, b) => {
+          const na = Number(a), nb = Number(b);
+          if (!isNaN(na) && !isNaN(nb)) return ascending ? na - nb : nb - na;
+          return ascending ? String(a).localeCompare(String(b)) : String(b).localeCompare(String(a));
+        });
+        return sorted.join(', ');
+      }
+      case 'FILTER': {
+        const args = splitArgs(argsStr);
+        if (args.length < 2) return '#ERROR';
+        const range = resolveRange(sheet, args[0]);
+        const criteria = resolveRange(sheet, args[1]);
+        const result = range.filter((_, i) => criteria[i] && criteria[i] !== 0 && criteria[i] !== false && criteria[i] !== 'FALSE');
+        return result.length ? result.join(', ') : '#CALC';
+      }
+      case 'TRANSPOSE': {
+        const table = resolveRangeAsTable(sheet, argsStr);
+        if (!table.length) return '#ERROR';
+        // Returns first column as comma-separated (single-cell output)
+        return table.map(row => row[0]).join(', ');
+      }
+
+      // ─── Logical Functions ───
+      case 'AND': {
+        const args = splitArgs(argsStr);
+        return args.every(a => {
+          const v = evalSimpleExpr(sheet, a);
+          return v && v !== 0 && v !== false && v !== 'FALSE';
+        });
+      }
+      case 'OR': {
+        const args = splitArgs(argsStr);
+        return args.some(a => {
+          const v = evalSimpleExpr(sheet, a);
+          return v && v !== 0 && v !== false && v !== 'FALSE';
+        });
+      }
+      case 'NOT': {
+        const v = evalSimpleExpr(sheet, argsStr);
+        return !v || v === 0 || v === 'FALSE';
+      }
+      case 'IFERROR': {
+        const args = splitArgs(argsStr);
+        try {
+          const val = evalSimpleExpr(sheet, args[0]);
+          if (typeof val === 'string' && val.startsWith('#')) return evalSimpleExpr(sheet, args[1]);
+          return val;
+        } catch {
+          return args[1] ? evalSimpleExpr(sheet, args[1]) : '';
+        }
+      }
+      case 'IFS': {
+        const args = splitArgs(argsStr);
+        for (let i = 0; i < args.length - 1; i += 2) {
+          if (evalSimpleExpr(sheet, args[i])) return evalSimpleExpr(sheet, args[i + 1]);
+        }
+        return '#N/A';
+      }
+      case 'SWITCH': {
+        const args = splitArgs(argsStr);
+        if (args.length < 3) return '#ERROR';
+        const switchVal = evalSimpleExpr(sheet, args[0]);
+        for (let i = 1; i < args.length - 1; i += 2) {
+          if (evalSimpleExpr(sheet, args[i]) == switchVal) return evalSimpleExpr(sheet, args[i + 1]);
+        }
+        // Default value (odd number of remaining args)
+        return args.length % 2 === 0 ? evalSimpleExpr(sheet, args[args.length - 1]) : '#N/A';
+      }
+      case 'CHOOSE': {
+        const args = splitArgs(argsStr);
+        const idx = Number(evalSimpleExpr(sheet, args[0]));
+        if (idx < 1 || idx >= args.length) return '#VALUE';
+        return evalSimpleExpr(sheet, args[idx]);
+      }
+
+      // ─── Date Functions ───
+      case 'DATE': {
+        const args = splitArgs(argsStr);
+        const y = Number(evalSimpleExpr(sheet, args[0]));
+        const m = Number(evalSimpleExpr(sheet, args[1]));
+        const d = Number(evalSimpleExpr(sheet, args[2]));
+        return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      }
+      case 'YEAR': {
+        const d = new Date(String(evalSimpleExpr(sheet, argsStr)).replace(/"/g, ''));
+        return isNaN(d) ? '#VALUE' : d.getFullYear();
+      }
+      case 'MONTH': {
+        const d = new Date(String(evalSimpleExpr(sheet, argsStr)).replace(/"/g, ''));
+        return isNaN(d) ? '#VALUE' : d.getMonth() + 1;
+      }
+      case 'DAY': {
+        const d = new Date(String(evalSimpleExpr(sheet, argsStr)).replace(/"/g, ''));
+        return isNaN(d) ? '#VALUE' : d.getDate();
+      }
+      case 'HOUR': {
+        const d = new Date(String(evalSimpleExpr(sheet, argsStr)).replace(/"/g, ''));
+        return isNaN(d) ? '#VALUE' : d.getHours();
+      }
+      case 'MINUTE': {
+        const d = new Date(String(evalSimpleExpr(sheet, argsStr)).replace(/"/g, ''));
+        return isNaN(d) ? '#VALUE' : d.getMinutes();
+      }
+      case 'SECOND': {
+        const d = new Date(String(evalSimpleExpr(sheet, argsStr)).replace(/"/g, ''));
+        return isNaN(d) ? '#VALUE' : d.getSeconds();
+      }
+      case 'WEEKDAY': {
+        const args = splitArgs(argsStr);
+        const d = new Date(String(evalSimpleExpr(sheet, args[0])).replace(/"/g, ''));
+        return isNaN(d) ? '#VALUE' : d.getDay() + 1;
+      }
+      case 'DATEDIF': {
+        const args = splitArgs(argsStr);
+        const d1 = new Date(String(evalSimpleExpr(sheet, args[0])).replace(/"/g, ''));
+        const d2 = new Date(String(evalSimpleExpr(sheet, args[1])).replace(/"/g, ''));
+        const unit = String(evalSimpleExpr(sheet, args[2])).replace(/"/g, '').toUpperCase();
+        if (isNaN(d1) || isNaN(d2)) return '#VALUE';
+        const diffMs = d2 - d1;
+        if (unit === 'D') return Math.floor(diffMs / 86400000);
+        if (unit === 'M') return (d2.getFullYear() - d1.getFullYear()) * 12 + d2.getMonth() - d1.getMonth();
+        if (unit === 'Y') return d2.getFullYear() - d1.getFullYear();
+        return '#VALUE';
+      }
+      case 'EDATE': {
+        const args = splitArgs(argsStr);
+        const d = new Date(String(evalSimpleExpr(sheet, args[0])).replace(/"/g, ''));
+        const months = Number(evalSimpleExpr(sheet, args[1]));
+        if (isNaN(d)) return '#VALUE';
+        d.setMonth(d.getMonth() + months);
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      }
+
+      // ─── Aggregate ───
+      case 'SUMPRODUCT': {
+        const args = splitArgs(argsStr);
+        if (args.length < 2) return '#ERROR';
+        const arrays = args.map(a => resolveRange(sheet, a));
+        const len = Math.min(...arrays.map(a => a.length));
+        let sum = 0;
+        for (let i = 0; i < len; i++) {
+          let prod = 1;
+          for (const arr of arrays) {
+            const n = Number(arr[i]);
+            prod *= isNaN(n) ? 0 : n;
+          }
+          sum += prod;
+        }
+        return sum;
+      }
+      case 'AVERAGEIF': {
+        const args = splitArgs(argsStr);
+        if (args.length < 2) return '#ERROR';
+        const range = resolveRange(sheet, args[0]);
+        const criteria = evalSimpleExpr(sheet, args[1]);
+        const avgRange = args[2] ? resolveRange(sheet, args[2]) : range;
+        const matches = [];
+        for (let i = 0; i < range.length; i++) {
+          if (matchCriteria(range[i], criteria)) {
+            const v = avgRange[i];
+            if (typeof v === 'number') matches.push(v);
+          }
+        }
+        return matches.length ? matches.reduce((a, b) => a + b, 0) / matches.length : '#DIV/0';
+      }
+      case 'LARGE': {
+        const args = splitArgs(argsStr);
+        const vals = resolveRange(sheet, args[0]).filter(v => typeof v === 'number').sort((a, b) => b - a);
+        const k = Number(evalSimpleExpr(sheet, args[1]));
+        return k >= 1 && k <= vals.length ? vals[k - 1] : '#NUM';
+      }
+      case 'SMALL': {
+        const args = splitArgs(argsStr);
+        const vals = resolveRange(sheet, args[0]).filter(v => typeof v === 'number').sort((a, b) => a - b);
+        const k = Number(evalSimpleExpr(sheet, args[1]));
+        return k >= 1 && k <= vals.length ? vals[k - 1] : '#NUM';
+      }
+      case 'RANK': {
+        const args = splitArgs(argsStr);
+        const val = Number(evalSimpleExpr(sheet, args[0]));
+        const vals = resolveRange(sheet, args[1]).filter(v => typeof v === 'number');
+        const order = args[2] ? Number(evalSimpleExpr(sheet, args[2])) : 0;
+        const sorted = order ? [...vals].sort((a, b) => a - b) : [...vals].sort((a, b) => b - a);
+        const rank = sorted.indexOf(val);
+        return rank >= 0 ? rank + 1 : '#N/A';
+      }
+      case 'ISBLANK': {
+        const rc = refToRC(argsStr.trim());
+        if (!rc) return false;
+        return !getCell(sheet, rc[0], rc[1]) || getRawValue(sheet, rc[0], rc[1]) === '';
+      }
+      case 'ISNUMBER': {
+        const v = evalSimpleExpr(sheet, argsStr);
+        return typeof v === 'number' && !isNaN(v);
+      }
+      case 'ISTEXT': {
+        const v = evalSimpleExpr(sheet, argsStr);
+        return typeof v === 'string' && isNaN(Number(v));
+      }
     }
   }
 

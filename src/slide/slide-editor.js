@@ -162,6 +162,17 @@ function bindEvents() {
     updateThumb(activeSlideIdx);
   });
 
+  // Animations
+  document.getElementById('slide-anim')?.addEventListener('click', showAnimationPanel);
+
+  // Slide size
+  document.getElementById('slide-size')?.addEventListener('change', (e) => {
+    changeSlideSize(e.target.value);
+  });
+
+  // Speaker view
+  document.getElementById('slide-speaker-view')?.addEventListener('click', openSpeakerView);
+
   // Export as image
   document.getElementById('slide-export-img')?.addEventListener('click', exportSlideAsImage);
 
@@ -442,6 +453,30 @@ function startPresentation() {
     }
 
     counter.textContent = `${idx + 1} / ${slides.length}`;
+
+    // Play object animations
+    const anims = slide.animations || [];
+    if (anims.length) {
+      // Initially hide animated elements
+      setTimeout(() => {
+        anims.forEach(a => {
+          const el = slideEl.querySelector(a.target);
+          if (el) el.style.opacity = '0';
+        });
+        // Play on click or auto
+        let autoDelay = 300;
+        anims.forEach((a, i) => {
+          const el = slideEl.querySelector(a.target);
+          if (!el) return;
+          if (a.trigger === 'onClick') {
+            // Will play on next click
+          } else {
+            setTimeout(() => playAnimation(el, a.effect, a.duration), autoDelay + a.delay * 1000);
+            autoDelay += a.duration * 1000 + a.delay * 1000;
+          }
+        });
+      }, 300);
+    }
   }
 
   function applyThemeToEl(el, theme) {
@@ -506,4 +541,311 @@ export function setSlidesData(newSlides) {
 /** Get current slide count */
 export function getSlideCount() {
   return slides.length;
+}
+
+/* ==================== Slide Size ==================== */
+
+function changeSlideSize(sizeKey) {
+  const sizes = {
+    '16:9':  { w: 960, h: 540 },
+    '4:3':   { w: 720, h: 540 },
+    '16:10': { w: 900, h: 562 },
+    'a4':    { w: 595, h: 842 },
+  };
+  const size = sizes[sizeKey] || sizes['16:9'];
+  canvasEl.style.width = size.w + 'px';
+  canvasEl.style.height = size.h + 'px';
+  // Store on all slides
+  slides.forEach(s => s.slideSize = sizeKey);
+}
+
+/* ==================== Object Animations ==================== */
+
+function showAnimationPanel() {
+  const existing = document.querySelector('.slide-anim-panel');
+  if (existing) { existing.remove(); return; }
+
+  const panel = document.createElement('div');
+  panel.className = 'slide-anim-panel';
+  panel.style.cssText = `position:fixed;top:100px;right:20px;width:280px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.2);padding:16px;z-index:2000;font-size:13px;color:var(--text-primary)`;
+
+  const slide = slides[activeSlideIdx];
+  if (!slide.animations) slide.animations = [];
+
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0;font-size:14px;font-weight:700">Animations</h3>
+      <button class="anim-close" style="border:none;background:transparent;font-size:18px;cursor:pointer;color:var(--text-primary)">&times;</button>
+    </div>
+    <p style="font-size:11px;color:var(--text-tertiary);margin:0 0 12px">Select text/element in slide, then add animation:</p>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <label style="font-size:11px;font-weight:600;color:var(--text-secondary)">Effect</label>
+      <select id="anim-effect" style="padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:12px">
+        <option value="fadeIn">Fade In</option>
+        <option value="slideInLeft">Slide In Left</option>
+        <option value="slideInRight">Slide In Right</option>
+        <option value="slideInUp">Slide In Up</option>
+        <option value="slideInDown">Slide In Down</option>
+        <option value="zoomIn">Zoom In</option>
+        <option value="bounceIn">Bounce In</option>
+        <option value="rotateIn">Rotate In</option>
+        <option value="flipIn">Flip In</option>
+      </select>
+      <label style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-top:4px">Trigger</label>
+      <select id="anim-trigger" style="padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:12px">
+        <option value="onClick">On Click</option>
+        <option value="withPrevious">With Previous</option>
+        <option value="afterPrevious">After Previous</option>
+      </select>
+      <label style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-top:4px">Duration (s)</label>
+      <input type="number" id="anim-duration" value="0.5" min="0.1" max="5" step="0.1" style="padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:12px">
+      <label style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-top:4px">Delay (s)</label>
+      <input type="number" id="anim-delay" value="0" min="0" max="10" step="0.1" style="padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:12px">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button id="anim-add" style="flex:1;padding:8px;background:var(--brand-color);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px">+ Add Animation</button>
+      <button id="anim-preview" style="padding:8px 12px;background:var(--hover-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:6px;cursor:pointer;font-size:12px">Preview</button>
+    </div>
+    <div id="anim-list" style="margin-top:12px;max-height:200px;overflow-y:auto"></div>
+  `;
+
+  document.body.appendChild(panel);
+  renderAnimList(panel, slide);
+
+  panel.querySelector('.anim-close').addEventListener('click', () => panel.remove());
+
+  panel.querySelector('#anim-add').addEventListener('click', () => {
+    const effect = panel.querySelector('#anim-effect').value;
+    const trigger = panel.querySelector('#anim-trigger').value;
+    const duration = parseFloat(panel.querySelector('#anim-duration').value) || 0.5;
+    const delay = parseFloat(panel.querySelector('#anim-delay').value) || 0;
+
+    // Get selected element or first block
+    const selection = window.getSelection();
+    let targetSelector = '';
+    if (selection.rangeCount > 0) {
+      const el = selection.anchorNode?.parentElement;
+      if (el && canvasEl.contains(el)) {
+        // Tag the element with a data attribute
+        const animId = 'anim-' + Date.now();
+        const blockEl = el.closest('h1, h2, h3, p, ul, ol, div, li, table, span, img') || el;
+        blockEl.dataset.animId = animId;
+        targetSelector = `[data-anim-id="${animId}"]`;
+        slides[activeSlideIdx].content = canvasEl.innerHTML;
+      }
+    }
+
+    if (!targetSelector) {
+      // Auto-target next unassigned block element
+      const blocks = canvasEl.querySelectorAll('h1, h2, h3, p, ul, ol, div, li, table');
+      const existingTargets = slide.animations.map(a => a.target);
+      for (const block of blocks) {
+        if (!block.dataset.animId || !existingTargets.includes(`[data-anim-id="${block.dataset.animId}"]`)) {
+          const animId = 'anim-' + Date.now();
+          block.dataset.animId = animId;
+          targetSelector = `[data-anim-id="${animId}"]`;
+          slides[activeSlideIdx].content = canvasEl.innerHTML;
+          break;
+        }
+      }
+    }
+
+    if (!targetSelector) return;
+
+    slide.animations.push({ effect, trigger, duration, delay, target: targetSelector });
+    renderAnimList(panel, slide);
+  });
+
+  panel.querySelector('#anim-preview').addEventListener('click', () => {
+    previewAnimations(slide);
+  });
+}
+
+function renderAnimList(panel, slide) {
+  const list = panel.querySelector('#anim-list');
+  if (!list) return;
+  if (!slide.animations.length) {
+    list.innerHTML = '<div style="font-size:11px;color:var(--text-tertiary);text-align:center;padding:12px">No animations yet</div>';
+    return;
+  }
+  list.innerHTML = slide.animations.map((a, i) => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:var(--hover-bg);border-radius:6px;margin-bottom:4px;font-size:11px">
+      <span><strong>${i + 1}.</strong> ${a.effect} (${a.trigger})</span>
+      <button data-anim-del="${i}" style="border:none;background:transparent;cursor:pointer;color:var(--text-tertiary);font-size:14px">&times;</button>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('[data-anim-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      slide.animations.splice(parseInt(btn.dataset.animDel), 1);
+      renderAnimList(panel, slide);
+    });
+  });
+}
+
+function previewAnimations(slide) {
+  if (!slide.animations.length) return;
+
+  // Reset all animated elements to invisible
+  slide.animations.forEach(a => {
+    const el = canvasEl.querySelector(a.target);
+    if (el) {
+      el.style.opacity = '0';
+      el.style.transition = '';
+      el.style.transform = '';
+    }
+  });
+
+  // Play animations sequentially
+  let totalDelay = 0;
+  slide.animations.forEach((a, i) => {
+    const el = canvasEl.querySelector(a.target);
+    if (!el) return;
+
+    const animDelay = a.trigger === 'withPrevious' ? totalDelay : totalDelay + a.delay * 1000;
+    if (a.trigger === 'afterPrevious' && i > 0) {
+      totalDelay += (slide.animations[i - 1]?.duration || 0.5) * 1000;
+    }
+    if (a.trigger === 'onClick') {
+      totalDelay += 200;
+    }
+
+    setTimeout(() => {
+      playAnimation(el, a.effect, a.duration);
+    }, animDelay + a.delay * 1000);
+
+    totalDelay = animDelay + a.duration * 1000;
+  });
+}
+
+function playAnimation(el, effect, duration) {
+  el.style.transition = `all ${duration}s ease`;
+
+  const effects = {
+    fadeIn: { from: { opacity: '0' }, to: { opacity: '1' } },
+    slideInLeft: { from: { opacity: '0', transform: 'translateX(-100px)' }, to: { opacity: '1', transform: 'translateX(0)' } },
+    slideInRight: { from: { opacity: '0', transform: 'translateX(100px)' }, to: { opacity: '1', transform: 'translateX(0)' } },
+    slideInUp: { from: { opacity: '0', transform: 'translateY(50px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+    slideInDown: { from: { opacity: '0', transform: 'translateY(-50px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+    zoomIn: { from: { opacity: '0', transform: 'scale(0.3)' }, to: { opacity: '1', transform: 'scale(1)' } },
+    bounceIn: { from: { opacity: '0', transform: 'scale(0.5)' }, to: { opacity: '1', transform: 'scale(1)' } },
+    rotateIn: { from: { opacity: '0', transform: 'rotate(-90deg)' }, to: { opacity: '1', transform: 'rotate(0)' } },
+    flipIn: { from: { opacity: '0', transform: 'perspective(600px) rotateY(90deg)' }, to: { opacity: '1', transform: 'perspective(600px) rotateY(0)' } },
+  };
+
+  const fx = effects[effect] || effects.fadeIn;
+
+  // Apply "from" state
+  Object.assign(el.style, fx.from);
+
+  // Force reflow then apply "to" state
+  void el.offsetWidth;
+  requestAnimationFrame(() => {
+    Object.assign(el.style, fx.to);
+  });
+}
+
+/* ==================== Speaker View ==================== */
+
+function openSpeakerView() {
+  saveCurrentSlide();
+
+  const win = window.open('', 'speaker-view', 'width=1200,height=700');
+  if (!win) { alert('Please allow pop-ups for Speaker View'); return; }
+
+  const slide = slides[activeSlideIdx];
+  const nextSlide = activeSlideIdx < slides.length - 1 ? slides[activeSlideIdx + 1] : null;
+
+  const renderSpeakerHTML = (idx) => {
+    const s = slides[idx];
+    const next = idx < slides.length - 1 ? slides[idx + 1] : null;
+    const elapsed = Math.floor((Date.now() - speakerStartTime) / 1000);
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    return `
+    <!DOCTYPE html>
+    <html><head><title>Speaker View — OfficeLink SL</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+      .speaker-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; background: #16213e; }
+      .speaker-header h2 { font-size: 16px; font-weight: 600; }
+      .speaker-time { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; color: #3b82f6; }
+      .speaker-main { flex: 1; display: flex; padding: 16px; gap: 16px; overflow: hidden; }
+      .speaker-current { flex: 2; display: flex; flex-direction: column; gap: 12px; }
+      .speaker-slide-wrap { flex: 1; background: #000; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+      .speaker-slide { width: 100%; height: 100%; }
+      .speaker-slide .slide-canvas { width: 100% !important; height: 100% !important; font-size: 18px; padding: 24px 32px; }
+      .speaker-notes-area { height: 180px; background: #16213e; border-radius: 8px; padding: 16px; overflow-y: auto; }
+      .speaker-notes-area h4 { font-size: 12px; text-transform: uppercase; color: #888; margin-bottom: 8px; letter-spacing: 0.5px; }
+      .speaker-notes-area p { font-size: 16px; line-height: 1.6; color: #ccc; }
+      .speaker-sidebar { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+      .speaker-next-label { font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; }
+      .speaker-next { flex: 1; background: #16213e; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+      .speaker-next .slide-canvas { width: 100% !important; height: 100% !important; font-size: 12px; padding: 16px; opacity: 0.7; }
+      .speaker-controls { display: flex; gap: 12px; padding: 12px 24px; background: #16213e; justify-content: center; }
+      .speaker-controls button { padding: 8px 24px; font-size: 14px; font-weight: 600; border: none; border-radius: 6px; cursor: pointer; background: #3b82f6; color: #fff; }
+      .speaker-controls button:hover { background: #2563eb; }
+      .speaker-counter { font-size: 14px; color: #888; display: flex; align-items: center; }
+    </style></head><body>
+    <div class="speaker-header">
+      <h2>Speaker View</h2>
+      <div class="speaker-time" id="timer">${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}</div>
+    </div>
+    <div class="speaker-main">
+      <div class="speaker-current">
+        <div class="speaker-slide-wrap">
+          <div class="speaker-slide">
+            <div class="slide-canvas" data-theme="${s.theme === 'default' ? '' : s.theme}">${s.content}</div>
+          </div>
+        </div>
+        <div class="speaker-notes-area">
+          <h4>Notes</h4>
+          <p>${s.notes || '<em style="color:#666">No notes for this slide</em>'}</p>
+        </div>
+      </div>
+      <div class="speaker-sidebar">
+        <span class="speaker-next-label">Next Slide</span>
+        <div class="speaker-next">
+          ${next ? `<div class="slide-canvas" data-theme="${next.theme === 'default' ? '' : next.theme}" style="pointer-events:none">${next.content}</div>` : '<div style="color:#666;font-size:14px">End of presentation</div>'}
+        </div>
+        <div class="speaker-counter">${idx + 1} / ${slides.length}</div>
+      </div>
+    </div>
+    <div class="speaker-controls">
+      <button onclick="window.opener.postMessage({type:'speaker-prev'},'*')">◀ Previous</button>
+      <button onclick="window.opener.postMessage({type:'speaker-next'},'*')">Next ▶</button>
+    </div>
+    </body></html>`;
+  };
+
+  const speakerStartTime = Date.now();
+  win.document.write(renderSpeakerHTML(activeSlideIdx));
+
+  // Timer update
+  const timerInterval = setInterval(() => {
+    if (win.closed) { clearInterval(timerInterval); return; }
+    const elapsed = Math.floor((Date.now() - speakerStartTime) / 1000);
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    const timerEl = win.document.getElementById('timer');
+    if (timerEl) timerEl.textContent = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+  }, 1000);
+
+  // Listen for nav commands from speaker view
+  let speakerIdx = activeSlideIdx;
+  window.addEventListener('message', function handleMsg(e) {
+    if (win.closed) { window.removeEventListener('message', handleMsg); return; }
+    if (e.data.type === 'speaker-next' && speakerIdx < slides.length - 1) {
+      speakerIdx++;
+      win.document.body.innerHTML = '';
+      win.document.write(renderSpeakerHTML(speakerIdx));
+      win.document.close();
+    } else if (e.data.type === 'speaker-prev' && speakerIdx > 0) {
+      speakerIdx--;
+      win.document.body.innerHTML = '';
+      win.document.write(renderSpeakerHTML(speakerIdx));
+      win.document.close();
+    }
+  });
 }
