@@ -71,7 +71,8 @@
   padding: 32px;
   background: var(--sidebar-bg);
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
 }
 
 .doc-editor {

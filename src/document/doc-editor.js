@@ -1214,9 +1214,10 @@ function renderRuler() {
   const rightMarginPx = currentMargins.right * 3.78;
   const contentWidth = editorWidth - leftMarginPx - rightMarginPx;
 
-  ruler.style.width = editorWidth + 'px';
-  ruler.style.marginLeft = 'auto';
-  ruler.style.marginRight = 'auto';
+  // Match ruler width to the editor's CSS width (210mm) rather than offsetWidth
+  const editorStyle = getComputedStyle(editorEl);
+  const rulerWidth = parseFloat(editorStyle.width) || editorWidth;
+  ruler.style.width = rulerWidth + 'px';
 
   let html = '';
   // Draw ruler marks every 1cm (approximately 37.8px)
