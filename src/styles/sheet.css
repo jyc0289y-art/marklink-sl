@@ -148,6 +148,22 @@
   background: rgba(59, 130, 246, 0.1);
 }
 
+.sheet-grid td.copy-highlight {
+  outline: 2px dashed #3b82f6;
+  outline-offset: -2px;
+  animation: copy-pulse 0.4s ease-out;
+}
+@keyframes copy-pulse {
+  from { background: rgba(59, 130, 246, 0.3); }
+  to { background: transparent; }
+}
+
+.sheet-grid td.ref-highlight {
+  outline: 2px solid #e74c3c;
+  outline-offset: -2px;
+  background: rgba(231, 76, 60, 0.1) !important;
+}
+
 .sheet-grid td.editing {
   padding: 0;
   overflow: visible;
