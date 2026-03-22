@@ -260,6 +260,8 @@
       <div id="doc-find-bar" class="doc-find-bar hidden">
         <div class="doc-find-row">
           <input type="text" id="doc-find-input" class="doc-find-input" placeholder="Find...">
+          <button class="toolbar-btn" id="doc-find-regex" title="Use Regular Expression" style="font-size:10px;opacity:0.6">.*</button>
+          <button class="toolbar-btn" id="doc-find-case" title="Match Case" style="font-size:10px;opacity:0.6">Aa</button>
           <button class="toolbar-btn" id="doc-find-prev" title="Previous">&#9650;</button>
           <button class="toolbar-btn" id="doc-find-next" title="Next">&#9660;</button>
           <span id="doc-find-count" class="doc-find-count"></span>
@@ -332,6 +334,9 @@
         <button class="toolbar-btn" id="sheet-export-csv" title="Export CSV" style="font-size:11px">CSV↓</button>
         <button class="toolbar-btn" id="sheet-export-xlsx" title="Export XLSX" style="font-size:11px">XLSX↓</button>
         <button class="toolbar-btn" id="sheet-sparkline" title="Insert Sparkline" style="font-size:11px">📊</button>
+        <button class="toolbar-btn" id="sheet-insert-chart" title="Insert Chart" style="font-size:11px">📈 Chart</button>
+        <button class="toolbar-btn" id="sheet-merge-cells" title="Merge Cells" style="font-size:11px">⊞ Merge</button>
+        <button class="toolbar-btn" id="sheet-cond-format" title="Conditional Formatting" style="font-size:11px">🎨 CFormat</button>
         <button class="toolbar-btn" id="sheet-remove-dups" title="Remove Duplicates" style="font-size:11px">🔄</button>
         <button class="toolbar-btn" id="sheet-text-to-cols" title="Text to Columns" style="font-size:11px">↔️</button>
         <button class="toolbar-btn" id="sheet-print" title="Print Sheet" style="font-size:11px">🖨</button>
@@ -386,8 +391,10 @@
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="slide-insert-image" title="Insert Image">🖼</button>
         <button class="toolbar-btn" id="slide-insert-shape" title="Insert Shape">⬜</button>
+        <button class="toolbar-btn" id="slide-draw-shapes" title="Drawing Tools" style="font-size:11px">🔷 Draw</button>
         <button class="toolbar-btn" id="slide-insert-table" title="Insert Table">▦</button>
         <button class="toolbar-btn" id="slide-insert-video" title="Insert Video URL" style="font-size:11px">🎬</button>
+        <button class="toolbar-btn" id="slide-master" title="Master Slides" style="font-size:11px">🎨 Master</button>
         <button class="toolbar-btn" id="slide-layer-up" title="Bring Forward" style="font-size:11px">⬆</button>
         <button class="toolbar-btn" id="slide-layer-down" title="Send Backward" style="font-size:11px">⬇</button>
         <button class="toolbar-btn" id="slide-align" title="Align Objects" style="font-size:11px">⊞</button>

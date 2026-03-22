@@ -131,6 +131,7 @@ function renderGrid() {
   html += '</tbody>';
   gridEl.innerHTML = html;
   applyFreezeStyles();
+  if (condFormats.length > 0) applyConditionalFormatting();
 }
 
 function renderCell(r, c) {
@@ -535,6 +536,12 @@ function bindEvents() {
   document.getElementById('sheet-redo')?.addEventListener('click', () => sheetRedo());
   // Sparkline
   document.getElementById('sheet-sparkline')?.addEventListener('click', () => insertSparkline());
+  // Chart
+  document.getElementById('sheet-insert-chart')?.addEventListener('click', () => showChartDialog());
+  // Merge Cells
+  document.getElementById('sheet-merge-cells')?.addEventListener('click', () => toggleMergeCells());
+  // Conditional Formatting
+  document.getElementById('sheet-cond-format')?.addEventListener('click', () => showConditionalFormatDialog());
   // Remove Duplicates
   document.getElementById('sheet-remove-dups')?.addEventListener('click', () => removeDuplicates());
   // Text to Columns
@@ -2454,6 +2461,674 @@ function showAllCols() {
   hiddenCols.clear();
   renderGrid();
   updateSelection();
+}
+
+/* ==================== Charts ==================== */
+
+let chartCounter = 0;
+
+function showChartDialog() {
+  const { r1, c1, r2, c2 } = getSelectionRange();
+  const sheet = getSheet();
+
+  // Gather data from selection
+  const dataRows = [];
+  for (let r = r1; r <= r2; r++) {
+    const row = [];
+    for (let c = c1; c <= c2; c++) {
+      row.push(getDisplayValue(sheet, r, c));
+    }
+    dataRows.push(row);
+  }
+  if (dataRows.length < 2 || dataRows[0].length < 1) {
+    alert('Select at least 2 rows of data to create a chart.');
+    return;
+  }
+
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay';
+  dlg.innerHTML = `<div class="modal-content" style="width:640px;max-height:90vh;overflow:auto">
+    <h3 style="margin:0 0 12px">Insert Chart</h3>
+    <div style="display:flex;gap:16px">
+      <div style="flex:0 0 160px">
+        <label style="font-size:12px;font-weight:600">Chart Type</label>
+        <select id="chart-type" style="width:100%;padding:6px;margin:4px 0 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+          <option value="bar">Bar Chart</option>
+          <option value="column">Column Chart</option>
+          <option value="line">Line Chart</option>
+          <option value="area">Area Chart</option>
+          <option value="pie">Pie Chart</option>
+          <option value="scatter">Scatter Plot</option>
+          <option value="doughnut">Doughnut</option>
+          <option value="radar">Radar Chart</option>
+        </select>
+        <label style="font-size:12px;font-weight:600">Title</label>
+        <input id="chart-title" value="Chart" style="width:100%;padding:6px;margin:4px 0 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+        <label style="font-size:12px"><input type="checkbox" id="chart-legend" checked> Show Legend</label><br>
+        <label style="font-size:12px"><input type="checkbox" id="chart-first-row-labels" checked> First row as labels</label><br>
+        <label style="font-size:12px"><input type="checkbox" id="chart-first-col-labels" checked> First column as labels</label>
+      </div>
+      <div style="flex:1;border:1px solid var(--border-color);border-radius:4px;padding:8px;min-height:300px;display:flex;align-items:center;justify-content:center" id="chart-preview-area">
+        <canvas id="chart-preview-canvas" width="400" height="280"></canvas>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="toolbar-btn" id="chart-cancel" style="padding:6px 16px">Cancel</button>
+      <button class="toolbar-btn" id="chart-insert" style="padding:6px 16px;background:var(--accent-color);color:white;border-radius:4px">Insert</button>
+    </div>
+  </div>`;
+  document.body.appendChild(dlg);
+
+  const typeEl = dlg.querySelector('#chart-type');
+  const titleEl = dlg.querySelector('#chart-title');
+  const legendEl = dlg.querySelector('#chart-legend');
+  const firstRowEl = dlg.querySelector('#chart-first-row-labels');
+  const firstColEl = dlg.querySelector('#chart-first-col-labels');
+  const canvas = dlg.querySelector('#chart-preview-canvas');
+
+  function updatePreview() {
+    renderChartToCanvas(canvas, dataRows, typeEl.value, titleEl.value, legendEl.checked, firstRowEl.checked, firstColEl.checked);
+  }
+  updatePreview();
+  typeEl.onchange = updatePreview;
+  titleEl.oninput = updatePreview;
+  legendEl.onchange = updatePreview;
+  firstRowEl.onchange = updatePreview;
+  firstColEl.onchange = updatePreview;
+
+  dlg.querySelector('#chart-cancel').onclick = () => dlg.remove();
+  dlg.querySelector('#chart-insert').onclick = () => {
+    chartCounter++;
+    const chartId = `chart-${chartCounter}`;
+    const chartDiv = document.createElement('div');
+    chartDiv.className = 'sheet-chart-container';
+    chartDiv.id = chartId;
+    chartDiv.style.cssText = 'position:absolute;width:480px;height:340px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);padding:8px;z-index:100;cursor:move;left:40px;top:40px';
+    chartDiv.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <span style="font-size:11px;color:var(--text-secondary)">Chart ${chartCounter}</span>
+      <button onclick="this.closest('.sheet-chart-container').remove()" style="border:none;background:none;cursor:pointer;font-size:14px;color:var(--text-secondary)">✕</button>
+    </div>
+    <canvas width="460" height="300"></canvas>`;
+    containerEl.style.position = 'relative';
+    containerEl.appendChild(chartDiv);
+    const c2 = chartDiv.querySelector('canvas');
+    renderChartToCanvas(c2, dataRows, typeEl.value, titleEl.value, legendEl.checked, firstRowEl.checked, firstColEl.checked);
+    makeDraggable(chartDiv);
+    dlg.remove();
+  };
+}
+
+function makeDraggable(el) {
+  let ox, oy, sx, sy;
+  el.onmousedown = (e) => {
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'CANVAS') return;
+    ox = e.clientX; oy = e.clientY;
+    sx = el.offsetLeft; sy = el.offsetTop;
+    const move = (ev) => { el.style.left = (sx + ev.clientX - ox) + 'px'; el.style.top = (sy + ev.clientY - oy) + 'px'; };
+    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  };
+}
+
+const CHART_COLORS = ['#4285f4','#ea4335','#fbbc05','#34a853','#ff6d01','#46bdc6','#7baaf7','#f07b72','#fdd663','#57bb8a','#ff9e40','#78d5dd'];
+
+function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRowLabels, firstColLabels) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-primary') || '#fff';
+  ctx.fillRect(0, 0, W, H);
+
+  let labels = [];
+  let seriesNames = [];
+  let series = [];
+  const startRow = firstRowLabels ? 1 : 0;
+  const startCol = firstColLabels ? 1 : 0;
+
+  if (firstRowLabels) seriesNames = dataRows[0].slice(startCol);
+  if (firstColLabels) labels = dataRows.slice(startRow).map(r => r[0]);
+
+  const numSeries = (dataRows[0] || []).length - startCol;
+  for (let s = 0; s < numSeries; s++) {
+    const vals = [];
+    for (let r = startRow; r < dataRows.length; r++) {
+      vals.push(parseFloat(dataRows[r][s + startCol]) || 0);
+    }
+    series.push(vals);
+  }
+  if (!labels.length) labels = series[0]?.map((_, i) => `${i + 1}`) || [];
+  if (!seriesNames.length) seriesNames = series.map((_, i) => `Series ${i + 1}`);
+
+  const textColor = getComputedStyle(document.body).getPropertyValue('--text-primary') || '#333';
+  const gridColor = getComputedStyle(document.body).getPropertyValue('--border-color') || '#ddd';
+
+  // Title
+  ctx.fillStyle = textColor;
+  ctx.font = 'bold 14px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(title, W / 2, 18);
+
+  if (type === 'pie' || type === 'doughnut') {
+    renderPieChart(ctx, W, H, series[0] || [], labels, type === 'doughnut', showLegend, textColor);
+    return;
+  }
+  if (type === 'radar') {
+    renderRadarChart(ctx, W, H, series, labels, seriesNames, showLegend, textColor);
+    return;
+  }
+
+  // Axis charts (bar, column, line, area, scatter)
+  const pad = { top: 30, right: 20, bottom: 50, left: 50 };
+  if (showLegend) pad.bottom += 20;
+  const cW = W - pad.left - pad.right;
+  const cH = H - pad.top - pad.bottom;
+
+  const allVals = series.flat();
+  let maxVal = Math.max(...allVals, 1);
+  let minVal = Math.min(...allVals, 0);
+  if (minVal > 0) minVal = 0;
+  const range = maxVal - minVal || 1;
+
+  // Grid lines
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 0.5;
+  ctx.font = '10px system-ui, sans-serif';
+  ctx.fillStyle = textColor;
+  ctx.textAlign = 'right';
+  const gridSteps = 5;
+  for (let i = 0; i <= gridSteps; i++) {
+    const y = pad.top + cH - (i / gridSteps) * cH;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cW, y); ctx.stroke();
+    const val = minVal + (i / gridSteps) * range;
+    ctx.fillText(val % 1 === 0 ? val.toString() : val.toFixed(1), pad.left - 4, y + 3);
+  }
+
+  // X labels
+  ctx.textAlign = 'center';
+  ctx.font = '10px system-ui, sans-serif';
+  const n = labels.length || 1;
+
+  if (type === 'bar') {
+    // Horizontal bars
+    const barH = cH / n * 0.7 / Math.max(series.length, 1);
+    const gap = cH / n * 0.3;
+    for (let i = 0; i < n; i++) {
+      const baseY = pad.top + (i / n) * cH;
+      ctx.fillStyle = textColor;
+      ctx.textAlign = 'right';
+      ctx.fillText(labels[i] || '', pad.left - 4, baseY + cH / n / 2 + 3);
+      for (let s = 0; s < series.length; s++) {
+        const v = series[s][i] || 0;
+        const barW = ((v - minVal) / range) * cW;
+        ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+        ctx.fillRect(pad.left, baseY + gap / 2 + s * barH, barW, barH);
+      }
+    }
+  } else if (type === 'column') {
+    const grpW = cW / n;
+    const barW = grpW * 0.7 / Math.max(series.length, 1);
+    for (let i = 0; i < n; i++) {
+      const x = pad.left + i * grpW;
+      ctx.fillStyle = textColor;
+      ctx.fillText(labels[i] || '', x + grpW / 2, pad.top + cH + 14);
+      for (let s = 0; s < series.length; s++) {
+        const v = series[s][i] || 0;
+        const barH = ((v - minVal) / range) * cH;
+        ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+        ctx.fillRect(x + (grpW * 0.15) + s * barW, pad.top + cH - barH, barW, barH);
+      }
+    }
+  } else if (type === 'line' || type === 'area') {
+    for (let s = 0; s < series.length; s++) {
+      ctx.strokeStyle = CHART_COLORS[s % CHART_COLORS.length];
+      ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const points = [];
+      for (let i = 0; i < n; i++) {
+        const x = pad.left + (i / (n - 1 || 1)) * cW;
+        const y = pad.top + cH - ((series[s][i] - minVal) / range) * cH;
+        points.push({ x, y });
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      if (type === 'area') {
+        ctx.lineTo(pad.left + cW, pad.top + cH);
+        ctx.lineTo(pad.left, pad.top + cH);
+        ctx.closePath();
+        ctx.globalAlpha = 0.2;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      }
+      ctx.stroke();
+      // dots
+      points.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill(); });
+    }
+    // x labels
+    for (let i = 0; i < n; i++) {
+      const x = pad.left + (i / (n - 1 || 1)) * cW;
+      ctx.fillStyle = textColor;
+      ctx.textAlign = 'center';
+      ctx.fillText(labels[i] || '', x, pad.top + cH + 14);
+    }
+  } else if (type === 'scatter') {
+    // Use first two series as X,Y
+    const xs = series[0] || [];
+    const ys = series[1] || series[0] || [];
+    const xMax = Math.max(...xs, 1);
+    const yMax = Math.max(...ys, 1);
+    ctx.fillStyle = CHART_COLORS[0];
+    for (let i = 0; i < xs.length; i++) {
+      const x = pad.left + (xs[i] / xMax) * cW;
+      const y = pad.top + cH - (ys[i] / yMax) * cH;
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // Legend
+  if (showLegend && series.length > 0) {
+    const ly = H - 14;
+    let lx = W / 2 - (seriesNames.length * 70) / 2;
+    ctx.font = '10px system-ui, sans-serif';
+    for (let s = 0; s < seriesNames.length; s++) {
+      ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+      ctx.fillRect(lx, ly - 8, 12, 8);
+      ctx.fillStyle = textColor;
+      ctx.textAlign = 'left';
+      ctx.fillText(seriesNames[s], lx + 16, ly);
+      lx += 70;
+    }
+  }
+}
+
+function renderPieChart(ctx, W, H, data, labels, isDoughnut, showLegend, textColor) {
+  const total = data.reduce((a, b) => a + b, 0) || 1;
+  const cx = W / 2, cy = H / 2 + 10;
+  const radius = Math.min(W, H) / 2 - (showLegend ? 50 : 30);
+  let angle = -Math.PI / 2;
+  for (let i = 0; i < data.length; i++) {
+    const slice = (data[i] / total) * Math.PI * 2;
+    ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length];
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, radius, angle, angle + slice);
+    ctx.closePath();
+    ctx.fill();
+    // Label
+    const mid = angle + slice / 2;
+    const lx = cx + Math.cos(mid) * radius * 0.65;
+    const ly = cy + Math.sin(mid) * radius * 0.65;
+    const pct = ((data[i] / total) * 100).toFixed(1);
+    if (parseFloat(pct) > 3) {
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 11px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(pct + '%', lx, ly + 4);
+    }
+    angle += slice;
+  }
+  if (isDoughnut) {
+    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-primary') || '#fff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (showLegend) {
+    ctx.font = '10px system-ui';
+    let ly = H - 14;
+    let lx = W / 2 - (labels.length * 60) / 2;
+    for (let i = 0; i < labels.length; i++) {
+      ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length];
+      ctx.fillRect(lx, ly - 8, 10, 8);
+      ctx.fillStyle = textColor;
+      ctx.textAlign = 'left';
+      ctx.fillText(labels[i], lx + 14, ly);
+      lx += 60;
+    }
+  }
+}
+
+function renderRadarChart(ctx, W, H, series, labels, seriesNames, showLegend, textColor) {
+  const cx = W / 2, cy = H / 2 + 10;
+  const radius = Math.min(W, H) / 2 - (showLegend ? 50 : 30);
+  const n = labels.length || 1;
+  const allVals = series.flat();
+  const maxVal = Math.max(...allVals, 1);
+
+  // Grid
+  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--border-color') || '#ddd';
+  ctx.lineWidth = 0.5;
+  for (let ring = 1; ring <= 4; ring++) {
+    const r = (ring / 4) * radius;
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+      const x = cx + Math.cos(a) * r;
+      const y = cy + Math.sin(a) * r;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  // Spokes + labels
+  ctx.font = '10px system-ui';
+  ctx.fillStyle = textColor;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius);
+    ctx.stroke();
+    const lx = cx + Math.cos(a) * (radius + 14);
+    const ly = cy + Math.sin(a) * (radius + 14);
+    ctx.textAlign = 'center';
+    ctx.fillText(labels[i] || '', lx, ly + 4);
+  }
+  // Data
+  for (let s = 0; s < series.length; s++) {
+    ctx.strokeStyle = CHART_COLORS[s % CHART_COLORS.length];
+    ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+      const r = (series[s][i] / maxVal) * radius;
+      const x = cx + Math.cos(a) * r;
+      const y = cy + Math.sin(a) * r;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.globalAlpha = 0.15;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.stroke();
+  }
+  if (showLegend) {
+    let lx = W / 2 - (seriesNames.length * 70) / 2;
+    ctx.font = '10px system-ui';
+    for (let s = 0; s < seriesNames.length; s++) {
+      ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+      ctx.fillRect(lx, H - 14 - 8, 12, 8);
+      ctx.fillStyle = textColor;
+      ctx.textAlign = 'left';
+      ctx.fillText(seriesNames[s], lx + 16, H - 14);
+      lx += 70;
+    }
+  }
+}
+
+/* ==================== Cell Merge ==================== */
+
+let mergedCells = []; // [{r1,c1,r2,c2}]
+
+function toggleMergeCells() {
+  const sheet = getSheet();
+  const { r1, c1, r2, c2 } = getSelectionRange();
+  const topCell = getCell(sheet, r1, c1);
+
+  // Check if top-left cell already has a merge span (unmerge)
+  if (topCell?.format?.mergeSpan) {
+    const ms = topCell.format.mergeSpan;
+    // Clear merge from all cells in the range
+    for (let r = r1; r < r1 + ms.rows; r++) {
+      for (let c = c1; c < c1 + ms.cols; c++) {
+        const cell = getCell(sheet, r, c);
+        if (cell?.format) {
+          delete cell.format.merged;
+          delete cell.format.mergeSpan;
+        }
+      }
+    }
+  } else if (r1 !== r2 || c1 !== c2) {
+    // Merge: set top-left as span, rest as hidden
+    saveUndoState();
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        if (r === r1 && c === c1) {
+          setCellFormat(sheet, r, c, 'mergeSpan', { rows: r2 - r1 + 1, cols: c2 - c1 + 1 });
+        } else {
+          setCellFormat(sheet, r, c, 'merged', true);
+        }
+      }
+    }
+  }
+  renderGrid();
+  updateSelection();
+}
+
+function getMergeInfo(r, c) {
+  for (const m of mergedCells) {
+    if (r >= m.r1 && r <= m.r2 && c >= m.c1 && c <= m.c2) {
+      return m;
+    }
+  }
+  return null;
+}
+
+/* ==================== Conditional Formatting ==================== */
+
+let condFormats = []; // [{type, range:{r1,c1,r2,c2}, config:{...}}]
+
+function showConditionalFormatDialog() {
+  const { r1, c1, r2, c2 } = getSelectionRange();
+  const rangeStr = `${colToLetter(c1)}${r1 + 1}:${colToLetter(c2)}${r2 + 1}`;
+
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay';
+  dlg.innerHTML = `<div class="modal-content" style="width:440px">
+    <h3 style="margin:0 0 12px">Conditional Formatting</h3>
+    <div style="margin-bottom:8px;font-size:12px">Range: <strong>${rangeStr}</strong></div>
+    <label style="font-size:12px;font-weight:600">Format Type</label>
+    <select id="cf-type" style="width:100%;padding:6px;margin:4px 0 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+      <option value="colorScale">Color Scale (min→max)</option>
+      <option value="dataBar">Data Bars</option>
+      <option value="iconSet">Icon Set</option>
+      <option value="greaterThan">Greater Than</option>
+      <option value="lessThan">Less Than</option>
+      <option value="between">Between</option>
+      <option value="text">Text Contains</option>
+      <option value="duplicate">Duplicate Values</option>
+      <option value="top10">Top 10</option>
+    </select>
+    <div id="cf-options"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="toolbar-btn" id="cf-cancel" style="padding:6px 16px">Cancel</button>
+      <button class="toolbar-btn" id="cf-apply" style="padding:6px 16px;background:var(--accent-color);color:white;border-radius:4px">Apply</button>
+    </div>
+  </div>`;
+  document.body.appendChild(dlg);
+
+  const typeEl = dlg.querySelector('#cf-type');
+  const optEl = dlg.querySelector('#cf-options');
+
+  function updateOptions() {
+    const t = typeEl.value;
+    let html = '';
+    if (t === 'colorScale') {
+      html = `<div style="display:flex;gap:8px;margin-top:4px">
+        <label style="font-size:12px">Min color: <input type="color" id="cf-min-color" value="#f8696b"></label>
+        <label style="font-size:12px">Mid color: <input type="color" id="cf-mid-color" value="#ffeb84"></label>
+        <label style="font-size:12px">Max color: <input type="color" id="cf-max-color" value="#63be7b"></label>
+      </div>`;
+    } else if (t === 'dataBar') {
+      html = `<label style="font-size:12px">Bar color: <input type="color" id="cf-bar-color" value="#4285f4"></label>`;
+    } else if (t === 'iconSet') {
+      html = `<select id="cf-icon-set" style="width:100%;padding:4px;margin-top:4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+        <option value="arrows">Arrows (↑ → ↓)</option>
+        <option value="circles">Circles (🟢 🟡 🔴)</option>
+        <option value="stars">Stars (★ ☆)</option>
+        <option value="flags">Flags (🟩 🟨 🟥)</option>
+      </select>`;
+    } else if (t === 'greaterThan' || t === 'lessThan') {
+      html = `<input type="number" id="cf-value" placeholder="Value" style="width:100%;padding:6px;margin-top:4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+        <label style="font-size:12px;margin-top:4px;display:block">Highlight: <input type="color" id="cf-highlight" value="#fce4ec"></label>`;
+    } else if (t === 'between') {
+      html = `<div style="display:flex;gap:8px;margin-top:4px">
+        <input type="number" id="cf-val-min" placeholder="Min" style="flex:1;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+        <input type="number" id="cf-val-max" placeholder="Max" style="flex:1;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+      </div>
+      <label style="font-size:12px;margin-top:4px;display:block">Highlight: <input type="color" id="cf-highlight" value="#e8f5e9"></label>`;
+    } else if (t === 'text') {
+      html = `<input type="text" id="cf-text" placeholder="Text to find" style="width:100%;padding:6px;margin-top:4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+        <label style="font-size:12px;margin-top:4px;display:block">Highlight: <input type="color" id="cf-highlight" value="#fff3e0"></label>`;
+    } else if (t === 'duplicate') {
+      html = `<label style="font-size:12px;margin-top:4px;display:block">Highlight: <input type="color" id="cf-highlight" value="#fce4ec"></label>`;
+    } else if (t === 'top10') {
+      html = `<input type="number" id="cf-top-n" value="10" min="1" style="width:80px;padding:6px;margin-top:4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+        <label style="font-size:12px;margin-top:4px;display:block">Highlight: <input type="color" id="cf-highlight" value="#e3f2fd"></label>`;
+    }
+    optEl.innerHTML = html;
+  }
+  updateOptions();
+  typeEl.onchange = updateOptions;
+
+  dlg.querySelector('#cf-cancel').onclick = () => dlg.remove();
+  dlg.querySelector('#cf-apply').onclick = () => {
+    const t = typeEl.value;
+    const config = { type: t };
+    if (t === 'colorScale') {
+      config.minColor = dlg.querySelector('#cf-min-color').value;
+      config.midColor = dlg.querySelector('#cf-mid-color').value;
+      config.maxColor = dlg.querySelector('#cf-max-color').value;
+    } else if (t === 'dataBar') {
+      config.barColor = dlg.querySelector('#cf-bar-color').value;
+    } else if (t === 'iconSet') {
+      config.iconSet = dlg.querySelector('#cf-icon-set').value;
+    } else if (t === 'greaterThan' || t === 'lessThan') {
+      config.value = parseFloat(dlg.querySelector('#cf-value').value) || 0;
+      config.highlight = dlg.querySelector('#cf-highlight').value;
+    } else if (t === 'between') {
+      config.min = parseFloat(dlg.querySelector('#cf-val-min').value) || 0;
+      config.max = parseFloat(dlg.querySelector('#cf-val-max').value) || 0;
+      config.highlight = dlg.querySelector('#cf-highlight').value;
+    } else if (t === 'text') {
+      config.text = dlg.querySelector('#cf-text').value;
+      config.highlight = dlg.querySelector('#cf-highlight').value;
+    } else if (t === 'duplicate') {
+      config.highlight = dlg.querySelector('#cf-highlight').value;
+    } else if (t === 'top10') {
+      config.n = parseInt(dlg.querySelector('#cf-top-n').value) || 10;
+      config.highlight = dlg.querySelector('#cf-highlight').value;
+    }
+    condFormats.push({ range: { r1, c1, r2, c2 }, config });
+    applyConditionalFormatting();
+    dlg.remove();
+  };
+}
+
+function applyConditionalFormatting() {
+  const sheet = getSheet();
+  // Clear previous conditional styles
+  gridEl.querySelectorAll('[data-cf-style]').forEach(el => {
+    el.style.background = '';
+    el.removeAttribute('data-cf-style');
+    const bar = el.querySelector('.cf-data-bar');
+    if (bar) bar.remove();
+    const icon = el.querySelector('.cf-icon');
+    if (icon) icon.remove();
+  });
+
+  for (const cf of condFormats) {
+    const { r1, c1, r2, c2 } = cf.range;
+    const cfg = cf.config;
+
+    // Gather values
+    const vals = [];
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        const v = parseFloat(getDisplayValue(sheet, r, c));
+        if (!isNaN(v)) vals.push(v);
+      }
+    }
+    const minV = Math.min(...vals);
+    const maxV = Math.max(...vals);
+    const rangeV = maxV - minV || 1;
+
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        const td = gridEl.querySelector(`td[data-row="${r}"][data-col="${c}"]`);
+        if (!td) continue;
+        const raw = getDisplayValue(sheet, r, c);
+        const v = parseFloat(raw);
+
+        if (cfg.type === 'colorScale' && !isNaN(v)) {
+          const ratio = (v - minV) / rangeV;
+          td.style.background = interpolateColor(cfg.minColor, cfg.midColor, cfg.maxColor, ratio);
+          td.setAttribute('data-cf-style', '1');
+        } else if (cfg.type === 'dataBar' && !isNaN(v)) {
+          const pct = Math.max(0, ((v - minV) / rangeV) * 100);
+          td.style.position = 'relative';
+          const bar = document.createElement('div');
+          bar.className = 'cf-data-bar';
+          bar.style.cssText = `position:absolute;left:0;bottom:0;height:3px;width:${pct}%;background:${cfg.barColor};opacity:0.6;pointer-events:none`;
+          td.appendChild(bar);
+          td.setAttribute('data-cf-style', '1');
+        } else if (cfg.type === 'iconSet' && !isNaN(v)) {
+          const ratio = (v - minV) / rangeV;
+          const icons = { arrows: ['↓','→','↑'], circles: ['🔴','🟡','🟢'], stars: ['☆','★','★'], flags: ['🟥','🟨','🟩'] };
+          const set = icons[cfg.iconSet] || icons.arrows;
+          const icon = document.createElement('span');
+          icon.className = 'cf-icon';
+          icon.style.cssText = 'margin-right:4px;font-size:10px';
+          icon.textContent = ratio < 0.33 ? set[0] : ratio < 0.67 ? set[1] : set[2];
+          td.insertBefore(icon, td.firstChild);
+          td.setAttribute('data-cf-style', '1');
+        } else if (cfg.type === 'greaterThan' && !isNaN(v) && v > cfg.value) {
+          td.style.background = cfg.highlight;
+          td.setAttribute('data-cf-style', '1');
+        } else if (cfg.type === 'lessThan' && !isNaN(v) && v < cfg.value) {
+          td.style.background = cfg.highlight;
+          td.setAttribute('data-cf-style', '1');
+        } else if (cfg.type === 'between' && !isNaN(v) && v >= cfg.min && v <= cfg.max) {
+          td.style.background = cfg.highlight;
+          td.setAttribute('data-cf-style', '1');
+        } else if (cfg.type === 'text' && raw.toString().toLowerCase().includes(cfg.text.toLowerCase())) {
+          td.style.background = cfg.highlight;
+          td.setAttribute('data-cf-style', '1');
+        } else if (cfg.type === 'duplicate') {
+          // count occurrences
+          let count = 0;
+          for (let rr = r1; rr <= r2; rr++) {
+            for (let cc = c1; cc <= c2; cc++) {
+              if (getDisplayValue(sheet, rr, cc) === raw) count++;
+            }
+          }
+          if (count > 1 && raw !== '') {
+            td.style.background = cfg.highlight;
+            td.setAttribute('data-cf-style', '1');
+          }
+        } else if (cfg.type === 'top10' && !isNaN(v)) {
+          const sorted = [...vals].sort((a, b) => b - a);
+          const threshold = sorted[Math.min(cfg.n - 1, sorted.length - 1)];
+          if (v >= threshold) {
+            td.style.background = cfg.highlight;
+            td.setAttribute('data-cf-style', '1');
+          }
+        }
+      }
+    }
+  }
+}
+
+function interpolateColor(c1, c2, c3, ratio) {
+  const hex = (c) => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
+  const [r1, g1, b1] = hex(c1);
+  const [r2, g2, b2] = hex(c2);
+  const [r3, g3, b3] = hex(c3);
+  let r, g, b;
+  if (ratio < 0.5) {
+    const t = ratio * 2;
+    r = Math.round(r1 + (r2 - r1) * t);
+    g = Math.round(g1 + (g2 - g1) * t);
+    b = Math.round(b1 + (b2 - b1) * t);
+  } else {
+    const t = (ratio - 0.5) * 2;
+    r = Math.round(r2 + (r3 - r2) * t);
+    g = Math.round(g2 + (g3 - g2) * t);
+    b = Math.round(b2 + (b3 - b2) * t);
+  }
+  return `rgb(${r},${g},${b})`;
 }
 
 /* ==================== Export ==================== */

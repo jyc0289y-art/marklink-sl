@@ -272,6 +272,8 @@ let findBarEl = null;
 let findInput = null;
 let replaceInput = null;
 let highlightedNodes = [];
+let findUseRegex = false;
+let findMatchCase = false;
 
 function initFindReplace() {
   findBarEl = document.getElementById('doc-find-bar');
@@ -285,6 +287,25 @@ function initFindReplace() {
   document.getElementById('doc-replace-btn')?.addEventListener('click', () => doReplace());
   document.getElementById('doc-replace-all')?.addEventListener('click', () => doReplaceAll());
   document.getElementById('doc-find-close')?.addEventListener('click', () => closeFindBar());
+
+  // Regex toggle
+  const regexBtn = document.getElementById('doc-find-regex');
+  regexBtn?.addEventListener('click', () => {
+    findUseRegex = !findUseRegex;
+    regexBtn.style.opacity = findUseRegex ? '1' : '0.6';
+    regexBtn.style.background = findUseRegex ? 'var(--accent-color)' : '';
+    regexBtn.style.color = findUseRegex ? '#fff' : '';
+    doFind();
+  });
+  // Case toggle
+  const caseBtn = document.getElementById('doc-find-case');
+  caseBtn?.addEventListener('click', () => {
+    findMatchCase = !findMatchCase;
+    caseBtn.style.opacity = findMatchCase ? '1' : '0.6';
+    caseBtn.style.background = findMatchCase ? 'var(--accent-color)' : '';
+    caseBtn.style.color = findMatchCase ? '#fff' : '';
+    doFind();
+  });
 }
 
 function toggleFindBar(showReplace) {
@@ -325,14 +346,28 @@ function doFind(forward = true) {
   const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT);
   let node;
   const matches = [];
-  while ((node = walker.nextNode())) {
-    let idx = 0;
-    const text = node.textContent;
-    const lowerText = text.toLowerCase();
-    const lowerQuery = query.toLowerCase();
-    while ((idx = lowerText.indexOf(lowerQuery, idx)) !== -1) {
-      matches.push({ node, start: idx, length: query.length });
-      idx += query.length;
+
+  if (findUseRegex) {
+    let re;
+    try { re = new RegExp(query, findMatchCase ? 'g' : 'gi'); } catch { updateFindCount(0, 0); return; }
+    while ((node = walker.nextNode())) {
+      const text = node.textContent;
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        if (m[0].length === 0) { re.lastIndex++; continue; }
+        matches.push({ node, start: m.index, length: m[0].length });
+      }
+    }
+  } else {
+    while ((node = walker.nextNode())) {
+      let idx = 0;
+      const text = node.textContent;
+      const searchText = findMatchCase ? text : text.toLowerCase();
+      const searchQuery = findMatchCase ? query : query.toLowerCase();
+      while ((idx = searchText.indexOf(searchQuery, idx)) !== -1) {
+        matches.push({ node, start: idx, length: query.length });
+        idx += query.length;
+      }
     }
   }
 

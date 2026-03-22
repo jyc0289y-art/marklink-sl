@@ -142,6 +142,16 @@ function bindEvents() {
     showShapeMenu();
   });
 
+  // Drawing tools
+  document.getElementById('slide-draw-shapes')?.addEventListener('click', () => {
+    showDrawingToolbar();
+  });
+
+  // Master slides
+  document.getElementById('slide-master')?.addEventListener('click', () => {
+    showMasterSlideDialog();
+  });
+
   // Insert video
   document.getElementById('slide-insert-video')?.addEventListener('click', () => {
     const url = prompt('Enter video URL (YouTube, Vimeo, or direct):');
@@ -268,6 +278,11 @@ function loadSlide(idx) {
   applyTheme(slide.theme);
   if (themeSelect) themeSelect.value = slide.theme;
   if (transitionSelect) transitionSelect.value = slide.transition || 'none';
+
+  // Apply master slide if set
+  if (slide.master && MASTER_SLIDES[slide.master]) {
+    applyMasterToCanvas(MASTER_SLIDES[slide.master]);
+  }
 
   // Update active thumb
   panelEl?.querySelectorAll('.slide-thumb').forEach((t, i) => {
@@ -1032,4 +1047,211 @@ function printHandout() {
   win.document.write(html);
   win.document.close();
   setTimeout(() => win.print(), 300);
+}
+
+/* ==================== Master Slides ==================== */
+
+const MASTER_SLIDES = {
+  corporate: {
+    name: 'Corporate',
+    bg: 'linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%)',
+    color: '#fff',
+    accentColor: '#3b82f6',
+    fontFamily: "'Segoe UI', system-ui, sans-serif",
+    headerStyle: 'border-bottom:2px solid #3b82f6;padding-bottom:12px;margin-bottom:16px',
+    logo: '',
+  },
+  modern: {
+    name: 'Modern',
+    bg: 'linear-gradient(160deg, #fafafa 0%, #e8e8e8 100%)',
+    color: '#222',
+    accentColor: '#e53e3e',
+    fontFamily: "'Inter', system-ui, sans-serif",
+    headerStyle: 'color:#e53e3e;font-weight:800;text-transform:uppercase;letter-spacing:2px',
+    logo: '',
+  },
+  nature: {
+    name: 'Nature',
+    bg: 'linear-gradient(135deg, #134e5e 0%, #71b280 100%)',
+    color: '#fff',
+    accentColor: '#fbd38d',
+    fontFamily: "'Georgia', serif",
+    headerStyle: 'font-style:italic;border-left:4px solid #fbd38d;padding-left:16px',
+    logo: '',
+  },
+  tech: {
+    name: 'Tech',
+    bg: '#0a0a0a',
+    color: '#00ff88',
+    accentColor: '#00ff88',
+    fontFamily: "'SF Mono', 'Fira Code', monospace",
+    headerStyle: 'font-weight:400;text-transform:uppercase;letter-spacing:4px;color:#00ff88',
+    logo: '',
+  },
+  pastel: {
+    name: 'Pastel',
+    bg: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
+    color: '#4a3728',
+    accentColor: '#e17055',
+    fontFamily: "'Nunito', system-ui, sans-serif",
+    headerStyle: 'color:#e17055;font-weight:700',
+    logo: '',
+  },
+  academic: {
+    name: 'Academic',
+    bg: '#fffef5',
+    color: '#2d3436',
+    accentColor: '#6c5ce7',
+    fontFamily: "'Palatino', 'Book Antiqua', serif",
+    headerStyle: 'font-variant:small-caps;color:#6c5ce7;border-bottom:1px solid #6c5ce7;padding-bottom:8px',
+    logo: '',
+  },
+};
+
+function showMasterSlideDialog() {
+  const existing = document.querySelector('.master-slide-dialog');
+  if (existing) { existing.remove(); return; }
+
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay master-slide-dialog';
+  let grid = '';
+  for (const [key, master] of Object.entries(MASTER_SLIDES)) {
+    grid += `<div class="master-card" data-master="${key}" style="cursor:pointer;border:2px solid var(--border-color);border-radius:8px;overflow:hidden;transition:all 0.2s">
+      <div style="height:100px;background:${master.bg};color:${master.color};font-family:${master.fontFamily};padding:16px;font-size:12px;display:flex;flex-direction:column;justify-content:center">
+        <div style="${master.headerStyle};font-size:14px;margin-bottom:4px">${master.name}</div>
+        <div style="font-size:10px;opacity:0.7">Subtitle text here</div>
+      </div>
+      <div style="padding:8px;text-align:center;font-size:11px;font-weight:600">${master.name}</div>
+    </div>`;
+  }
+
+  dlg.innerHTML = `<div class="modal-content" style="width:560px;max-height:80vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="margin:0">Master Slide Themes</h3>
+      <button class="master-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-primary)">&times;</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">${grid}</div>
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+      <label style="font-size:12px;display:flex;align-items:center;gap:4px">
+        <input type="checkbox" id="master-apply-all"> Apply to all slides
+      </label>
+    </div>
+  </div>`;
+
+  document.body.appendChild(dlg);
+
+  dlg.querySelector('.master-close').onclick = () => dlg.remove();
+  dlg.onclick = (e) => { if (e.target === dlg) dlg.remove(); };
+
+  dlg.querySelectorAll('.master-card').forEach(card => {
+    card.onmouseenter = () => card.style.borderColor = 'var(--accent-color)';
+    card.onmouseleave = () => card.style.borderColor = 'var(--border-color)';
+    card.onclick = () => {
+      const key = card.dataset.master;
+      const master = MASTER_SLIDES[key];
+      const applyAll = dlg.querySelector('#master-apply-all')?.checked;
+      if (applyAll) {
+        slides.forEach(s => { s.master = key; });
+      } else {
+        slides[activeSlideIdx].master = key;
+      }
+      applyMasterToCanvas(master);
+      renderPanel();
+      updateThumb(activeSlideIdx);
+      dlg.remove();
+    };
+  });
+}
+
+function applyMasterToCanvas(master) {
+  if (!canvasEl) return;
+  canvasEl.style.background = master.bg;
+  canvasEl.style.color = master.color;
+  canvasEl.style.fontFamily = master.fontFamily;
+  // Apply header styles to h1, h2
+  canvasEl.querySelectorAll('h1, h2, h3').forEach(h => {
+    h.style.cssText += ';' + master.headerStyle;
+  });
+}
+
+/* ==================== Advanced Shape Drawing ==================== */
+
+function showDrawingToolbar() {
+  const existing = document.querySelector('.slide-draw-toolbar');
+  if (existing) { existing.remove(); return; }
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'slide-draw-toolbar';
+  toolbar.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:var(--bg-primary);border:1px solid var(--border-color);border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.2);padding:8px 12px;z-index:2000;display:flex;gap:4px;align-items:center';
+
+  const tools = [
+    { icon: '▭', label: 'Rectangle', shape: 'rect' },
+    { icon: '○', label: 'Ellipse', shape: 'ellipse' },
+    { icon: '△', label: 'Triangle', shape: 'triangle' },
+    { icon: '◇', label: 'Diamond', shape: 'diamond' },
+    { icon: '☆', label: 'Star', shape: 'star' },
+    { icon: '→', label: 'Arrow', shape: 'arrow' },
+    { icon: '💬', label: 'Callout', shape: 'callout' },
+    { icon: '⬡', label: 'Hexagon', shape: 'hexagon' },
+    { icon: '✕', label: 'Cross', shape: 'cross' },
+    { icon: '❤', label: 'Heart', shape: 'heart' },
+  ];
+
+  tools.forEach(t => {
+    const btn = document.createElement('button');
+    btn.style.cssText = 'width:36px;height:36px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;color:var(--text-primary);transition:all 0.15s';
+    btn.title = t.label;
+    btn.textContent = t.icon;
+    btn.onmouseenter = () => { btn.style.background = 'var(--hover-bg)'; };
+    btn.onmouseleave = () => { btn.style.background = 'var(--bg-primary)'; };
+    btn.onclick = () => {
+      insertSVGShape(t.shape);
+      toolbar.remove();
+    };
+    toolbar.appendChild(btn);
+  });
+
+  // Color picker
+  const sep = document.createElement('div');
+  sep.style.cssText = 'width:1px;height:24px;background:var(--border-color);margin:0 4px';
+  toolbar.appendChild(sep);
+
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color';
+  colorInput.value = '#4285f4';
+  colorInput.id = 'shape-draw-color';
+  colorInput.style.cssText = 'width:32px;height:32px;border:none;cursor:pointer;border-radius:4px';
+  toolbar.appendChild(colorInput);
+
+  // Close
+  const closeBtn = document.createElement('button');
+  closeBtn.style.cssText = 'width:28px;height:28px;border:none;background:none;cursor:pointer;font-size:16px;color:var(--text-secondary);margin-left:4px';
+  closeBtn.textContent = '✕';
+  closeBtn.onclick = () => toolbar.remove();
+  toolbar.appendChild(closeBtn);
+
+  document.body.appendChild(toolbar);
+}
+
+function insertSVGShape(shape) {
+  const color = document.getElementById('shape-draw-color')?.value || '#4285f4';
+  const svgMap = {
+    rect: `<svg width="160" height="100" viewBox="0 0 160 100"><rect x="4" y="4" width="152" height="92" rx="8" fill="${color}" opacity="0.3" stroke="${color}" stroke-width="2"/></svg>`,
+    ellipse: `<svg width="160" height="120" viewBox="0 0 160 120"><ellipse cx="80" cy="60" rx="76" ry="56" fill="${color}" opacity="0.3" stroke="${color}" stroke-width="2"/></svg>`,
+    triangle: `<svg width="160" height="140" viewBox="0 0 160 140"><polygon points="80,8 156,132 4,132" fill="${color}" opacity="0.3" stroke="${color}" stroke-width="2"/></svg>`,
+    diamond: `<svg width="120" height="140" viewBox="0 0 120 140"><polygon points="60,4 116,70 60,136 4,70" fill="${color}" opacity="0.3" stroke="${color}" stroke-width="2"/></svg>`,
+    star: `<svg width="140" height="140" viewBox="0 0 140 140"><polygon points="70,4 86,52 136,52 96,84 110,132 70,104 30,132 44,84 4,52 54,52" fill="${color}" opacity="0.3" stroke="${color}" stroke-width="2"/></svg>`,
+    arrow: `<svg width="200" height="80" viewBox="0 0 200 80"><polygon points="0,24 140,24 140,0 200,40 140,80 140,56 0,56" fill="${color}" opacity="0.3" stroke="${color}" stroke-width="2"/></svg>`,
+    callout: `<svg width="180" height="140" viewBox="0 0 180 140"><path d="M8,8 h160 a4,4 0 0 1 4,4 v80 a4,4 0 0 1 -4,4 h-100 l-20,36 l0,-36 h-40 a4,4 0 0 1 -4,-4 v-80 a4,4 0 0 1 4,-4z" fill="${color}" opacity="0.3" stroke="${color}" stroke-width="2"/></svg>`,
+    hexagon: `<svg width="140" height="120" viewBox="0 0 140 120"><polygon points="35,4 105,4 136,60 105,116 35,116 4,60" fill="${color}" opacity="0.3" stroke="${color}" stroke-width="2"/></svg>`,
+    cross: `<svg width="120" height="120" viewBox="0 0 120 120"><polygon points="40,4 80,4 80,40 116,40 116,80 80,80 80,116 40,116 40,80 4,80 4,40 40,40" fill="${color}" opacity="0.3" stroke="${color}" stroke-width="2"/></svg>`,
+    heart: `<svg width="140" height="130" viewBox="0 0 140 130"><path d="M70,120 C20,80 -10,40 30,14 C50,2 70,18 70,38 C70,18 90,2 110,14 C150,40 120,80 70,120z" fill="${color}" opacity="0.5" stroke="${color}" stroke-width="2"/></svg>`,
+  };
+
+  const svg = svgMap[shape] || svgMap.rect;
+  const html = `<div style="display:inline-block;margin:8px;cursor:move" contenteditable="false">${svg}</div>`;
+  canvasEl.focus();
+  document.execCommand('insertHTML', false, html);
+  slides[activeSlideIdx].content = canvasEl.innerHTML;
+  updateThumb(activeSlideIdx);
 }
