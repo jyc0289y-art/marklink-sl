@@ -193,7 +193,7 @@ function bindToolbar() {
 
   // Rotation / Flip
   document.getElementById('photo-rotate-cw')?.addEventListener('click', () => {
-    currentParams.rotation = (currentParams.rotation + 90) % 360;
+    currentParams.rotation = ((currentParams.rotation || 0) + 90) % 360;
     applyTransform();
     pushHistory();
   });
@@ -207,6 +207,50 @@ function bindToolbar() {
     applyTransform();
     pushHistory();
   });
+
+  // Crop
+  document.getElementById('photo-crop')?.addEventListener('click', toggleCropMode);
+  document.getElementById('crop-apply')?.addEventListener('click', applyCrop);
+  document.getElementById('crop-cancel')?.addEventListener('click', cancelCrop);
+
+  // Resize
+  document.getElementById('photo-resize')?.addEventListener('click', showResizeDialog);
+
+  // Text Overlay
+  document.getElementById('photo-text')?.addEventListener('click', toggleTextMode);
+
+  // Draw
+  document.getElementById('photo-draw')?.addEventListener('click', toggleDrawMode);
+
+  // Filters
+  document.getElementById('photo-filters')?.addEventListener('click', showFiltersModal);
+
+  // Batch
+  document.getElementById('photo-batch')?.addEventListener('click', showBatchModal);
+
+  // GIF
+  document.getElementById('photo-gif')?.addEventListener('click', showGifModal);
+
+  // HSL tabs
+  document.querySelectorAll('.photo-hsl-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.photo-hsl-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      buildHSLSliders(tab.dataset.hslMode);
+    });
+  });
+  buildHSLSliders('hue');
+
+  // Tone Curve tabs
+  document.querySelectorAll('.photo-curve-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.photo-curve-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      activeCurveChannel = tab.dataset.curve;
+      drawCurve();
+    });
+  });
+  initCurveCanvas();
 }
 
 function renderOriginal() {
@@ -353,16 +397,1205 @@ async function autoEditClaude() {
   } catch (e) { showAutoStatus('오류: ' + e.message); }
 }
 
+/* ==================== Crop Tool ==================== */
+
+let cropActive = false;
+let cropRect = { x: 0, y: 0, w: 0, h: 0 };
+
+function toggleCropMode() {
+  if (!imageInfo) return;
+  cropActive = !cropActive;
+  const overlay = document.getElementById('photo-crop-overlay');
+  const bar = document.getElementById('photo-crop-bar');
+  if (cropActive) {
+    const canvasArea = document.getElementById('photo-canvas-area');
+    const canvas = document.getElementById('photo-canvas');
+    if (!canvasArea || !canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const areaRect = canvasArea.getBoundingClientRect();
+    // Init crop to full image
+    cropRect = {
+      x: rect.left - areaRect.left + 10,
+      y: rect.top - areaRect.top + 10,
+      w: rect.width - 20,
+      h: rect.height - 20,
+    };
+    overlay.style.display = 'block';
+    bar.style.display = 'flex';
+    updateCropSelection();
+    bindCropDrag();
+  } else {
+    overlay.style.display = 'none';
+    bar.style.display = 'none';
+  }
+}
+
+function updateCropSelection() {
+  const sel = document.getElementById('crop-selection');
+  if (!sel) return;
+  sel.style.left = cropRect.x + 'px';
+  sel.style.top = cropRect.y + 'px';
+  sel.style.width = cropRect.w + 'px';
+  sel.style.height = cropRect.h + 'px';
+  const info = document.getElementById('crop-info');
+  if (info && imageInfo) {
+    const canvas = document.getElementById('photo-canvas');
+    const cr = canvas.getBoundingClientRect();
+    const scaleX = imageInfo.width / cr.width;
+    const scaleY = imageInfo.height / cr.height;
+    const pw = Math.round(cropRect.w * scaleX);
+    const ph = Math.round(cropRect.h * scaleY);
+    info.textContent = `${pw} × ${ph}`;
+  }
+}
+
+function bindCropDrag() {
+  const overlay = document.getElementById('photo-crop-overlay');
+  const sel = document.getElementById('crop-selection');
+  if (!overlay || !sel) return;
+
+  let dragging = null; // 'move' | handle name
+  let startX, startY, startRect;
+
+  const onDown = (e) => {
+    e.preventDefault();
+    const t = e.target;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    startX = clientX;
+    startY = clientY;
+    startRect = { ...cropRect };
+
+    if (t.classList.contains('crop-handle')) {
+      dragging = t.dataset.handle;
+    } else if (t === sel || sel.contains(t)) {
+      dragging = 'move';
+    }
+  };
+
+  const onMove = (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const dx = clientX - startX;
+    const dy = clientY - startY;
+    const ratio = getCropRatio();
+
+    if (dragging === 'move') {
+      cropRect.x = startRect.x + dx;
+      cropRect.y = startRect.y + dy;
+    } else {
+      let newRect = { ...startRect };
+      if (dragging.includes('e')) newRect.w = Math.max(20, startRect.w + dx);
+      if (dragging.includes('w')) { newRect.x = startRect.x + dx; newRect.w = Math.max(20, startRect.w - dx); }
+      if (dragging.includes('s')) newRect.h = Math.max(20, startRect.h + dy);
+      if (dragging.includes('n')) { newRect.y = startRect.y + dy; newRect.h = Math.max(20, startRect.h - dy); }
+      if (ratio) {
+        if (dragging.includes('e') || dragging.includes('w')) {
+          newRect.h = newRect.w / ratio;
+        } else {
+          newRect.w = newRect.h * ratio;
+        }
+      }
+      cropRect = newRect;
+    }
+    updateCropSelection();
+  };
+
+  const onUp = () => { dragging = null; };
+
+  overlay.addEventListener('mousedown', onDown);
+  overlay.addEventListener('touchstart', onDown, { passive: false });
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('touchmove', onMove, { passive: false });
+  window.addEventListener('mouseup', onUp);
+  window.addEventListener('touchend', onUp);
+}
+
+function getCropRatio() {
+  const sel = document.getElementById('crop-ratio');
+  if (!sel) return null;
+  const v = sel.value;
+  if (v === 'free') return null;
+  const [a, b] = v.split(':').map(Number);
+  return a / b;
+}
+
+function applyCrop() {
+  if (!engine || !imageInfo) return;
+  const canvas = document.getElementById('photo-canvas');
+  const cr = canvas.getBoundingClientRect();
+  const canvasArea = document.getElementById('photo-canvas-area');
+  const ar = canvasArea.getBoundingClientRect();
+
+  const scaleX = canvas.width / cr.width;
+  const scaleY = canvas.height / cr.height;
+  const offsetX = cr.left - ar.left;
+  const offsetY = cr.top - ar.top;
+
+  const sx = Math.max(0, Math.round((cropRect.x - offsetX) * scaleX));
+  const sy = Math.max(0, Math.round((cropRect.y - offsetY) * scaleY));
+  const sw = Math.min(canvas.width - sx, Math.round(cropRect.w * scaleX));
+  const sh = Math.min(canvas.height - sy, Math.round(cropRect.h * scaleY));
+
+  // Extract cropped region
+  const srcCanvas = engine.getCanvas();
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = sw;
+  tmpCanvas.height = sh;
+  const ctx = tmpCanvas.getContext('2d');
+  ctx.drawImage(srcCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+  // Reload cropped image
+  engine.loadImage(tmpCanvas);
+  imageInfo.width = sw;
+  imageInfo.height = sh;
+  render();
+  pushHistory();
+  cancelCrop();
+  updateInfoBar();
+}
+
+function cancelCrop() {
+  cropActive = false;
+  const overlay = document.getElementById('photo-crop-overlay');
+  const bar = document.getElementById('photo-crop-bar');
+  if (overlay) overlay.style.display = 'none';
+  if (bar) bar.style.display = 'none';
+}
+
+/* ==================== Resize Tool ==================== */
+
+function showResizeDialog() {
+  if (!imageInfo) return;
+  const existing = document.querySelector('.photo-resize-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.className = 'photo-resize-modal';
+  let lockAspect = true;
+  const aspect = imageInfo.width / imageInfo.height;
+
+  modal.innerHTML = `
+    <div class="photo-resize-panel">
+      <h3>Resize Image</h3>
+      <div class="resize-row">
+        <label>Width</label>
+        <input type="number" id="resize-w" value="${imageInfo.width}" min="1">
+        <span>px</span>
+      </div>
+      <div class="resize-row">
+        <label>Height</label>
+        <input type="number" id="resize-h" value="${imageInfo.height}" min="1">
+        <span>px</span>
+      </div>
+      <div class="resize-row">
+        <label></label>
+        <label style="width:auto;cursor:pointer"><input type="checkbox" id="resize-lock" checked> Lock aspect ratio</label>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+        <button class="toolbar-btn" id="resize-cancel">Cancel</button>
+        <button class="toolbar-btn" id="resize-apply" style="background:var(--brand-color);color:#fff;border-radius:6px">Apply</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+
+  const wInput = modal.querySelector('#resize-w');
+  const hInput = modal.querySelector('#resize-h');
+  const lockCb = modal.querySelector('#resize-lock');
+
+  wInput.addEventListener('input', () => {
+    if (lockCb.checked) hInput.value = Math.round(wInput.value / aspect);
+  });
+  hInput.addEventListener('input', () => {
+    if (lockCb.checked) wInput.value = Math.round(hInput.value * aspect);
+  });
+
+  modal.querySelector('#resize-cancel').onclick = () => modal.remove();
+  modal.querySelector('#resize-apply').onclick = () => {
+    const nw = parseInt(wInput.value);
+    const nh = parseInt(hInput.value);
+    if (nw > 0 && nh > 0) {
+      const srcCanvas = engine.getCanvas();
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width = nw;
+      tmpCanvas.height = nh;
+      tmpCanvas.getContext('2d').drawImage(srcCanvas, 0, 0, nw, nh);
+      engine.loadImage(tmpCanvas);
+      imageInfo.width = nw;
+      imageInfo.height = nh;
+      render();
+      pushHistory();
+      updateInfoBar();
+    }
+    modal.remove();
+  };
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+/* ==================== Text Overlay ==================== */
+
+let textMode = false;
+let textItems = [];
+
+function toggleTextMode() {
+  if (!imageInfo) return;
+  textMode = !textMode;
+  const layer = document.getElementById('photo-text-layer');
+  if (!layer) return;
+
+  if (textMode) {
+    layer.style.display = 'block';
+    layer.style.pointerEvents = 'all';
+    addTextItem(layer);
+  } else {
+    layer.style.pointerEvents = 'none';
+  }
+}
+
+function addTextItem(layer) {
+  const item = document.createElement('div');
+  item.className = 'photo-text-item selected';
+  item.contentEditable = true;
+  item.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);font-size:24px;color:#ffffff;font-family:sans-serif;text-shadow:1px 1px 3px rgba(0,0,0,0.5)';
+  item.textContent = 'Text';
+  layer.appendChild(item);
+
+  // Drag
+  let dragging = false, ox, oy;
+  item.addEventListener('mousedown', (e) => {
+    if (e.target === item && !item.isContentEditable) {
+      dragging = true;
+      ox = e.offsetX;
+      oy = e.offsetY;
+    }
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const rect = layer.getBoundingClientRect();
+    item.style.left = (e.clientX - rect.left - ox) + 'px';
+    item.style.top = (e.clientY - rect.top - oy) + 'px';
+    item.style.transform = 'none';
+  });
+  window.addEventListener('mouseup', () => { dragging = false; });
+
+  textItems.push(item);
+  item.focus();
+
+  // Show text toolbar
+  showTextToolbar(item, layer);
+}
+
+function showTextToolbar(item, layer) {
+  let bar = document.querySelector('.photo-text-bar');
+  if (bar) bar.remove();
+
+  bar = document.createElement('div');
+  bar.className = 'photo-text-bar';
+  bar.innerHTML = `
+    <input type="number" value="24" min="8" max="200" style="width:50px" title="Font Size" id="text-size-input">
+    <input type="color" value="#ffffff" title="Color" id="text-color-input">
+    <select id="text-font-input">
+      <option value="sans-serif">Sans-serif</option>
+      <option value="serif">Serif</option>
+      <option value="monospace">Monospace</option>
+      <option value="'Impact',sans-serif">Impact</option>
+      <option value="cursive">Cursive</option>
+    </select>
+    <button class="toolbar-btn" title="Bold" id="text-bold-btn"><b>B</b></button>
+    <button class="toolbar-btn" title="Add Another" id="text-add-btn">+</button>
+    <button class="toolbar-btn" title="Flatten to image" id="text-flatten-btn">✓ Flatten</button>
+  `;
+
+  const canvasArea = document.getElementById('photo-canvas-area');
+  canvasArea.appendChild(bar);
+
+  bar.querySelector('#text-size-input').oninput = (e) => { item.style.fontSize = e.target.value + 'px'; };
+  bar.querySelector('#text-color-input').oninput = (e) => { item.style.color = e.target.value; };
+  bar.querySelector('#text-font-input').onchange = (e) => { item.style.fontFamily = e.target.value; };
+  bar.querySelector('#text-bold-btn').onclick = () => {
+    item.style.fontWeight = item.style.fontWeight === 'bold' ? 'normal' : 'bold';
+  };
+  bar.querySelector('#text-add-btn').onclick = () => addTextItem(layer);
+  bar.querySelector('#text-flatten-btn').onclick = () => flattenText();
+}
+
+function flattenText() {
+  if (!engine) return;
+  const srcCanvas = engine.getCanvas();
+  const canvasEl = document.getElementById('photo-canvas');
+  const layer = document.getElementById('photo-text-layer');
+  if (!layer || !canvasEl) return;
+
+  const cr = canvasEl.getBoundingClientRect();
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = srcCanvas.width;
+  tmpCanvas.height = srcCanvas.height;
+  const ctx = tmpCanvas.getContext('2d');
+  ctx.drawImage(srcCanvas, 0, 0);
+
+  const scaleX = srcCanvas.width / cr.width;
+  const scaleY = srcCanvas.height / cr.height;
+  const layerRect = layer.getBoundingClientRect();
+
+  textItems.forEach(item => {
+    const ir = item.getBoundingClientRect();
+    const x = (ir.left - cr.left) * scaleX;
+    const y = (ir.top - cr.top) * scaleY;
+    const fontSize = parseFloat(getComputedStyle(item).fontSize) * scaleX;
+
+    ctx.font = `${item.style.fontWeight || 'normal'} ${fontSize}px ${getComputedStyle(item).fontFamily}`;
+    ctx.fillStyle = item.style.color || '#fff';
+    ctx.textBaseline = 'top';
+    ctx.fillText(item.textContent, x, y);
+  });
+
+  engine.loadImage(tmpCanvas);
+  render();
+  pushHistory();
+
+  // Clean up
+  textItems = [];
+  layer.innerHTML = '';
+  layer.style.display = 'none';
+  layer.style.pointerEvents = 'none';
+  textMode = false;
+  document.querySelector('.photo-text-bar')?.remove();
+}
+
+/* ==================== Draw Tool ==================== */
+
+let drawMode = false;
+let drawCtx = null;
+
+function toggleDrawMode() {
+  if (!imageInfo) return;
+  drawMode = !drawMode;
+  const dc = document.getElementById('photo-draw-canvas');
+  if (!dc) return;
+
+  if (drawMode) {
+    const canvas = document.getElementById('photo-canvas');
+    const cr = canvas.getBoundingClientRect();
+    const area = document.getElementById('photo-canvas-area');
+    const ar = area.getBoundingClientRect();
+
+    dc.width = cr.width;
+    dc.height = cr.height;
+    dc.style.display = 'block';
+    dc.style.left = (cr.left - ar.left) + 'px';
+    dc.style.top = (cr.top - ar.top) + 'px';
+    dc.style.width = cr.width + 'px';
+    dc.style.height = cr.height + 'px';
+
+    drawCtx = dc.getContext('2d');
+    drawCtx.strokeStyle = '#ff0000';
+    drawCtx.lineWidth = 3;
+    drawCtx.lineCap = 'round';
+    drawCtx.lineJoin = 'round';
+
+    let drawing = false;
+    dc.onmousedown = (e) => { drawing = true; drawCtx.beginPath(); drawCtx.moveTo(e.offsetX, e.offsetY); };
+    dc.onmousemove = (e) => { if (drawing) { drawCtx.lineTo(e.offsetX, e.offsetY); drawCtx.stroke(); } };
+    dc.onmouseup = () => { drawing = false; };
+    dc.ontouchstart = (e) => { e.preventDefault(); drawing = true; const t = e.touches[0]; const r = dc.getBoundingClientRect(); drawCtx.beginPath(); drawCtx.moveTo(t.clientX - r.left, t.clientY - r.top); };
+    dc.ontouchmove = (e) => { e.preventDefault(); if (!drawing) return; const t = e.touches[0]; const r = dc.getBoundingClientRect(); drawCtx.lineTo(t.clientX - r.left, t.clientY - r.top); drawCtx.stroke(); };
+    dc.ontouchend = () => { drawing = false; };
+
+    showDrawToolbar(dc);
+  } else {
+    flattenDraw();
+  }
+}
+
+function showDrawToolbar(dc) {
+  let bar = document.querySelector('.photo-draw-bar');
+  if (bar) bar.remove();
+
+  bar = document.createElement('div');
+  bar.className = 'photo-text-bar photo-draw-bar';
+  bar.innerHTML = `
+    <input type="color" value="#ff0000" title="Color" id="draw-color-input">
+    <input type="range" min="1" max="20" value="3" title="Brush Size" id="draw-size-input" style="width:80px">
+    <button class="toolbar-btn" id="draw-eraser" title="Eraser">⌫</button>
+    <button class="toolbar-btn" id="draw-clear" title="Clear">Clear</button>
+    <button class="toolbar-btn" id="draw-done" title="Done">✓ Done</button>
+  `;
+
+  const canvasArea = document.getElementById('photo-canvas-area');
+  canvasArea.appendChild(bar);
+
+  bar.querySelector('#draw-color-input').oninput = (e) => {
+    drawCtx.strokeStyle = e.target.value;
+    drawCtx.globalCompositeOperation = 'source-over';
+  };
+  bar.querySelector('#draw-size-input').oninput = (e) => { drawCtx.lineWidth = e.target.value; };
+  bar.querySelector('#draw-eraser').onclick = () => { drawCtx.globalCompositeOperation = 'destination-out'; drawCtx.lineWidth = 15; };
+  bar.querySelector('#draw-clear').onclick = () => { drawCtx.clearRect(0, 0, dc.width, dc.height); };
+  bar.querySelector('#draw-done').onclick = () => { flattenDraw(); };
+}
+
+function flattenDraw() {
+  const dc = document.getElementById('photo-draw-canvas');
+  if (!dc || !engine) return;
+
+  const srcCanvas = engine.getCanvas();
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = srcCanvas.width;
+  tmpCanvas.height = srcCanvas.height;
+  const ctx = tmpCanvas.getContext('2d');
+  ctx.drawImage(srcCanvas, 0, 0);
+
+  // Scale draw canvas to match
+  ctx.drawImage(dc, 0, 0, dc.width, dc.height, 0, 0, srcCanvas.width, srcCanvas.height);
+
+  engine.loadImage(tmpCanvas);
+  render();
+  pushHistory();
+
+  dc.style.display = 'none';
+  drawMode = false;
+  document.querySelector('.photo-draw-bar')?.remove();
+}
+
+/* ==================== Filters / Presets ==================== */
+
+const FILTER_PRESETS = [
+  { name: 'Original', params: {} },
+  { name: 'Vivid', params: { saturation: 40, vibrance: 30, contrast: 15, clarity: 20 } },
+  { name: 'Warm', params: { colorTemp: 7000, saturation: 15 } },
+  { name: 'Cool', params: { colorTemp: 4500, saturation: 10 } },
+  { name: 'B&W', params: { saturation: -100 } },
+  { name: 'B&W Film', params: { saturation: -100, contrast: 25, grain: { amount: 30, size: 40 } } },
+  { name: 'Vintage', params: { saturation: -20, contrast: -10, colorTemp: 6500, grain: { amount: 15, size: 30 }, vignette: { amount: 40, midpoint: 50, roundness: 0, feather: 60 } } },
+  { name: 'Cinematic', params: { contrast: 20, saturation: -15, colorTemp: 4800, vignette: { amount: 30, midpoint: 40, roundness: 0, feather: 50 } } },
+  { name: 'High Key', params: { exposure: 0.8, contrast: -20, highlights: 30, shadows: 30 } },
+  { name: 'Low Key', params: { exposure: -0.5, contrast: 30, shadows: -20, vignette: { amount: 50, midpoint: 40, roundness: 0, feather: 50 } } },
+  { name: 'Fade', params: { contrast: -20, saturation: -15, highlights: -20 } },
+  { name: 'Dramatic', params: { clarity: 50, contrast: 30, saturation: 10, vignette: { amount: 25, midpoint: 50, roundness: 0, feather: 60 } } },
+  { name: 'Sunset', params: { colorTemp: 7500, saturation: 30, vibrance: 20, exposure: 0.2 } },
+  { name: 'Matte', params: { contrast: -15, highlights: -25, shadows: 25 } },
+  { name: 'Chrome', params: { contrast: 25, saturation: -10, clarity: 30 } },
+];
+
+function showFiltersModal() {
+  if (!engine) return;
+  const existing = document.querySelector('.photo-filters-modal');
+  if (existing) { existing.remove(); return; }
+
+  const modal = document.createElement('div');
+  modal.className = 'photo-filters-modal';
+
+  const grid = document.createElement('div');
+  grid.className = 'photo-filters-grid';
+  grid.innerHTML = '<h3>Filters & Presets</h3>';
+
+  const list = document.createElement('div');
+  list.className = 'photo-filters-list';
+
+  const srcCanvas = engine.getCanvas();
+
+  FILTER_PRESETS.forEach((preset) => {
+    const item = document.createElement('div');
+    item.className = 'photo-filter-item';
+
+    // Generate thumbnail preview
+    const thumbCanvas = document.createElement('canvas');
+    thumbCanvas.width = 80;
+    thumbCanvas.height = 60;
+    const tctx = thumbCanvas.getContext('2d');
+    tctx.drawImage(srcCanvas, 0, 0, 80, 60);
+    // Simple CSS filter approximation for thumbnail
+    if (preset.params.saturation === -100) thumbCanvas.style.filter = 'grayscale(1)';
+    else if (preset.params.colorTemp > 6000) thumbCanvas.style.filter = `sepia(0.3) saturate(${1 + (preset.params.saturation || 0) / 100})`;
+
+    item.appendChild(thumbCanvas);
+    const label = document.createElement('span');
+    label.textContent = preset.name;
+    item.appendChild(label);
+
+    item.addEventListener('click', () => {
+      // Apply preset
+      resetParams();
+      if (preset.params) {
+        for (const [key, val] of Object.entries(preset.params)) {
+          if (typeof val === 'object') {
+            if (!currentParams[key]) currentParams[key] = {};
+            Object.assign(currentParams[key], val);
+          } else {
+            currentParams[key] = val;
+          }
+        }
+      }
+      updateSliderValues();
+      render();
+      pushHistory();
+      modal.remove();
+    });
+
+    list.appendChild(item);
+  });
+
+  grid.appendChild(list);
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'toolbar-btn';
+  closeBtn.textContent = 'Close';
+  closeBtn.style.cssText = 'margin-top:12px;display:block;margin-left:auto';
+  closeBtn.onclick = () => modal.remove();
+  grid.appendChild(closeBtn);
+
+  modal.appendChild(grid);
+  document.body.appendChild(modal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+/* ==================== GIF Creator ==================== */
+
+let gifFrames = [];
+
+function showGifModal() {
+  const existing = document.querySelector('.photo-gif-modal');
+  if (existing) { existing.remove(); return; }
+
+  const modal = document.createElement('div');
+  modal.className = 'photo-gif-modal';
+  modal.innerHTML = `
+    <div class="photo-gif-panel">
+      <h3>Create GIF</h3>
+      <p style="font-size:12px;color:var(--text-secondary);margin:0 0 8px">Add multiple images to create an animated GIF</p>
+      <div class="gif-frames-list" id="gif-frames-list">
+        <p style="font-size:12px;color:var(--text-tertiary)">Drop images here or click to add</p>
+      </div>
+      <div class="gif-controls">
+        <button class="toolbar-btn" id="gif-add-files">+ Add Images</button>
+        <button class="toolbar-btn" id="gif-add-current">+ Current Image</button>
+        <label>Delay: <input type="number" id="gif-delay" value="200" min="20" max="5000" style="width:60px"> ms</label>
+        <label>Loop: <select id="gif-loop"><option value="0">Infinite</option><option value="1">Once</option><option value="3">3 times</option></select></label>
+        <label>Size: <select id="gif-size"><option value="original">Original</option><option value="480">480px</option><option value="320">320px</option><option value="240">240px</option></select></label>
+      </div>
+      <div class="gif-preview" id="gif-preview"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="toolbar-btn" id="gif-generate" style="background:var(--brand-color);color:#fff;border-radius:6px">Generate GIF</button>
+        <button class="toolbar-btn" id="gif-close">Close</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+  gifFrames = [];
+
+  const framesList = modal.querySelector('#gif-frames-list');
+
+  // Add files button
+  modal.querySelector('#gif-add-files').onclick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = true;
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.onchange = (e) => {
+      Array.from(e.target.files).forEach(f => addGifFrame(f, framesList));
+      input.remove();
+    };
+    input.click();
+  };
+
+  // Add current image
+  modal.querySelector('#gif-add-current').onclick = () => {
+    if (engine) {
+      const canvas = engine.getCanvas();
+      canvas.toBlob(blob => {
+        const file = new File([blob], 'current.png', { type: 'image/png' });
+        addGifFrame(file, framesList);
+      });
+    }
+  };
+
+  // Drop
+  framesList.addEventListener('dragover', (e) => { e.preventDefault(); framesList.style.borderColor = 'var(--brand-color)'; });
+  framesList.addEventListener('dragleave', () => { framesList.style.borderColor = ''; });
+  framesList.addEventListener('drop', (e) => {
+    e.preventDefault();
+    framesList.style.borderColor = '';
+    Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')).forEach(f => addGifFrame(f, framesList));
+  });
+
+  // Generate
+  modal.querySelector('#gif-generate').onclick = () => generateGif(modal);
+  modal.querySelector('#gif-close').onclick = () => modal.remove();
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+function addGifFrame(file, container) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    gifFrames.push(e.target.result);
+    // Clear placeholder text
+    if (container.querySelector('p')) container.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = e.target.result;
+    img.className = 'gif-frame-thumb';
+    img.title = `Frame ${gifFrames.length}`;
+    container.appendChild(img);
+  };
+  reader.readAsDataURL(file);
+}
+
+async function generateGif(modal) {
+  if (gifFrames.length < 2) {
+    alert('Please add at least 2 images');
+    return;
+  }
+
+  const delay = parseInt(modal.querySelector('#gif-delay').value) || 200;
+  const loop = parseInt(modal.querySelector('#gif-loop').value);
+  const sizeVal = modal.querySelector('#gif-size').value;
+  const preview = modal.querySelector('#gif-preview');
+  preview.innerHTML = '<p>Generating GIF...</p>';
+
+  // Load all images
+  const images = await Promise.all(gifFrames.map(src => {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.src = src;
+    });
+  }));
+
+  // Determine output size
+  let maxW = Math.max(...images.map(i => i.width));
+  let maxH = Math.max(...images.map(i => i.height));
+  if (sizeVal !== 'original') {
+    const target = parseInt(sizeVal);
+    const scale = target / Math.max(maxW, maxH);
+    if (scale < 1) {
+      maxW = Math.round(maxW * scale);
+      maxH = Math.round(maxH * scale);
+    }
+  }
+
+  // Use simple animated GIF encoder (canvas-based binary encoder)
+  try {
+    const gifData = encodeGIF(images, maxW, maxH, delay, loop);
+    const blob = new Blob([gifData], { type: 'image/gif' });
+    const url = URL.createObjectURL(blob);
+    preview.innerHTML = `<img src="${url}" alt="Generated GIF"><p style="font-size:11px;margin-top:4px">${maxW}×${maxH}, ${gifFrames.length} frames, ${(blob.size / 1024).toFixed(1)}KB</p>`;
+
+    // Add download button
+    const dlBtn = document.createElement('button');
+    dlBtn.className = 'toolbar-btn';
+    dlBtn.textContent = '⬇ Download GIF';
+    dlBtn.style.cssText = 'background:var(--brand-color);color:#fff;border-radius:6px;margin-top:8px';
+    dlBtn.onclick = () => {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'animation.gif';
+      a.click();
+    };
+    preview.appendChild(dlBtn);
+  } catch (e) {
+    preview.innerHTML = `<p style="color:#e74c3c">Error: ${e.message}</p>`;
+  }
+}
+
+// Minimal GIF89a encoder (no external dependency)
+function encodeGIF(images, width, height, delay, loop) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  const frames = images.map(img => {
+    ctx.clearRect(0, 0, width, height);
+    // Center and fit image
+    const scale = Math.min(width / img.width, height / img.height);
+    const w = img.width * scale;
+    const h = img.height * scale;
+    ctx.drawImage(img, (width - w) / 2, (height - h) / 2, w, h);
+    return ctx.getImageData(0, 0, width, height);
+  });
+
+  // Build GIF binary
+  const buf = [];
+  const write = (b) => buf.push(b);
+  const writeStr = (s) => { for (let i = 0; i < s.length; i++) write(s.charCodeAt(i)); };
+  const writeU16LE = (v) => { write(v & 0xff); write((v >> 8) & 0xff); };
+
+  // Header
+  writeStr('GIF89a');
+  writeU16LE(width);
+  writeU16LE(height);
+
+  // Global color table: 256 colors (web-safe approximation)
+  write(0xf7); // 256-color GCT, 8-bit
+  write(0);    // BG index
+  write(0);    // Pixel aspect
+  // Build 256-color palette (6x6x6 + 40 grays)
+  const palette = [];
+  for (let r = 0; r < 6; r++)
+    for (let g = 0; g < 6; g++)
+      for (let b = 0; b < 6; b++)
+        palette.push([Math.round(r * 51), Math.round(g * 51), Math.round(b * 51)]);
+  // Fill remaining 40 with grays
+  for (let i = 0; i < 40; i++)
+    palette.push([Math.round(i * 255 / 39), Math.round(i * 255 / 39), Math.round(i * 255 / 39)]);
+
+  for (const [r, g, b] of palette) { write(r); write(g); write(b); }
+
+  // Netscape looping extension
+  write(0x21); write(0xff); write(11);
+  writeStr('NETSCAPE2.0');
+  write(3); write(1); writeU16LE(loop); write(0);
+
+  // For each frame
+  for (const frame of frames) {
+    // Graphic Control Extension
+    write(0x21); write(0xf9); write(4);
+    write(0x04); // Dispose: restore to bg
+    writeU16LE(Math.round(delay / 10)); // delay in 1/100 sec
+    write(0); // transparent index
+    write(0);
+
+    // Image Descriptor
+    write(0x2c);
+    writeU16LE(0); writeU16LE(0); // x, y
+    writeU16LE(width); writeU16LE(height);
+    write(0); // No local color table
+
+    // LZW encode
+    const pixels = new Uint8Array(width * height);
+    const data = frame.data;
+    for (let i = 0; i < width * height; i++) {
+      const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+      // Find nearest palette color
+      const ri = Math.round(r / 51);
+      const gi = Math.round(g / 51);
+      const bi = Math.round(b / 51);
+      pixels[i] = ri * 36 + gi * 6 + bi;
+    }
+
+    // LZW minimum code size
+    const minCodeSize = 8;
+    write(minCodeSize);
+
+    // Simple LZW compression
+    const lzwData = lzwEncode(pixels, minCodeSize);
+    // Write sub-blocks
+    let offset = 0;
+    while (offset < lzwData.length) {
+      const chunk = Math.min(255, lzwData.length - offset);
+      write(chunk);
+      for (let i = 0; i < chunk; i++) write(lzwData[offset + i]);
+      offset += chunk;
+    }
+    write(0); // Block terminator
+  }
+
+  write(0x3b); // GIF trailer
+  return new Uint8Array(buf);
+}
+
+function lzwEncode(pixels, minCodeSize) {
+  const clearCode = 1 << minCodeSize;
+  const eoiCode = clearCode + 1;
+  let codeSize = minCodeSize + 1;
+  let nextCode = eoiCode + 1;
+
+  // Init code table
+  let codeTable = new Map();
+  for (let i = 0; i < clearCode; i++) codeTable.set(String(i), i);
+
+  const output = [];
+  let bitBuf = 0;
+  let bitCount = 0;
+
+  const writeBits = (code, size) => {
+    bitBuf |= code << bitCount;
+    bitCount += size;
+    while (bitCount >= 8) {
+      output.push(bitBuf & 0xff);
+      bitBuf >>= 8;
+      bitCount -= 8;
+    }
+  };
+
+  writeBits(clearCode, codeSize);
+
+  let indexBuf = String(pixels[0]);
+  for (let i = 1; i < pixels.length; i++) {
+    const k = String(pixels[i]);
+    const combined = indexBuf + ',' + k;
+    if (codeTable.has(combined)) {
+      indexBuf = combined;
+    } else {
+      writeBits(codeTable.get(indexBuf), codeSize);
+      if (nextCode < 4096) {
+        codeTable.set(combined, nextCode++);
+        if (nextCode > (1 << codeSize) && codeSize < 12) codeSize++;
+      } else {
+        writeBits(clearCode, codeSize);
+        codeTable = new Map();
+        for (let j = 0; j < clearCode; j++) codeTable.set(String(j), j);
+        nextCode = eoiCode + 1;
+        codeSize = minCodeSize + 1;
+      }
+      indexBuf = k;
+    }
+  }
+  writeBits(codeTable.get(indexBuf), codeSize);
+  writeBits(eoiCode, codeSize);
+  if (bitCount > 0) output.push(bitBuf & 0xff);
+
+  return output;
+}
+
+/* ==================== Batch Processing ==================== */
+
+function showBatchModal() {
+  const existing = document.querySelector('.photo-batch-modal');
+  if (existing) { existing.remove(); return; }
+
+  const modal = document.createElement('div');
+  modal.className = 'photo-batch-modal';
+  modal.innerHTML = `
+    <div class="photo-batch-panel">
+      <h3>Batch Process</h3>
+      <p style="font-size:12px;color:var(--text-secondary);margin:0 0 8px">Apply current adjustments to multiple images</p>
+      <div style="margin-bottom:12px">
+        <button class="toolbar-btn" id="batch-add">+ Add Images</button>
+      </div>
+      <div class="batch-file-list" id="batch-file-list"></div>
+      <div class="gif-controls" style="margin-top:8px">
+        <label>Format: <select id="batch-format"><option value="jpeg">JPEG</option><option value="png">PNG</option><option value="webp">WebP</option></select></label>
+        <label>Quality: <input type="range" id="batch-quality" min="10" max="100" value="92" style="width:80px"> <span id="batch-quality-val">92</span>%</label>
+        <label>Max Size: <select id="batch-max-size"><option value="">Original</option><option value="1920">1920px</option><option value="1280">1280px</option><option value="800">800px</option></select></label>
+      </div>
+      <div class="batch-progress" style="display:none" id="batch-progress"><div class="batch-progress-fill" id="batch-progress-fill"></div></div>
+      <div id="batch-status" style="font-size:12px;color:var(--text-secondary);margin:8px 0"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="toolbar-btn" id="batch-process" style="background:var(--brand-color);color:#fff;border-radius:6px">Process All</button>
+        <button class="toolbar-btn" id="batch-close">Close</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+  let batchFiles = [];
+
+  modal.querySelector('#batch-quality').oninput = (e) => {
+    modal.querySelector('#batch-quality-val').textContent = e.target.value;
+  };
+
+  modal.querySelector('#batch-add').onclick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = true;
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.onchange = (e) => {
+      const list = modal.querySelector('#batch-file-list');
+      Array.from(e.target.files).forEach(f => {
+        batchFiles.push(f);
+        const item = document.createElement('div');
+        item.className = 'batch-file-item';
+        item.innerHTML = `<span>${f.name}</span><span>${(f.size / 1024).toFixed(0)} KB</span>`;
+        list.appendChild(item);
+      });
+      input.remove();
+    };
+    input.click();
+  };
+
+  modal.querySelector('#batch-process').onclick = async () => {
+    if (batchFiles.length === 0) { alert('Add images first'); return; }
+    const format = modal.querySelector('#batch-format').value;
+    const quality = parseInt(modal.querySelector('#batch-quality').value) / 100;
+    const maxSize = modal.querySelector('#batch-max-size').value;
+    const progressBar = modal.querySelector('#batch-progress');
+    const progressFill = modal.querySelector('#batch-progress-fill');
+    const status = modal.querySelector('#batch-status');
+    progressBar.style.display = 'block';
+
+    for (let i = 0; i < batchFiles.length; i++) {
+      status.textContent = `Processing ${i + 1} / ${batchFiles.length}...`;
+      progressFill.style.width = ((i + 1) / batchFiles.length * 100) + '%';
+
+      await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            let w = img.width, h = img.height;
+            if (maxSize) {
+              const max = parseInt(maxSize);
+              if (Math.max(w, h) > max) {
+                const scale = max / Math.max(w, h);
+                w = Math.round(w * scale);
+                h = Math.round(h * scale);
+              }
+            }
+            const tmpCanvas = document.createElement('canvas');
+            tmpCanvas.width = w;
+            tmpCanvas.height = h;
+            const tctx = tmpCanvas.getContext('2d');
+            tctx.drawImage(img, 0, 0, w, h);
+
+            // Apply current params via temp engine
+            const tempEngine = new WebGLEngine(document.createElement('canvas'));
+            tempEngine.loadImage(tmpCanvas);
+            tempEngine.render(currentParams);
+
+            const resultCanvas = tempEngine.getCanvas();
+            const mimeType = `image/${format}`;
+            resultCanvas.toBlob(blob => {
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(blob);
+              const baseName = batchFiles[i].name.replace(/\.[^.]+$/, '');
+              a.download = `${baseName}_edit.${format}`;
+              a.click();
+              URL.revokeObjectURL(a.href);
+              resolve();
+            }, mimeType, quality);
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(batchFiles[i]);
+      });
+    }
+    status.textContent = `Done! Processed ${batchFiles.length} images.`;
+  };
+
+  modal.querySelector('#batch-close').onclick = () => modal.remove();
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+/* ==================== HSL Panel ==================== */
+
+const HSL_COLORS = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta'];
+const HSL_COLOR_SWATCHES = { red: '#e74c3c', orange: '#e67e22', yellow: '#f1c40f', green: '#2ecc71', aqua: '#1abc9c', blue: '#3498db', purple: '#9b59b6', magenta: '#e91e63' };
+
+function buildHSLSliders(mode) {
+  const container = document.getElementById('photo-hsl-sliders');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const range = mode === 'hue' ? { min: -180, max: 180 } : { min: -100, max: 100 };
+
+  HSL_COLORS.forEach(color => {
+    const val = currentParams.hsl?.[color]?.[mode] || 0;
+    const row = document.createElement('div');
+    row.className = 'photo-slider-row';
+    row.innerHTML = `
+      <span class="photo-slider-label" style="color:${HSL_COLOR_SWATCHES[color]}">${color.charAt(0).toUpperCase() + color.slice(1)}</span>
+      <input type="range" min="${range.min}" max="${range.max}" value="${val}" id="hsl-${color}-${mode}">
+      <span class="photo-slider-val" id="hsl-${color}-${mode}-val">${val}</span>`;
+    container.appendChild(row);
+
+    const slider = row.querySelector('input');
+    slider.addEventListener('input', () => {
+      if (!currentParams.hsl) currentParams.hsl = {};
+      if (!currentParams.hsl[color]) currentParams.hsl[color] = { hue: 0, saturation: 0, luminance: 0 };
+      currentParams.hsl[color][mode] = parseInt(slider.value);
+      row.querySelector('.photo-slider-val').textContent = slider.value;
+      render();
+    });
+    slider.addEventListener('change', () => pushHistory());
+  });
+}
+
+/* ==================== Tone Curve ==================== */
+
+let activeCurveChannel = 'rgb';
+let curveCanvasCtx = null;
+let curveDraggingPoint = -1;
+
+function initCurveCanvas() {
+  const canvas = document.getElementById('photo-curve-canvas');
+  if (!canvas) return;
+  curveCanvasCtx = canvas.getContext('2d');
+
+  canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.round((e.clientX - rect.left) / rect.width * 255);
+    const y = Math.round((1 - (e.clientY - rect.top) / rect.height) * 255);
+    const points = currentParams.toneCurve[activeCurveChannel];
+
+    // Find nearest point
+    let nearest = -1, minDist = 20;
+    for (let i = 0; i < points.length; i++) {
+      const dx = points[i].x - x, dy = points[i].y - y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < minDist) { minDist = dist; nearest = i; }
+    }
+
+    if (nearest >= 0) {
+      curveDraggingPoint = nearest;
+    } else {
+      // Add new point
+      points.push({ x, y });
+      points.sort((a, b) => a.x - b.x);
+      curveDraggingPoint = points.findIndex(p => p.x === x && p.y === y);
+      drawCurve();
+      render();
+    }
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (curveDraggingPoint < 0) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.max(0, Math.min(255, Math.round((e.clientX - rect.left) / rect.width * 255)));
+    const y = Math.max(0, Math.min(255, Math.round((1 - (e.clientY - rect.top) / rect.height) * 255)));
+    const points = currentParams.toneCurve[activeCurveChannel];
+    if (curveDraggingPoint > 0 && curveDraggingPoint < points.length - 1) {
+      points[curveDraggingPoint] = { x, y };
+    } else {
+      points[curveDraggingPoint].y = y;
+    }
+    drawCurve();
+    render();
+  });
+
+  canvas.addEventListener('mouseup', () => {
+    if (curveDraggingPoint >= 0) {
+      curveDraggingPoint = -1;
+      pushHistory();
+    }
+  });
+
+  canvas.addEventListener('dblclick', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.round((e.clientX - rect.left) / rect.width * 255);
+    const points = currentParams.toneCurve[activeCurveChannel];
+    // Remove closest non-endpoint
+    let nearest = -1, minDist = 15;
+    for (let i = 1; i < points.length - 1; i++) {
+      if (Math.abs(points[i].x - x) < minDist) { minDist = Math.abs(points[i].x - x); nearest = i; }
+    }
+    if (nearest >= 0) {
+      points.splice(nearest, 1);
+      drawCurve();
+      render();
+      pushHistory();
+    }
+  });
+
+  drawCurve();
+}
+
+function drawCurve() {
+  const ctx = curveCanvasCtx;
+  if (!ctx) return;
+  const canvas = ctx.canvas;
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  // Background grid
+  ctx.strokeStyle = 'rgba(128,128,128,0.2)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    const p = (i / 4) * w;
+    ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(w, p); ctx.stroke();
+  }
+
+  // Diagonal reference
+  ctx.strokeStyle = 'rgba(128,128,128,0.3)';
+  ctx.beginPath(); ctx.moveTo(0, h); ctx.lineTo(w, 0); ctx.stroke();
+
+  // Curve
+  const points = currentParams.toneCurve[activeCurveChannel];
+  const colors = { rgb: '#fff', red: '#e74c3c', green: '#2ecc71', blue: '#3498db' };
+  ctx.strokeStyle = colors[activeCurveChannel] || '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let x = 0; x <= 255; x++) {
+    const y = interpolateCurve(points, x);
+    const px = (x / 255) * w;
+    const py = (1 - y / 255) * h;
+    if (x === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+
+  // Points
+  ctx.fillStyle = colors[activeCurveChannel] || '#fff';
+  for (const p of points) {
+    const px = (p.x / 255) * w;
+    const py = (1 - p.y / 255) * h;
+    ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
+  }
+}
+
+function interpolateCurve(points, x) {
+  if (points.length === 0) return x;
+  if (x <= points[0].x) return points[0].y;
+  if (x >= points[points.length - 1].x) return points[points.length - 1].y;
+  // Linear interpolation between surrounding points
+  for (let i = 0; i < points.length - 1; i++) {
+    if (x >= points[i].x && x <= points[i + 1].x) {
+      const t = (x - points[i].x) / (points[i + 1].x - points[i].x);
+      return points[i].y + t * (points[i + 1].y - points[i].y);
+    }
+  }
+  return x;
+}
+
 /* ==================== Export ==================== */
 
 function exportImage() {
   if (!engine) return;
+  const existing = document.querySelector('.photo-export-modal');
+  if (existing) { existing.remove(); return; }
+
   const canvas = engine.getCanvas();
-  const format = 'image/jpeg';
-  const quality = 0.92;
-  const link = document.createElement('a');
-  const baseName = imageInfo ? imageInfo.name.replace(/\.[^.]+$/, '') : 'photo';
-  link.download = `${baseName}_edit.jpg`;
-  link.href = canvas.toDataURL(format, quality);
-  link.click();
+
+  const modal = document.createElement('div');
+  modal.className = 'photo-resize-modal';
+  modal.innerHTML = `
+    <div class="photo-resize-panel">
+      <h3>Export Image</h3>
+      <div class="resize-row">
+        <label>Format</label>
+        <select id="export-format" style="flex:1;padding:6px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-color);color:var(--text-color)">
+          <option value="jpeg">JPEG</option>
+          <option value="png">PNG</option>
+          <option value="webp">WebP</option>
+        </select>
+      </div>
+      <div class="resize-row">
+        <label>Quality</label>
+        <input type="range" id="export-quality" min="10" max="100" value="92" style="flex:1">
+        <span id="export-quality-val" style="width:30px;text-align:right">92%</span>
+      </div>
+      <div class="resize-row">
+        <label>Size</label>
+        <span>${canvas.width} × ${canvas.height}</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+        <button class="toolbar-btn" id="export-cancel">Cancel</button>
+        <button class="toolbar-btn" id="export-save" style="background:var(--brand-color);color:#fff;border-radius:6px">Save</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+
+  modal.querySelector('#export-quality').oninput = (e) => {
+    modal.querySelector('#export-quality-val').textContent = e.target.value + '%';
+  };
+
+  modal.querySelector('#export-cancel').onclick = () => modal.remove();
+  modal.querySelector('#export-save').onclick = () => {
+    const format = modal.querySelector('#export-format').value;
+    const quality = parseInt(modal.querySelector('#export-quality').value) / 100;
+    const mimeType = `image/${format}`;
+    const link = document.createElement('a');
+    const baseName = imageInfo ? imageInfo.name.replace(/\.[^.]+$/, '') : 'photo';
+    link.download = `${baseName}_edit.${format === 'jpeg' ? 'jpg' : format}`;
+    link.href = canvas.toDataURL(mimeType, quality);
+    link.click();
+    modal.remove();
+  };
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 }

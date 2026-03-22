@@ -1,5 +1,21 @@
 /* OfficeLink SL — Editor (CodeMirror 6) Overrides */
 
+/* Markdown-specific toolbar (inside #view-markdown) */
+.md-toolbar {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  background: var(--toolbar-bg);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.md-toolbar .toolbar-btn {
+  min-width: 32px;
+  height: 28px;
+  font-size: 13px;
+}
+
 .editor-container .cm-editor {
   height: 100%;
   font-size: 14px;

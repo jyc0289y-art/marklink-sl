@@ -16,7 +16,7 @@ import { printDocument } from './export/print.js';
 import { exportHTML } from './export/html.js';
 import { exportPDF } from './export/pdf.js';
 import { trackFileOpen, trackFileSave, trackExport, trackThemeToggle, trackToolbarAction, trackFolderOpen, initSessionTracking } from './analytics.js';
-import { initTabs, onTabChange, getCurrentTab } from './ui/tabs.js';
+import { initTabs, onTabChange, getCurrentTab, switchTab } from './ui/tabs.js';
 import { initDocEditor, getDocContent } from './document/doc-editor.js';
 import { openDocFile, saveDocFile, quickSaveDoc, getDocFileName, setDocFileName } from './document/doc-file.js';
 import { initSheetEditor, getSheetsData } from './sheet/sheet-ui.js';

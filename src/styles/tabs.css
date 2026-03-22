@@ -52,6 +52,10 @@
   display: flex;
 }
 
+#view-markdown.active {
+  flex-direction: column;
+}
+
 /* App container must accommodate tab bar */
 .app-container {
   height: calc(100vh - 44px - 34px);

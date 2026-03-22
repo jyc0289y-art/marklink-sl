@@ -56,28 +56,6 @@
       <button id="btn-redo" class="toolbar-btn" title="Redo (⌘⇧Z)">
         <span class="icon">↪</span>
       </button>
-      <div class="toolbar-divider"></div>
-      <button id="btn-bold" class="toolbar-btn" data-tip="tip.bold" title="Bold (⌘B)">
-        <span class="icon"><b>B</b></span>
-      </button>
-      <button id="btn-italic" class="toolbar-btn" data-tip="tip.italic" title="Italic (⌘I)">
-        <span class="icon"><i>I</i></span>
-      </button>
-      <button id="btn-heading" class="toolbar-btn" data-tip="tip.heading" title="Heading">
-        <span class="icon">H</span>
-      </button>
-      <button id="btn-code" class="toolbar-btn" data-tip="tip.code" title="Code Block">
-        <span class="icon">&lt;/&gt;</span>
-      </button>
-      <button id="btn-list" class="toolbar-btn" data-tip="tip.list" title="List">
-        <span class="icon">☰</span>
-      </button>
-      <button id="btn-link" class="toolbar-btn" data-tip="tip.link" title="Link">
-        <span class="icon">🔗</span>
-      </button>
-      <button id="btn-table" class="toolbar-btn" data-tip="tip.table" title="Table">
-        <span class="icon">▦</span>
-      </button>
     </div>
     <div class="toolbar-right">
       <button id="btn-sidebar" class="toolbar-btn" data-tip="tip.sidebar" title="Toggle Sidebar">
@@ -149,6 +127,15 @@
 
     <!-- Markdown View -->
     <div id="view-markdown" class="app-view">
+      <div class="md-toolbar">
+        <button id="btn-bold" class="toolbar-btn" data-tip="tip.bold" title="Bold (⌘B)"><span class="icon"><b>B</b></span></button>
+        <button id="btn-italic" class="toolbar-btn" data-tip="tip.italic" title="Italic (⌘I)"><span class="icon"><i>I</i></span></button>
+        <button id="btn-heading" class="toolbar-btn" data-tip="tip.heading" title="Heading"><span class="icon">H</span></button>
+        <button id="btn-code" class="toolbar-btn" data-tip="tip.code" title="Code Block"><span class="icon">&lt;/&gt;</span></button>
+        <button id="btn-list" class="toolbar-btn" data-tip="tip.list" title="List"><span class="icon">☰</span></button>
+        <button id="btn-link" class="toolbar-btn" data-tip="tip.link" title="Link"><span class="icon">🔗</span></button>
+        <button id="btn-table" class="toolbar-btn" data-tip="tip.table" title="Table"><span class="icon">▦</span></button>
+      </div>
       <div id="split-pane" class="split-pane">
         <!-- Editor -->
         <div id="editor-pane" class="pane editor-pane">
@@ -606,6 +593,15 @@
         <button class="toolbar-btn" id="photo-flip-h" title="Flip Horizontal">↔</button>
         <button class="toolbar-btn" id="photo-flip-v" title="Flip Vertical">↕</button>
         <div class="toolbar-divider"></div>
+        <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" id="photo-crop" title="Crop">✂ Crop</button>
+        <button class="toolbar-btn" id="photo-resize" title="Resize">⤢ Resize</button>
+        <button class="toolbar-btn" id="photo-text" title="Text Overlay">T Text</button>
+        <button class="toolbar-btn" id="photo-draw" title="Draw">✏ Draw</button>
+        <button class="toolbar-btn" id="photo-filters" title="Filters">🎨 Filters</button>
+        <button class="toolbar-btn" id="photo-batch" title="Batch">📑 Batch</button>
+        <button class="toolbar-btn" id="photo-gif" title="Create GIF">GIF</button>
+        <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="photo-export" title="Export" style="background:var(--brand-color);color:#fff;border-radius:6px">⬇ Export</button>
       </div>
       <!-- Empty state / Drop zone -->
@@ -619,8 +615,40 @@
         </div>
         <!-- Editor area (shown after image loads) -->
         <div class="photo-editor-area" id="photo-editor-area">
-          <div class="photo-canvas-area">
+          <div class="photo-canvas-area" id="photo-canvas-area">
             <canvas id="photo-canvas"></canvas>
+            <!-- Crop overlay -->
+            <div id="photo-crop-overlay" class="photo-crop-overlay" style="display:none">
+              <div class="crop-selection" id="crop-selection">
+                <div class="crop-handle nw" data-handle="nw"></div>
+                <div class="crop-handle ne" data-handle="ne"></div>
+                <div class="crop-handle sw" data-handle="sw"></div>
+                <div class="crop-handle se" data-handle="se"></div>
+                <div class="crop-handle n" data-handle="n"></div>
+                <div class="crop-handle s" data-handle="s"></div>
+                <div class="crop-handle e" data-handle="e"></div>
+                <div class="crop-handle w" data-handle="w"></div>
+                <div class="crop-info" id="crop-info"></div>
+              </div>
+            </div>
+            <!-- Crop toolbar -->
+            <div id="photo-crop-bar" class="photo-crop-bar" style="display:none">
+              <select id="crop-ratio">
+                <option value="free">Free</option>
+                <option value="1:1">1:1</option>
+                <option value="4:3">4:3</option>
+                <option value="3:2">3:2</option>
+                <option value="16:9">16:9</option>
+                <option value="9:16">9:16 (Portrait)</option>
+                <option value="2:3">2:3 (Portrait)</option>
+              </select>
+              <button class="toolbar-btn" id="crop-apply">✓ Apply</button>
+              <button class="toolbar-btn" id="crop-cancel">✗ Cancel</button>
+            </div>
+            <!-- Draw overlay -->
+            <canvas id="photo-draw-canvas" style="display:none;position:absolute;top:0;left:0;cursor:crosshair"></canvas>
+            <!-- Text overlay layer -->
+            <div id="photo-text-layer" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none"></div>
           </div>
           <!-- Right adjustment panel -->
           <div class="photo-panel">
@@ -658,6 +686,39 @@
                 <div class="photo-slider-row"><span class="photo-slider-label">Midpoint</span><input type="range" id="photo-vig-midpoint" min="0" max="100" value="50"><span class="photo-slider-val" id="photo-vig-midpoint-val">50</span></div>
                 <div class="photo-slider-row"><span class="photo-slider-label">Roundness</span><input type="range" id="photo-vig-roundness" min="-100" max="100" value="0"><span class="photo-slider-val" id="photo-vig-roundness-val">0</span></div>
                 <div class="photo-slider-row"><span class="photo-slider-label">Feather</span><input type="range" id="photo-vig-feather" min="0" max="100" value="60"><span class="photo-slider-val" id="photo-vig-feather-val">60</span></div>
+              </div>
+            </div>
+            <!-- HSL (Color Mixer) -->
+            <div class="photo-panel-section">
+              <button class="photo-panel-toggle" data-panel="photo-hsl-panel">HSL / Color</button>
+              <div class="photo-panel-content" id="photo-hsl-panel">
+                <div class="photo-hsl-tabs">
+                  <button class="photo-hsl-tab active" data-hsl-mode="hue">Hue</button>
+                  <button class="photo-hsl-tab" data-hsl-mode="saturation">Sat</button>
+                  <button class="photo-hsl-tab" data-hsl-mode="luminance">Lum</button>
+                </div>
+                <div id="photo-hsl-sliders"></div>
+              </div>
+            </div>
+            <!-- Tone Curve -->
+            <div class="photo-panel-section">
+              <button class="photo-panel-toggle" data-panel="photo-curve-panel">Tone Curve</button>
+              <div class="photo-panel-content" id="photo-curve-panel">
+                <div class="photo-curve-tabs">
+                  <button class="photo-curve-tab active" data-curve="rgb">RGB</button>
+                  <button class="photo-curve-tab" data-curve="red" style="color:#e74c3c">R</button>
+                  <button class="photo-curve-tab" data-curve="green" style="color:#2ecc71">G</button>
+                  <button class="photo-curve-tab" data-curve="blue" style="color:#3498db">B</button>
+                </div>
+                <canvas id="photo-curve-canvas" width="256" height="256" style="width:100%;aspect-ratio:1;border:1px solid var(--border-color);border-radius:4px;cursor:crosshair"></canvas>
+              </div>
+            </div>
+            <!-- Sharpen / Denoise -->
+            <div class="photo-panel-section">
+              <button class="photo-panel-toggle" data-panel="photo-detail-panel">Detail</button>
+              <div class="photo-panel-content" id="photo-detail-panel">
+                <div class="photo-slider-row"><span class="photo-slider-label">Sharpen</span><input type="range" id="photo-sharpen" min="0" max="100" value="0"><span class="photo-slider-val" id="photo-sharpen-val">0</span></div>
+                <div class="photo-slider-row"><span class="photo-slider-label">Denoise</span><input type="range" id="photo-denoise" min="0" max="100" value="0"><span class="photo-slider-val" id="photo-denoise-val">0</span></div>
               </div>
             </div>
             <!-- Grain -->

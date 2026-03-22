@@ -52,6 +52,9 @@ export function colorTempToRGB(tempK) {
 const DEFAULT_HSL_CHANNEL = { hue: 0, saturation: 0, luminance: 0 };
 
 export const DEFAULT_PARAMS = {
+  rotation: 0,
+  flipH: false,
+  flipV: false,
   exposure: 0,
   contrast: 0,
   highlights: 0,
