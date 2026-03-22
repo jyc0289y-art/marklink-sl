@@ -1899,3 +1899,4 @@ function startImageResize(e, img, cursor) {
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
 }
+

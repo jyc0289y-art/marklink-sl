@@ -501,6 +501,12 @@ function startPresentation() {
     }
 
     counter.textContent = `${idx + 1} / ${slides.length}`;
+    if (slideCounter) slideCounter.textContent = `${idx + 1}/${slides.length}`;
+
+    // Apply custom background in presentation
+    if (slide.customBg) {
+      slideEl.style.background = slide.customBg;
+    }
 
     // Play object animations
     const anims = slide.animations || [];
@@ -542,6 +548,7 @@ function startPresentation() {
   const handler = (e) => {
     if (e.key === 'Escape') {
       document.exitFullscreen?.().catch(() => {});
+      clearInterval(timerInterval);
       overlay.remove();
       document.removeEventListener('keydown', handler);
     } else if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') {
@@ -592,6 +599,27 @@ function startPresentation() {
     };
     presToolbar.appendChild(btn);
   });
+
+  // Presenter timer
+  const timerEl = document.createElement('span');
+  timerEl.style.cssText = 'color:#fff;font-size:13px;font-family:monospace;padding:0 8px;min-width:60px;text-align:center;display:flex;align-items:center';
+  timerEl.textContent = '00:00';
+  presToolbar.appendChild(timerEl);
+
+  const timerStart = Date.now();
+  const timerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - timerStart) / 1000);
+    const min = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const sec = String(elapsed % 60).padStart(2, '0');
+    timerEl.textContent = `${min}:${sec}`;
+  }, 1000);
+
+  // Slide counter
+  const slideCounter = document.createElement('span');
+  slideCounter.className = 'pres-slide-counter';
+  slideCounter.style.cssText = 'color:rgba(255,255,255,0.7);font-size:12px;padding:0 8px;display:flex;align-items:center';
+  slideCounter.textContent = `${presIdx + 1}/${slides.length}`;
+  presToolbar.appendChild(slideCounter);
 
   // Pen canvas overlay
   const penCanvas = document.createElement('canvas');
@@ -646,6 +674,7 @@ function startPresentation() {
       showSlide(presIdx, 1);
     } else {
       document.exitFullscreen?.().catch(() => {});
+      clearInterval(timerInterval);
       overlay.remove();
       document.removeEventListener('keydown', handler);
     }

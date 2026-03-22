@@ -234,6 +234,34 @@ function bindEvents() {
     }
   });
 
+  // Cell note tooltip on hover
+  let noteTooltip = null;
+  gridEl.addEventListener('mouseover', (e) => {
+    const indicator = e.target.closest('.cell-note-indicator');
+    if (indicator) {
+      const td = indicator.closest('td[data-row]');
+      if (!td) return;
+      const r = parseInt(td.dataset.row), c = parseInt(td.dataset.col);
+      const note = cellNotes[`${r},${c}`];
+      if (!note) return;
+      if (noteTooltip) noteTooltip.remove();
+      noteTooltip = document.createElement('div');
+      noteTooltip.className = 'sheet-note-tooltip';
+      noteTooltip.style.cssText = 'position:fixed;background:#fffde7;color:#333;padding:8px 12px;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.2);max-width:250px;font-size:12px;line-height:1.4;z-index:9999;white-space:pre-wrap;border-left:3px solid #f59e0b;';
+      noteTooltip.textContent = note;
+      const rect = indicator.getBoundingClientRect();
+      noteTooltip.style.left = rect.right + 4 + 'px';
+      noteTooltip.style.top = rect.top + 'px';
+      document.body.appendChild(noteTooltip);
+    }
+  });
+  gridEl.addEventListener('mouseout', (e) => {
+    if (e.target.closest('.cell-note-indicator') && noteTooltip) {
+      noteTooltip.remove();
+      noteTooltip = null;
+    }
+  });
+
   // Cell click → select or insert reference
   gridEl.addEventListener('mousedown', (e) => {
     const td = e.target.closest('td[data-row]');
@@ -438,6 +466,37 @@ function bindEvents() {
     if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
       e.preventDefault();
       sheetRedo();
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+      e.preventDefault();
+      sheetRedo();
+      return;
+    }
+
+    // Bold / Italic / Underline
+    if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+      e.preventDefault();
+      document.getElementById('sheet-bold')?.click();
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'i') {
+      e.preventDefault();
+      document.getElementById('sheet-italic')?.click();
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'u') {
+      e.preventDefault();
+      document.getElementById('sheet-underline')?.click();
+      return;
+    }
+
+    // Select All
+    if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+      e.preventDefault();
+      selAnchorRow = 0; selAnchorCol = 0;
+      selectedRow = sheet.rows - 1; selectedCol = sheet.cols - 1;
+      renderGrid(); updateSelection();
       return;
     }
 
