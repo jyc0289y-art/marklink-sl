@@ -6,11 +6,12 @@ const DEFAULT_COLS = 26;
 /**
  * Create a new empty sheet data model
  */
-export function createSheetData(rows = DEFAULT_ROWS, cols = DEFAULT_COLS) {
+export function createSheetData(rows = DEFAULT_ROWS, cols = DEFAULT_COLS, name) {
   return {
     rows,
     cols,
     cells: {}, // key: "R,C" → { raw, value, format }
+    name: name || null, // Sheet name for cross-sheet references
   };
 }
 
@@ -25,7 +26,7 @@ export function getCell(sheet, r, c) {
 }
 
 /** Set cell raw value and compute */
-export function setCell(sheet, r, c, rawValue) {
+export function setCell(sheet, r, c, rawValue, allSheets) {
   const key = cellKey(r, c);
   if (rawValue === '' || rawValue == null) {
     delete sheet.cells[key];
@@ -35,7 +36,7 @@ export function setCell(sheet, r, c, rawValue) {
     sheet.cells[key] = { raw: '', value: '', format: {} };
   }
   sheet.cells[key].raw = String(rawValue);
-  sheet.cells[key].value = evaluate(sheet, String(rawValue));
+  sheet.cells[key].value = evaluate(sheet, String(rawValue), allSheets);
 }
 
 /** Set cell format property */
@@ -169,18 +170,44 @@ export function deleteCol(sheet, colIdx) {
 }
 
 /** Recalculate all formula cells */
-export function recalcAll(sheet) {
+export function recalcAll(sheet, allSheets) {
   for (const [key, cell] of Object.entries(sheet.cells)) {
     if (cell.raw.startsWith('=')) {
-      cell.value = evaluate(sheet, cell.raw);
+      cell.value = evaluate(sheet, cell.raw, allSheets);
     }
   }
+}
+
+// Module-level evaluation context for cross-sheet references
+let _evalSheets = null; // set during evaluation to enable Sheet2!A1 syntax
+
+/**
+ * Resolve a cross-sheet reference like "Sheet2!A1" or "'My Sheet'!A1:B3"
+ * Returns { sheet, ref } where ref is the cell/range part without sheet prefix
+ */
+function resolveSheetRef(currentSheet, refStr) {
+  if (!_evalSheets) return { sheet: currentSheet, ref: refStr };
+  const sheetMatch = refStr.match(/^(?:'([^']+)'|SHEET(\d+))!(.+)$/i);
+  if (!sheetMatch) return { sheet: currentSheet, ref: refStr };
+  const sheetName = (sheetMatch[1] || sheetMatch[2]).toUpperCase();
+  const cellRef = sheetMatch[3];
+  // Try numeric index (Sheet1, Sheet2, ...)
+  if (/^\d+$/.test(sheetName)) {
+    const idx = parseInt(sheetName, 10) - 1;
+    if (idx >= 0 && idx < _evalSheets.length) return { sheet: _evalSheets[idx], ref: cellRef };
+  }
+  // Match by sheet name property
+  for (let i = 0; i < _evalSheets.length; i++) {
+    const sName = (_evalSheets[i].name || `Sheet${i + 1}`).toUpperCase();
+    if (sName === sheetName) return { sheet: _evalSheets[i], ref: cellRef };
+  }
+  return { sheet: currentSheet, ref: refStr };
 }
 
 /**
  * Evaluate a cell value — supports formulas starting with '='
  */
-function evaluate(sheet, raw) {
+function evaluate(sheet, raw, allSheets) {
   if (!raw.startsWith('=')) {
     // Try number
     const num = Number(raw);
@@ -188,9 +215,14 @@ function evaluate(sheet, raw) {
   }
 
   try {
+    const prevSheets = _evalSheets;
+    _evalSheets = allSheets || null;
     const expr = raw.substring(1).toUpperCase();
-    return evalFormula(sheet, expr);
+    const result = evalFormula(sheet, expr);
+    _evalSheets = prevSheets;
+    return result;
   } catch (e) {
+    _evalSheets = null;
     return '#ERROR';
   }
 }
@@ -308,6 +340,40 @@ function evalFormula(sheet, expr) {
           if (row[0] == lookupVal || String(row[0]) === String(lookupVal)) {
             return colIndex < row.length ? row[colIndex] : '#REF';
           }
+        }
+        return '#N/A';
+      }
+      case 'XLOOKUP': {
+        const args = splitArgs(argsStr);
+        if (args.length < 3) return '#ERROR';
+        const lookupVal = evalSimpleExpr(sheet, args[0]);
+        const lookupRange = resolveRange(sheet, args[1]);
+        const returnRange = resolveRange(sheet, args[2]);
+        const ifNotFound = args[3] ? evalSimpleExpr(sheet, args[3]) : '#N/A';
+        const matchMode = args[4] ? Number(evalSimpleExpr(sheet, args[4])) : 0;
+        for (let i = 0; i < lookupRange.length; i++) {
+          let found = false;
+          if (matchMode === 0) found = String(lookupRange[i]).toLowerCase() === String(lookupVal).toLowerCase() || lookupRange[i] == lookupVal;
+          else if (matchMode === -1) found = lookupRange[i] == lookupVal || (typeof lookupRange[i] === 'number' && lookupRange[i] <= lookupVal);
+          else if (matchMode === 1) found = lookupRange[i] == lookupVal || (typeof lookupRange[i] === 'number' && lookupRange[i] >= lookupVal);
+          else if (matchMode === 2) found = String(lookupRange[i]).toLowerCase().includes(String(lookupVal).toLowerCase());
+          if (found) return i < returnRange.length ? returnRange[i] : '#REF';
+        }
+        return ifNotFound;
+      }
+      case 'XMATCH': {
+        const args = splitArgs(argsStr);
+        if (args.length < 2) return '#ERROR';
+        const lookupVal = evalSimpleExpr(sheet, args[0]);
+        const lookupRange = resolveRange(sheet, args[1]);
+        const matchMode = args[2] ? Number(evalSimpleExpr(sheet, args[2])) : 0;
+        for (let i = 0; i < lookupRange.length; i++) {
+          let found = false;
+          if (matchMode === 0) found = String(lookupRange[i]).toLowerCase() === String(lookupVal).toLowerCase() || lookupRange[i] == lookupVal;
+          else if (matchMode === -1) found = typeof lookupRange[i] === 'number' && lookupRange[i] <= lookupVal;
+          else if (matchMode === 1) found = typeof lookupRange[i] === 'number' && lookupRange[i] >= lookupVal;
+          else if (matchMode === 2) found = String(lookupRange[i]).toLowerCase().includes(String(lookupVal).toLowerCase());
+          if (found) return i + 1;
         }
         return '#N/A';
       }
@@ -924,9 +990,10 @@ function matchCriteria(value, criteria) {
   return String(value).toLowerCase() === cs.toLowerCase();
 }
 
-/** Resolve range as 2D table (for VLOOKUP) */
+/** Resolve range as 2D table (for VLOOKUP), supports cross-sheet refs */
 function resolveRangeAsTable(sheet, rangeStr) {
-  const part = rangeStr.trim();
+  const { sheet: targetSheet, ref: part0 } = resolveSheetRef(sheet, rangeStr.trim());
+  const part = part0.trim();
   if (!part.includes(':')) return [];
   const [startRef, endRef] = part.split(':');
   const start = refToRC(startRef.trim());
@@ -940,7 +1007,7 @@ function resolveRangeAsTable(sheet, rangeStr) {
   for (let r = r1; r <= r2; r++) {
     const row = [];
     for (let c = c1; c <= c2; c++) {
-      const v = getDisplayValue(sheet, r, c);
+      const v = getDisplayValue(targetSheet, r, c);
       const num = Number(v);
       row.push(isNaN(num) || v === '' ? v : num);
     }
@@ -951,10 +1018,21 @@ function resolveRangeAsTable(sheet, rangeStr) {
 
 /**
  * Evaluate simple arithmetic expression with cell references
+ * Supports cross-sheet refs: Sheet2!A1, 'My Sheet'!A1
  */
 function evalSimpleExpr(sheet, expr) {
-  // Replace cell references with values
-  const resolved = expr.replace(/\b([A-Z]+\d+)\b/g, (match) => {
+  // Replace cross-sheet cell references first (Sheet2!A1 or 'Sheet Name'!A1)
+  let resolved = expr.replace(/(?:'([^']+)'|SHEET(\d+))!([A-Z]+\d+)/gi, (match, quotedName, numName, cellRef) => {
+    const { sheet: targetSheet, ref } = resolveSheetRef(sheet, match);
+    const rc = refToRC(ref.toUpperCase());
+    if (!rc) return match;
+    const val = getDisplayValue(targetSheet, rc[0], rc[1]);
+    const num = Number(val);
+    return isNaN(num) ? `"${val}"` : num;
+  });
+
+  // Replace regular cell references with values
+  resolved = resolved.replace(/\b([A-Z]+\d+)\b/g, (match) => {
     const rc = refToRC(match);
     if (!rc) return match;
     const val = getDisplayValue(sheet, rc[0], rc[1]);
@@ -1005,17 +1083,20 @@ function unitConvert(val, from, to) {
 }
 
 /**
- * Resolve a range like "A1:B3" or "A1,B2,C3" to array of values
+ * Resolve a range like "A1:B3", "Sheet2!A1:B3", or "A1,B2,C3" to array of values
  */
 function resolveRange(sheet, rangeStr) {
   const values = [];
 
-  // Handle comma-separated refs/ranges
-  const parts = rangeStr.split(',').map(s => s.trim());
+  // Handle comma-separated refs/ranges (but not inside sheet name quotes)
+  const parts = splitArgs(rangeStr);
   for (const part of parts) {
-    if (part.includes(':')) {
+    // Resolve cross-sheet reference
+    const { sheet: targetSheet, ref: cleanRef } = resolveSheetRef(sheet, part.trim());
+
+    if (cleanRef.includes(':')) {
       // Range: A1:B3
-      const [startRef, endRef] = part.split(':');
+      const [startRef, endRef] = cleanRef.split(':');
       const start = refToRC(startRef.trim());
       const end = refToRC(endRef.trim());
       if (!start || !end) continue;
@@ -1025,16 +1106,16 @@ function resolveRange(sheet, rangeStr) {
       const c2 = Math.max(start[1], end[1]);
       for (let r = r1; r <= r2; r++) {
         for (let c = c1; c <= c2; c++) {
-          const v = getDisplayValue(sheet, r, c);
+          const v = getDisplayValue(targetSheet, r, c);
           const num = Number(v);
           values.push(isNaN(num) ? v : num);
         }
       }
     } else {
       // Single cell
-      const rc = refToRC(part);
+      const rc = refToRC(cleanRef);
       if (!rc) continue;
-      const v = getDisplayValue(sheet, rc[0], rc[1]);
+      const v = getDisplayValue(targetSheet, rc[0], rc[1]);
       const num = Number(v);
       values.push(isNaN(num) ? v : num);
     }

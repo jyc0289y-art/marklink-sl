@@ -299,12 +299,44 @@
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     flex-wrap: nowrap;
+    min-height: 30px;
+    padding: 2px 4px;
+    gap: 2px;
   }
   .sheet-toolbar::-webkit-scrollbar { display: none; }
   .sheet-toolbar .toolbar-btn {
     flex-shrink: 0;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 4px;
   }
-  .sheet-cell-ref { flex-shrink: 0; }
-  .sheet-fx-label { flex-shrink: 0; }
-  .sheet-formula-bar { min-width: 120px; }
+  .sheet-cell-ref { flex-shrink: 0; min-width: 36px; font-size: 10px; padding: 2px 4px; }
+  .sheet-fx-label { flex-shrink: 0; font-size: 10px; }
+  .sheet-formula-bar { min-width: 100px; font-size: 12px; }
+
+  /* Larger touch targets for cells */
+  .sheet-grid td {
+    min-height: 28px;
+    padding: 3px 4px;
+  }
+  .sheet-grid th {
+    min-height: 24px;
+    font-size: 10px;
+  }
+
+  /* Sheet tabs horizontal scroll */
+  .sheet-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+  }
+  .sheet-tabs::-webkit-scrollbar { display: none; }
+  .sheet-tab { flex-shrink: 0; }
+
+  /* Scroll container for grid */
+  #sheet-container {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }

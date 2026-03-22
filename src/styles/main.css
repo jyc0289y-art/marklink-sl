@@ -387,6 +387,21 @@ html, body {
   white-space: nowrap;
 }
 
+.unsaved-indicator {
+  color: #ff6b35;
+  font-size: 10px;
+  margin-left: 4px;
+  animation: pulse-unsaved 2s ease-in-out infinite;
+}
+@keyframes pulse-unsaved {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.zoom-controls {
+  font-size: 12px;
+}
+
 /* App Container */
 .app-container {
   display: flex;
@@ -710,8 +725,8 @@ html.rtl .lang-picker-grid {
   }
   /* Hide less essential toolbar buttons on mobile */
   #btn-bold, #btn-italic, #btn-heading, #btn-code, #btn-list, #btn-link, #btn-table,
-  #btn-sidebar, #btn-export, #btn-tutorial,
-  .toolbar-filename {
+  #btn-sidebar, #btn-export, #btn-tutorial, #btn-templates, #btn-feedback,
+  .toolbar-filename, .zoom-controls, .unsaved-indicator, #btn-undo, #btn-redo {
     display: none !important;
   }
   .lang-btn {
@@ -727,18 +742,72 @@ html.rtl .lang-picker-grid {
     font-size: 14px;
   }
 
-  /* Compact tab bar */
+  /* Compact tab bar — horizontal scrollable */
   .tab-bar {
-    height: 30px;
+    height: 32px;
     padding: 0 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
   }
+  .tab-bar::-webkit-scrollbar { display: none; }
   .tab-item {
     padding: 4px 10px;
     font-size: 11px;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   /* App container height adjustment */
   .app-container {
-    height: calc(100vh - 40px - 30px);
+    height: calc(100vh - 40px - 32px);
+  }
+
+  /* Touch-friendly inputs */
+  input, select, textarea, button {
+    font-size: 16px !important; /* prevents iOS zoom on focus */
+  }
+
+  /* Modal dialogs — full-width on mobile */
+  .modal-content, .ai-setup-content {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    max-height: 85vh !important;
+    overflow-y: auto !important;
+  }
+
+  /* Chart containers — fit mobile width */
+  .sheet-chart-container {
+    max-width: calc(100vw - 20px) !important;
+    left: 5px !important;
+  }
+}
+
+/* Extra small screens (< 480px) — phone portrait */
+@media (max-width: 480px) {
+  .toolbar {
+    height: 36px;
+    padding: 0 4px;
+  }
+  .toolbar-brand {
+    font-size: 10px;
+  }
+  .toolbar-btn {
+    width: 26px;
+    height: 26px;
+  }
+  .toolbar-divider {
+    display: none;
+  }
+  .lang-btn {
+    display: none !important;
+  }
+  .tab-item {
+    padding: 3px 8px;
+    font-size: 10px;
+  }
+  .app-container {
+    height: calc(100vh - 36px - 32px);
   }
 }

@@ -443,6 +443,17 @@ export async function initApp() {
   // 25. Auto-save to localStorage
   initAutoSave();
 
+  // 27. Zoom controls
+  initZoomControls();
+
+  // 28. Undo/Redo toolbar buttons
+  document.getElementById('btn-undo')?.addEventListener('click', () => {
+    document.execCommand('undo');
+  });
+  document.getElementById('btn-redo')?.addEventListener('click', () => {
+    document.execCommand('redo');
+  });
+
   // 26. Keyboard shortcuts help
   document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === '/') {
@@ -1283,4 +1294,56 @@ function applyTemplate(type, template) {
       });
     }, 200);
   }
+}
+
+/* ==================== Zoom Controls ==================== */
+
+function initZoomControls() {
+  let zoomLevel = 100;
+  const zoomEl = document.getElementById('zoom-level');
+  const appEl = document.getElementById('app');
+  if (!zoomEl || !appEl) return;
+
+  function applyZoom() {
+    zoomLevel = Math.max(50, Math.min(200, zoomLevel));
+    appEl.style.fontSize = `${zoomLevel}%`;
+    zoomEl.textContent = `${zoomLevel}%`;
+  }
+
+  document.getElementById('btn-zoom-in')?.addEventListener('click', () => {
+    zoomLevel += 10;
+    applyZoom();
+  });
+  document.getElementById('btn-zoom-out')?.addEventListener('click', () => {
+    zoomLevel -= 10;
+    applyZoom();
+  });
+  zoomEl.addEventListener('click', () => {
+    zoomLevel = 100;
+    applyZoom();
+  });
+
+  // Ctrl/Cmd + mousewheel zoom
+  appEl.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      zoomLevel += e.deltaY > 0 ? -10 : 10;
+      applyZoom();
+    }
+  }, { passive: false });
+}
+
+/* ==================== Unsaved Indicator ==================== */
+
+let _hasUnsaved = false;
+export function markUnsaved() {
+  if (_hasUnsaved) return;
+  _hasUnsaved = true;
+  const dot = document.getElementById('unsaved-dot');
+  if (dot) dot.style.display = 'inline';
+}
+export function markSaved() {
+  _hasUnsaved = false;
+  const dot = document.getElementById('unsaved-dot');
+  if (dot) dot.style.display = 'none';
 }

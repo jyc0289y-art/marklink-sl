@@ -1,10 +1,14 @@
 // OfficeLink SL — Sheet UI (grid rendering + interaction)
 
 import {
-  createSheetData, getCell, setCell, setCellFormat,
+  createSheetData, getCell, setCell as _setCell, setCellFormat,
   getDisplayValue, getRawValue, colToLetter, rcToRef, refToRC,
-  addRows, addCols, deleteRow, deleteCol, recalcAll,
+  addRows, addCols, deleteRow, deleteCol, recalcAll as _recalcAll,
 } from './sheet-engine.js';
+
+// Wrappers that pass all sheets for cross-sheet reference support
+function setCell(sheet, r, c, rawValue) { _setCell(sheet, r, c, rawValue, sheets); }
+function recalcAll(sheet) { _recalcAll(sheet, sheets); }
 
 let sheets = [createSheetData()];
 let activeSheetIdx = 0;
@@ -33,7 +37,7 @@ let freezeCols = 0;
 // Formula autocomplete
 const FORMULA_LIST = [
   'SUM','AVERAGE','COUNT','COUNTA','MIN','MAX','IF','SUMIF','COUNTIF','AVERAGEIF',
-  'VLOOKUP','HLOOKUP','INDEX','MATCH','INDIRECT','OFFSET','ROW','COLUMN','ROWS','COLUMNS',
+  'VLOOKUP','HLOOKUP','XLOOKUP','XMATCH','INDEX','MATCH','INDIRECT','OFFSET','ROW','COLUMN','ROWS','COLUMNS',
   'CONCATENATE','CONCAT','LEFT','RIGHT','MID','LEN','TRIM','TEXTJOIN','SUBSTITUTE',
   'REPT','FIND','SEARCH','REPLACE','PROPER','EXACT','VALUE','TEXT',
   'UPPER','LOWER','ROUND','ABS','TODAY','NOW',
@@ -385,7 +389,40 @@ function bindEvents() {
     isDragging = false;
   });
 
-  // Double-click → edit
+  // Touch events for mobile cell selection
+  gridEl.addEventListener('touchstart', (e) => {
+    const td = e.target.closest('td[data-row]');
+    if (!td) return;
+    const r = parseInt(td.dataset.row, 10);
+    const c = parseInt(td.dataset.col, 10);
+    if (isEditing) commitEdit();
+    selectedRow = r; selectedCol = c;
+    selAnchorRow = r; selAnchorCol = c;
+    updateSelection();
+  }, { passive: true });
+
+  gridEl.addEventListener('touchmove', (e) => {
+    const touch = e.touches[0];
+    const td = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('td[data-row]');
+    if (!td) return;
+    const r = parseInt(td.dataset.row, 10);
+    const c = parseInt(td.dataset.col, 10);
+    if (r !== selectedRow || c !== selectedCol) {
+      selectedRow = r; selectedCol = c;
+      updateSelection();
+    }
+  }, { passive: true });
+
+  // Double-click / double-tap → edit
+  let lastTapTime = 0;
+  gridEl.addEventListener('touchend', (e) => {
+    const now = Date.now();
+    if (now - lastTapTime < 300) {
+      startEdit();
+    }
+    lastTapTime = now;
+  });
+
   gridEl.addEventListener('dblclick', (e) => {
     const td = e.target.closest('td[data-row]');
     if (td) startEdit();
@@ -1156,13 +1193,10 @@ function commitEdit() {
   if (val !== undefined) {
     // Data validation check
     const dvRule = validations[`${editingRow},${editingCol}`];
-    if (dvRule && !val.startsWith('=')) {
-      if (dvRule.type === 'list' && dvRule.values && !dvRule.values.includes(val) && val !== '') {
-        alert('Value must be from the list: ' + dvRule.values.join(', '));
-        return;
-      }
-      if (dvRule.type === 'number' && val !== '' && isNaN(parseFloat(val))) {
-        alert('Only numbers allowed in this cell');
+    if (dvRule && !val.startsWith('=') && val !== '') {
+      const dvError = checkDataValidation(dvRule, val);
+      if (dvError) {
+        alert(dvRule.errorMessage || dvError);
         return;
       }
     }
@@ -1519,18 +1553,38 @@ function sortColumn(ascending) {
 
 /* ==================== Sheet Tabs ==================== */
 
+function getSheetName(idx) {
+  return sheets[idx]?.name || `Sheet${idx + 1}`;
+}
+
 function renderSheetTabs() {
   const tabsEl = document.getElementById('sheet-tabs');
   if (!tabsEl) return;
   let html = '';
-  sheets.forEach((_, i) => {
-    html += `<button class="sheet-tab ${i === activeSheetIdx ? 'active' : ''}" data-sheet="${i}">Sheet${i + 1}</button>`;
+  sheets.forEach((s, i) => {
+    const name = getSheetName(i);
+    html += `<button class="sheet-tab ${i === activeSheetIdx ? 'active' : ''}" data-sheet="${i}" title="Double-click to rename">${name}</button>`;
   });
   html += `<button class="sheet-tab-add" id="sheet-add-tab" title="Add Sheet">+</button>`;
   tabsEl.innerHTML = html;
 
+  // Tab click to switch
+  tabsEl.querySelectorAll('.sheet-tab[data-sheet]').forEach(tab => {
+    // Double-click to rename
+    tab.addEventListener('dblclick', (e) => {
+      const idx = parseInt(tab.dataset.sheet, 10);
+      const currentName = getSheetName(idx);
+      const newName = prompt('Rename sheet:', currentName);
+      if (newName && newName.trim()) {
+        sheets[idx].name = newName.trim();
+        renderSheetTabs();
+      }
+    });
+  });
+
   document.getElementById('sheet-add-tab')?.addEventListener('click', () => {
-    sheets.push(createSheetData());
+    const newName = `Sheet${sheets.length + 1}`;
+    sheets.push(createSheetData(undefined, undefined, newName));
     activeSheetIdx = sheets.length - 1;
     renderSheetTabs(); renderGrid();
     selectedRow = 0; selectedCol = 0;
@@ -2184,7 +2238,86 @@ function showCellContextMenu(x, y, r, c) {
 
 /* ==================== Data Validation ==================== */
 
-let validations = {}; // "r,c" → { type, values }
+let validations = {}; // "r,c" → { type, values, operator, min, max, errorMessage }
+
+/** Check data validation rule, returns error message string or null if valid */
+function checkDataValidation(rule, val) {
+  if (!rule || val === '') return null;
+  switch (rule.type) {
+    case 'list':
+      if (rule.values && !rule.values.includes(val)) return `Value must be from the list: ${rule.values.join(', ')}`;
+      break;
+    case 'number': {
+      const n = parseFloat(val);
+      if (isNaN(n)) return 'A number is required';
+      if (rule.operator) {
+        const { operator, min, max } = rule;
+        if (operator === 'between' && (n < min || n > max)) return `Number must be between ${min} and ${max}`;
+        if (operator === 'not_between' && n >= min && n <= max) return `Number must not be between ${min} and ${max}`;
+        if (operator === 'gt' && n <= min) return `Number must be greater than ${min}`;
+        if (operator === 'gte' && n < min) return `Number must be greater than or equal to ${min}`;
+        if (operator === 'lt' && n >= min) return `Number must be less than ${min}`;
+        if (operator === 'lte' && n > min) return `Number must be less than or equal to ${min}`;
+        if (operator === 'eq' && n !== min) return `Number must equal ${min}`;
+        if (operator === 'neq' && n === min) return `Number must not equal ${min}`;
+      }
+      break;
+    }
+    case 'integer': {
+      const n = parseFloat(val);
+      if (isNaN(n) || n !== Math.floor(n)) return 'A whole number is required';
+      if (rule.operator) {
+        const { operator, min, max } = rule;
+        if (operator === 'between' && (n < min || n > max)) return `Number must be between ${min} and ${max}`;
+        if (operator === 'not_between' && n >= min && n <= max) return `Number must not be between ${min} and ${max}`;
+        if (operator === 'gt' && n <= min) return `Must be greater than ${min}`;
+        if (operator === 'gte' && n < min) return `Must be >= ${min}`;
+        if (operator === 'lt' && n >= min) return `Must be less than ${min}`;
+        if (operator === 'lte' && n > min) return `Must be <= ${min}`;
+        if (operator === 'eq' && n !== min) return `Must equal ${min}`;
+        if (operator === 'neq' && n === min) return `Must not equal ${min}`;
+      }
+      break;
+    }
+    case 'text_length': {
+      const len = String(val).length;
+      if (rule.operator) {
+        const { operator, min, max } = rule;
+        if (operator === 'between' && (len < min || len > max)) return `Text length must be between ${min} and ${max}`;
+        if (operator === 'gt' && len <= min) return `Text length must be > ${min}`;
+        if (operator === 'lt' && len >= min) return `Text length must be < ${min}`;
+        if (operator === 'eq' && len !== min) return `Text length must be exactly ${min}`;
+      }
+      break;
+    }
+    case 'date': {
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return 'A valid date is required (YYYY-MM-DD)';
+      if (rule.operator) {
+        const { operator, min, max } = rule;
+        const dMin = min ? new Date(min).getTime() : 0;
+        const dMax = max ? new Date(max).getTime() : 0;
+        const dt = d.getTime();
+        if (operator === 'between' && (dt < dMin || dt > dMax)) return `Date must be between ${min} and ${max}`;
+        if (operator === 'gt' && dt <= dMin) return `Date must be after ${min}`;
+        if (operator === 'lt' && dt >= dMin) return `Date must be before ${min}`;
+      }
+      break;
+    }
+    case 'text':
+      if (!isNaN(parseFloat(val)) && isFinite(val)) return 'Only text allowed (not numbers)';
+      break;
+    case 'email': {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) return 'A valid email address is required';
+      break;
+    }
+    case 'url': {
+      if (!/^https?:\/\/.+/.test(val)) return 'A valid URL is required (http:// or https://)';
+      break;
+    }
+  }
+  return null;
+}
 
 function showDvDropdown(r, c, anchorEl) {
   document.querySelector('.sheet-dv-dropdown')?.remove();
@@ -2226,27 +2359,60 @@ function showDataValidationDialog(r, c) {
   if (existing) existing.remove();
 
   const key = `${r},${c}`;
-  const current = validations[key];
+  const current = validations[key] || {};
+  const inputStyle = 'width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box';
 
   const dialog = document.createElement('div');
   dialog.className = 'ai-setup-modal sheet-dv-dialog';
   dialog.innerHTML = `
-    <div class="ai-setup-content" style="width:380px">
+    <div class="ai-setup-content" style="width:420px">
       <div class="ai-setup-header">
         <h3>Data Validation — ${rcToRef(r, c)}</h3>
         <button class="ai-setup-close">&times;</button>
       </div>
       <div class="ai-setup-body">
         <div style="margin-bottom:12px">
-          <select id="dv-type" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
-            <option value="list" ${current?.type === 'list' ? 'selected' : ''}>Dropdown List</option>
-            <option value="number" ${current?.type === 'number' ? 'selected' : ''}>Number only</option>
-            <option value="text" ${current?.type === 'text' ? 'selected' : ''}>Text only</option>
+          <label style="font-size:12px;color:var(--text-secondary)">Criteria</label>
+          <select id="dv-type" style="${inputStyle}">
+            <option value="list" ${current.type === 'list' ? 'selected' : ''}>Dropdown List</option>
+            <option value="number" ${current.type === 'number' ? 'selected' : ''}>Number</option>
+            <option value="integer" ${current.type === 'integer' ? 'selected' : ''}>Whole Number</option>
+            <option value="text" ${current.type === 'text' ? 'selected' : ''}>Text only</option>
+            <option value="text_length" ${current.type === 'text_length' ? 'selected' : ''}>Text Length</option>
+            <option value="date" ${current.type === 'date' ? 'selected' : ''}>Date</option>
+            <option value="email" ${current.type === 'email' ? 'selected' : ''}>Email</option>
+            <option value="url" ${current.type === 'url' ? 'selected' : ''}>URL</option>
           </select>
         </div>
-        <div id="dv-list-row" style="margin-bottom:12px">
+        <div id="dv-list-row" style="margin-bottom:12px;display:${current.type === 'list' || !current.type ? 'block' : 'none'}">
           <label style="font-size:12px;color:var(--text-secondary)">List items (comma-separated)</label>
-          <input type="text" id="dv-list" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box" placeholder="Yes, No, Maybe" value="${current?.type === 'list' ? current.values.join(', ') : ''}">
+          <input type="text" id="dv-list" style="${inputStyle}" placeholder="Yes, No, Maybe" value="${current.type === 'list' ? (current.values || []).join(', ') : ''}">
+        </div>
+        <div id="dv-operator-row" style="margin-bottom:12px;display:${['number','integer','text_length','date'].includes(current.type) ? 'block' : 'none'}">
+          <label style="font-size:12px;color:var(--text-secondary)">Condition</label>
+          <select id="dv-operator" style="${inputStyle}">
+            <option value="">Any</option>
+            <option value="between" ${current.operator === 'between' ? 'selected' : ''}>Between</option>
+            <option value="not_between" ${current.operator === 'not_between' ? 'selected' : ''}>Not between</option>
+            <option value="gt" ${current.operator === 'gt' ? 'selected' : ''}>Greater than</option>
+            <option value="gte" ${current.operator === 'gte' ? 'selected' : ''}>Greater than or equal</option>
+            <option value="lt" ${current.operator === 'lt' ? 'selected' : ''}>Less than</option>
+            <option value="lte" ${current.operator === 'lte' ? 'selected' : ''}>Less than or equal</option>
+            <option value="eq" ${current.operator === 'eq' ? 'selected' : ''}>Equal to</option>
+            <option value="neq" ${current.operator === 'neq' ? 'selected' : ''}>Not equal to</option>
+          </select>
+        </div>
+        <div id="dv-min-row" style="margin-bottom:12px;display:${current.operator ? 'block' : 'none'}">
+          <label style="font-size:12px;color:var(--text-secondary)" id="dv-min-label">Value</label>
+          <input type="text" id="dv-min" style="${inputStyle}" value="${current.min ?? ''}">
+        </div>
+        <div id="dv-max-row" style="margin-bottom:12px;display:${['between','not_between'].includes(current.operator) ? 'block' : 'none'}">
+          <label style="font-size:12px;color:var(--text-secondary)">Maximum</label>
+          <input type="text" id="dv-max" style="${inputStyle}" value="${current.max ?? ''}">
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:12px;color:var(--text-secondary)">Error message (optional)</label>
+          <input type="text" id="dv-error" style="${inputStyle}" placeholder="Custom error message" value="${current.errorMessage || ''}">
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button class="ai-pull-btn" id="dv-remove">Remove</button>
@@ -2258,35 +2424,70 @@ function showDataValidationDialog(r, c) {
 
   document.body.appendChild(dialog);
 
+  const typeEl = dialog.querySelector('#dv-type');
+  const listRow = dialog.querySelector('#dv-list-row');
+  const opRow = dialog.querySelector('#dv-operator-row');
+  const minRow = dialog.querySelector('#dv-min-row');
+  const maxRow = dialog.querySelector('#dv-max-row');
+  const minLabel = dialog.querySelector('#dv-min-label');
+  const opEl = dialog.querySelector('#dv-operator');
+
+  function updateDvUI() {
+    const type = typeEl.value;
+    const hasOp = ['number','integer','text_length','date'].includes(type);
+    listRow.style.display = type === 'list' ? 'block' : 'none';
+    opRow.style.display = hasOp ? 'block' : 'none';
+    if (!hasOp) { minRow.style.display = 'none'; maxRow.style.display = 'none'; return; }
+    const op = opEl.value;
+    minRow.style.display = op ? 'block' : 'none';
+    maxRow.style.display = ['between','not_between'].includes(op) ? 'block' : 'none';
+    minLabel.textContent = ['between','not_between'].includes(op) ? 'Minimum' : 'Value';
+  }
+
+  typeEl.addEventListener('change', updateDvUI);
+  opEl.addEventListener('change', updateDvUI);
+
   dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
   dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
 
   dialog.querySelector('#dv-remove')?.addEventListener('click', () => {
-    delete validations[key];
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    for (let rr = r1; rr <= r2; rr++)
+      for (let cc = c1; cc <= c2; cc++)
+        delete validations[`${rr},${cc}`];
     renderGrid(); updateSelection();
     dialog.remove();
   });
 
   dialog.querySelector('#dv-apply')?.addEventListener('click', () => {
-    const type = dialog.querySelector('#dv-type').value;
+    const type = typeEl.value;
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    const errorMessage = dialog.querySelector('#dv-error').value.trim() || undefined;
+    let rule = { type, errorMessage };
+
     if (type === 'list') {
       const vals = dialog.querySelector('#dv-list').value.split(',').map(s => s.trim()).filter(Boolean);
       if (vals.length === 0) return;
-      // Apply to entire selection range
-      const { r1, r2, c1, c2 } = getSelectionRange();
-      for (let rr = r1; rr <= r2; rr++) {
-        for (let cc = c1; cc <= c2; cc++) {
-          validations[`${rr},${cc}`] = { type: 'list', values: vals };
-        }
-      }
-    } else {
-      const { r1, r2, c1, c2 } = getSelectionRange();
-      for (let rr = r1; rr <= r2; rr++) {
-        for (let cc = c1; cc <= c2; cc++) {
-          validations[`${rr},${cc}`] = { type };
+      rule.values = vals;
+    } else if (['number','integer','text_length','date'].includes(type)) {
+      const op = opEl.value;
+      if (op) {
+        rule.operator = op;
+        const minVal = dialog.querySelector('#dv-min').value.trim();
+        if (type === 'date') {
+          rule.min = minVal;
+          rule.max = dialog.querySelector('#dv-max').value.trim() || undefined;
+        } else {
+          rule.min = parseFloat(minVal) || 0;
+          rule.max = ['between','not_between'].includes(op) ? (parseFloat(dialog.querySelector('#dv-max').value) || 0) : undefined;
         }
       }
     }
+
+    for (let rr = r1; rr <= r2; rr++)
+      for (let cc = c1; cc <= c2; cc++)
+        validations[`${rr},${cc}`] = { ...rule };
+
     renderGrid(); updateSelection();
     dialog.remove();
   });
@@ -3004,12 +3205,16 @@ function showChartDialog() {
           <option value="scatter">Scatter Plot</option>
           <option value="doughnut">Doughnut</option>
           <option value="radar">Radar Chart</option>
+          <option value="stacked_column">Stacked Column</option>
+          <option value="stacked_bar">Stacked Bar</option>
+          <option value="waterfall">Waterfall</option>
         </select>
         <label style="font-size:12px;font-weight:600">Title</label>
         <input id="chart-title" value="Chart" style="width:100%;padding:6px;margin:4px 0 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
         <label style="font-size:12px"><input type="checkbox" id="chart-legend" checked> Show Legend</label><br>
         <label style="font-size:12px"><input type="checkbox" id="chart-first-row-labels" checked> First row as labels</label><br>
-        <label style="font-size:12px"><input type="checkbox" id="chart-first-col-labels" checked> First column as labels</label>
+        <label style="font-size:12px"><input type="checkbox" id="chart-first-col-labels" checked> First column as labels</label><br>
+        <label style="font-size:12px"><input type="checkbox" id="chart-trendline"> Show Trendline</label>
       </div>
       <div style="flex:1;border:1px solid var(--border-color);border-radius:4px;padding:8px;min-height:300px;display:flex;align-items:center;justify-content:center" id="chart-preview-area">
         <canvas id="chart-preview-canvas" width="400" height="280"></canvas>
@@ -3027,10 +3232,11 @@ function showChartDialog() {
   const legendEl = dlg.querySelector('#chart-legend');
   const firstRowEl = dlg.querySelector('#chart-first-row-labels');
   const firstColEl = dlg.querySelector('#chart-first-col-labels');
+  const trendlineEl = dlg.querySelector('#chart-trendline');
   const canvas = dlg.querySelector('#chart-preview-canvas');
 
   function updatePreview() {
-    renderChartToCanvas(canvas, dataRows, typeEl.value, titleEl.value, legendEl.checked, firstRowEl.checked, firstColEl.checked);
+    renderChartToCanvas(canvas, dataRows, typeEl.value, titleEl.value, legendEl.checked, firstRowEl.checked, firstColEl.checked, trendlineEl.checked);
   }
   updatePreview();
   typeEl.onchange = updatePreview;
@@ -3038,25 +3244,117 @@ function showChartDialog() {
   legendEl.onchange = updatePreview;
   firstRowEl.onchange = updatePreview;
   firstColEl.onchange = updatePreview;
+  trendlineEl.onchange = updatePreview;
 
   dlg.querySelector('#chart-cancel').onclick = () => dlg.remove();
   dlg.querySelector('#chart-insert').onclick = () => {
     chartCounter++;
-    const chartId = `chart-${chartCounter}`;
-    const chartDiv = document.createElement('div');
-    chartDiv.className = 'sheet-chart-container';
-    chartDiv.id = chartId;
-    chartDiv.style.cssText = 'position:absolute;width:480px;height:340px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);padding:8px;z-index:100;cursor:move;left:40px;top:40px';
-    chartDiv.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-      <span style="font-size:11px;color:var(--text-secondary)">Chart ${chartCounter}</span>
-      <button onclick="this.closest('.sheet-chart-container').remove()" style="border:none;background:none;cursor:pointer;font-size:14px;color:var(--text-secondary)">✕</button>
+    const chartConfig = {
+      dataRows: JSON.parse(JSON.stringify(dataRows)),
+      type: typeEl.value,
+      title: titleEl.value,
+      showLegend: legendEl.checked,
+      firstRowLabels: firstRowEl.checked,
+      firstColLabels: firstColEl.checked,
+      trendline: trendlineEl.checked,
+    };
+    insertChartWidget(chartConfig);
+    dlg.remove();
+  };
+}
+
+function insertChartWidget(config, left = 40, top = 40, width = 480, height = 340) {
+  chartCounter++;
+  const chartId = `chart-${chartCounter}`;
+  const chartDiv = document.createElement('div');
+  chartDiv.className = 'sheet-chart-container';
+  chartDiv.id = chartId;
+  chartDiv.style.cssText = `position:absolute;width:${width}px;height:${height}px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);padding:8px;z-index:100;cursor:move;left:${left}px;top:${top}px;resize:both;overflow:hidden`;
+  chartDiv.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+    <span style="font-size:11px;color:var(--text-secondary)">${config.title || 'Chart'}</span>
+    <div style="display:flex;gap:4px">
+      <button class="chart-edit-btn" style="border:none;background:none;cursor:pointer;font-size:12px;color:var(--text-secondary)" title="Edit Chart">✎</button>
+      <button class="chart-close-btn" style="border:none;background:none;cursor:pointer;font-size:14px;color:var(--text-secondary)" title="Remove">✕</button>
     </div>
-    <canvas width="460" height="300"></canvas>`;
-    containerEl.style.position = 'relative';
-    containerEl.appendChild(chartDiv);
-    const c2 = chartDiv.querySelector('canvas');
-    renderChartToCanvas(c2, dataRows, typeEl.value, titleEl.value, legendEl.checked, firstRowEl.checked, firstColEl.checked);
-    makeDraggable(chartDiv);
+  </div>
+  <canvas width="${width - 20}" height="${height - 40}"></canvas>`;
+  containerEl.style.position = 'relative';
+  containerEl.appendChild(chartDiv);
+
+  // Store config on the element for editing
+  chartDiv._chartConfig = config;
+
+  const canvasEl = chartDiv.querySelector('canvas');
+  renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline);
+  makeDraggable(chartDiv);
+
+  // Close button
+  chartDiv.querySelector('.chart-close-btn').onclick = () => chartDiv.remove();
+
+  // Edit button — re-open chart dialog with current settings
+  chartDiv.querySelector('.chart-edit-btn').onclick = () => editChart(chartDiv);
+
+  // Resize observer — re-render chart when container is resized
+  const ro = new ResizeObserver(() => {
+    const cw = chartDiv.clientWidth - 20;
+    const ch = chartDiv.clientHeight - 40;
+    if (cw > 0 && ch > 0) {
+      canvasEl.width = cw;
+      canvasEl.height = ch;
+      renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline);
+    }
+  });
+  ro.observe(chartDiv);
+}
+
+function editChart(chartDiv) {
+  const config = chartDiv._chartConfig;
+  if (!config) return;
+  const inputStyle = 'width:100%;padding:6px;margin:4px 0 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)';
+
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay';
+  dlg.innerHTML = `<div class="modal-content" style="width:500px;max-height:90vh;overflow:auto">
+    <h3 style="margin:0 0 12px">Edit Chart</h3>
+    <div style="margin-bottom:8px">
+      <label style="font-size:12px;font-weight:600">Chart Type</label>
+      <select id="edit-chart-type" style="${inputStyle}">
+        <option value="bar" ${config.type==='bar'?'selected':''}>Bar</option>
+        <option value="column" ${config.type==='column'?'selected':''}>Column</option>
+        <option value="line" ${config.type==='line'?'selected':''}>Line</option>
+        <option value="area" ${config.type==='area'?'selected':''}>Area</option>
+        <option value="pie" ${config.type==='pie'?'selected':''}>Pie</option>
+        <option value="scatter" ${config.type==='scatter'?'selected':''}>Scatter</option>
+        <option value="doughnut" ${config.type==='doughnut'?'selected':''}>Doughnut</option>
+        <option value="radar" ${config.type==='radar'?'selected':''}>Radar</option>
+        <option value="stacked_column" ${config.type==='stacked_column'?'selected':''}>Stacked Column</option>
+        <option value="stacked_bar" ${config.type==='stacked_bar'?'selected':''}>Stacked Bar</option>
+        <option value="waterfall" ${config.type==='waterfall'?'selected':''}>Waterfall</option>
+      </select>
+    </div>
+    <div style="margin-bottom:8px">
+      <label style="font-size:12px;font-weight:600">Title</label>
+      <input id="edit-chart-title" value="${config.title}" style="${inputStyle}">
+    </div>
+    <label style="font-size:12px"><input type="checkbox" id="edit-chart-legend" ${config.showLegend?'checked':''}> Show Legend</label><br>
+    <label style="font-size:12px"><input type="checkbox" id="edit-chart-trendline" ${config.trendline?'checked':''}> Show Trendline</label>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="toolbar-btn" id="edit-chart-cancel" style="padding:6px 16px">Cancel</button>
+      <button class="toolbar-btn" id="edit-chart-apply" style="padding:6px 16px;background:var(--accent-color);color:white;border-radius:4px">Apply</button>
+    </div>
+  </div>`;
+  document.body.appendChild(dlg);
+
+  dlg.querySelector('#edit-chart-cancel').onclick = () => dlg.remove();
+  dlg.querySelector('#edit-chart-apply').onclick = () => {
+    config.type = dlg.querySelector('#edit-chart-type').value;
+    config.title = dlg.querySelector('#edit-chart-title').value;
+    config.showLegend = dlg.querySelector('#edit-chart-legend').checked;
+    config.trendline = dlg.querySelector('#edit-chart-trendline').checked;
+    chartDiv._chartConfig = config;
+    chartDiv.querySelector('span').textContent = config.title;
+    const canvasEl = chartDiv.querySelector('canvas');
+    renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline);
     dlg.remove();
   };
 }
@@ -3064,7 +3362,7 @@ function showChartDialog() {
 function makeDraggable(el) {
   let ox, oy, sx, sy;
   el.onmousedown = (e) => {
-    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'CANVAS') return;
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'CANVAS' || e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
     ox = e.clientX; oy = e.clientY;
     sx = el.offsetLeft; sy = el.offsetTop;
     const move = (ev) => { el.style.left = (sx + ev.clientX - ox) + 'px'; el.style.top = (sy + ev.clientY - oy) + 'px'; };
@@ -3076,7 +3374,7 @@ function makeDraggable(el) {
 
 const CHART_COLORS = ['#4285f4','#ea4335','#fbbc05','#34a853','#ff6d01','#46bdc6','#7baaf7','#f07b72','#fdd663','#57bb8a','#ff9e40','#78d5dd'];
 
-function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRowLabels, firstColLabels) {
+function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRowLabels, firstColLabels, showTrendline) {
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
@@ -3227,6 +3525,82 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
       const x = pad.left + (xs[i] / xMax) * cW;
       const y = pad.top + cH - (ys[i] / yMax) * cH;
       ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (type === 'stacked_column') {
+    const grpW = cW / n;
+    // Recalculate max for stacked
+    const stackMax = Math.max(...labels.map((_, i) => series.reduce((sum, s) => sum + Math.max(0, s[i] || 0), 0)), 1);
+    for (let i = 0; i < n; i++) {
+      const x = pad.left + i * grpW;
+      ctx.fillStyle = textColor;
+      ctx.fillText(labels[i] || '', x + grpW / 2, pad.top + cH + 14);
+      let cumY = 0;
+      for (let s = 0; s < series.length; s++) {
+        const v = Math.max(0, series[s][i] || 0);
+        const barH = (v / stackMax) * cH;
+        ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+        ctx.fillRect(x + grpW * 0.15, pad.top + cH - cumY - barH, grpW * 0.7, barH);
+        cumY += barH;
+      }
+    }
+  } else if (type === 'stacked_bar') {
+    const stackMax = Math.max(...labels.map((_, i) => series.reduce((sum, s) => sum + Math.max(0, s[i] || 0), 0)), 1);
+    for (let i = 0; i < n; i++) {
+      const baseY = pad.top + (i / n) * cH;
+      const barH = cH / n * 0.7;
+      ctx.fillStyle = textColor;
+      ctx.textAlign = 'right';
+      ctx.fillText(labels[i] || '', pad.left - 4, baseY + cH / n / 2 + 3);
+      let cumX = 0;
+      for (let s = 0; s < series.length; s++) {
+        const v = Math.max(0, series[s][i] || 0);
+        const barW = (v / stackMax) * cW;
+        ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+        ctx.fillRect(pad.left + cumX, baseY + (cH / n - barH) / 2, barW, barH);
+        cumX += barW;
+      }
+    }
+  } else if (type === 'waterfall') {
+    const vals = series[0] || [];
+    const grpW = cW / n;
+    let running = 0;
+    for (let i = 0; i < n; i++) {
+      const v = vals[i] || 0;
+      const x = pad.left + i * grpW;
+      const barTop = v >= 0 ? running : running + v;
+      const barH = Math.abs(v) / range * cH;
+      const y = pad.top + cH - ((barTop - minVal) / range) * cH - barH;
+      ctx.fillStyle = v >= 0 ? '#34a853' : '#ea4335';
+      ctx.fillRect(x + grpW * 0.15, y, grpW * 0.7, barH);
+      running += v;
+      ctx.fillStyle = textColor;
+      ctx.textAlign = 'center';
+      ctx.fillText(labels[i] || '', x + grpW / 2, pad.top + cH + 14);
+    }
+  }
+
+  // Trendline (linear regression for first series)
+  if (showTrendline && series.length > 0 && !['pie','doughnut','radar','stacked_bar'].includes(type)) {
+    const vals = series[0];
+    const tN = vals.length;
+    if (tN >= 2) {
+      let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+      for (let i = 0; i < tN; i++) {
+        sumX += i; sumY += vals[i]; sumXY += i * vals[i]; sumX2 += i * i;
+      }
+      const slope = (tN * sumXY - sumX * sumY) / (tN * sumX2 - sumX * sumX);
+      const intercept = (sumY - slope * sumX) / tN;
+      ctx.strokeStyle = '#ff6b35';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 3]);
+      ctx.beginPath();
+      const x0 = pad.left;
+      const y0 = pad.top + cH - ((intercept - minVal) / range) * cH;
+      const x1 = pad.left + cW;
+      const y1 = pad.top + cH - ((slope * (tN - 1) + intercept - minVal) / range) * cH;
+      ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
   }
 

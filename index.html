@@ -47,6 +47,13 @@
         <span class="icon">💾</span>
       </button>
       <div class="toolbar-divider"></div>
+      <button id="btn-undo" class="toolbar-btn" title="Undo (⌘Z)">
+        <span class="icon">↩</span>
+      </button>
+      <button id="btn-redo" class="toolbar-btn" title="Redo (⌘⇧Z)">
+        <span class="icon">↪</span>
+      </button>
+      <div class="toolbar-divider"></div>
       <button id="btn-bold" class="toolbar-btn" data-tip="tip.bold" title="Bold (⌘B)">
         <span class="icon"><b>B</b></span>
       </button>
@@ -99,7 +106,14 @@
         <span class="icon" id="theme-icon">🌙</span>
       </button>
       <div class="toolbar-divider"></div>
+      <div class="zoom-controls" style="display:flex;align-items:center;gap:2px">
+        <button id="btn-zoom-out" class="toolbar-btn" title="Zoom Out" style="font-size:11px;padding:2px 6px">−</button>
+        <span id="zoom-level" class="toolbar-filename" style="min-width:40px;text-align:center;cursor:pointer" title="Click to reset">100%</span>
+        <button id="btn-zoom-in" class="toolbar-btn" title="Zoom In" style="font-size:11px;padding:2px 6px">+</button>
+      </div>
+      <div class="toolbar-divider"></div>
       <span id="file-name" class="toolbar-filename">untitled.md</span>
+      <span id="unsaved-dot" class="unsaved-indicator" style="display:none" title="Unsaved changes">●</span>
     </div>
   </header>
 
