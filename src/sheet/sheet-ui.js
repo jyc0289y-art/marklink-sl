@@ -256,12 +256,24 @@ function bindEvents() {
     }
   });
 
-  // Cell note tooltip on hover
+  // Cell note + error tooltip on hover
   let noteTooltip = null;
+  const errorMessages = {
+    '#ERROR': 'Formula contains an error. Check syntax.',
+    '#REF!': 'Invalid cell reference. The referenced cell may have been deleted.',
+    '#N/A': 'Value not available. LOOKUP/MATCH found no result.',
+    '#DIV/0!': 'Division by zero.',
+    '#VALUE!': 'Wrong value type in formula.',
+    '#NAME?': 'Unrecognized formula name.',
+    '#NULL!': 'Invalid range intersection.',
+    '#CIRC!': 'Circular reference detected.',
+  };
+
   gridEl.addEventListener('mouseover', (e) => {
     const indicator = e.target.closest('.cell-note-indicator');
+    const td = e.target.closest('td[data-row]');
+
     if (indicator) {
-      const td = indicator.closest('td[data-row]');
       if (!td) return;
       const r = parseInt(td.dataset.row), c = parseInt(td.dataset.col);
       const note = cellNotes[`${r},${c}`];
@@ -275,10 +287,28 @@ function bindEvents() {
       noteTooltip.style.left = rect.right + 4 + 'px';
       noteTooltip.style.top = rect.top + 'px';
       document.body.appendChild(noteTooltip);
+    } else if (td) {
+      // Show error tooltip for error cells
+      const cellText = td.textContent.trim();
+      const errMsg = errorMessages[cellText];
+      if (errMsg) {
+        if (noteTooltip) noteTooltip.remove();
+        const r = parseInt(td.dataset.row), c = parseInt(td.dataset.col);
+        const sheet = getSheet();
+        const raw = getCell(sheet, r, c)?.raw || '';
+        noteTooltip = document.createElement('div');
+        noteTooltip.className = 'sheet-note-tooltip';
+        noteTooltip.style.cssText = 'position:fixed;background:#fef2f2;color:#991b1b;padding:8px 12px;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.2);max-width:300px;font-size:12px;line-height:1.4;z-index:9999;border-left:3px solid #ef4444;';
+        noteTooltip.innerHTML = `<strong>${cellText}</strong><br>${errMsg}${raw ? `<br><code style="font-size:11px;color:#666;margin-top:4px;display:block">${raw}</code>` : ''}`;
+        const rect = td.getBoundingClientRect();
+        noteTooltip.style.left = rect.right + 4 + 'px';
+        noteTooltip.style.top = rect.top + 'px';
+        document.body.appendChild(noteTooltip);
+      }
     }
   });
   gridEl.addEventListener('mouseout', (e) => {
-    if (e.target.closest('.cell-note-indicator') && noteTooltip) {
+    if ((e.target.closest('.cell-note-indicator') || e.target.closest('td[data-row]')) && noteTooltip) {
       noteTooltip.remove();
       noteTooltip = null;
     }

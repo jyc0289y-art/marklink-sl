@@ -1930,6 +1930,14 @@ function showGradientBgPicker() {
       <input type="color" id="grad-solid" value="#ffffff" style="margin-left:8px;width:40px;height:28px;border:none;cursor:pointer">
       <button id="grad-apply-solid" style="margin-left:8px;padding:4px 12px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:12px">Apply Solid</button>
     </div>
+    <div style="margin-bottom:16px">
+      <label style="font-weight:600">Background Image:</label>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="grad-bg-img" style="flex:1;padding:8px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:12px">Choose Image...</button>
+        <button id="grad-bg-img-url" style="padding:8px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:12px">URL</button>
+        <button id="grad-bg-clear" style="padding:8px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:12px">Clear BG</button>
+      </div>
+    </div>
     <div style="text-align:right">
       <button id="grad-cancel" style="padding:6px 16px;margin-right:8px;border:1px solid #ccc;border-radius:4px;cursor:pointer">Cancel</button>
       <button id="grad-apply" style="padding:6px 16px;background:#3b82f6;color:#fff;border:none;border-radius:4px;cursor:pointer">Apply Gradient</button>
@@ -1967,6 +1975,41 @@ function showGradientBgPicker() {
   dlg.querySelector('#grad-apply-solid').addEventListener('click', () => {
     const color = dlg.querySelector('#grad-solid').value;
     applySlideBackground(color);
+    dlg.remove();
+  });
+
+  // Background image from file
+  dlg.querySelector('#grad-bg-img')?.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => {
+      if (!input.files[0]) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        applySlideBackground(`url(${e.target.result}) center/cover no-repeat`);
+        dlg.remove();
+      };
+      reader.readAsDataURL(input.files[0]);
+    };
+    input.click();
+  });
+
+  // Background image from URL
+  dlg.querySelector('#grad-bg-img-url')?.addEventListener('click', () => {
+    const url = prompt('Enter image URL:');
+    if (url) {
+      applySlideBackground(`url(${url}) center/cover no-repeat`);
+      dlg.remove();
+    }
+  });
+
+  // Clear background
+  dlg.querySelector('#grad-bg-clear')?.addEventListener('click', () => {
+    applySlideBackground('');
+    slides[activeSlideIdx].customBg = null;
+    canvasEl.style.background = '';
+    updateThumb(activeSlideIdx);
     dlg.remove();
   });
 

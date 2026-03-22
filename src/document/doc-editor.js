@@ -358,6 +358,164 @@ export function initDocEditor() {
 
   // Initial word count
   updateWordCount();
+
+  // Table context toolbar
+  editorEl.addEventListener('click', (e) => {
+    const td = e.target.closest('td, th');
+    const table = td?.closest('table');
+    if (table && editorEl.contains(table)) {
+      showTableToolbar(table, td);
+    } else {
+      hideTableToolbar();
+    }
+  });
+}
+
+// ─── Table Context Toolbar ─────────────────────────────────
+let activeTableToolbar = null;
+
+function hideTableToolbar() {
+  if (activeTableToolbar) {
+    activeTableToolbar.remove();
+    activeTableToolbar = null;
+  }
+}
+
+function showTableToolbar(table, td) {
+  hideTableToolbar();
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'doc-table-toolbar';
+  toolbar.style.cssText = 'position:absolute;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:4px;display:flex;gap:2px;z-index:1500;font-size:11px';
+
+  const actions = [
+    { label: '+Row↑', title: 'Insert Row Above', fn: () => insertTableRow(table, td, 'before') },
+    { label: '+Row↓', title: 'Insert Row Below', fn: () => insertTableRow(table, td, 'after') },
+    { label: '+Col←', title: 'Insert Column Left', fn: () => insertTableCol(table, td, 'before') },
+    { label: '+Col→', title: 'Insert Column Right', fn: () => insertTableCol(table, td, 'after') },
+    { label: '−Row', title: 'Delete Row', fn: () => deleteTableRow(table, td) },
+    { label: '−Col', title: 'Delete Column', fn: () => deleteTableCol(table, td) },
+    { label: 'Header', title: 'Toggle Header Row', fn: () => toggleTableHeader(table) },
+    { label: 'Color', title: 'Cell Color', fn: (e) => showTableCellColor(td, e.currentTarget) },
+    { label: '🗑', title: 'Delete Table', fn: () => { table.remove(); hideTableToolbar(); dirty = true; } },
+  ];
+
+  actions.forEach(a => {
+    const btn = document.createElement('button');
+    btn.style.cssText = 'padding:4px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);cursor:pointer;font-size:11px;color:var(--text-primary);white-space:nowrap';
+    btn.textContent = a.label;
+    btn.title = a.title;
+    btn.addEventListener('mousedown', (e) => e.preventDefault());
+    btn.addEventListener('click', (e) => { a.fn(e); dirty = true; });
+    toolbar.appendChild(btn);
+  });
+
+  // Position toolbar above the table
+  const tableRect = table.getBoundingClientRect();
+  const editorRect = editorEl.getBoundingClientRect();
+  toolbar.style.left = (tableRect.left - editorRect.left) + 'px';
+  toolbar.style.top = (tableRect.top - editorRect.top - 36) + 'px';
+
+  editorEl.style.position = 'relative';
+  editorEl.appendChild(toolbar);
+  activeTableToolbar = toolbar;
+}
+
+function insertTableRow(table, td, position) {
+  const row = td.closest('tr');
+  if (!row) return;
+  const colCount = row.cells.length;
+  const newRow = document.createElement('tr');
+  for (let i = 0; i < colCount; i++) {
+    const cell = document.createElement('td');
+    cell.style.cssText = 'border:1px solid var(--border-color);padding:8px 12px';
+    cell.innerHTML = '&nbsp;';
+    newRow.appendChild(cell);
+  }
+  if (position === 'before') row.before(newRow);
+  else row.after(newRow);
+}
+
+function insertTableCol(table, td, position) {
+  const colIdx = Array.from(td.closest('tr').cells).indexOf(td);
+  const rows = table.querySelectorAll('tr');
+  rows.forEach(row => {
+    const refCell = row.cells[colIdx];
+    if (!refCell) return;
+    const isHeader = refCell.tagName === 'TH';
+    const cell = document.createElement(isHeader ? 'th' : 'td');
+    cell.style.cssText = refCell.style.cssText;
+    cell.innerHTML = '&nbsp;';
+    if (position === 'before') refCell.before(cell);
+    else refCell.after(cell);
+  });
+}
+
+function deleteTableRow(table, td) {
+  const row = td.closest('tr');
+  if (!row || table.querySelectorAll('tr').length <= 1) return;
+  row.remove();
+}
+
+function deleteTableCol(table, td) {
+  const colIdx = Array.from(td.closest('tr').cells).indexOf(td);
+  const rows = table.querySelectorAll('tr');
+  if (rows[0]?.cells.length <= 1) return;
+  rows.forEach(row => {
+    if (row.cells[colIdx]) row.cells[colIdx].remove();
+  });
+}
+
+function toggleTableHeader(table) {
+  const firstRow = table.querySelector('tr');
+  if (!firstRow) return;
+  const cells = firstRow.querySelectorAll('td, th');
+  const isHeader = cells[0]?.tagName === 'TH';
+  cells.forEach(cell => {
+    const newCell = document.createElement(isHeader ? 'td' : 'th');
+    newCell.innerHTML = cell.innerHTML;
+    newCell.style.cssText = cell.style.cssText;
+    if (!isHeader) {
+      newCell.style.fontWeight = '600';
+      newCell.style.background = 'rgba(0,0,0,0.05)';
+    } else {
+      newCell.style.fontWeight = '';
+      newCell.style.background = '';
+    }
+    cell.replaceWith(newCell);
+  });
+}
+
+function showTableCellColor(td, btn) {
+  const existing = document.querySelector('.doc-table-color-picker');
+  if (existing) { existing.remove(); return; }
+
+  const picker = document.createElement('div');
+  picker.className = 'doc-table-color-picker';
+  picker.style.cssText = 'position:fixed;z-index:2000;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:8px;display:grid;grid-template-columns:repeat(5,1fr);gap:4px';
+
+  const rect = btn.getBoundingClientRect();
+  picker.style.top = (rect.bottom + 4) + 'px';
+  picker.style.left = rect.left + 'px';
+
+  const colors = ['transparent', '#fef08a', '#bbf7d0', '#bfdbfe', '#fecaca', '#e9d5ff', '#fed7aa', '#fce7f3', '#e5e7eb', '#1f2937'];
+  colors.forEach(c => {
+    const swatch = document.createElement('button');
+    swatch.style.cssText = `width:24px;height:24px;border:1px solid var(--border-color);border-radius:3px;cursor:pointer;background:${c === 'transparent' ? 'var(--bg-primary)' : c}`;
+    if (c === 'transparent') swatch.innerHTML = '<span style="font-size:10px">✕</span>';
+    swatch.addEventListener('click', () => {
+      td.style.background = c === 'transparent' ? '' : c;
+      picker.remove();
+    });
+    picker.appendChild(swatch);
+  });
+
+  document.body.appendChild(picker);
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener('click', close); }
+    });
+  }, 10);
 }
 
 // ─── Find / Replace ────────────────────────────────────────
