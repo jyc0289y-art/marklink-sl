@@ -293,6 +293,19 @@
         <button class="toolbar-btn" id="sheet-sort-asc" title="Sort Ascending">↑</button>
         <button class="toolbar-btn" id="sheet-sort-desc" title="Sort Descending">↓</button>
         <button class="toolbar-btn" id="sheet-freeze" title="Freeze Rows/Columns">❄</button>
+        <div class="toolbar-divider"></div>
+        <select id="sheet-num-format" title="Number Format" style="font-size:11px;padding:2px 4px">
+          <option value="general">General</option>
+          <option value="number">Number (1,234.56)</option>
+          <option value="currency">Currency ($1,234)</option>
+          <option value="percent">Percent (12.3%)</option>
+          <option value="date">Date (2024-01-01)</option>
+        </select>
+        <button class="toolbar-btn" id="sheet-merge" title="Merge/Unmerge Cells" style="font-size:11px">⊞</button>
+        <button class="toolbar-btn" id="sheet-cond-fmt" title="Conditional Formatting" style="font-size:11px">🎨</button>
+        <button class="toolbar-btn" id="sheet-chart" title="Insert Chart" style="font-size:11px">📈</button>
+        <button class="toolbar-btn" id="sheet-filter" title="Auto Filter" style="font-size:11px">🔽</button>
+        <button class="toolbar-btn" id="sheet-find" title="Find & Replace (⌘F)" style="font-size:11px">🔍</button>
       </div>
       <div class="sheet-container" id="sheet-container">
         <table class="sheet-grid" id="sheet-grid"></table>

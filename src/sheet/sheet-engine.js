@@ -51,7 +51,26 @@ export function setCellFormat(sheet, r, c, prop, val) {
 export function getDisplayValue(sheet, r, c) {
   const cell = getCell(sheet, r, c);
   if (!cell) return '';
-  return cell.value != null ? String(cell.value) : '';
+  const v = cell.value;
+  if (v == null) return '';
+  // Apply number format
+  const fmt = cell.format?.numFormat;
+  if (fmt && typeof v === 'number') {
+    switch (fmt) {
+      case 'number': return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      case 'currency': return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      case 'percent': return (v * 100).toFixed(1) + '%';
+      case 'date': {
+        // Excel serial date → JS date (epoch 1900-01-01)
+        if (v > 25569) {
+          const d = new Date((v - 25569) * 86400000);
+          return d.toISOString().split('T')[0];
+        }
+        return String(v);
+      }
+    }
+  }
+  return String(v);
 }
 
 /** Get raw value */

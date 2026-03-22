@@ -81,10 +81,16 @@ function renderGrid() {
     html += `<tr class="${rowCls}"><th class="sheet-row-header" data-row="${r}">${r + 1}</th>`;
     for (let c = 0; c < sheet.cols; c++) {
       const cell = getCell(sheet, r, c);
+      // Skip merged cells (hidden by merge)
+      if (cell?.format?.merged) continue;
       const val = getDisplayValue(sheet, r, c);
-      const style = cellStyle(cell);
+      const style = cellStyle(cell, r, c);
       const frozenCls = c < freezeCols ? ' sheet-frozen-col' : '';
-      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="${style}">${escapeHTML(String(val))}</td>`;
+      const mergeSpan = cell?.format?.mergeSpan;
+      const spanAttrs = mergeSpan
+        ? ` rowspan="${mergeSpan.rows}" colspan="${mergeSpan.cols}"`
+        : '';
+      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="${style}"${spanAttrs}>${escapeHTML(String(val))}</td>`;
     }
     html += '</tr>';
   }
@@ -98,16 +104,26 @@ function renderCell(r, c) {
   if (!td) return;
   const cell = getCell(getSheet(), r, c);
   td.textContent = getDisplayValue(getSheet(), r, c);
-  td.setAttribute('style', cellStyle(cell));
+  td.setAttribute('style', cellStyle(cell, r, c));
 }
 
-function cellStyle(cell) {
-  if (!cell || !cell.format) return '';
-  const f = cell.format;
+function cellStyle(cell, r, c) {
   const parts = [];
-  if (f.bold) parts.push('font-weight:700');
-  if (f.align) parts.push(`text-align:${f.align}`);
-  if (f.bg) parts.push(`background:${f.bg}`);
+  if (cell?.format) {
+    const f = cell.format;
+    if (f.bold) parts.push('font-weight:700');
+    if (f.align) parts.push(`text-align:${f.align}`);
+    if (f.bg) parts.push(`background:${f.bg}`);
+    if (f.merged) parts.push('display:none');
+    if (f.mergeSpan) {
+      // Will be applied as attributes, not inline style
+    }
+  }
+  // Conditional formatting
+  if (r !== undefined && c !== undefined) {
+    const cfStyle = getCondFmtStyle(r, c);
+    if (cfStyle) parts.push(cfStyle);
+  }
   return parts.join(';');
 }
 
@@ -253,6 +269,11 @@ function bindEvents() {
       clearSelection();
       return;
     }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+      e.preventDefault();
+      showSheetFindReplace();
+      return;
+    }
 
     if (isEditing) {
       // In-cell editing: only handle Enter/Tab/Escape
@@ -371,6 +392,43 @@ function bindEvents() {
   // Sort
   document.getElementById('sheet-sort-asc')?.addEventListener('click', () => sortColumn(true));
   document.getElementById('sheet-sort-desc')?.addEventListener('click', () => sortColumn(false));
+
+  // Number format
+  document.getElementById('sheet-num-format')?.addEventListener('change', (e) => {
+    const fmt = e.target.value;
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        setCellFormat(getSheet(), r, c, 'numFormat', fmt === 'general' ? null : fmt);
+      }
+    }
+    renderGrid(); updateSelection();
+  });
+
+  // Merge cells
+  document.getElementById('sheet-merge')?.addEventListener('click', () => {
+    toggleMerge();
+  });
+
+  // Conditional formatting
+  document.getElementById('sheet-cond-fmt')?.addEventListener('click', () => {
+    showCondFmtDialog();
+  });
+
+  // Chart
+  document.getElementById('sheet-chart')?.addEventListener('click', () => {
+    showChartDialog();
+  });
+
+  // Filter
+  document.getElementById('sheet-filter')?.addEventListener('click', () => {
+    toggleFilter();
+  });
+
+  // Find & Replace
+  document.getElementById('sheet-find')?.addEventListener('click', () => {
+    showSheetFindReplace();
+  });
 
   // Sheet tabs
   document.getElementById('sheet-add-tab')?.addEventListener('click', () => {
@@ -968,6 +1026,420 @@ function acceptAutocomplete(fnName) {
     isFormulaMode = true;
   }
   hideAutocomplete();
+}
+
+/* ==================== Cell Merge ==================== */
+
+function toggleMerge() {
+  const sheet = getSheet();
+  const { r1, r2, c1, c2 } = getSelectionRange();
+  if (r1 === r2 && c1 === c2) return; // Need at least 2 cells
+
+  // Check if already merged
+  const anchor = getCell(sheet, r1, c1);
+  if (anchor?.format?.merge) {
+    // Unmerge
+    setCellFormat(sheet, r1, c1, 'merge', null);
+    setCellFormat(sheet, r1, c1, 'mergeSpan', null);
+  } else {
+    // Merge: keep top-left value, clear others
+    const val = getRawValue(sheet, r1, c1);
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        if (r === r1 && c === c1) continue;
+        setCell(sheet, r, c, '');
+        setCellFormat(sheet, r, c, 'merged', true); // hidden cell
+      }
+    }
+    setCellFormat(sheet, r1, c1, 'merge', true);
+    setCellFormat(sheet, r1, c1, 'mergeSpan', { rows: r2 - r1 + 1, cols: c2 - c1 + 1 });
+  }
+  renderGrid(); updateSelection();
+}
+
+/* ==================== Conditional Formatting ==================== */
+
+let condFormats = []; // { range: {r1,r2,c1,c2}, type, value, color }
+
+function showCondFmtDialog() {
+  const existing = document.querySelector('.sheet-cond-dialog');
+  if (existing) { existing.remove(); return; }
+
+  const { r1, r2, c1, c2 } = getSelectionRange();
+  const rangeStr = `${rcToRef(r1, c1)}:${rcToRef(r2, c2)}`;
+
+  const dialog = document.createElement('div');
+  dialog.className = 'ai-setup-modal sheet-cond-dialog';
+  dialog.innerHTML = `
+    <div class="ai-setup-content" style="width:380px">
+      <div class="ai-setup-header">
+        <h3>Conditional Formatting</h3>
+        <button class="ai-setup-close">&times;</button>
+      </div>
+      <div class="ai-setup-body">
+        <p style="font-size:12px;color:var(--text-secondary);margin:0 0 12px">Range: <strong>${rangeStr}</strong></p>
+        <div style="margin-bottom:10px">
+          <select id="cf-type" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+            <option value="gt">Greater than</option>
+            <option value="lt">Less than</option>
+            <option value="eq">Equal to</option>
+            <option value="between">Between</option>
+            <option value="text">Text contains</option>
+            <option value="empty">Is empty</option>
+            <option value="notempty">Is not empty</option>
+          </select>
+        </div>
+        <div id="cf-value-row" style="display:flex;gap:8px;margin-bottom:10px">
+          <input type="text" id="cf-val1" placeholder="Value" style="flex:1;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+          <input type="text" id="cf-val2" placeholder="Max" style="flex:1;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);display:none">
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+          <label style="font-size:12px;color:var(--text-secondary)">Highlight color:</label>
+          <input type="color" id="cf-color" value="#fde68a" style="width:40px;height:28px;border:1px solid var(--border-color);border-radius:4px">
+          <label style="font-size:12px;color:var(--text-secondary);margin-left:8px">Text:</label>
+          <input type="color" id="cf-text-color" value="#92400e" style="width:40px;height:28px;border:1px solid var(--border-color);border-radius:4px">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="ai-pull-btn" id="cf-clear">Clear All</button>
+          <button class="ai-pull-btn" id="cf-apply" style="background:var(--brand-color);color:#fff">Apply</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(dialog);
+
+  const typeSelect = dialog.querySelector('#cf-type');
+  const val2Input = dialog.querySelector('#cf-val2');
+  typeSelect.addEventListener('change', () => {
+    val2Input.style.display = typeSelect.value === 'between' ? '' : 'none';
+    dialog.querySelector('#cf-val1').style.display = ['empty', 'notempty'].includes(typeSelect.value) ? 'none' : '';
+  });
+
+  dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
+
+  dialog.querySelector('#cf-clear')?.addEventListener('click', () => {
+    condFormats = condFormats.filter(cf =>
+      cf.range.r1 !== r1 || cf.range.r2 !== r2 || cf.range.c1 !== c1 || cf.range.c2 !== c2
+    );
+    renderGrid(); updateSelection();
+    dialog.remove();
+  });
+
+  dialog.querySelector('#cf-apply')?.addEventListener('click', () => {
+    const type = typeSelect.value;
+    const val1 = dialog.querySelector('#cf-val1').value;
+    const val2 = dialog.querySelector('#cf-val2').value;
+    const bgColor = dialog.querySelector('#cf-color').value;
+    const textColor = dialog.querySelector('#cf-text-color').value;
+
+    condFormats.push({
+      range: { r1, r2, c1, c2 },
+      type, val1, val2, bgColor, textColor,
+    });
+    renderGrid(); updateSelection();
+    dialog.remove();
+  });
+}
+
+function getCondFmtStyle(r, c) {
+  const sheet = getSheet();
+  const displayVal = getDisplayValue(sheet, r, c);
+  const numVal = parseFloat(displayVal);
+
+  for (const cf of condFormats) {
+    if (r < cf.range.r1 || r > cf.range.r2 || c < cf.range.c1 || c > cf.range.c2) continue;
+
+    let match = false;
+    switch (cf.type) {
+      case 'gt': match = !isNaN(numVal) && numVal > parseFloat(cf.val1); break;
+      case 'lt': match = !isNaN(numVal) && numVal < parseFloat(cf.val1); break;
+      case 'eq': match = displayVal == cf.val1; break;
+      case 'between': match = !isNaN(numVal) && numVal >= parseFloat(cf.val1) && numVal <= parseFloat(cf.val2); break;
+      case 'text': match = String(displayVal).toLowerCase().includes(cf.val1.toLowerCase()); break;
+      case 'empty': match = displayVal === ''; break;
+      case 'notempty': match = displayVal !== ''; break;
+    }
+
+    if (match) {
+      return `background:${cf.bgColor};color:${cf.textColor}`;
+    }
+  }
+  return '';
+}
+
+/* ==================== Charts ==================== */
+
+function showChartDialog() {
+  const existing = document.querySelector('.sheet-chart-dialog');
+  if (existing) { existing.remove(); return; }
+
+  const { r1, r2, c1, c2 } = getSelectionRange();
+  const rangeStr = `${rcToRef(r1, c1)}:${rcToRef(r2, c2)}`;
+
+  const dialog = document.createElement('div');
+  dialog.className = 'ai-setup-modal sheet-chart-dialog';
+  dialog.innerHTML = `
+    <div class="ai-setup-content" style="width:500px">
+      <div class="ai-setup-header">
+        <h3>Insert Chart</h3>
+        <button class="ai-setup-close">&times;</button>
+      </div>
+      <div class="ai-setup-body">
+        <p style="font-size:12px;color:var(--text-secondary);margin:0 0 12px">Data range: <strong>${rangeStr}</strong></p>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          ${['bar', 'line', 'pie'].map(t =>
+            `<button class="chart-type-btn" data-type="${t}" style="flex:1;padding:10px;border:2px solid var(--border-color);border-radius:8px;background:var(--bg-primary);cursor:pointer;text-align:center;color:var(--text-primary);font-size:13px;font-weight:600">${t === 'bar' ? '📊 Bar' : t === 'line' ? '📈 Line' : '🥧 Pie'}</button>`
+          ).join('')}
+        </div>
+        <canvas id="chart-preview" width="460" height="260" style="border:1px solid var(--border-color);border-radius:8px;width:100%;background:#fff"></canvas>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+          <button class="ai-pull-btn" id="chart-cancel">Cancel</button>
+          <button class="ai-pull-btn" id="chart-insert" style="background:var(--brand-color);color:#fff">Insert as Image</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(dialog);
+
+  let chartType = 'bar';
+
+  function drawChart() {
+    const canvas = dialog.querySelector('#chart-preview');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, H);
+
+    const sheet = getSheet();
+    const labels = [];
+    const values = [];
+
+    // First column = labels, second column = values
+    for (let r = r1; r <= r2; r++) {
+      labels.push(getDisplayValue(sheet, r, c1) || `Row ${r + 1}`);
+      const v = parseFloat(getDisplayValue(sheet, r, c1 < c2 ? c1 + 1 : c1));
+      values.push(isNaN(v) ? 0 : v);
+    }
+
+    const maxVal = Math.max(...values, 1);
+    const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+    const pad = 50;
+
+    if (chartType === 'bar') {
+      const barW = (W - pad * 2) / values.length - 8;
+      ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+      values.forEach((v, i) => {
+        const x = pad + i * ((W - pad * 2) / values.length) + 4;
+        const barH = (v / maxVal) * (H - pad * 2);
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fillRect(x, H - pad - barH, barW, barH);
+        ctx.fillStyle = '#333'; ctx.font = '10px sans-serif';
+        ctx.fillText(labels[i].slice(0, 8), x + barW / 2, H - pad + 14);
+        ctx.fillText(String(v), x + barW / 2, H - pad - barH - 4);
+      });
+      // Axes
+      ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad, pad - 10); ctx.lineTo(pad, H - pad); ctx.lineTo(W - pad + 10, H - pad); ctx.stroke();
+    } else if (chartType === 'line') {
+      ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad, pad - 10); ctx.lineTo(pad, H - pad); ctx.lineTo(W - pad + 10, H - pad); ctx.stroke();
+      const step = (W - pad * 2) / Math.max(values.length - 1, 1);
+      ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      values.forEach((v, i) => {
+        const x = pad + i * step;
+        const y = H - pad - (v / maxVal) * (H - pad * 2);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      // Points + labels
+      values.forEach((v, i) => {
+        const x = pad + i * step;
+        const y = H - pad - (v / maxVal) * (H - pad * 2);
+        ctx.fillStyle = '#3b82f6';
+        ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(labels[i].slice(0, 8), x, H - pad + 14);
+      });
+    } else if (chartType === 'pie') {
+      const total = values.reduce((a, b) => a + b, 0) || 1;
+      const cx = W / 2, cy = H / 2 - 10, radius = Math.min(W, H) / 2 - 40;
+      let startAngle = -Math.PI / 2;
+      values.forEach((v, i) => {
+        const slice = (v / total) * Math.PI * 2;
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, radius, startAngle, startAngle + slice); ctx.closePath(); ctx.fill();
+        // Label
+        const midAngle = startAngle + slice / 2;
+        const lx = cx + (radius + 16) * Math.cos(midAngle);
+        const ly = cy + (radius + 16) * Math.sin(midAngle);
+        ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(`${labels[i].slice(0, 6)} (${Math.round(v / total * 100)}%)`, lx, ly);
+        startAngle += slice;
+      });
+    }
+  }
+
+  drawChart();
+
+  dialog.querySelectorAll('.chart-type-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      chartType = btn.dataset.type;
+      dialog.querySelectorAll('.chart-type-btn').forEach(b => b.style.borderColor = 'var(--border-color)');
+      btn.style.borderColor = 'var(--brand-color)';
+      drawChart();
+    });
+  });
+  // Set initial active
+  dialog.querySelector(`[data-type="bar"]`).style.borderColor = 'var(--brand-color)';
+
+  dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
+  dialog.querySelector('#chart-cancel')?.addEventListener('click', () => dialog.remove());
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
+
+  dialog.querySelector('#chart-insert')?.addEventListener('click', () => {
+    const canvas = dialog.querySelector('#chart-preview');
+    const dataUrl = canvas.toDataURL('image/png');
+    // Insert chart as image below the sheet
+    const chartContainer = document.createElement('div');
+    chartContainer.className = 'sheet-chart-embed';
+    chartContainer.innerHTML = `<img src="${dataUrl}" style="max-width:100%;border-radius:8px;margin:8px 0">
+      <button class="toolbar-btn" style="position:absolute;top:4px;right:4px;font-size:10px" onclick="this.parentElement.remove()">&times;</button>`;
+    chartContainer.style.cssText = 'position:relative;display:inline-block;margin:8px';
+    containerEl.after(chartContainer);
+    dialog.remove();
+  });
+}
+
+/* ==================== Auto Filter ==================== */
+
+let filterRow = -1; // row index used as filter header
+let filterValues = {}; // colIndex → Set of allowed values
+
+function toggleFilter() {
+  const sheet = getSheet();
+  if (filterRow >= 0) {
+    // Remove filter
+    filterRow = -1;
+    filterValues = {};
+    document.getElementById('sheet-filter')?.classList.remove('active');
+    renderGrid(); updateSelection();
+    return;
+  }
+
+  // Set filter on selected row
+  filterRow = selectedRow;
+  document.getElementById('sheet-filter')?.classList.add('active');
+  renderGrid(); updateSelection();
+}
+
+/* ==================== Find & Replace ==================== */
+
+function showSheetFindReplace() {
+  const existing = document.querySelector('.sheet-find-bar');
+  if (existing) { existing.remove(); return; }
+
+  const bar = document.createElement('div');
+  bar.className = 'sheet-find-bar';
+  bar.style.cssText = 'display:flex;gap:6px;padding:6px 12px;background:var(--pane-header-bg);border-bottom:1px solid var(--border-color);align-items:center';
+  bar.innerHTML = `
+    <input type="text" id="sf-find" placeholder="Find..." style="padding:4px 8px;font-size:13px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);width:160px">
+    <input type="text" id="sf-replace" placeholder="Replace..." style="padding:4px 8px;font-size:13px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);width:160px">
+    <button class="toolbar-btn" id="sf-next" title="Find Next" style="font-size:12px">▼</button>
+    <button class="toolbar-btn" id="sf-replace-btn" title="Replace" style="font-size:11px;width:auto;padding:0 8px">Replace</button>
+    <button class="toolbar-btn" id="sf-replace-all" title="Replace All" style="font-size:11px;width:auto;padding:0 8px">All</button>
+    <span id="sf-count" style="font-size:11px;color:var(--text-secondary);min-width:50px"></span>
+    <button class="toolbar-btn" id="sf-close" title="Close">&times;</button>
+  `;
+
+  const toolbar = document.querySelector('#view-sheet .sheet-toolbar');
+  toolbar?.after(bar);
+
+  const findInput = bar.querySelector('#sf-find');
+  findInput.focus();
+
+  let findResults = [];
+  let findIdx = 0;
+
+  function doSearch() {
+    findResults = [];
+    const query = findInput.value.toLowerCase();
+    if (!query) { bar.querySelector('#sf-count').textContent = ''; return; }
+    const sheet = getSheet();
+    for (let r = 0; r < sheet.rows; r++) {
+      for (let c = 0; c < sheet.cols; c++) {
+        const val = getDisplayValue(sheet, r, c);
+        if (val.toLowerCase().includes(query)) {
+          findResults.push({ r, c });
+        }
+      }
+    }
+    bar.querySelector('#sf-count').textContent = findResults.length > 0
+      ? `${findIdx + 1}/${findResults.length}` : 'No results';
+    if (findResults.length > 0) goToResult();
+  }
+
+  function goToResult() {
+    if (findResults.length === 0) return;
+    const res = findResults[findIdx];
+    selectedRow = res.r; selectedCol = res.c;
+    selAnchorRow = res.r; selAnchorCol = res.c;
+    updateSelection(); scrollIntoView();
+    bar.querySelector('#sf-count').textContent = `${findIdx + 1}/${findResults.length}`;
+  }
+
+  findInput.addEventListener('input', () => { findIdx = 0; doSearch(); });
+
+  bar.querySelector('#sf-next')?.addEventListener('click', () => {
+    if (findResults.length === 0) return;
+    findIdx = (findIdx + 1) % findResults.length;
+    goToResult();
+  });
+
+  bar.querySelector('#sf-replace-btn')?.addEventListener('click', () => {
+    if (findResults.length === 0) return;
+    const res = findResults[findIdx];
+    const sheet = getSheet();
+    const raw = getRawValue(sheet, res.r, res.c);
+    const replaceVal = bar.querySelector('#sf-replace').value;
+    const newRaw = raw.replace(new RegExp(findInput.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), replaceVal);
+    setCell(sheet, res.r, res.c, newRaw);
+    recalcAll(sheet);
+    renderGrid(); updateSelection();
+    doSearch();
+  });
+
+  bar.querySelector('#sf-replace-all')?.addEventListener('click', () => {
+    const query = findInput.value;
+    if (!query) return;
+    const replaceVal = bar.querySelector('#sf-replace').value;
+    const sheet = getSheet();
+    const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    for (let r = 0; r < sheet.rows; r++) {
+      for (let c = 0; c < sheet.cols; c++) {
+        const raw = getRawValue(sheet, r, c);
+        if (raw && raw.toLowerCase().includes(query.toLowerCase())) {
+          setCell(sheet, r, c, raw.replace(regex, replaceVal));
+        }
+      }
+    }
+    recalcAll(sheet);
+    renderGrid(); updateSelection();
+    findResults = [];
+    bar.querySelector('#sf-count').textContent = 'Replaced all';
+  });
+
+  bar.querySelector('#sf-close')?.addEventListener('click', () => bar.remove());
+
+  findInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { bar.querySelector('#sf-next').click(); e.preventDefault(); }
+    if (e.key === 'Escape') { bar.remove(); }
+  });
 }
 
 /* ==================== Export ==================== */
