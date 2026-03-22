@@ -17,6 +17,7 @@ export function createSheetData(rows = DEFAULT_ROWS, cols = DEFAULT_COLS, name) 
     charts: [],         // Chart configs per sheet
     freezeRows: 0,      // Frozen row count
     freezeCols: 0,      // Frozen column count
+    namedRanges: {},     // Named ranges per sheet: name → "A1:B3"
   };
 }
 
@@ -41,7 +42,72 @@ export function setCell(sheet, r, c, rawValue, allSheets) {
     sheet.cells[key] = { raw: '', value: '', format: {} };
   }
   sheet.cells[key].raw = String(rawValue);
-  sheet.cells[key].value = evaluate(sheet, String(rawValue), allSheets);
+  let val = evaluate(sheet, String(rawValue), allSheets);
+  // For non-array formulas, extract first value from array results
+  if (typeof val === 'string' && val.startsWith('__ARRAY__')) {
+    try {
+      const arr = JSON.parse(val.substring(9));
+      val = arr[0]?.[0] ?? val;
+    } catch { /* keep as-is */ }
+  }
+  sheet.cells[key].value = val;
+}
+
+/** Set cell as array formula and spill results */
+export function setCellArrayFormula(sheet, r, c, rawValue, allSheets) {
+  const key = cellKey(r, c);
+  if (!sheet.cells[key]) {
+    sheet.cells[key] = { raw: '', value: '', format: {} };
+  }
+  // Mark as array formula with curly brace prefix
+  const formulaStr = String(rawValue);
+  sheet.cells[key].raw = formulaStr;
+  sheet.cells[key].format.isArrayFormula = true;
+  sheet.cells[key].value = evaluate(sheet, formulaStr, allSheets);
+
+  // Handle array spill results
+  const val = sheet.cells[key].value;
+  if (typeof val === 'string' && val.startsWith('__ARRAY__')) {
+    try {
+      const arrayData = JSON.parse(val.substring(9));
+      // Set the primary cell to top-left value
+      sheet.cells[key].value = arrayData[0][0];
+      sheet.cells[key].format.arraySpillRows = arrayData.length;
+      sheet.cells[key].format.arraySpillCols = arrayData[0].length;
+      // Spill to adjacent cells
+      for (let dr = 0; dr < arrayData.length; dr++) {
+        for (let dc = 0; dc < arrayData[dr].length; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const spillKey = cellKey(r + dr, c + dc);
+          if (!sheet.cells[spillKey]) {
+            sheet.cells[spillKey] = { raw: '', value: '', format: {} };
+          }
+          sheet.cells[spillKey].value = arrayData[dr][dc];
+          sheet.cells[spillKey].format.spillSource = key;
+          sheet.cells[spillKey].raw = `{=${formulaStr.substring(1)}}`;
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  // Handle TRANSPOSE array result
+  if (typeof val === 'string' && val.includes(', ') && sheet.cells[key].format.isArrayFormula) {
+    const parts = val.split(', ').map(v => { const n = Number(v); return isNaN(n) ? v : n; });
+    if (parts.length > 1) {
+      sheet.cells[key].value = parts[0];
+      sheet.cells[key].format.arraySpillRows = parts.length;
+      sheet.cells[key].format.arraySpillCols = 1;
+      for (let i = 1; i < parts.length; i++) {
+        const spillKey = cellKey(r + i, c);
+        if (!sheet.cells[spillKey]) {
+          sheet.cells[spillKey] = { raw: '', value: '', format: {} };
+        }
+        sheet.cells[spillKey].value = parts[i];
+        sheet.cells[spillKey].format.spillSource = key;
+        sheet.cells[spillKey].raw = `{=${formulaStr.substring(1)}}`;
+      }
+    }
+  }
 }
 
 /** Set cell format property */
@@ -59,6 +125,10 @@ export function getDisplayValue(sheet, r, c) {
   if (!cell) return '';
   const v = cell.value;
   if (v == null) return '';
+  // Special markers — pass through for UI rendering
+  if (typeof v === 'string' && (v.startsWith('__SPARKLINE__') || v.startsWith('__ARRAY__'))) {
+    return v;
+  }
   // Apply number format
   const fmt = cell.format?.numFormat;
   if (fmt && typeof v === 'number') {
@@ -788,8 +858,19 @@ function evalFormula(sheet, expr) {
       case 'TRANSPOSE': {
         const table = resolveRangeAsTable(sheet, argsStr);
         if (!table.length) return '#ERROR';
-        // Returns first column as comma-separated (single-cell output)
-        return table.map(row => row[0]).join(', ');
+        // Transpose the table (swap rows and columns)
+        const transposed = [];
+        const tRows = table[0].length;
+        const tCols = table.length;
+        for (let i = 0; i < tRows; i++) {
+          const row = [];
+          for (let j = 0; j < tCols; j++) {
+            row.push(table[j][i] !== undefined ? table[j][i] : '');
+          }
+          transposed.push(row);
+        }
+        // Return as array result for spill (array formula) or comma-separated (single cell)
+        return `__ARRAY__${JSON.stringify(transposed)}`;
       }
 
       // ─── Logical Functions ───
@@ -1088,7 +1169,54 @@ function evalFormula(sheet, expr) {
         }
         return count;
       }
+
+      // ─── Sparkline Function ───
+      case 'SPARKLINE': {
+        const args = splitArgs(argsStr);
+        if (args.length < 1) return '#ERROR';
+        const sparkVals = resolveRange(sheet, args[0]).filter(v => typeof v === 'number');
+        const sparkType = args[1] ? String(evalSimpleExpr(sheet, args[1])).replace(/"/g, '').toLowerCase() : 'line';
+        if (sparkVals.length < 2) return '#ERROR';
+        // Return a special sparkline marker that UI will render as canvas
+        return `__SPARKLINE__${sparkType}__${sparkVals.join(',')}`;
+      }
+
+      // ─── Matrix Multiply ───
+      case 'MMULT': {
+        const args = splitArgs(argsStr);
+        if (args.length < 2) return '#ERROR';
+        const matA = resolveRangeAsTable(sheet, args[0]);
+        const matB = resolveRangeAsTable(sheet, args[1]);
+        if (!matA.length || !matB.length) return '#ERROR';
+        const aRows = matA.length, aCols = matA[0].length;
+        const bRows = matB.length, bCols = matB[0].length;
+        if (aCols !== bRows) return '#VALUE!';
+        // Return as array result for spill
+        const result = [];
+        for (let i = 0; i < aRows; i++) {
+          const row = [];
+          for (let j = 0; j < bCols; j++) {
+            let sum = 0;
+            for (let k = 0; k < aCols; k++) {
+              sum += (Number(matA[i][k]) || 0) * (Number(matB[k][j]) || 0);
+            }
+            row.push(sum);
+          }
+          result.push(row);
+        }
+        // For single cell: return top-left; for array formulas: return special marker
+        return `__ARRAY__${JSON.stringify(result)}`;
+      }
     }
+  }
+
+  // Check if it's a named range reference
+  if (sheet.namedRanges && sheet.namedRanges[expr]) {
+    const rangeRef = sheet.namedRanges[expr];
+    // Resolve the named range as a value
+    const vals = resolveRange(sheet, rangeRef);
+    if (vals.length === 1) return vals[0];
+    return vals.join(', ');
   }
 
   // Basic arithmetic with cell references
@@ -1234,8 +1362,24 @@ function resolveRange(sheet, rangeStr) {
   // Handle comma-separated refs/ranges (but not inside sheet name quotes)
   const parts = splitArgs(rangeStr);
   for (const part of parts) {
+    const trimmed = part.trim();
+
+    // Check if this is a named range
+    if (sheet.namedRanges && sheet.namedRanges[trimmed]) {
+      values.push(...resolveRange(sheet, sheet.namedRanges[trimmed]));
+      continue;
+    }
+    // Also check case-insensitive
+    if (sheet.namedRanges) {
+      const found = Object.keys(sheet.namedRanges).find(n => n.toUpperCase() === trimmed);
+      if (found) {
+        values.push(...resolveRange(sheet, sheet.namedRanges[found]));
+        continue;
+      }
+    }
+
     // Resolve cross-sheet reference
-    const { sheet: targetSheet, ref: cleanRef } = resolveSheetRef(sheet, part.trim());
+    const { sheet: targetSheet, ref: cleanRef } = resolveSheetRef(sheet, trimmed);
 
     if (cleanRef.includes(':')) {
       // Range: A1:B3

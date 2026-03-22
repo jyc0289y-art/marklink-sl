@@ -1343,3 +1343,40 @@
   letter-spacing: 0.5px;
   white-space: nowrap;
 }
+
+/* ===== 3D Surface Plot ===== */
+#calc-3d-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+#calc-3d-canvas:active { cursor: grabbing; }
+
+/* ===== Number Theory ===== */
+.calc-nt-tab {
+  padding: 6px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.calc-nt-tab:hover { background: var(--hover-bg); }
+.calc-nt-tab.active {
+  background: var(--brand-color);
+  color: #fff;
+}
+.calc-nt-panel { display: none; }
+.calc-nt-panel.active { display: block; }
+
+/* ===== Base Converter ===== */
+.calc-base-copy {
+  font-size: 14px !important;
+  padding: 6px 10px !important;
+  min-width: 38px;
+}

@@ -25,6 +25,9 @@
   <link rel="stylesheet" href="/src/styles/photo.css" />
   <link rel="stylesheet" href="/src/styles/calculator.css" />
 
+  <!-- Tesseract.js OCR -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
   <!-- Google Analytics 4 -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
   <script>
@@ -46,14 +49,14 @@
       <button id="btn-save" class="toolbar-btn" data-tip="tip.save" title="Save File (⌘S)">
         <span class="icon">💾</span>
       </button>
-      <button id="btn-version-history" class="toolbar-btn" title="Version History">
+      <button id="btn-version-history" class="toolbar-btn" data-i18n-title="tip.versionHistory" title="Version History">
         <span class="icon">🕐</span>
       </button>
       <div class="toolbar-divider"></div>
-      <button id="btn-undo" class="toolbar-btn" title="Undo (⌘Z)">
+      <button id="btn-undo" class="toolbar-btn" data-i18n-title="tip.undo" title="Undo (⌘Z)">
         <span class="icon">↩</span>
       </button>
-      <button id="btn-redo" class="toolbar-btn" title="Redo (⌘⇧Z)">
+      <button id="btn-redo" class="toolbar-btn" data-i18n-title="tip.redo" title="Redo (⌘⇧Z)">
         <span class="icon">↪</span>
       </button>
     </div>
@@ -100,14 +103,14 @@
 
   <!-- Tab Bar -->
   <nav id="tab-bar" class="tab-bar">
-    <button class="tab-item active" data-tab="document">Document</button>
-    <button class="tab-item" data-tab="sheet">Sheet</button>
-    <button class="tab-item" data-tab="slide">Slide</button>
-    <button class="tab-item" data-tab="pdf">PDF</button>
-    <button class="tab-item" data-tab="markdown">Markdown</button>
-    <button class="tab-item" data-tab="photo">📷 Photo</button>
-    <button class="tab-item" data-tab="calculator">🧮 Calc</button>
-    <button class="tab-item" data-tab="ai">✦ AI</button>
+    <button class="tab-item active" data-tab="document" data-i18n="tab.document">Document</button>
+    <button class="tab-item" data-tab="sheet" data-i18n="tab.sheet">Sheet</button>
+    <button class="tab-item" data-tab="slide" data-i18n="tab.slide">Slide</button>
+    <button class="tab-item" data-tab="pdf" data-i18n="tab.pdf">PDF</button>
+    <button class="tab-item" data-tab="markdown" data-i18n="tab.markdown">Markdown</button>
+    <button class="tab-item" data-tab="photo">📷 <span data-i18n="tab.photo">Photo</span></button>
+    <button class="tab-item" data-tab="calculator">🧮 <span data-i18n="tab.calc">Calc</span></button>
+    <button class="tab-item" data-tab="ai">✦ <span data-i18n="tab.ai">AI</span></button>
   </nav>
 
   <!-- Main Content -->
@@ -115,12 +118,12 @@
     <!-- Sidebar (hidden by default) -->
     <aside id="sidebar" class="sidebar hidden">
       <div class="sidebar-header">
-        <span>Files</span>
-        <button id="btn-open-folder" class="toolbar-btn" title="Open Folder">📂+</button>
+        <span data-i18n="sidebar.files">Files</span>
+        <button id="btn-open-folder" class="toolbar-btn" data-i18n-title="sidebar.openFolder" title="Open Folder">📂+</button>
       </div>
       <div id="folder-tree" class="folder-tree"></div>
       <div class="sidebar-section">
-        <span class="sidebar-label">Recent</span>
+        <span class="sidebar-label" data-i18n="sidebar.recent">Recent</span>
         <ul id="recent-files" class="recent-files"></ul>
       </div>
     </aside>
@@ -152,6 +155,10 @@
         <button id="btn-toggle-preview" class="toolbar-btn active" title="Toggle Preview"><span class="icon">👁</span></button>
         <button id="btn-toggle-outline" class="toolbar-btn" title="Toggle Outline (TOC)"><span class="icon">📑</span></button>
         <button id="btn-copy-richtext" class="toolbar-btn" title="Copy as Rich Text"><span class="icon">📋</span></button>
+        <span class="toolbar-sep"></span>
+        <button id="btn-snippets" class="toolbar-btn" title="Snippet Library"><span class="icon">🧩</span></button>
+        <button id="btn-zen" class="toolbar-btn" title="Zen/Focus Mode (Ctrl+Shift+Z)"><span class="icon">🧘</span></button>
+        <button id="btn-shortcuts" class="toolbar-btn" title="Keyboard Shortcuts (Ctrl+/)"><span class="icon">⌨</span></button>
       </div>
       <div class="md-main-area">
         <!-- Outline / TOC Panel -->
@@ -185,6 +192,7 @@
           </div>
         </div>
       </div>
+      <div id="md-stats-bar" class="md-stats-bar"></div>
     </div>
 
     <!-- Document View -->
@@ -295,6 +303,10 @@
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="doc-insert-bookmark" title="Insert Bookmark" style="font-size:11px">🔖</button>
         <button class="toolbar-btn" id="doc-compare" title="Compare Documents" style="font-size:11px">⇔ Diff</button>
+        <button class="toolbar-btn" id="doc-version-diff" title="Version Compare/Diff (side-by-side)" style="font-size:11px">⚡ VDiff</button>
+        <button class="toolbar-btn" id="doc-smart-styles" title="Smart Styles Gallery" style="font-size:11px">🎭 Styles+</button>
+        <button class="toolbar-btn" id="doc-outline-nav" title="Outline Navigator (right sidebar)" style="font-size:11px">🗂 Nav</button>
+        <button class="toolbar-btn" id="doc-writing-stats" title="Writing Stats & Goals" style="font-size:11px">📊 Stats</button>
         <button class="toolbar-btn" id="doc-focus-mode" title="Focus Mode (Zen)" style="font-size:11px">🧘 Focus</button>
         <button class="toolbar-btn" id="doc-reading-mode" title="Reading Mode" style="font-size:11px">📖 Read</button>
         <div class="toolbar-divider"></div>
@@ -359,6 +371,14 @@
             <button id="doc-comments-sidebar-close" class="toolbar-btn" style="font-size:12px">&times;</button>
           </div>
           <div id="doc-comments-list" class="doc-side-panel-list"></div>
+        </aside>
+        <!-- Document Outline Navigator (right sidebar) -->
+        <aside id="doc-outline-nav-panel" class="doc-side-panel hidden">
+          <div class="doc-side-panel-header">
+            <span>Outline Navigator</span>
+            <button id="doc-outline-nav-close" class="toolbar-btn" style="font-size:12px">&times;</button>
+          </div>
+          <div id="doc-outline-nav-list" class="doc-side-panel-list doc-outline-nav-list"></div>
         </aside>
       </div>
       <div id="doc-status-bar" class="doc-status-bar">Words: 0  |  Characters: 0  |  Paragraphs: 0</div>
@@ -470,6 +490,7 @@
         <button class="toolbar-btn" id="sheet-sparkline" title="Insert Sparkline" style="font-size:11px">📊</button>
         <button class="toolbar-btn" id="sheet-insert-chart" title="Insert Chart" style="font-size:11px">📈 Chart</button>
         <button class="toolbar-btn" id="sheet-pivot" title="Pivot Table" style="font-size:11px">📊 Pivot</button>
+        <button class="toolbar-btn" id="sheet-pivot-refresh" title="Refresh Pivot Table" style="font-size:11px">🔄 Refresh</button>
         <button class="toolbar-btn" id="sheet-group-rows" title="Group/Ungroup Rows" style="font-size:11px">⊟ Group</button>
         <button class="toolbar-btn" id="sheet-merge-cells" title="Merge Cells" style="font-size:11px">⊞ Merge</button>
         <button class="toolbar-btn" id="sheet-cond-format" title="Conditional Formatting" style="font-size:11px">🎨 CFormat</button>
@@ -561,6 +582,7 @@
           <option value="dissolve">Dissolve</option>
           <option value="wipe-right">Wipe Right</option>
           <option value="split">Split</option>
+          <option value="morph">Morph</option>
         </select>
         <label style="font-size:10px;color:var(--text-secondary);display:flex;align-items:center;gap:2px" title="Transition Duration (seconds)">
           <input type="number" id="slide-transition-duration" min="0.1" max="5" step="0.1" value="0.5" style="width:40px;padding:2px 4px;font-size:10px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">s
@@ -607,7 +629,15 @@
         <button class="toolbar-btn" id="slide-presenter-view" title="Presenter View (separate window)" style="font-size:11px">🖥 Presenter</button>
         <button class="toolbar-btn" id="slide-rehearse" title="Rehearse Timings" style="font-size:11px">⏱️</button>
         <button class="toolbar-btn" id="slide-pres-timer" title="Presentation Timer" style="font-size:11px">⏰ Timer</button>
-        <button class="toolbar-btn" id="slide-toggle-grid" title="Toggle Grid" style="font-size:11px"># Grid</button>
+        <button class="toolbar-btn" id="slide-toggle-grid" title="Toggle Snap-to-Grid Overlay" style="font-size:11px"># Grid</button>
+        <select id="slide-grid-size" title="Grid Size" style="font-size:10px;padding:2px 4px;width:50px">
+          <option value="10">10px</option>
+          <option value="20" selected>20px</option>
+          <option value="50">50px</option>
+        </select>
+        <button class="toolbar-btn" id="slide-smart-guides-toggle" title="Toggle Smart Guides" style="font-size:11px">📏 Guides</button>
+        <button class="toolbar-btn" id="slide-master-editor" title="Edit Slide Master" style="font-size:11px">🎓 Master Edit</button>
+        <button class="toolbar-btn" id="slide-view-toggle" title="Toggle Normal/Sorter View" style="font-size:11px">⊞ View</button>
         <button class="toolbar-btn" id="slide-obj-group" title="Group Selected (Ctrl+G)" style="font-size:11px">Group</button>
         <button class="toolbar-btn" id="slide-obj-ungroup" title="Ungroup (Ctrl+Shift+G)" style="font-size:11px">Ungroup</button>
         <button class="toolbar-btn" id="slide-shape-lib" title="Shape Library" style="font-size:11px">Shapes+</button>
@@ -732,12 +762,43 @@
         <!-- Stamp Tool -->
         <button class="toolbar-btn" id="pdf-stamp" title="Add Stamp">🔖 Stamp</button>
         <div class="toolbar-divider"></div>
+        <!-- OCR -->
+        <button class="toolbar-btn" id="pdf-ocr" title="OCR (Recognize Text)">🔍 OCR</button>
+        <select id="pdf-ocr-lang" title="OCR Language" style="font-size:11px;padding:2px 4px;border:1px solid var(--border-color);border-radius:4px;background:var(--editor-bg,#fff);color:var(--text-primary)">
+          <option value="eng">English</option>
+          <option value="kor">한국어</option>
+          <option value="jpn">日本語</option>
+          <option value="chi_sim">中文</option>
+          <option value="deu">Deutsch</option>
+          <option value="fra">Français</option>
+          <option value="spa">Español</option>
+        </select>
+        <div class="toolbar-divider"></div>
+        <!-- Bookmarks -->
+        <button class="toolbar-btn" id="pdf-bookmarks-toggle" title="Toggle Bookmarks Panel">📑 Bookmarks</button>
+        <button class="toolbar-btn" id="pdf-bookmark-add" title="Add Bookmark at Current Page">＋ Bookmark</button>
+        <div class="toolbar-divider"></div>
+        <!-- Merge / Split / Compare -->
+        <button class="toolbar-btn" id="pdf-merge" title="Merge PDFs">⊕ Merge</button>
+        <button class="toolbar-btn" id="pdf-split" title="Split PDF">✂ Split</button>
+        <button class="toolbar-btn" id="pdf-compare" title="Compare PDFs">⇄ Compare</button>
+        <div class="toolbar-divider"></div>
         <input type="text" id="pdf-search-input" class="pdf-search-input" placeholder="Search text…" />
         <button class="toolbar-btn" id="pdf-search-prev" title="Previous Match">◀</button>
         <button class="toolbar-btn" id="pdf-search-next" title="Next Match">▶</button>
         <span class="pdf-search-info" id="pdf-search-info"></span>
       </div>
+      <!-- OCR Progress -->
+      <div id="pdf-ocr-progress" class="pdf-ocr-progress" style="display:none">
+        <div class="pdf-ocr-progress-bar"><div class="pdf-ocr-progress-fill" id="pdf-ocr-progress-fill"></div></div>
+        <span id="pdf-ocr-progress-text" class="pdf-ocr-progress-text">Recognizing text…</span>
+      </div>
       <div class="pdf-main-area">
+        <!-- Bookmarks sidebar -->
+        <div class="pdf-bookmark-sidebar" id="pdf-bookmark-sidebar" style="display:none">
+          <div class="pdf-thumb-header">Bookmarks</div>
+          <div class="pdf-bookmark-list" id="pdf-bookmark-list"></div>
+        </div>
         <div class="pdf-thumb-sidebar" id="pdf-thumb-sidebar">
           <div class="pdf-thumb-header">Pages</div>
           <div class="pdf-thumb-list" id="pdf-thumb-list"></div>
@@ -803,6 +864,91 @@
         <div class="pdf-stamp-custom">
           <input type="text" id="pdf-stamp-custom-text" placeholder="Custom stamp…" class="pdf-search-input" style="width:100%" />
           <button class="toolbar-btn" id="pdf-stamp-custom-btn" style="margin-top:4px;width:100%">Add Custom</button>
+        </div>
+      </div>
+      <!-- Merge Modal -->
+      <div id="pdf-merge-modal" class="pdf-modal-overlay" style="display:none">
+        <div class="pdf-modal" style="width:560px">
+          <div class="pdf-modal-header">
+            <span>Merge PDFs</span>
+            <button class="pdf-modal-close" id="pdf-merge-close">&times;</button>
+          </div>
+          <div class="pdf-sig-body">
+            <p style="font-size:12px;color:var(--text-secondary);margin:0 0 8px">Add PDF files and arrange order. Optionally specify page ranges.</p>
+            <div id="pdf-merge-file-list" class="pdf-merge-file-list"></div>
+            <button class="toolbar-btn" id="pdf-merge-add-file" style="margin-top:8px">+ Add PDF File</button>
+          </div>
+          <div class="pdf-modal-footer">
+            <button class="toolbar-btn" id="pdf-merge-execute">Merge &amp; Download</button>
+          </div>
+        </div>
+      </div>
+      <!-- Split Modal -->
+      <div id="pdf-split-modal" class="pdf-modal-overlay" style="display:none">
+        <div class="pdf-modal" style="width:480px">
+          <div class="pdf-modal-header">
+            <span>Split PDF</span>
+            <button class="pdf-modal-close" id="pdf-split-close">&times;</button>
+          </div>
+          <div class="pdf-sig-body">
+            <div style="margin-bottom:12px">
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Split Mode</label>
+              <select id="pdf-split-mode" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;background:var(--editor-bg,#fff);color:var(--text-primary)">
+                <option value="range">By Page Range (e.g. 1-3, 5, 7-10)</option>
+                <option value="every">Every N Pages</option>
+                <option value="extract">Extract Specific Pages</option>
+              </select>
+            </div>
+            <div id="pdf-split-range-opts">
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Page Ranges (comma-separated)</label>
+              <input type="text" id="pdf-split-ranges" class="pdf-search-input" style="width:100%;padding:6px" placeholder="e.g. 1-3, 5, 7-10" />
+            </div>
+            <div id="pdf-split-every-opts" style="display:none">
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Pages per split</label>
+              <input type="number" id="pdf-split-every-n" class="pdf-search-input" style="width:80px;padding:6px" value="1" min="1" />
+            </div>
+            <div id="pdf-split-extract-opts" style="display:none">
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Pages to extract (comma-separated)</label>
+              <input type="text" id="pdf-split-extract-pages" class="pdf-search-input" style="width:100%;padding:6px" placeholder="e.g. 1, 3, 5" />
+            </div>
+            <div style="margin-top:12px">
+              <label style="font-size:12px;display:flex;align-items:center;gap:6px">
+                <input type="checkbox" id="pdf-split-zip" checked /> Download as ZIP
+              </label>
+            </div>
+            <p id="pdf-split-info" style="font-size:11px;color:var(--text-secondary);margin-top:8px"></p>
+          </div>
+          <div class="pdf-modal-footer">
+            <button class="toolbar-btn" id="pdf-split-execute">Split &amp; Download</button>
+          </div>
+        </div>
+      </div>
+      <!-- Compare Modal -->
+      <div id="pdf-compare-modal" class="pdf-modal-overlay" style="display:none">
+        <div class="pdf-modal" style="width:90vw;max-width:1200px;height:85vh;display:flex;flex-direction:column">
+          <div class="pdf-modal-header">
+            <span>Compare PDFs</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="toolbar-btn" id="pdf-compare-prev" title="Previous Page">&larr;</button>
+              <span id="pdf-compare-page-info" style="font-size:12px;font-weight:600">0 / 0</span>
+              <button class="toolbar-btn" id="pdf-compare-next" title="Next Page">&rarr;</button>
+              <button class="pdf-modal-close" id="pdf-compare-close">&times;</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:4px;padding:8px 16px;border-bottom:1px solid var(--border-color);font-size:12px">
+            <button class="toolbar-btn" id="pdf-compare-load-a">Load PDF A</button>
+            <span id="pdf-compare-name-a" style="color:var(--text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+            <button class="toolbar-btn" id="pdf-compare-load-b">Load PDF B</button>
+            <span id="pdf-compare-name-b" style="color:var(--text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+          </div>
+          <div class="pdf-compare-body" id="pdf-compare-body" style="flex:1;display:flex;overflow:hidden">
+            <div class="pdf-compare-pane" id="pdf-compare-pane-a" style="flex:1;overflow:auto;padding:16px;display:flex;justify-content:center;align-items:flex-start;border-right:1px solid var(--border-color)">
+              <div style="color:var(--text-tertiary);text-align:center;padding:40px">Load PDF A to begin</div>
+            </div>
+            <div class="pdf-compare-pane" id="pdf-compare-pane-b" style="flex:1;overflow:auto;padding:16px;display:flex;justify-content:center;align-items:flex-start">
+              <div style="color:var(--text-tertiary);text-align:center;padding:40px">Load PDF B to compare</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -903,6 +1049,62 @@
           </div>
           <!-- Right adjustment panel -->
           <div class="photo-panel">
+            <!-- Layers Panel -->
+            <div class="photo-panel-section">
+              <button class="photo-panel-toggle active" data-panel="photo-layers-panel">Layers</button>
+              <div class="photo-panel-content open" id="photo-layers-panel">
+                <div class="photo-layers-toolbar">
+                  <button class="toolbar-btn photo-layer-action-btn" id="photo-layer-add" title="Add Layer">+ Add</button>
+                  <button class="toolbar-btn photo-layer-action-btn" id="photo-layer-dup" title="Duplicate Layer">⧉ Dup</button>
+                  <button class="toolbar-btn photo-layer-action-btn" id="photo-layer-del" title="Delete Layer">🗑 Del</button>
+                  <button class="toolbar-btn photo-layer-action-btn" id="photo-layer-flatten" title="Flatten All">⊟ Flatten</button>
+                </div>
+                <div class="photo-layer-blend-row">
+                  <label class="photo-slider-label">Blend</label>
+                  <select id="photo-layer-blend-mode" style="flex:1;padding:3px 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-color);color:var(--text-color);font-size:11px">
+                    <option value="normal">Normal</option>
+                    <option value="multiply">Multiply</option>
+                    <option value="screen">Screen</option>
+                    <option value="overlay">Overlay</option>
+                    <option value="soft-light">Soft Light</option>
+                    <option value="hard-light">Hard Light</option>
+                    <option value="difference">Difference</option>
+                    <option value="exclusion">Exclusion</option>
+                    <option value="color-dodge">Color Dodge</option>
+                    <option value="color-burn">Color Burn</option>
+                    <option value="darken">Darken</option>
+                    <option value="lighten">Lighten</option>
+                  </select>
+                </div>
+                <div class="photo-slider-row" style="margin-bottom:8px">
+                  <span class="photo-slider-label">Opacity</span>
+                  <input type="range" id="photo-layer-opacity" min="0" max="100" value="100">
+                  <span class="photo-slider-val" id="photo-layer-opacity-val">100</span>
+                </div>
+                <div id="photo-layers-stack" class="photo-layers-stack"></div>
+              </div>
+            </div>
+            <!-- History Panel -->
+            <div class="photo-panel-section">
+              <button class="photo-panel-toggle" data-panel="photo-history-panel">History</button>
+              <div class="photo-panel-content" id="photo-history-panel">
+                <div id="photo-history-list" class="photo-history-list"></div>
+              </div>
+            </div>
+            <!-- Adjustment Layers -->
+            <div class="photo-panel-section">
+              <button class="photo-panel-toggle" data-panel="photo-adj-layer-panel">+ Adjustment Layer</button>
+              <div class="photo-panel-content" id="photo-adj-layer-panel">
+                <div class="photo-adj-layer-buttons">
+                  <button class="photo-auto-btn" data-adj-type="brightness-contrast">☀ Brightness/Contrast</button>
+                  <button class="photo-auto-btn" data-adj-type="levels">📊 Levels</button>
+                  <button class="photo-auto-btn" data-adj-type="hue-saturation">🎨 Hue/Saturation</button>
+                  <button class="photo-auto-btn" data-adj-type="color-balance">⚖ Color Balance</button>
+                  <button class="photo-auto-btn" data-adj-type="curves">〰 Curves</button>
+                </div>
+                <div id="photo-adj-layer-settings" class="photo-adj-layer-settings" style="display:none"></div>
+              </div>
+            </div>
             <!-- AI Auto-Edit -->
             <div class="photo-panel-section">
               <button class="photo-panel-toggle active" data-panel="photo-ai-panel">✦ AI Auto-Edit</button>
@@ -1051,6 +1253,10 @@
           <button class="calc-tab" data-calc-tab="date">Date</button>
           <button class="calc-tab" data-calc-tab="equation">Equation</button>
           <button class="calc-tab" data-calc-tab="constants">Constants</button>
+          <button class="calc-tab" data-calc-tab="surface3d">3D Surface</button>
+          <button class="calc-tab" data-calc-tab="complex">Complex</button>
+          <button class="calc-tab" data-calc-tab="baseconv">Base Conv</button>
+          <button class="calc-tab" data-calc-tab="numtheory">Num Theory</button>
         </div>
         <div class="calc-toolbar-right">
           <button class="calc-toolbar-btn" id="calc-add-home" title="Add to Home Screen">📲</button>
@@ -1451,6 +1657,185 @@
               <div class="calc-adv-result" id="calc-date-weekday-result"></div>
             </div>
             <div class="calc-date-panel" id="calc-date-business">
+
+      <!-- Panel: 3D Surface Plot -->
+      <div class="calc-panel" id="calc-panel-surface3d">
+        <div class="calc-graph-container">
+          <div class="calc-graph-controls">
+            <label>z = f(x,y):</label>
+            <input type="text" id="calc-3d-expr" class="calc-graph-input" placeholder="sin(sqrt(x*x+y*y))" value="sin(sqrt(x*x+y*y))" />
+            <button class="calc-graph-plot-btn" id="calc-3d-plot">Plot</button>
+            <select id="calc-3d-preset" class="calc-graph-mode-select">
+              <option value="">Presets...</option>
+              <option value="sin(sqrt(x*x+y*y))">sin(sqrt(x²+y²))</option>
+              <option value="x*x-y*y">x²-y²</option>
+              <option value="cos(x)*sin(y)">cos(x)*sin(y)</option>
+              <option value="sin(x)*cos(y)*exp(-0.1*(x*x+y*y))">Damped waves</option>
+              <option value="3*(1-x)*(1-x)*exp(-x*x-(y+1)*(y+1))-10*(x/5-x*x*x-y*y*y*y*y)*exp(-x*x-y*y)-1/3*exp(-(x+1)*(x+1)-y*y)">Peaks</option>
+              <option value="x*x+y*y">Paraboloid</option>
+              <option value="sin(x)+sin(y)">sin(x)+sin(y)</option>
+            </select>
+          </div>
+          <div class="calc-graph-toolbar">
+            <label class="calc-graph-check"><input type="checkbox" id="calc-3d-wireframe" checked /> Wireframe</label>
+            <label class="calc-graph-check"><input type="checkbox" id="calc-3d-color" checked /> Color Map</label>
+            <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px;">Grid:
+              <input type="range" id="calc-3d-resolution" min="10" max="60" value="30" style="width:80px;" />
+              <span id="calc-3d-res-label">30</span>
+            </label>
+          </div>
+          <div class="calc-graph-view" id="calc-3d-view">
+            <canvas id="calc-3d-canvas"></canvas>
+            <div class="calc-graph-info" id="calc-3d-info">Drag to rotate, scroll to zoom</div>
+          </div>
+          <div class="calc-graph-range">
+            <label>X: <input type="number" id="calc-3d-xmin" value="-5" /> to <input type="number" id="calc-3d-xmax" value="5" /></label>
+            <label>Y: <input type="number" id="calc-3d-ymin" value="-5" /> to <input type="number" id="calc-3d-ymax" value="5" /></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Complex Number Calculator -->
+      <div class="calc-panel" id="calc-panel-complex">
+        <div class="calc-adv-container">
+          <div class="calc-adv-card" style="max-width:600px;">
+            <h3>Complex Number Calculator</h3>
+            <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+              <div style="flex:1;min-width:180px;">
+                <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">Number A</label>
+                <div style="display:flex;gap:6px;align-items:center;">
+                  <input type="number" id="calc-cx-a-re" class="calc-eq-coeff" value="3" placeholder="Re" style="width:70px;" />
+                  <span style="font-weight:700;color:var(--text-secondary);">+</span>
+                  <input type="number" id="calc-cx-a-im" class="calc-eq-coeff" value="4" placeholder="Im" style="width:70px;" />
+                  <span style="font-weight:700;color:var(--brand-color);">i</span>
+                </div>
+              </div>
+              <div style="flex:1;min-width:180px;">
+                <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">Number B</label>
+                <div style="display:flex;gap:6px;align-items:center;">
+                  <input type="number" id="calc-cx-b-re" class="calc-eq-coeff" value="1" placeholder="Re" style="width:70px;" />
+                  <span style="font-weight:700;color:var(--text-secondary);">+</span>
+                  <input type="number" id="calc-cx-b-im" class="calc-eq-coeff" value="-2" placeholder="Im" style="width:70px;" />
+                  <span style="font-weight:700;color:var(--brand-color);">i</span>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+              <button class="calc-adv-btn calc-adv-primary" data-cx-op="add">A + B</button>
+              <button class="calc-adv-btn calc-adv-primary" data-cx-op="sub">A - B</button>
+              <button class="calc-adv-btn calc-adv-primary" data-cx-op="mul">A × B</button>
+              <button class="calc-adv-btn calc-adv-primary" data-cx-op="div">A ÷ B</button>
+              <button class="calc-adv-btn" data-cx-op="pow">A^n</button>
+              <button class="calc-adv-btn" data-cx-op="root">ⁿ√A</button>
+              <button class="calc-adv-btn" data-cx-op="conj">conj(A)</button>
+              <button class="calc-adv-btn" data-cx-op="mod">|A|</button>
+              <button class="calc-adv-btn" data-cx-op="arg">arg(A)</button>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+              <label style="font-size:12px;color:var(--text-secondary);font-weight:600;">n =</label>
+              <input type="number" id="calc-cx-n" class="calc-eq-coeff" value="2" style="width:60px;" />
+            </div>
+            <div class="calc-adv-result" id="calc-cx-result">
+              <div class="calc-adv-result-label">Result</div>
+              <div id="calc-cx-result-content" style="font-family:monospace;font-size:16px;line-height:1.8;"></div>
+            </div>
+            <h4>Argand Diagram</h4>
+            <div class="calc-graph-view" style="height:300px;min-height:300px;">
+              <canvas id="calc-cx-canvas" style="width:100%;height:100%;display:block;"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Base Converter -->
+      <div class="calc-panel" id="calc-panel-baseconv">
+        <div class="calc-adv-container">
+          <div class="calc-adv-card" style="max-width:600px;">
+            <h3>Base Converter</h3>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <div class="calc-prog-row">
+                <span class="calc-prog-label" style="width:50px;">BIN</span>
+                <input type="text" id="calc-base-bin" class="calc-prog-input calc-prog-bin-input" placeholder="Binary (0-1)" data-base="2" />
+                <button class="calc-adv-btn calc-base-copy" data-copy="calc-base-bin" title="Copy" style="padding:6px 10px;">📋</button>
+              </div>
+              <div class="calc-prog-row">
+                <span class="calc-prog-label" style="width:50px;">OCT</span>
+                <input type="text" id="calc-base-oct" class="calc-prog-input" placeholder="Octal (0-7)" data-base="8" />
+                <button class="calc-adv-btn calc-base-copy" data-copy="calc-base-oct" title="Copy" style="padding:6px 10px;">📋</button>
+              </div>
+              <div class="calc-prog-row">
+                <span class="calc-prog-label" style="width:50px;">DEC</span>
+                <input type="text" id="calc-base-dec" class="calc-prog-input" placeholder="Decimal (0-9)" value="255" data-base="10" />
+                <button class="calc-adv-btn calc-base-copy" data-copy="calc-base-dec" title="Copy" style="padding:6px 10px;">📋</button>
+              </div>
+              <div class="calc-prog-row">
+                <span class="calc-prog-label" style="width:50px;">HEX</span>
+                <input type="text" id="calc-base-hex" class="calc-prog-input" placeholder="Hexadecimal (0-F)" data-base="16" />
+                <button class="calc-adv-btn calc-base-copy" data-copy="calc-base-hex" title="Copy" style="padding:6px 10px;">📋</button>
+              </div>
+              <div class="calc-prog-row">
+                <span class="calc-prog-label" style="width:50px;">B36</span>
+                <input type="text" id="calc-base-b36" class="calc-prog-input" placeholder="Base-36 (0-Z)" data-base="36" />
+                <button class="calc-adv-btn calc-base-copy" data-copy="calc-base-b36" title="Copy" style="padding:6px 10px;">📋</button>
+              </div>
+            </div>
+            <p style="font-size:11px;color:var(--text-tertiary);margin-top:12px;">Type in any field to convert in real-time. Supports large integers and fractional parts (with .).</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Number Theory Tools -->
+      <div class="calc-panel" id="calc-panel-numtheory">
+        <div class="calc-adv-container">
+          <div class="calc-adv-card" style="max-width:600px;">
+            <h3>Number Theory Tools</h3>
+            <div class="calc-finance-tabs">
+              <button class="calc-nt-tab active" data-nt-tab="factor">Factorization</button>
+              <button class="calc-nt-tab" data-nt-tab="gcdlcm">GCD / LCM</button>
+              <button class="calc-nt-tab" data-nt-tab="modular">Modular Arith</button>
+            </div>
+            <!-- Prime Factorization -->
+            <div class="calc-nt-panel active" id="calc-nt-factor">
+              <div class="calc-finance-form">
+                <label>Number: <input type="number" id="calc-nt-factor-n" value="360" style="flex:0 0 200px;" /></label>
+              </div>
+              <button class="calc-adv-btn calc-adv-primary" id="calc-nt-factor-btn">Factorize</button>
+              <div class="calc-adv-result" id="calc-nt-factor-result" style="margin-top:12px;">
+                <div class="calc-adv-result-label">Result</div>
+                <div id="calc-nt-factor-content" style="font-family:monospace;font-size:14px;line-height:1.8;"></div>
+              </div>
+            </div>
+            <!-- GCD / LCM -->
+            <div class="calc-nt-panel" id="calc-nt-gcdlcm">
+              <div class="calc-finance-form">
+                <label>Numbers (comma-separated): <input type="text" id="calc-nt-gcd-input" value="48, 36, 60" style="flex:0 0 200px;" /></label>
+              </div>
+              <button class="calc-adv-btn calc-adv-primary" id="calc-nt-gcd-btn">Calculate</button>
+              <div class="calc-adv-result" id="calc-nt-gcd-result" style="margin-top:12px;">
+                <div class="calc-adv-result-label">Result</div>
+                <div id="calc-nt-gcd-content" style="font-family:monospace;font-size:16px;line-height:1.8;"></div>
+              </div>
+            </div>
+            <!-- Modular Arithmetic -->
+            <div class="calc-nt-panel" id="calc-nt-modular">
+              <div class="calc-finance-form">
+                <label>a: <input type="number" id="calc-nt-mod-a" value="7" style="flex:0 0 120px;" /></label>
+                <label>n (modulus): <input type="number" id="calc-nt-mod-n" value="13" style="flex:0 0 120px;" /></label>
+                <label>b (for a^b mod n): <input type="number" id="calc-nt-mod-b" value="11" style="flex:0 0 120px;" /></label>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                <button class="calc-adv-btn calc-adv-primary" data-nt-mod="mod">a mod n</button>
+                <button class="calc-adv-btn calc-adv-primary" data-nt-mod="inv">Mod Inverse</button>
+                <button class="calc-adv-btn calc-adv-primary" data-nt-mod="pow">a^b mod n</button>
+              </div>
+              <div class="calc-adv-result" id="calc-nt-mod-result" style="margin-top:12px;">
+                <div class="calc-adv-result-label">Result</div>
+                <div id="calc-nt-mod-content" style="font-family:monospace;font-size:16px;line-height:1.8;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
               <div class="calc-finance-form">
                 <label>Start Date:<input type="date" id="calc-date-biz-start" /></label>
                 <label>End Date:<input type="date" id="calc-date-biz-end" /></label>
@@ -1637,13 +2022,17 @@
     </div>
     <div id="ai-url-settings" class="ai-url-settings hidden">
       <div class="ai-url-settings-row">
-        <label style="font-size:11px;color:var(--text-secondary)">Ollama URL:</label>
-        <div style="display:flex;gap:4px;align-items:center;flex:1">
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px">
           <span id="ai-url-status-dot" class="ai-url-dot offline" title="Not connected"></span>
+          <label style="font-size:11px;color:var(--text-secondary)">Ollama URL:</label>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center">
           <input id="ai-ollama-url-input" type="text" class="ai-url-input" placeholder="http://localhost:11434" />
+          <button id="ai-url-test-btn" class="ai-url-save-btn" title="Test connection">Test</button>
           <button id="ai-url-save-btn" class="ai-url-save-btn">Save</button>
           <button id="ai-url-reset-btn" class="ai-url-reset-btn" title="Reset to localhost">Reset</button>
         </div>
+        <div id="ai-url-test-result" style="font-size:11px;margin-top:4px;min-height:14px"></div>
       </div>
     </div>
     <div id="ai-chat-list" class="ai-chat-list">

@@ -3,6 +3,7 @@
 
 const OLLAMA_DEFAULT = 'http://localhost:11434';
 const OLLAMA_URL_KEY = 'marklink-ollama-url';
+const OLLAMA_MODEL_KEY = 'marklink-ai-model';
 
 function getOllamaBase() {
   return localStorage.getItem(OLLAMA_URL_KEY) || OLLAMA_DEFAULT;
@@ -20,6 +21,20 @@ export function setOllamaUrl(url) {
 
 export function getOllamaUrl() {
   return getOllamaBase();
+}
+
+/**
+ * Save selected model to localStorage
+ */
+export function saveSelectedModel(model) {
+  localStorage.setItem(OLLAMA_MODEL_KEY, model);
+}
+
+/**
+ * Get saved model from localStorage
+ */
+export function getSavedModel() {
+  return localStorage.getItem(OLLAMA_MODEL_KEY) || '';
 }
 
 // Model tiers matched to PC specs
@@ -89,19 +104,66 @@ export function getRecommendedTier() {
 }
 
 /**
- * Check if Ollama is running
+ * Check if Ollama is running — returns { running, version, corsError }
  */
-export async function checkOllamaStatus() {
+export async function checkOllamaStatus(customUrl) {
+  const base = customUrl || getOllamaBase();
   try {
-    const res = await fetch(getOllamaBase(), { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(base, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
       const text = await res.text();
-      return { running: text.includes('Ollama'), version: text };
+      return { running: text.includes('Ollama'), version: text, corsError: false };
     }
-    return { running: false };
-  } catch {
-    return { running: false };
+    return { running: false, corsError: false };
+  } catch (e) {
+    // Distinguish CORS errors from connection failures
+    const isCors = e instanceof TypeError && e.message.includes('Failed to fetch');
+    return { running: false, corsError: isCors };
   }
+}
+
+/**
+ * Test connection to a specific URL — returns detailed result
+ */
+export async function testConnection(url) {
+  const target = url || getOllamaBase();
+  try {
+    const res = await fetch(target, { signal: AbortSignal.timeout(5000) });
+    if (res.ok) {
+      const text = await res.text();
+      if (text.includes('Ollama')) {
+        // Also try to list models
+        const models = await listModels();
+        return {
+          success: true,
+          message: `Connected to Ollama at ${target}`,
+          modelCount: models.length,
+          models,
+        };
+      }
+    }
+    return { success: false, message: `Server responded but is not Ollama`, corsError: false };
+  } catch (e) {
+    const isCors = e instanceof TypeError && e.message.includes('Failed to fetch');
+    return {
+      success: false,
+      message: isCors
+        ? 'Connection blocked by CORS. Set OLLAMA_ORIGINS=* and restart Ollama.'
+        : `Cannot reach ${target}. Is Ollama running?`,
+      corsError: isCors,
+    };
+  }
+}
+
+/**
+ * Format model size from bytes to human readable
+ */
+export function formatModelSize(bytes) {
+  if (!bytes) return '';
+  const gb = bytes / (1024 * 1024 * 1024);
+  if (gb >= 1) return `${gb.toFixed(1)} GB`;
+  const mb = bytes / (1024 * 1024);
+  return `${mb.toFixed(0)} MB`;
 }
 
 /**

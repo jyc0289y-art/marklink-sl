@@ -32,5 +32,13 @@ export function initShortcuts(actions) {
       e.preventDefault();
       actions.togglePreviewOnly?.();
     }
+
+    // Escape key — exit zen mode
+    if (e.key === 'Escape') {
+      if (document.body.classList.contains('zen-mode')) {
+        e.preventDefault();
+        actions.exitZen?.();
+      }
+    }
   });
 }

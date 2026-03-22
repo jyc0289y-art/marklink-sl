@@ -50,6 +50,18 @@ let placingSignature = false;
 // Form fields state
 let formFieldValues = {}; // fieldId -> value
 
+// Bookmark state
+let pdfBookmarks = []; // [{title, pageNum, children?, isCustom?}]
+let bookmarksPanelVisible = false;
+
+// Merge state
+let mergeFiles = []; // [{name, data: ArrayBuffer, pageCount}]
+
+// Compare state
+let comparePdfA = null; // {doc, name}
+let comparePdfB = null; // {doc, name}
+let compareCurrentPage = 1;
+
 export function initPdfViewer() {
   pagesEl = document.getElementById('pdf-pages');
   emptyEl = document.getElementById('pdf-empty');
@@ -65,6 +77,9 @@ export function initPdfViewer() {
     initSignatureModal();
     initStampDropdown();
     initRedactionApply();
+    initMergeModal();
+    initSplitModal();
+    initCompareModal();
   }, 0);
 }
 
@@ -129,6 +144,18 @@ function bindEvents() {
 
   document.getElementById('pdf-clear-annot')?.addEventListener('click', clearAnnotationsOnPage);
 
+  // OCR
+  document.getElementById('pdf-ocr')?.addEventListener('click', () => runOcr());
+
+  // Bookmarks
+  document.getElementById('pdf-bookmarks-toggle')?.addEventListener('click', () => toggleBookmarksPanel());
+  document.getElementById('pdf-bookmark-add')?.addEventListener('click', () => addCustomBookmark());
+
+  // Merge / Split / Compare
+  document.getElementById('pdf-merge')?.addEventListener('click', () => openMergeModal());
+  document.getElementById('pdf-split')?.addEventListener('click', () => openSplitModal());
+  document.getElementById('pdf-compare')?.addEventListener('click', () => openCompareModal());
+
   // Search
   const searchInput = document.getElementById('pdf-search-input');
   searchInput?.addEventListener('input', debounce(() => performSearch(searchInput.value), 300));
@@ -190,6 +217,7 @@ function resetPageState() {
   activeStamp = null;
   placingSignature = false;
   signatureImage = null;
+  pdfBookmarks = [];
   document.querySelectorAll('.pdf-annot-btn').forEach(b => b.classList.remove('active'));
 }
 
@@ -258,6 +286,7 @@ async function loadPdfData(data) {
   updatePageInfo();
   await renderAllPages();
   await renderThumbnails();
+  await loadPdfBookmarks();
 }
 
 // ─── Render ─────────────────────────────────────────────────
@@ -1413,6 +1442,849 @@ function bindPageWrapperEvents(wrapper, pageNum) {
     if (handleStampPlacement(wrapper, pageNum, e)) return;
   });
 }
+
+// ─── OCR (Tesseract.js) ─────────────────────────────────────
+const runOcr = async () => {
+  if (!pdfDoc) { alert('Open a PDF first.'); return; }
+  const Tesseract = window.Tesseract;
+  if (!Tesseract) { alert('Tesseract.js not loaded. Check your internet connection.'); return; }
+
+  const lang = document.getElementById('pdf-ocr-lang')?.value || 'eng';
+  const progressEl = document.getElementById('pdf-ocr-progress');
+  const fillEl = document.getElementById('pdf-ocr-progress-fill');
+  const textEl = document.getElementById('pdf-ocr-progress-text');
+
+  if (progressEl) progressEl.style.display = 'flex';
+
+  const id = pageOrder[currentPage - 1];
+  const pageNum = pageIdToNum(id);
+  if (!pageNum) { alert('Cannot OCR a blank page.'); if (progressEl) progressEl.style.display = 'none'; return; }
+
+  if (textEl) textEl.textContent = `Initializing OCR (${lang})…`;
+  if (fillEl) fillEl.style.width = '5%';
+
+  try {
+    const page = await pdfDoc.getPage(pageNum);
+    const rotation = pageRotations[pageNum] || 0;
+    const ocrScale = 2;
+    const viewport = page.getViewport({ scale: ocrScale, rotation });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    if (textEl) textEl.textContent = 'Recognizing text…';
+    if (fillEl) fillEl.style.width = '15%';
+
+    const result = await Tesseract.recognize(canvas, lang, {
+      logger: (m) => {
+        if (m.status === 'recognizing text' && fillEl && textEl) {
+          const pct = Math.round(15 + m.progress * 80);
+          fillEl.style.width = pct + '%';
+          textEl.textContent = `Recognizing text… ${Math.round(m.progress * 100)}%`;
+        }
+      }
+    });
+
+    if (fillEl) fillEl.style.width = '95%';
+    if (textEl) textEl.textContent = 'Overlaying text…';
+
+    // Find the page wrapper for the current page
+    const wrapper = pagesEl.querySelector(`.pdf-page-wrapper[data-idx="${currentPage}"]`);
+    if (wrapper) {
+      // Remove any existing OCR layer
+      wrapper.querySelectorAll('.pdf-ocr-text-layer').forEach(el => el.remove());
+
+      const displayViewport = page.getViewport({ scale, rotation });
+      const ocrLayer = document.createElement('div');
+      ocrLayer.className = 'pdf-ocr-text-layer';
+      ocrLayer.style.width = displayViewport.width + 'px';
+      ocrLayer.style.height = displayViewport.height + 'px';
+
+      const scaleRatio = scale / ocrScale;
+
+      for (const word of result.data.words) {
+        const { x0, y0, x1, y1 } = word.bbox;
+        const span = document.createElement('span');
+        span.textContent = word.text;
+        span.style.left = (x0 * scaleRatio) + 'px';
+        span.style.top = (y0 * scaleRatio) + 'px';
+        span.style.fontSize = ((y1 - y0) * scaleRatio) + 'px';
+        span.style.width = ((x1 - x0) * scaleRatio) + 'px';
+        span.style.height = ((y1 - y0) * scaleRatio) + 'px';
+        ocrLayer.appendChild(span);
+      }
+
+      wrapper.appendChild(ocrLayer);
+    }
+
+    if (fillEl) fillEl.style.width = '100%';
+    if (textEl) textEl.textContent = `OCR complete: ${result.data.words.length} words recognized`;
+
+    setTimeout(() => {
+      if (progressEl) progressEl.style.display = 'none';
+    }, 3000);
+
+  } catch (err) {
+    console.error('OCR error:', err);
+    if (textEl) textEl.textContent = 'OCR failed: ' + err.message;
+    setTimeout(() => {
+      if (progressEl) progressEl.style.display = 'none';
+    }, 5000);
+  }
+};
+
+// ─── Bookmarks / Outline ────────────────────────────────────
+const loadPdfBookmarks = async () => {
+  if (!pdfDoc) return;
+  try {
+    const outline = await pdfDoc.getOutline();
+    if (outline && outline.length > 0) {
+      pdfBookmarks = await parseOutline(outline);
+    }
+    renderBookmarksList();
+  } catch (_e) {
+    // PDF may not have outlines
+  }
+};
+
+const parseOutline = async (items, depth = 0) => {
+  const result = [];
+  for (const item of items) {
+    const entry = { title: item.title, depth, isCustom: false, children: [] };
+
+    // Resolve destination to page number
+    if (item.dest) {
+      try {
+        let dest = item.dest;
+        if (typeof dest === 'string') {
+          dest = await pdfDoc.getDestination(dest);
+        }
+        if (dest && dest[0]) {
+          const pageRef = dest[0];
+          const pageIdx = await pdfDoc.getPageIndex(pageRef);
+          entry.pageNum = pageIdx + 1;
+        }
+      } catch (_e) {
+        entry.pageNum = 1;
+      }
+    } else {
+      entry.pageNum = 1;
+    }
+
+    if (item.items && item.items.length > 0) {
+      entry.children = await parseOutline(item.items, depth + 1);
+    }
+
+    result.push(entry);
+  }
+  return result;
+};
+
+const toggleBookmarksPanel = () => {
+  const sidebar = document.getElementById('pdf-bookmark-sidebar');
+  if (!sidebar) return;
+  bookmarksPanelVisible = !bookmarksPanelVisible;
+  sidebar.style.display = bookmarksPanelVisible ? 'flex' : 'none';
+  if (bookmarksPanelVisible) renderBookmarksList();
+};
+
+const renderBookmarksList = () => {
+  const listEl = document.getElementById('pdf-bookmark-list');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+
+  if (pdfBookmarks.length === 0) {
+    listEl.innerHTML = '<div style="padding:12px;font-size:12px;color:var(--text-tertiary)">No bookmarks</div>';
+    return;
+  }
+
+  const renderItems = (items, container) => {
+    for (const bm of items) {
+      const item = document.createElement('div');
+      item.className = 'pdf-bookmark-item';
+      item.style.paddingLeft = (8 + bm.depth * 16) + 'px';
+
+      if (bm.children.length > 0) {
+        const toggle = document.createElement('span');
+        toggle.className = 'bm-toggle';
+        toggle.textContent = '\u25B6';
+        let collapsed = false;
+        toggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          collapsed = !collapsed;
+          toggle.textContent = collapsed ? '\u25B6' : '\u25BC';
+          const childContainer = item.nextElementSibling;
+          if (childContainer?.classList.contains('pdf-bookmark-children')) {
+            childContainer.style.display = collapsed ? 'none' : '';
+          }
+        });
+        toggle.textContent = '\u25BC';
+        item.appendChild(toggle);
+      } else {
+        const spacer = document.createElement('span');
+        spacer.className = 'bm-toggle';
+        spacer.textContent = '\u2022';
+        item.appendChild(spacer);
+      }
+
+      const title = document.createElement('span');
+      title.className = 'bm-title';
+      title.textContent = bm.title;
+      title.title = `Page ${bm.pageNum}`;
+      item.appendChild(title);
+
+      if (bm.isCustom) {
+        const del = document.createElement('button');
+        del.className = 'bm-delete';
+        del.textContent = '\u00d7';
+        del.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removeBookmark(bm, pdfBookmarks);
+          renderBookmarksList();
+        });
+        item.appendChild(del);
+      }
+
+      item.addEventListener('click', () => {
+        if (bm.pageNum && bm.pageNum >= 1 && bm.pageNum <= getVisiblePageCount()) {
+          currentPage = bm.pageNum;
+          scrollToPageIdx(currentPage - 1);
+          updatePageInfo();
+        }
+      });
+
+      container.appendChild(item);
+
+      if (bm.children.length > 0) {
+        const childContainer = document.createElement('div');
+        childContainer.className = 'pdf-bookmark-children';
+        renderItems(bm.children, childContainer);
+        container.appendChild(childContainer);
+      }
+    }
+  };
+
+  renderItems(pdfBookmarks, listEl);
+};
+
+const removeBookmark = (target, list) => {
+  const idx = list.indexOf(target);
+  if (idx >= 0) { list.splice(idx, 1); return true; }
+  for (const item of list) {
+    if (item.children && removeBookmark(target, item.children)) return true;
+  }
+  return false;
+};
+
+const addCustomBookmark = () => {
+  if (!pdfDoc) { alert('Open a PDF first.'); return; }
+  const title = prompt('Bookmark title:', `Page ${currentPage}`);
+  if (!title) return;
+
+  pdfBookmarks.push({
+    title,
+    pageNum: currentPage,
+    depth: 0,
+    isCustom: true,
+    children: []
+  });
+
+  if (!bookmarksPanelVisible) {
+    toggleBookmarksPanel();
+  } else {
+    renderBookmarksList();
+  }
+};
+
+// ─── Merge PDFs ─────────────────────────────────────────────
+const openMergeModal = () => {
+  const modal = document.getElementById('pdf-merge-modal');
+  if (modal) modal.style.display = 'flex';
+
+  // If a PDF is loaded, auto-add it as the first file
+  if (pdfDoc && mergeFiles.length === 0 && currentName) {
+    // We can't get the raw data back from pdfDoc, so we skip auto-add
+  }
+  renderMergeFileList();
+};
+
+const initMergeModal = () => {
+  document.getElementById('pdf-merge-close')?.addEventListener('click', () => {
+    document.getElementById('pdf-merge-modal').style.display = 'none';
+  });
+
+  document.getElementById('pdf-merge-add-file')?.addEventListener('click', async () => {
+    const file = await pickPdfFile();
+    if (!file) return;
+    const data = await file.arrayBuffer();
+    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(data) }).promise;
+    mergeFiles.push({ name: file.name, data, pageCount: doc.numPages });
+    renderMergeFileList();
+  });
+
+  document.getElementById('pdf-merge-execute')?.addEventListener('click', () => executeMerge());
+};
+
+const pickPdfFile = () => {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf';
+    input.onchange = () => resolve(input.files[0]);
+    input.click();
+  });
+};
+
+const renderMergeFileList = () => {
+  const listEl = document.getElementById('pdf-merge-file-list');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+
+  if (mergeFiles.length === 0) {
+    listEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-tertiary);font-size:12px">No files added. Click "+ Add PDF File" to begin.</div>';
+    return;
+  }
+
+  mergeFiles.forEach((file, idx) => {
+    const item = document.createElement('div');
+    item.className = 'pdf-merge-file-item';
+    item.draggable = true;
+    item.dataset.idx = idx;
+
+    item.innerHTML = `
+      <span class="merge-drag-handle">☰</span>
+      <span class="merge-file-name">${file.name}</span>
+      <input type="text" class="merge-page-range" placeholder="All" data-idx="${idx}" value="${file.pageRange || ''}" title="e.g. 1-3, 5" />
+      <span class="merge-page-info">(${file.pageCount}p)</span>
+      <button class="merge-file-remove" data-idx="${idx}">&times;</button>
+    `;
+
+    // Drag reorder
+    item.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', String(idx));
+      item.classList.add('dragging');
+    });
+    item.addEventListener('dragend', () => item.classList.remove('dragging'));
+    item.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      item.classList.add('drag-over');
+    });
+    item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+    item.addEventListener('drop', (e) => {
+      e.preventDefault();
+      item.classList.remove('drag-over');
+      const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      const toIdx = idx;
+      if (fromIdx === toIdx) return;
+      const moved = mergeFiles.splice(fromIdx, 1)[0];
+      mergeFiles.splice(toIdx, 0, moved);
+      renderMergeFileList();
+    });
+
+    listEl.appendChild(item);
+  });
+
+  // Page range input listeners
+  listEl.querySelectorAll('.merge-page-range').forEach(input => {
+    input.addEventListener('change', () => {
+      const i = parseInt(input.dataset.idx, 10);
+      mergeFiles[i].pageRange = input.value.trim();
+    });
+  });
+
+  // Remove buttons
+  listEl.querySelectorAll('.merge-file-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = parseInt(btn.dataset.idx, 10);
+      mergeFiles.splice(i, 1);
+      renderMergeFileList();
+    });
+  });
+};
+
+const parsePageRanges = (rangeStr, maxPages) => {
+  if (!rangeStr || !rangeStr.trim()) {
+    return Array.from({ length: maxPages }, (_, i) => i + 1);
+  }
+  const pages = new Set();
+  const parts = rangeStr.split(',');
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (trimmed.includes('-')) {
+      const [startStr, endStr] = trimmed.split('-');
+      const start = Math.max(1, parseInt(startStr, 10) || 1);
+      const end = Math.min(maxPages, parseInt(endStr, 10) || maxPages);
+      for (let i = start; i <= end; i++) pages.add(i);
+    } else {
+      const p = parseInt(trimmed, 10);
+      if (p >= 1 && p <= maxPages) pages.add(p);
+    }
+  }
+  return [...pages].sort((a, b) => a - b);
+};
+
+const executeMerge = async () => {
+  if (mergeFiles.length < 2) { alert('Add at least 2 PDF files to merge.'); return; }
+
+  try {
+    // Render all pages from all files to canvases, then build a single PDF using canvas-based approach
+    // We'll use jsPDF-like approach via canvas → combine
+    const allPageCanvases = [];
+
+    for (const file of mergeFiles) {
+      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(file.data) }).promise;
+      const pages = parsePageRanges(file.pageRange, doc.numPages);
+
+      for (const pageNum of pages) {
+        const page = await doc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        allPageCanvases.push({ canvas, width: viewport.width, height: viewport.height });
+      }
+    }
+
+    if (allPageCanvases.length === 0) { alert('No pages to merge.'); return; }
+
+    // Build PDF from canvases using a simple PDF builder
+    const pdfBytes = buildPdfFromCanvases(allPageCanvases);
+    downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), 'merged.pdf');
+
+    document.getElementById('pdf-merge-modal').style.display = 'none';
+    mergeFiles = [];
+  } catch (err) {
+    console.error('Merge error:', err);
+    alert('Merge failed: ' + err.message);
+  }
+};
+
+// ─── Split PDF ──────────────────────────────────────────────
+const openSplitModal = () => {
+  if (!pdfDoc) { alert('Open a PDF first.'); return; }
+  const modal = document.getElementById('pdf-split-modal');
+  if (modal) modal.style.display = 'flex';
+  const info = document.getElementById('pdf-split-info');
+  if (info) info.textContent = `Current PDF: ${currentName} (${pdfDoc.numPages} pages)`;
+};
+
+const initSplitModal = () => {
+  document.getElementById('pdf-split-close')?.addEventListener('click', () => {
+    document.getElementById('pdf-split-modal').style.display = 'none';
+  });
+
+  document.getElementById('pdf-split-mode')?.addEventListener('change', (e) => {
+    const mode = e.target.value;
+    document.getElementById('pdf-split-range-opts').style.display = mode === 'range' ? '' : 'none';
+    document.getElementById('pdf-split-every-opts').style.display = mode === 'every' ? '' : 'none';
+    document.getElementById('pdf-split-extract-opts').style.display = mode === 'extract' ? '' : 'none';
+  });
+
+  document.getElementById('pdf-split-execute')?.addEventListener('click', () => executeSplit());
+};
+
+const executeSplit = async () => {
+  if (!pdfDoc) return;
+  const mode = document.getElementById('pdf-split-mode')?.value || 'range';
+  const useZip = document.getElementById('pdf-split-zip')?.checked ?? true;
+  const totalPages = pdfDoc.numPages;
+
+  let pageGroups = []; // array of arrays of page numbers
+
+  if (mode === 'range') {
+    const rangeStr = document.getElementById('pdf-split-ranges')?.value?.trim();
+    if (!rangeStr) { alert('Enter page ranges.'); return; }
+    const parts = rangeStr.split(',');
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (trimmed.includes('-')) {
+        const [s, e] = trimmed.split('-');
+        const start = Math.max(1, parseInt(s, 10) || 1);
+        const end = Math.min(totalPages, parseInt(e, 10) || totalPages);
+        const group = [];
+        for (let i = start; i <= end; i++) group.push(i);
+        if (group.length) pageGroups.push(group);
+      } else {
+        const p = parseInt(trimmed, 10);
+        if (p >= 1 && p <= totalPages) pageGroups.push([p]);
+      }
+    }
+  } else if (mode === 'every') {
+    const n = parseInt(document.getElementById('pdf-split-every-n')?.value, 10) || 1;
+    for (let i = 1; i <= totalPages; i += n) {
+      const group = [];
+      for (let j = i; j < i + n && j <= totalPages; j++) group.push(j);
+      pageGroups.push(group);
+    }
+  } else if (mode === 'extract') {
+    const pagesStr = document.getElementById('pdf-split-extract-pages')?.value?.trim();
+    if (!pagesStr) { alert('Enter page numbers.'); return; }
+    const pages = pagesStr.split(',').map(s => parseInt(s.trim(), 10)).filter(n => n >= 1 && n <= totalPages);
+    for (const p of pages) pageGroups.push([p]);
+  }
+
+  if (pageGroups.length === 0) { alert('No valid pages specified.'); return; }
+
+  try {
+    const baseName = currentName.replace('.pdf', '');
+    const files = [];
+
+    for (let gi = 0; gi < pageGroups.length; gi++) {
+      const group = pageGroups[gi];
+      const canvases = [];
+      for (const pageNum of group) {
+        const page = await pdfDoc.getPage(pageNum);
+        const rotation = pageRotations[pageNum] || 0;
+        const viewport = page.getViewport({ scale: 2, rotation });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        canvases.push({ canvas, width: viewport.width, height: viewport.height });
+      }
+
+      const pdfBytes = buildPdfFromCanvases(canvases);
+      const fileName = pageGroups.length === 1 ? `${baseName}_split.pdf` : `${baseName}_part${gi + 1}.pdf`;
+      files.push({ name: fileName, data: pdfBytes });
+    }
+
+    if (useZip && files.length > 1) {
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+      for (const f of files) zip.file(f.name, f.data);
+      const blob = await zip.generateAsync({ type: 'blob' });
+      downloadBlob(blob, `${baseName}_split.zip`);
+    } else {
+      for (const f of files) {
+        downloadBlob(new Blob([f.data], { type: 'application/pdf' }), f.name);
+      }
+    }
+
+    document.getElementById('pdf-split-modal').style.display = 'none';
+  } catch (err) {
+    console.error('Split error:', err);
+    alert('Split failed: ' + err.message);
+  }
+};
+
+// ─── Compare PDFs ───────────────────────────────────────────
+const openCompareModal = () => {
+  const modal = document.getElementById('pdf-compare-modal');
+  if (modal) modal.style.display = 'flex';
+};
+
+const initCompareModal = () => {
+  document.getElementById('pdf-compare-close')?.addEventListener('click', () => {
+    document.getElementById('pdf-compare-modal').style.display = 'none';
+  });
+
+  document.getElementById('pdf-compare-load-a')?.addEventListener('click', async () => {
+    const file = await pickPdfFile();
+    if (!file) return;
+    const data = await file.arrayBuffer();
+    const doc = await pdfjsLib.getDocument({ data }).promise;
+    comparePdfA = { doc, name: file.name };
+    document.getElementById('pdf-compare-name-a').textContent = file.name;
+    compareCurrentPage = 1;
+    renderComparePage();
+  });
+
+  document.getElementById('pdf-compare-load-b')?.addEventListener('click', async () => {
+    const file = await pickPdfFile();
+    if (!file) return;
+    const data = await file.arrayBuffer();
+    const doc = await pdfjsLib.getDocument({ data }).promise;
+    comparePdfB = { doc, name: file.name };
+    document.getElementById('pdf-compare-name-b').textContent = file.name;
+    compareCurrentPage = 1;
+    renderComparePage();
+  });
+
+  document.getElementById('pdf-compare-prev')?.addEventListener('click', () => {
+    if (compareCurrentPage > 1) { compareCurrentPage--; renderComparePage(); }
+  });
+
+  document.getElementById('pdf-compare-next')?.addEventListener('click', () => {
+    const maxA = comparePdfA ? comparePdfA.doc.numPages : 0;
+    const maxB = comparePdfB ? comparePdfB.doc.numPages : 0;
+    const max = Math.max(maxA, maxB);
+    if (compareCurrentPage < max) { compareCurrentPage++; renderComparePage(); }
+  });
+};
+
+const renderComparePage = async () => {
+  const maxA = comparePdfA ? comparePdfA.doc.numPages : 0;
+  const maxB = comparePdfB ? comparePdfB.doc.numPages : 0;
+  const maxPages = Math.max(maxA, maxB);
+
+  const infoEl = document.getElementById('pdf-compare-page-info');
+  if (infoEl) infoEl.textContent = `${compareCurrentPage} / ${maxPages}`;
+
+  const paneA = document.getElementById('pdf-compare-pane-a');
+  const paneB = document.getElementById('pdf-compare-pane-b');
+
+  // Render pane A
+  if (paneA) {
+    paneA.innerHTML = '';
+    if (comparePdfA && compareCurrentPage <= comparePdfA.doc.numPages) {
+      const canvasA = await renderComparePageCanvas(comparePdfA.doc, compareCurrentPage);
+      paneA.appendChild(canvasA);
+    } else {
+      paneA.innerHTML = '<div style="color:var(--text-tertiary);padding:40px">No page</div>';
+    }
+  }
+
+  // Render pane B
+  if (paneB) {
+    paneB.innerHTML = '';
+    if (comparePdfB && compareCurrentPage <= comparePdfB.doc.numPages) {
+      const canvasB = await renderComparePageCanvas(comparePdfB.doc, compareCurrentPage);
+      paneB.appendChild(canvasB);
+
+      // Diff overlay: if both A and B have this page, compute difference
+      if (comparePdfA && compareCurrentPage <= comparePdfA.doc.numPages) {
+        await renderCompareDiff(paneA, paneB, compareCurrentPage);
+      }
+    } else {
+      paneB.innerHTML = '<div style="color:var(--text-tertiary);padding:40px">No page</div>';
+    }
+  }
+};
+
+const renderComparePageCanvas = async (doc, pageNum) => {
+  const page = await doc.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 1.2 });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  canvas.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+  canvas.style.background = '#fff';
+  const ctx = canvas.getContext('2d');
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  return canvas;
+};
+
+const renderCompareDiff = async (paneA, paneB, pageNum) => {
+  try {
+    const canvasA = paneA.querySelector('canvas');
+    const canvasB = paneB.querySelector('canvas');
+    if (!canvasA || !canvasB) return;
+
+    // Create diff overlay sized to match B
+    const w = Math.min(canvasA.width, canvasB.width);
+    const h = Math.min(canvasA.height, canvasB.height);
+
+    const ctxA = canvasA.getContext('2d');
+    const ctxB = canvasB.getContext('2d');
+
+    const dataA = ctxA.getImageData(0, 0, w, h);
+    const dataB = ctxB.getImageData(0, 0, w, h);
+
+    const diffCanvas = document.createElement('canvas');
+    diffCanvas.width = w;
+    diffCanvas.height = h;
+    diffCanvas.style.position = 'absolute';
+    diffCanvas.style.top = '0';
+    diffCanvas.style.left = '0';
+    diffCanvas.style.pointerEvents = 'none';
+    diffCanvas.style.opacity = '0.5';
+    const diffCtx = diffCanvas.getContext('2d');
+    const diffData = diffCtx.createImageData(w, h);
+
+    let diffCount = 0;
+    const threshold = 30;
+
+    for (let i = 0; i < dataA.data.length; i += 4) {
+      const rDiff = Math.abs(dataA.data[i] - dataB.data[i]);
+      const gDiff = Math.abs(dataA.data[i + 1] - dataB.data[i + 1]);
+      const bDiff = Math.abs(dataA.data[i + 2] - dataB.data[i + 2]);
+
+      if (rDiff + gDiff + bDiff > threshold) {
+        diffCount++;
+        // Red for removed (in A but not B), Green for added (in B but not A)
+        const avgA = (dataA.data[i] + dataA.data[i + 1] + dataA.data[i + 2]) / 3;
+        const avgB = (dataB.data[i] + dataB.data[i + 1] + dataB.data[i + 2]) / 3;
+        if (avgA < avgB) {
+          // Content removed (darker in A = text removed)
+          diffData.data[i] = 255;     // R
+          diffData.data[i + 1] = 60;  // G
+          diffData.data[i + 2] = 60;  // B
+          diffData.data[i + 3] = 180; // A
+        } else {
+          // Content added (darker in B = text added)
+          diffData.data[i] = 60;      // R
+          diffData.data[i + 1] = 200; // G
+          diffData.data[i + 2] = 60;  // B
+          diffData.data[i + 3] = 180; // A
+        }
+      } else {
+        diffData.data[i + 3] = 0; // transparent
+      }
+    }
+
+    diffCtx.putImageData(diffData, 0, 0);
+
+    // Add diff overlay on pane B
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'relative';
+    wrapper.style.display = 'inline-block';
+
+    const bCanvas = paneB.querySelector('canvas');
+    paneB.innerHTML = '';
+    wrapper.appendChild(bCanvas);
+    wrapper.appendChild(diffCanvas);
+    paneB.appendChild(wrapper);
+
+    // Also add diff overlay on pane A
+    const wrapperA = document.createElement('div');
+    wrapperA.style.position = 'relative';
+    wrapperA.style.display = 'inline-block';
+
+    const aCanvas = paneA.querySelector('canvas');
+    paneA.innerHTML = '';
+    wrapperA.appendChild(aCanvas);
+
+    const diffCanvasA = diffCanvas.cloneNode(false);
+    const diffCtxA = diffCanvasA.getContext('2d');
+    diffCtxA.putImageData(diffData, 0, 0);
+    wrapperA.appendChild(diffCanvasA);
+    paneA.appendChild(wrapperA);
+
+  } catch (_e) {
+    // Diff computation may fail if pages are very different sizes
+  }
+};
+
+// ─── PDF Builder (canvas → PDF bytes) ───────────────────────
+// Minimal PDF generator from canvas images
+const buildPdfFromCanvases = (canvases) => {
+  // Convert each canvas to JPEG data URL, then build a minimal PDF
+  const pages = canvases.map(({ canvas, width, height }) => {
+    const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    const base64 = jpegDataUrl.split(',')[1];
+    const binaryStr = atob(base64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+    return { bytes, width: width / 2, height: height / 2 }; // scale 2 → points
+  });
+
+  // Build minimal PDF
+  let objs = [];
+  let objOffsets = [];
+  let body = '';
+
+  const addObj = (content) => {
+    const num = objs.length + 1;
+    objs.push({ num, content });
+    return num;
+  };
+
+  // 1. Catalog
+  const catalogNum = addObj('');
+  // 2. Pages
+  const pagesNum = addObj('');
+
+  const pageObjNums = [];
+  const imageObjNums = [];
+
+  for (let i = 0; i < pages.length; i++) {
+    const imgNum = addObj(''); // image stream placeholder
+    imageObjNums.push(imgNum);
+    const pageNum = addObj(''); // page placeholder
+    pageObjNums.push(pageNum);
+  }
+
+  // Now build the actual PDF binary
+  const encoder = new TextEncoder();
+  const chunks = [];
+  let offset = 0;
+
+  const write = (str) => {
+    const bytes = encoder.encode(str);
+    chunks.push(bytes);
+    offset += bytes.length;
+  };
+
+  const writeBytes = (bytes) => {
+    chunks.push(bytes);
+    offset += bytes.length;
+  };
+
+  write('%PDF-1.4\n%\xFF\xFF\xFF\xFF\n');
+
+  // Object offsets tracking
+  const offsets = {};
+
+  // Catalog
+  offsets[catalogNum] = offset;
+  write(`${catalogNum} 0 obj\n<< /Type /Catalog /Pages ${pagesNum} 0 R >>\nendobj\n`);
+
+  // Pages
+  const kids = pageObjNums.map(n => `${n} 0 R`).join(' ');
+  offsets[pagesNum] = offset;
+  write(`${pagesNum} 0 obj\n<< /Type /Pages /Kids [${kids}] /Count ${pages.length} >>\nendobj\n`);
+
+  // Image streams + Page objects
+  for (let i = 0; i < pages.length; i++) {
+    const { bytes: imgBytes, width, height } = pages[i];
+    const imgNum = imageObjNums[i];
+    const pgNum = pageObjNums[i];
+
+    offsets[imgNum] = offset;
+    write(`${imgNum} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${Math.round(width * 2)} /Height ${Math.round(height * 2)} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imgBytes.length} >>\nstream\n`);
+    writeBytes(imgBytes);
+    write('\nendstream\nendobj\n');
+
+    offsets[pgNum] = offset;
+    write(`${pgNum} 0 obj\n<< /Type /Page /Parent ${pagesNum} 0 R /MediaBox [0 0 ${Math.round(width)} ${Math.round(height)}] /Contents ${pgNum + pages.length} 0 R /Resources << /XObject << /Im0 ${imgNum} 0 R >> >> >>\nendobj\n`);
+  }
+
+  // Content streams for each page
+  for (let i = 0; i < pages.length; i++) {
+    const { width, height } = pages[i];
+    const contentStr = `q ${Math.round(width)} 0 0 ${Math.round(height)} 0 0 cm /Im0 Do Q`;
+    const contentNum = pageObjNums[i] + pages.length;
+    offsets[contentNum] = offset;
+    write(`${contentNum} 0 obj\n<< /Length ${contentStr.length} >>\nstream\n${contentStr}\nendstream\nendobj\n`);
+  }
+
+  // XRef
+  const xrefOffset = offset;
+  const totalObjs = pagesNum + pages.length * 3;
+  write(`xref\n0 ${totalObjs + 1}\n0000000000 65535 f \n`);
+  for (let i = 1; i <= totalObjs; i++) {
+    const off = offsets[i] || 0;
+    write(String(off).padStart(10, '0') + ' 00000 n \n');
+  }
+
+  write(`trailer\n<< /Size ${totalObjs + 1} /Root ${catalogNum} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
+
+  // Combine all chunks
+  const totalSize = chunks.reduce((s, c) => s + c.length, 0);
+  const result = new Uint8Array(totalSize);
+  let pos = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, pos);
+    pos += chunk.length;
+  }
+
+  return result;
+};
+
+// ─── Download Helper ────────────────────────────────────────
+const downloadBlob = (blob, filename) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+};
 
 // ─── Public API (unchanged) ─────────────────────────────────
 

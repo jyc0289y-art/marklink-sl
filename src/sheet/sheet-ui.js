@@ -4,10 +4,12 @@ import {
   createSheetData, getCell, setCell as _setCell, setCellFormat,
   getDisplayValue, getRawValue, colToLetter, letterToCol as engineLetterToCol, rcToRef, refToRC,
   addRows, addCols, deleteRow, deleteCol, recalcAll as _recalcAll,
+  setCellArrayFormula as _setCellArrayFormula,
 } from './sheet-engine.js';
 
 // Wrappers that pass all sheets for cross-sheet reference support
 function setCell(sheet, r, c, rawValue) { _setCell(sheet, r, c, rawValue, sheets); }
+function setCellArrayFormula(sheet, r, c, rawValue) { _setCellArrayFormula(sheet, r, c, rawValue, sheets); }
 function recalcAll(sheet) { _recalcAll(sheet, sheets); }
 
 let sheets = [createSheetData()];
@@ -46,7 +48,7 @@ const FORMULA_LIST = [
   'CEILING','CEIL','FLOOR','MOD','PI','E','DEGREES','RADIANS','SIGN',
   'FACT','COMBIN','PERMUT','GCD','LCM','RAND','RANDBETWEEN',
   'CONVERT','MEDIAN','STDEV','VAR','PRODUCT','SUMPRODUCT',
-  'UNIQUE','SORT','FILTER','TRANSPOSE',
+  'UNIQUE','SORT','FILTER','TRANSPOSE','MMULT','SPARKLINE',
   'AND','OR','NOT','IFERROR','IFS','SWITCH','CHOOSE',
   'DATE','YEAR','MONTH','DAY','HOUR','MINUTE','SECOND','WEEKDAY','DATEDIF','EDATE',
   'LARGE','SMALL','RANK','ISBLANK','ISNUMBER','ISTEXT',
@@ -76,6 +78,7 @@ export function initSheetEditor() {
   bindEvents();
   initResize();
   updateSelection();
+  initNamedRangeSelector();
 }
 
 function getSheet() {
@@ -152,11 +155,24 @@ function renderGrid() {
       const sparkline = cell?.format?.sparkline;
       const hyperlink = cell?.format?.hyperlink;
       let cellContent;
-      if (sparkline) {
+      const isSparklineFormula = typeof val === 'string' && val.startsWith('__SPARKLINE__');
+      if (isSparklineFormula) {
+        // Render sparkline via Canvas (data attribute for post-render)
+        const parts = val.split('__');
+        const sparkTypeF = parts[2] || 'line';
+        const sparkDataF = parts[3] || '';
+        cellContent = `<canvas class="sparkline-canvas" data-type="${sparkTypeF}" data-values="${sparkDataF}" style="width:100%;height:100%"></canvas>`;
+      } else if (sparkline) {
         cellContent = `<img src="${sparkline}" style="width:100%;height:100%;object-fit:contain" alt="sparkline">`;
       } else if (hyperlink) {
         const linkLabel = cellHyperlinks[`${r},${c}`]?.label || val;
         cellContent = `<a href="${escapeHTML(hyperlink)}" target="_blank" rel="noopener" style="color:#1a73e8;text-decoration:underline;cursor:pointer" onclick="event.stopPropagation()">${escapeHTML(String(linkLabel))}</a>`;
+      } else if (cell?.format?.isArrayFormula && cell.raw.startsWith('=')) {
+        // Display array formula with curly braces
+        cellContent = escapeHTML(String(val));
+      } else if (cell?.format?.spillSource) {
+        // Spill cell — show value with subtle styling
+        cellContent = escapeHTML(String(val));
       } else {
         cellContent = escapeHTML(String(val));
       }
@@ -178,6 +194,7 @@ function renderGrid() {
   applyFreezeStyles();
   if (condFormats.length > 0) applyConditionalFormatting();
   applyIconSets();
+  renderSparklineCanvases();
 }
 
 function renderCell(r, c) {
@@ -480,7 +497,13 @@ function bindEvents() {
 
     if (e.key === 'Enter') {
       hideAutocomplete();
-      setCell(getSheet(), selectedRow, selectedCol, formulaBarEl.value);
+      const val = formulaBarEl.value;
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && val.startsWith('=')) {
+        // Array formula: Ctrl+Shift+Enter
+        setCellArrayFormula(getSheet(), selectedRow, selectedCol, val);
+      } else {
+        setCell(getSheet(), selectedRow, selectedCol, val);
+      }
       recalcAll(getSheet());
       isEditing = false;
       isFormulaMode = false;
@@ -614,7 +637,12 @@ function bindEvents() {
     if (isEditing) {
       // In-cell editing: only handle Enter/Tab/Escape
       if (e.key === 'Enter') {
-        commitEdit();
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+          // Array formula: Ctrl+Shift+Enter
+          commitEdit(true); // pass true for array formula
+        } else {
+          commitEdit();
+        }
         moveSelection(1, 0);
       } else if (e.key === 'Tab') {
         e.preventDefault();
@@ -990,6 +1018,8 @@ function bindEvents() {
   document.getElementById('sheet-insert-chart')?.addEventListener('click', () => showChartDialog());
   // Pivot Table
   document.getElementById('sheet-pivot')?.addEventListener('click', () => showPivotTableDialog());
+  // Pivot Refresh
+  document.getElementById('sheet-pivot-refresh')?.addEventListener('click', () => refreshPivotTable());
   // Group Rows
   document.getElementById('sheet-group-rows')?.addEventListener('click', () => toggleGroupRows());
   // Merge Cells
@@ -1140,7 +1170,14 @@ function updateSelection() {
   }
 
   if (formulaBarEl && document.activeElement !== formulaBarEl && !isEditing) {
-    formulaBarEl.value = getRawValue(getSheet(), selectedRow, selectedCol);
+    const cell = getCell(getSheet(), selectedRow, selectedCol);
+    if (cell?.format?.isArrayFormula && cell.raw.startsWith('=')) {
+      formulaBarEl.value = `{${cell.raw}}`;
+    } else if (cell?.format?.spillSource) {
+      formulaBarEl.value = cell.raw || '';
+    } else {
+      formulaBarEl.value = getRawValue(getSheet(), selectedRow, selectedCol);
+    }
   }
 
   // Update toolbar state to reflect selected cell format
@@ -1308,7 +1345,7 @@ function sheetRedo() {
   updateSelection();
 }
 
-function commitEdit() {
+function commitEdit(asArrayFormula = false) {
   const td = gridEl.querySelector(`td[data-row="${editingRow}"][data-col="${editingCol}"]`);
   if (!td) return;
   const input = td.querySelector('input');
@@ -1333,7 +1370,11 @@ function commitEdit() {
       }
     }
     saveUndoState();
-    setCell(getSheet(), editingRow, editingCol, val);
+    if (asArrayFormula && val.startsWith('=')) {
+      setCellArrayFormula(getSheet(), editingRow, editingCol, val);
+    } else {
+      setCell(getSheet(), editingRow, editingCol, val);
+    }
     recalcAll(getSheet());
   }
   isEditing = false;
@@ -4927,20 +4968,32 @@ function multiLevelSort(levels, hasHeader) {
 
 let namedRanges = {}; // name → { r1, c1, r2, c2, sheetIdx }
 
+function syncNamedRangesToSheet() {
+  // Sync named ranges to the sheet data model for formula resolution
+  const sheet = getSheet();
+  if (!sheet.namedRanges) sheet.namedRanges = {};
+  for (const [name, r] of Object.entries(namedRanges)) {
+    if (r.sheetIdx === activeSheetIdx || r.sheetIdx === undefined) {
+      sheet.namedRanges[name] = `${colToLetter(r.c1)}${r.r1 + 1}:${colToLetter(r.c2)}${r.r2 + 1}`;
+    }
+  }
+}
+
 function showNamedRangeDialog() {
   const { r1, c1, r2, c2 } = getSelectionRange();
   const rangeStr = `${colToLetter(c1)}${r1 + 1}:${colToLetter(c2)}${r2 + 1}`;
 
   const dlg = document.createElement('div');
   dlg.className = 'modal-overlay';
-  dlg.innerHTML = `<div class="modal-content" style="width:420px">
-    <h3 style="margin:0 0 12px">Named Ranges</h3>
+  dlg.innerHTML = `<div class="modal-content" style="width:480px">
+    <h3 style="margin:0 0 12px">Name Manager</h3>
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <input type="text" id="nr-name" placeholder="Range name..." style="flex:1;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
       <input type="text" id="nr-range" value="${rangeStr}" style="width:120px;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
       <button id="nr-add" style="padding:6px 12px;background:var(--accent-color);color:white;border:none;border-radius:4px;cursor:pointer">Add</button>
     </div>
-    <div id="nr-list" style="max-height:200px;overflow:auto"></div>
+    <p style="font-size:11px;color:var(--text-secondary);margin:0 0 8px">Use named ranges in formulas: =SUM(Revenue), =AVERAGE(Costs)</p>
+    <div id="nr-list" style="max-height:250px;overflow:auto;border:1px solid var(--border-color);border-radius:4px"></div>
     <div style="text-align:right;margin-top:12px">
       <button class="toolbar-btn" id="nr-close" style="padding:6px 16px">Close</button>
     </div>
@@ -4951,37 +5004,82 @@ function showNamedRangeDialog() {
     const list = dlg.querySelector('#nr-list');
     const entries = Object.entries(namedRanges);
     if (entries.length === 0) {
-      list.innerHTML = '<div style="font-size:12px;color:var(--text-secondary);text-align:center;padding:16px">No named ranges defined</div>';
+      list.innerHTML = '<div style="font-size:12px;color:var(--text-secondary);text-align:center;padding:16px">No named ranges defined. Select cells and add a name.</div>';
       return;
     }
     list.innerHTML = entries.map(([name, r]) => `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid var(--border-color);font-size:12px">
-        <span><strong>${name}</strong> → ${colToLetter(r.c1)}${r.r1 + 1}:${colToLetter(r.c2)}${r.r2 + 1}</span>
-        <div>
-          <button data-goto="${name}" style="border:none;background:none;cursor:pointer;font-size:12px;color:var(--accent-color)">Go</button>
-          <button data-del="${name}" style="border:none;background:none;cursor:pointer;font-size:12px;color:var(--text-secondary)">✕</button>
+      <div class="nr-list-item" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border-color);font-size:12px">
+        <div style="flex:1">
+          <strong style="color:var(--text-primary)">${name}</strong>
+          <span style="color:var(--text-secondary);margin-left:8px">${colToLetter(r.c1)}${r.r1 + 1}:${colToLetter(r.c2)}${r.r2 + 1}</span>
+          <span style="color:var(--text-tertiary);margin-left:4px;font-size:10px">(Sheet ${(r.sheetIdx || 0) + 1})</span>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button data-edit="${name}" style="border:none;background:none;cursor:pointer;font-size:11px;color:var(--accent-color);padding:2px 6px" title="Edit range">Edit</button>
+          <button data-goto="${name}" style="border:none;background:none;cursor:pointer;font-size:11px;color:var(--accent-color);padding:2px 6px" title="Go to range">Go</button>
+          <button data-del="${name}" style="border:none;background:none;cursor:pointer;font-size:11px;color:#ef4444;padding:2px 6px" title="Delete">Del</button>
         </div>
       </div>
     `).join('');
     list.querySelectorAll('[data-goto]').forEach(btn => {
       btn.onclick = () => {
         const r = namedRanges[btn.dataset.goto];
+        if (r.sheetIdx !== undefined && r.sheetIdx !== activeSheetIdx) {
+          activeSheetIdx = r.sheetIdx;
+          renderSheetTabs();
+        }
         selectedRow = r.r1; selectedCol = r.c1;
         selAnchorRow = r.r2; selAnchorCol = r.c2;
+        renderGrid();
         updateSelection();
         dlg.remove();
       };
     });
     list.querySelectorAll('[data-del]').forEach(btn => {
-      btn.onclick = () => { delete namedRanges[btn.dataset.del]; renderList(); };
+      btn.onclick = () => {
+        const name = btn.dataset.del;
+        delete namedRanges[name];
+        // Also remove from sheet data
+        const sheet = getSheet();
+        if (sheet.namedRanges) delete sheet.namedRanges[name];
+        renderList();
+      };
+    });
+    list.querySelectorAll('[data-edit]').forEach(btn => {
+      btn.onclick = () => {
+        const name = btn.dataset.edit;
+        const r = namedRanges[name];
+        const newRange = prompt(`Edit range for "${name}":`, `${colToLetter(r.c1)}${r.r1 + 1}:${colToLetter(r.c2)}${r.r2 + 1}`);
+        if (!newRange) return;
+        // Parse the new range
+        const parts = newRange.toUpperCase().split(':');
+        if (parts.length !== 2) { alert('Invalid range format. Use A1:B3'); return; }
+        const s = refToRC(parts[0].trim());
+        const e = refToRC(parts[1].trim());
+        if (!s || !e) { alert('Invalid cell reference'); return; }
+        namedRanges[name] = { r1: Math.min(s[0],e[0]), c1: Math.min(s[1],e[1]), r2: Math.max(s[0],e[0]), c2: Math.max(s[1],e[1]), sheetIdx: activeSheetIdx };
+        syncNamedRangesToSheet();
+        renderList();
+      };
     });
   }
   renderList();
 
   dlg.querySelector('#nr-add').onclick = () => {
     const name = dlg.querySelector('#nr-name').value.trim();
-    if (!name) return;
-    namedRanges[name] = { r1, c1, r2, c2, sheetIdx: activeSheetIdx };
+    const rangeInput = dlg.querySelector('#nr-range').value.trim().toUpperCase();
+    if (!name) { alert('Please enter a range name'); return; }
+    if (!/^[A-Za-z_]\w*$/.test(name)) { alert('Name must start with a letter or underscore, and contain only letters, digits, underscores'); return; }
+    // Parse the range
+    const parts = rangeInput.split(':');
+    let nr1 = r1, nc1 = c1, nr2 = r2, nc2 = c2;
+    if (parts.length === 2) {
+      const s = refToRC(parts[0].trim());
+      const e = refToRC(parts[1].trim());
+      if (s && e) { nr1 = Math.min(s[0],e[0]); nc1 = Math.min(s[1],e[1]); nr2 = Math.max(s[0],e[0]); nc2 = Math.max(s[1],e[1]); }
+    }
+    namedRanges[name] = { r1: nr1, c1: nc1, r2: nr2, c2: nc2, sheetIdx: activeSheetIdx };
+    syncNamedRangesToSheet();
     dlg.querySelector('#nr-name').value = '';
     renderList();
   };
@@ -5165,6 +5263,16 @@ function showPivotTableDialog() {
       setCellFormat(pivotSheet, gtRow, c, 'bg', '#f3f3f3');
     }
 
+    // Store pivot source metadata for refresh
+    pivotSheet.pivotSource = {
+      sheetIdx: activeSheetIdx,
+      r1, c1, r2, c2,
+      rowIdx: parseInt(dlg.querySelector('#pivot-row').value),
+      colIdx: parseInt(dlg.querySelector('#pivot-col').value),
+      valIdx: parseInt(dlg.querySelector('#pivot-val').value),
+      aggFn: dlg.querySelector('#pivot-agg').value,
+    };
+
     sheets.push(pivotSheet);
     activeSheetIdx = sheets.length - 1;
     renderSheetTabs();
@@ -5175,6 +5283,95 @@ function showPivotTableDialog() {
 
   // Auto-preview on load
   renderPreview();
+}
+
+/** Refresh pivot table from source data */
+function refreshPivotTable() {
+  const sheet = getSheet();
+  if (!sheet.pivotSource) {
+    alert('This sheet is not a pivot table, or has no linked source data.');
+    return;
+  }
+  const src = sheet.pivotSource;
+  const srcSheet = sheets[src.sheetIdx];
+  if (!srcSheet) { alert('Source sheet not found.'); return; }
+
+  // Get headers from first row
+  const headers = [];
+  for (let c = src.c1; c <= src.c2; c++) {
+    headers.push(getDisplayValue(srcSheet, src.r1, c) || colToLetter(c));
+  }
+
+  // Collect data (skip header row)
+  const data = [];
+  for (let r = src.r1 + 1; r <= src.r2; r++) {
+    const rowVal = getDisplayValue(srcSheet, r, src.c1 + src.rowIdx);
+    const colVal = src.colIdx >= 0 ? getDisplayValue(srcSheet, r, src.c1 + src.colIdx) : '__total__';
+    const numVal = parseFloat(getDisplayValue(srcSheet, r, src.c1 + src.valIdx)) || 0;
+    data.push({ row: rowVal, col: colVal, val: numVal });
+  }
+
+  const rowVals = [...new Set(data.map(d => d.row))].sort();
+  const colVals = [...new Set(data.map(d => d.col))].sort();
+
+  const agg = {};
+  rowVals.forEach(rv => { agg[rv] = {}; colVals.forEach(cv => { agg[rv][cv] = []; }); });
+  data.forEach(d => { agg[d.row][d.col].push(d.val); });
+
+  const result = {};
+  rowVals.forEach(rv => {
+    result[rv] = {};
+    colVals.forEach(cv => {
+      const vals = agg[rv][cv];
+      if (vals.length === 0) { result[rv][cv] = ''; return; }
+      if (src.aggFn === 'sum') result[rv][cv] = vals.reduce((a, b) => a + b, 0);
+      else if (src.aggFn === 'count') result[rv][cv] = vals.length;
+      else if (src.aggFn === 'average') result[rv][cv] = (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2);
+      else if (src.aggFn === 'min') result[rv][cv] = Math.min(...vals);
+      else if (src.aggFn === 'max') result[rv][cv] = Math.max(...vals);
+    });
+  });
+
+  // Clear and rebuild pivot sheet
+  sheet.cells = {};
+  setCell(sheet, 0, 0, headers[src.rowIdx]);
+  if (colVals[0] === '__total__') {
+    setCell(sheet, 0, 1, `${src.aggFn.toUpperCase()} of ${headers[src.valIdx]}`);
+  } else {
+    colVals.forEach((cv, ci) => setCell(sheet, 0, ci + 1, cv));
+  }
+  rowVals.forEach((rv, ri) => {
+    setCell(sheet, ri + 1, 0, rv);
+    colVals.forEach((cv, ci) => setCell(sheet, ri + 1, ci + 1, String(result[rv][cv])));
+  });
+  const gtRow = rowVals.length + 1;
+  setCell(sheet, gtRow, 0, 'Grand Total');
+  colVals.forEach((cv, ci) => {
+    const total = rowVals.reduce((s, rv) => s + (parseFloat(result[rv][cv]) || 0), 0);
+    setCell(sheet, gtRow, ci + 1, String(src.aggFn === 'average' ? (total / rowVals.length).toFixed(2) : total));
+  });
+  // Formatting
+  for (let c = 0; c <= colVals.length; c++) {
+    setCellFormat(sheet, 0, c, 'bold', true);
+    setCellFormat(sheet, 0, c, 'bg', '#e8f0fe');
+    setCellFormat(sheet, gtRow, c, 'bold', true);
+    setCellFormat(sheet, gtRow, c, 'bg', '#f3f3f3');
+  }
+
+  // Store collapsed state for row groups
+  if (!sheet.pivotCollapsed) sheet.pivotCollapsed = {};
+
+  renderGrid();
+  updateSelection();
+}
+
+/** Toggle pivot row group collapse/expand */
+function togglePivotRowCollapse(rowVal) {
+  const sheet = getSheet();
+  if (!sheet.pivotCollapsed) sheet.pivotCollapsed = {};
+  sheet.pivotCollapsed[rowVal] = !sheet.pivotCollapsed[rowVal];
+  renderGrid();
+  updateSelection();
 }
 
 /* ==================== Data Grouping ==================== */
@@ -6474,6 +6671,213 @@ function exportJSON(fmt, dlg) {
   a.download = 'spreadsheet.json';
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/* ==================== Sparkline Canvas Rendering ==================== */
+
+function renderSparklineCanvases() {
+  const canvases = gridEl.querySelectorAll('.sparkline-canvas');
+  canvases.forEach(canvas => {
+    const type = canvas.dataset.type || 'line';
+    const valStr = canvas.dataset.values || '';
+    const vals = valStr.split(',').map(Number).filter(v => !isNaN(v));
+    if (vals.length < 2) return;
+
+    const parent = canvas.parentElement;
+    const w = parent.clientWidth || 120;
+    const h = parent.clientHeight || 24;
+    canvas.width = w * 2; // retina
+    canvas.height = h * 2;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(2, 2);
+
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const range = max - min || 1;
+    const pad = 2;
+
+    if (type === 'line') {
+      ctx.strokeStyle = '#3b82f6';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      vals.forEach((v, i) => {
+        const x = pad + (i / (vals.length - 1)) * (w - 2 * pad);
+        const y = pad + (1 - (v - min) / range) * (h - 2 * pad);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      // Dots at min/max
+      const minIdx = vals.indexOf(Math.min(...vals));
+      const maxIdx = vals.indexOf(Math.max(...vals));
+      [minIdx, maxIdx].forEach((idx, ci) => {
+        const x = pad + (idx / (vals.length - 1)) * (w - 2 * pad);
+        const y = pad + (1 - (vals[idx] - min) / range) * (h - 2 * pad);
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, Math.PI * 2);
+        ctx.fillStyle = ci === 0 ? '#ef4444' : '#10b981';
+        ctx.fill();
+      });
+    } else if (type === 'bar') {
+      const barW = Math.max(2, (w - 2 * pad) / vals.length - 1);
+      vals.forEach((v, i) => {
+        const bh = Math.max(1, ((v - min) / range) * (h - 2 * pad));
+        const x = pad + i * (barW + 1);
+        const y = h - pad - bh;
+        ctx.fillStyle = v >= 0 ? '#3b82f6' : '#ef4444';
+        ctx.fillRect(x, y, barW, bh);
+      });
+    } else if (type === 'winloss' || type === 'win/loss') {
+      const barW = Math.max(2, (w - 2 * pad) / vals.length - 1);
+      const midY = h / 2;
+      const halfH = (h - 2 * pad) / 2 - 1;
+      vals.forEach((v, i) => {
+        const x = pad + i * (barW + 1);
+        if (v > 0) {
+          ctx.fillStyle = '#10b981';
+          ctx.fillRect(x, midY - halfH, barW, halfH);
+        } else if (v < 0) {
+          ctx.fillStyle = '#ef4444';
+          ctx.fillRect(x, midY + 1, barW, halfH);
+        } else {
+          ctx.fillStyle = '#9ca3af';
+          ctx.fillRect(x, midY - 1, barW, 2);
+        }
+      });
+      // Center line
+      ctx.strokeStyle = '#d1d5db';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, midY);
+      ctx.lineTo(w, midY);
+      ctx.stroke();
+    } else if (type === 'column') {
+      const gap = 2;
+      const barW = Math.max(2, (w - 2 * pad) / vals.length - gap);
+      vals.forEach((v, i) => {
+        const bh = Math.max(1, ((v - min) / range) * (h - 2 * pad));
+        const x = pad + i * (barW + gap);
+        const y = h - pad - bh;
+        ctx.fillStyle = '#10b981';
+        ctx.beginPath();
+        ctx.roundRect(x, y, barW, bh, 1);
+        ctx.fill();
+      });
+    }
+  });
+}
+
+/* ==================== Named Range Dropdown in Formula Bar ==================== */
+
+function buildNamedRangeDropdown() {
+  const sheet = getSheet();
+  const names = Object.keys(sheet.namedRanges || {});
+  // Also include cross-sheet named ranges from namedRanges global
+  Object.keys(namedRanges).forEach(n => { if (!names.includes(n)) names.push(n); });
+  return names;
+}
+
+function initNamedRangeSelector() {
+  // Create a dropdown button next to the cell ref input
+  let nrBtn = document.getElementById('sheet-nr-dropdown');
+  if (nrBtn) return; // already exists
+
+  nrBtn = document.createElement('button');
+  nrBtn.id = 'sheet-nr-dropdown';
+  nrBtn.className = 'toolbar-btn';
+  nrBtn.title = 'Named Ranges';
+  nrBtn.style.cssText = 'font-size:10px;padding:2px 4px;margin-left:2px';
+  nrBtn.textContent = '▾';
+
+  const cellRefEl = document.getElementById('sheet-cell-ref');
+  if (cellRefEl?.parentElement) {
+    cellRefEl.parentElement.insertBefore(nrBtn, cellRefEl.nextSibling);
+  }
+
+  nrBtn.addEventListener('click', () => {
+    const names = buildNamedRangeDropdown();
+    if (names.length === 0) {
+      showNamedRangeDialog();
+      return;
+    }
+
+    // Show dropdown
+    const existing = document.getElementById('nr-selector-dropdown');
+    if (existing) { existing.remove(); return; }
+
+    const dd = document.createElement('div');
+    dd.id = 'nr-selector-dropdown';
+    dd.style.cssText = 'position:fixed;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:5000;max-height:200px;overflow:auto;min-width:160px';
+    const rect = nrBtn.getBoundingClientRect();
+    dd.style.left = rect.left + 'px';
+    dd.style.top = rect.bottom + 2 + 'px';
+
+    // Add "Manage..." option at top
+    dd.innerHTML = `<div class="nr-dd-item" data-action="manage" style="padding:6px 10px;font-size:12px;color:var(--accent-color);cursor:pointer;border-bottom:1px solid var(--border-color)">Manage Named Ranges...</div>` +
+      names.map(n => {
+        const r = namedRanges[n] || {};
+        const sheet = getSheet();
+        const ref = sheet.namedRanges?.[n] || (r.r1 !== undefined ? `${colToLetter(r.c1)}${r.r1+1}:${colToLetter(r.c2)}${r.r2+1}` : '');
+        return `<div class="nr-dd-item" data-name="${n}" style="padding:6px 10px;font-size:12px;cursor:pointer;display:flex;justify-content:space-between;gap:8px">
+          <span style="font-weight:600">${n}</span>
+          <span style="color:var(--text-secondary);font-size:11px">${ref}</span>
+        </div>`;
+      }).join('');
+
+    document.body.appendChild(dd);
+
+    dd.addEventListener('click', (e) => {
+      const item = e.target.closest('.nr-dd-item');
+      if (!item) return;
+      dd.remove();
+      if (item.dataset.action === 'manage') {
+        showNamedRangeDialog();
+        return;
+      }
+      const name = item.dataset.name;
+      if (!name) return;
+      // Navigate to the named range
+      const r = namedRanges[name];
+      if (r) {
+        selectedRow = r.r1; selectedCol = r.c1;
+        selAnchorRow = r.r2; selAnchorCol = r.c2;
+        updateSelection();
+      }
+      // If editing formula, insert the name
+      if (isEditing && isFormulaMode) {
+        const input = formulaEditTarget === 'bar' ? formulaBarEl : getCellInput();
+        if (input) {
+          const pos = input.selectionStart;
+          const text = input.value;
+          input.value = text.slice(0, pos) + name + text.slice(pos);
+          input.selectionStart = input.selectionEnd = pos + name.length;
+          input.focus();
+        }
+      }
+    });
+
+    // Close on click outside
+    setTimeout(() => {
+      document.addEventListener('click', function closeDd(ev) {
+        if (!dd.contains(ev.target) && ev.target !== nrBtn) {
+          dd.remove();
+          document.removeEventListener('click', closeDd);
+        }
+      });
+    }, 50);
+  });
+}
+
+/* ==================== Array Formulas ==================== */
+
+function getArrayFormulaDisplay(r, c) {
+  const cell = getCell(getSheet(), r, c);
+  if (!cell) return '';
+  if (cell.format?.isArrayFormula) {
+    return `{${cell.raw}}`;
+  }
+  return cell.raw;
 }
 
 /* ==================== Export ==================== */

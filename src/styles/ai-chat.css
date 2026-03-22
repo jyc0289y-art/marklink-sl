@@ -739,6 +739,97 @@
   padding: 8px 40px;
 }
 
+/* ─── Copy Command Block ─── */
+.ai-copy-cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--pane-header-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 4px 0;
+}
+.ai-copy-cmd code {
+  flex: 1;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  word-break: break-all;
+  color: var(--text-primary);
+  background: none;
+  padding: 0;
+}
+.ai-copy-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.ai-copy-btn:hover {
+  background: var(--brand-color);
+  color: #fff;
+  border-color: var(--brand-color);
+}
+.ai-copy-cmd-inline {
+  margin-top: 4px;
+}
+.ai-copy-cmd-inline code {
+  font-size: 10px;
+  background: var(--pane-header-bg);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--text-secondary);
+}
+
+/* ─── Status Bar AI Widget ─── */
+.ai-statusbar-widget {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 0 8px;
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+.ai-statusbar-widget:hover {
+  background: var(--hover-bg, rgba(128,128,128,0.1));
+  color: var(--text-primary);
+}
+.ai-statusbar-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.ai-statusbar-dot.online { background: #4caf50; }
+.ai-statusbar-dot.offline { background: #f44336; }
+
+/* ─── CORS Help Sections ─── */
+.ai-cors-os-section h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+/* ─── Keyboard shortcuts ─── */
+kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: inherit;
+  background: var(--pane-header-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  box-shadow: 0 1px 0 var(--border-color);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .ai-panel {

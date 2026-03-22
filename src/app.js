@@ -29,6 +29,7 @@ import { initI18n, setLang, getLang, showLanguagePicker, onLangChange } from './
 import { initPhotoEditor, getPhotoFileName, openPhotoFile } from './photo/photo-editor.js';
 import { initAdBanners } from './ui/ad-banner.js';
 import { initCalculator } from './calculator/calculator.js';
+import { initSnippetLibrary, initZenMode, updateEnhancedStatusBar, initShortcutOverlay, initMarkdownKeyboardShortcuts, initAutocomplete } from './editor/md-enhance.js';
 
 // Default welcome content
 const WELCOME_MD = `# Welcome to OfficeLink SL ✦
@@ -138,10 +139,11 @@ export async function initApp() {
   initPreview(previewContent);
   updatePreviewImmediate(WELCOME_MD);
 
-  // 5. Connect editor changes to preview + outline
+  // 5. Connect editor changes to preview + outline + stats bar
   onChange((content) => {
     updatePreview(content);
     updateOutline(content);
+    updateEnhancedStatusBar(content);
   });
 
   // 5b. Initialize outline/TOC panel
@@ -153,6 +155,14 @@ export async function initApp() {
 
   // 5d. Initialize copy-as-rich-text
   if (typeof initCopyRichText === 'function') initCopyRichText();
+
+  // 5e. Markdown editor enhancements (Snippets, Zen, Shortcuts, Autocomplete)
+  initSnippetLibrary();
+  initZenMode();
+  initShortcutOverlay();
+  initMarkdownKeyboardShortcuts();
+  initAutocomplete();
+  updateEnhancedStatusBar(WELCOME_MD);
 
   // 6. Initialize split pane
   const divider = document.getElementById('divider');
@@ -327,6 +337,11 @@ export async function initApp() {
       getCurrentTab() === 'document' ? getDocContent() : getContent(),
       getCurrentTab() === 'document' ? getDocFileName() : getCurrentFileName()
     ),
+    exitZen: () => {
+      // Handled by zen mode module — toggling off when body has zen-mode class
+      document.body.classList.remove('zen-mode');
+      document.getElementById('btn-zen')?.classList.remove('active');
+    },
   });
 
   // 15. Render recent files
@@ -1578,11 +1593,12 @@ function initStatusBar() {
       statusLeft.textContent = `Slide ${idx} of ${slides.length || 1}`;
       statusCenter.textContent = '';
     } else if (tab === 'markdown') {
+      // Enhanced stats are in the md-stats-bar; keep status bar minimal
       const content = getContent();
-      const words = content.trim().split(/\s+/).filter(Boolean).length;
       const lines = content.split('\n').length;
-      statusLeft.textContent = `Words: ${words.toLocaleString()} | Lines: ${lines}`;
+      statusLeft.textContent = `Lines: ${lines}`;
       statusCenter.textContent = '';
+      updateEnhancedStatusBar(content);
     } else {
       statusLeft.textContent = '';
       statusCenter.textContent = '';

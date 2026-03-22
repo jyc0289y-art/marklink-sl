@@ -755,6 +755,172 @@
   max-height: 200px;
 }
 
+/* ===== Layers Panel ===== */
+.photo-layers-toolbar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.photo-layer-action-btn {
+  flex: 1;
+  font-size: 10px !important;
+  padding: 4px 2px !important;
+  text-align: center;
+}
+.photo-layer-blend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.photo-layers-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.photo-layer-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  background: var(--bg-color);
+  transition: background 0.15s, border-color 0.15s;
+  user-select: none;
+}
+.photo-layer-item:hover {
+  background: var(--hover-bg);
+}
+.photo-layer-item.active {
+  border-color: var(--brand-color);
+  background: color-mix(in srgb, var(--brand-color) 10%, var(--bg-color));
+}
+.photo-layer-item.dragging {
+  opacity: 0.5;
+}
+.photo-layer-item.drag-over {
+  border-top: 2px solid var(--brand-color);
+}
+.photo-layer-visibility {
+  cursor: pointer;
+  font-size: 14px;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+.photo-layer-visibility:hover {
+  opacity: 1;
+}
+.photo-layer-visibility.hidden-layer {
+  opacity: 0.3;
+}
+.photo-layer-thumb {
+  width: 32px;
+  height: 24px;
+  border-radius: 3px;
+  border: 1px solid var(--border-color);
+  object-fit: cover;
+  flex-shrink: 0;
+  background: repeating-conic-gradient(#808080 0% 25%, transparent 0% 50%) 50% / 8px 8px;
+}
+.photo-layer-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+.photo-layer-name.editing {
+  background: var(--bg-color);
+  border: 1px solid var(--brand-color);
+  border-radius: 3px;
+  padding: 1px 4px;
+  outline: none;
+}
+.photo-layer-type-badge {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--border-color);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.photo-layer-lock {
+  font-size: 12px;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+/* ===== History Panel ===== */
+.photo-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.photo-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+  color: var(--text-color);
+}
+.photo-history-item:hover {
+  background: var(--hover-bg);
+}
+.photo-history-item.active {
+  background: color-mix(in srgb, var(--brand-color) 15%, var(--bg-color));
+  font-weight: 600;
+}
+.photo-history-item.future {
+  opacity: 0.4;
+}
+.photo-history-item .history-action {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.photo-history-item .history-time {
+  font-size: 9px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+/* ===== Adjustment Layer Settings ===== */
+.photo-adj-layer-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.photo-adj-layer-settings {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--hover-bg);
+}
+.photo-adj-layer-settings h4 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
   .photo-panel {

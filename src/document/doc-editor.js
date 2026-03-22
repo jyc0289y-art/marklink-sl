@@ -4,6 +4,19 @@ let editorEl = null;
 let dirty = false;
 let outlineVisible = false;
 
+// Auto-save state
+let autoSaveInterval = null;
+const AUTO_SAVE_KEY = 'doc-autosave-content';
+const AUTO_SAVE_TS_KEY = 'doc-autosave-timestamp';
+const AUTO_SAVE_INTERVAL_MS = 30000; // 30 seconds
+
+// Word count goals & session tracking
+const WRITING_STREAK_KEY = 'doc-writing-streak';
+const SESSION_START_KEY = 'doc-session-start';
+let sessionStartTime = Date.now();
+let sessionWordCountStart = 0;
+let wordsPerMinuteTracker = { lastCheck: Date.now(), lastWords: 0, wpm: 0 };
+
 export function initDocEditor() {
   editorEl = document.getElementById('doc-editor');
   if (!editorEl) return;
@@ -13,6 +26,7 @@ export function initDocEditor() {
     dirty = true;
     updateWordCount();
     if (outlineVisible) updateDocOutline();
+    if (outlineNavVisible) updateDocOutlineNav();
   });
 
   // Image resize handles
@@ -427,6 +441,30 @@ export function initDocEditor() {
       document.execCommand('insertHTML', false, cleaned);
     }
   });
+
+  // Auto-Save, Version Diff, Smart Styles, Outline Nav — use setTimeout to avoid hoisting issues
+  setTimeout(() => {
+    if (typeof initAutoSave === 'function') initAutoSave();
+  }, 0);
+
+  // Version Compare/Diff (enhanced)
+  document.getElementById('doc-version-diff')?.addEventListener('click', () => { if (typeof showVersionDiffDialog === 'function') showVersionDiffDialog(); });
+
+  // Smart Styles (enhanced)
+  document.getElementById('doc-smart-styles')?.addEventListener('click', () => { if (typeof showSmartStyleGallery === 'function') showSmartStyleGallery(); });
+
+  // Document Outline Navigator (enhanced - drag reorder headings)
+  document.getElementById('doc-outline-nav')?.addEventListener('click', () => { if (typeof toggleDocOutlineNav === 'function') toggleDocOutlineNav(); });
+  document.getElementById('doc-outline-nav-close')?.addEventListener('click', () => toggleDocOutlineNav());
+
+  // Word Count Goals (enhanced)
+  document.getElementById('doc-writing-stats')?.addEventListener('click', () => showWritingStatsDialog());
+
+  // Session tracking
+  sessionStartTime = Date.now();
+  sessionWordCountStart = typeof getWordCount === 'function' ? getWordCount() : 0;
+  if (typeof SESSION_START_KEY !== 'undefined') localStorage.setItem(SESSION_START_KEY, String(sessionStartTime));
+  if (typeof updateWritingStreak === 'function') updateWritingStreak();
 
   // Initial word count + ruler
   updateWordCount();
@@ -4339,4 +4377,897 @@ function showSpellSuggestionMenu(span, event) {
       }
     });
   }, 10);
+}
+
+/* ==================== Feature: Auto-Save ==================== */
+
+function initAutoSave() {
+  // Check for recovery data
+  const savedContent = localStorage.getItem(AUTO_SAVE_KEY);
+  const savedTimestamp = localStorage.getItem(AUTO_SAVE_TS_KEY);
+  if (savedContent && editorEl) {
+    const currentContent = editorEl.innerHTML.trim();
+    const defaultContent = '<h1>Untitled Document</h1>\n            <p>Start typing here...</p>';
+    if (savedContent !== currentContent && savedContent !== defaultContent && currentContent.length < 100) {
+      const ts = savedTimestamp ? new Date(parseInt(savedTimestamp)).toLocaleString() : 'unknown time';
+      showAutoSaveRecoveryDialog(savedContent, ts);
+    }
+  }
+
+  autoSaveInterval = setInterval(() => {
+    if (editorEl && dirty) {
+      performAutoSave();
+    }
+  }, AUTO_SAVE_INTERVAL_MS);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && editorEl && dirty) {
+      performAutoSave();
+    }
+  });
+}
+
+function performAutoSave() {
+  if (!editorEl) return;
+  const content = editorEl.innerHTML;
+  localStorage.setItem(AUTO_SAVE_KEY, content);
+  localStorage.setItem(AUTO_SAVE_TS_KEY, String(Date.now()));
+  updateAutoSaveIndicator();
+}
+
+function updateAutoSaveIndicator() {
+  const statusBar = document.getElementById('doc-status-bar');
+  if (!statusBar) return;
+  let indicator = document.getElementById('doc-autosave-indicator');
+  if (!indicator) {
+    indicator = document.createElement('span');
+    indicator.id = 'doc-autosave-indicator';
+    indicator.style.cssText = 'margin-left:12px;color:var(--text-tertiary);font-size:11px;transition:opacity 0.3s';
+    statusBar.appendChild(indicator);
+  }
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  indicator.textContent = `Auto-saved ${timeStr}`;
+  indicator.style.opacity = '1';
+  setTimeout(() => { if (indicator) indicator.style.opacity = '0.6'; }, 3000);
+}
+
+function showAutoSaveRecoveryDialog(savedContent, timestamp) {
+  const dlg = document.createElement('div');
+  dlg.className = 'doc-dialog-overlay';
+  dlg.innerHTML = `
+    <div class="doc-dialog" style="max-width:450px">
+      <h3 style="margin:0 0 8px;display:flex;align-items:center;gap:8px">Recovery Available</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px">
+        Unsaved work was found from <strong>${timestamp}</strong>.<br>
+        Would you like to recover it?
+      </p>
+      <div id="recovery-preview" style="max-height:150px;overflow:auto;border:1px solid var(--border-color);border-radius:6px;padding:8px;font-size:12px;color:var(--text-secondary);margin-bottom:12px;background:var(--sidebar-bg)"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button id="recovery-discard" style="padding:6px 16px;border:1px solid var(--border-color);border-radius:6px;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:13px">Discard</button>
+        <button id="recovery-restore" style="padding:6px 16px;border:none;border-radius:6px;background:var(--brand-color);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Recover</button>
+      </div>
+    </div>`;
+  document.body.appendChild(dlg);
+
+  const previewEl = dlg.querySelector('#recovery-preview');
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = savedContent;
+  previewEl.textContent = tempDiv.textContent.substring(0, 500) + (tempDiv.textContent.length > 500 ? '...' : '');
+
+  dlg.querySelector('#recovery-restore').addEventListener('click', () => {
+    if (editorEl) {
+      editorEl.innerHTML = savedContent;
+      dirty = true;
+      updateWordCount();
+      if (outlineVisible) updateDocOutline();
+    }
+    dlg.remove();
+  });
+
+  dlg.querySelector('#recovery-discard').addEventListener('click', () => {
+    localStorage.removeItem(AUTO_SAVE_KEY);
+    localStorage.removeItem(AUTO_SAVE_TS_KEY);
+    dlg.remove();
+  });
+}
+
+/* ==================== Feature: Version Compare/Diff (Enhanced) ==================== */
+
+function showVersionDiffDialog() {
+  document.querySelector('.doc-version-diff-dialog')?.remove();
+  const versionHistory = JSON.parse(localStorage.getItem('doc-version-history') || '[]');
+
+  const dlg = document.createElement('div');
+  dlg.className = 'doc-dialog-overlay doc-version-diff-dialog';
+  dlg.innerHTML = `
+    <div class="doc-dialog" style="max-width:95vw;width:960px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;padding:0">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center">
+        <h3 style="margin:0;font-size:16px">Version Compare / Diff</h3>
+        <button id="vdiff-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-secondary)">&times;</button>
+      </div>
+      <div style="padding:12px 20px;border-bottom:1px solid var(--border-color);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <label style="font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px">Compare with</label>
+          <select id="vdiff-source" style="width:100%;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;background:var(--bg-primary);color:var(--text-primary);margin-top:4px">
+            <option value="paste">Paste / Upload text</option>
+            ${versionHistory.map((v, i) => `<option value="v-${i}">Version ${i + 1} -- ${new Date(v.timestamp).toLocaleString()}</option>`).join('')}
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <button id="vdiff-upload" class="toolbar-btn" style="padding:4px 12px;font-size:12px">Upload File</button>
+          <input type="file" id="vdiff-file-input" accept=".txt,.html,.htm,.md" style="display:none">
+          <button id="vdiff-run" style="padding:6px 16px;border:none;border-radius:6px;background:var(--brand-color);color:#fff;cursor:pointer;font-size:12px;font-weight:600">Compare</button>
+        </div>
+      </div>
+      <div id="vdiff-paste-area" style="padding:8px 20px;border-bottom:1px solid var(--border-color)">
+        <textarea id="vdiff-input" style="width:100%;height:80px;padding:8px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;background:var(--bg-primary);color:var(--text-primary);resize:vertical;box-sizing:border-box" placeholder="Paste comparison text here..."></textarea>
+      </div>
+      <div id="vdiff-stats" style="padding:8px 20px;border-bottom:1px solid var(--border-color);font-size:12px;color:var(--text-secondary);display:none">
+        <span class="vdiff-stat-additions" style="background:#d4edda;padding:2px 8px;border-radius:4px;margin-right:8px">0 additions</span>
+        <span class="vdiff-stat-deletions" style="background:#f8d7da;padding:2px 8px;border-radius:4px;margin-right:8px">0 deletions</span>
+        <span class="vdiff-stat-modifications" style="background:#fff3cd;padding:2px 8px;border-radius:4px">0 modifications</span>
+      </div>
+      <div id="vdiff-result" style="flex:1;overflow:auto;display:none">
+        <div style="display:flex;height:100%;min-height:300px">
+          <div id="vdiff-left" class="vdiff-pane" style="flex:1;overflow:auto;padding:16px;border-right:1px solid var(--border-color)">
+            <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;margin-bottom:8px">Current Document</div>
+            <div id="vdiff-left-content" style="font-size:13px;line-height:1.8"></div>
+          </div>
+          <div id="vdiff-right" class="vdiff-pane" style="flex:1;overflow:auto;padding:16px">
+            <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;margin-bottom:8px">Previous Version</div>
+            <div id="vdiff-right-content" style="font-size:13px;line-height:1.8"></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(dlg);
+
+  const sourceSelect = dlg.querySelector('#vdiff-source');
+  const pasteArea = dlg.querySelector('#vdiff-paste-area');
+  const fileInput = dlg.querySelector('#vdiff-file-input');
+
+  sourceSelect.addEventListener('change', () => {
+    pasteArea.style.display = sourceSelect.value === 'paste' ? '' : 'none';
+    if (sourceSelect.value.startsWith('v-')) {
+      const idx = parseInt(sourceSelect.value.split('-')[1]);
+      dlg.querySelector('#vdiff-input').value = versionHistory[idx]?.content || '';
+    }
+  });
+
+  dlg.querySelector('#vdiff-upload').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (file) {
+      dlg.querySelector('#vdiff-input').value = await file.text();
+    }
+  });
+
+  dlg.querySelector('#vdiff-close').addEventListener('click', () => dlg.remove());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.remove(); });
+
+  dlg.querySelector('#vdiff-run').addEventListener('click', () => {
+    const compareText = dlg.querySelector('#vdiff-input').value;
+    if (!compareText.trim()) return;
+
+    const currentText = editorEl?.innerText || '';
+    const currentLines = currentText.split('\n').filter(l => l.trim());
+    const compareLines = compareText.split('\n').filter(l => l.trim());
+
+    const diff = computeLineDiff(currentLines, compareLines);
+
+    let leftHtml = '', rightHtml = '';
+    let additions = 0, deletions = 0, modifications = 0;
+
+    diff.forEach(d => {
+      if (d.type === 'same') {
+        leftHtml += `<div class="vdiff-line vdiff-same">${escapeHtml(d.left)}</div>`;
+        rightHtml += `<div class="vdiff-line vdiff-same">${escapeHtml(d.right)}</div>`;
+      } else if (d.type === 'add') {
+        leftHtml += `<div class="vdiff-line vdiff-empty">&nbsp;</div>`;
+        rightHtml += `<div class="vdiff-line vdiff-addition">${escapeHtml(d.right)}</div>`;
+        additions++;
+      } else if (d.type === 'remove') {
+        leftHtml += `<div class="vdiff-line vdiff-deletion">${escapeHtml(d.left)}</div>`;
+        rightHtml += `<div class="vdiff-line vdiff-empty">&nbsp;</div>`;
+        deletions++;
+      } else if (d.type === 'modify') {
+        leftHtml += `<div class="vdiff-line vdiff-modification">${highlightWordChanges(d.left, d.right, 'old')}</div>`;
+        rightHtml += `<div class="vdiff-line vdiff-modification">${highlightWordChanges(d.left, d.right, 'new')}</div>`;
+        modifications++;
+      }
+    });
+
+    dlg.querySelector('#vdiff-left-content').innerHTML = leftHtml;
+    dlg.querySelector('#vdiff-right-content').innerHTML = rightHtml;
+    dlg.querySelector('#vdiff-result').style.display = '';
+    dlg.querySelector('#vdiff-stats').style.display = '';
+    dlg.querySelector('.vdiff-stat-additions').textContent = `${additions} additions`;
+    dlg.querySelector('.vdiff-stat-deletions').textContent = `${deletions} deletions`;
+    dlg.querySelector('.vdiff-stat-modifications').textContent = `${modifications} modifications`;
+
+    // Sync scroll
+    const leftPane = dlg.querySelector('#vdiff-left');
+    const rightPane = dlg.querySelector('#vdiff-right');
+    let syncing = false;
+    leftPane.addEventListener('scroll', () => {
+      if (syncing) return;
+      syncing = true;
+      rightPane.scrollTop = leftPane.scrollTop;
+      syncing = false;
+    });
+    rightPane.addEventListener('scroll', () => {
+      if (syncing) return;
+      syncing = true;
+      leftPane.scrollTop = rightPane.scrollTop;
+      syncing = false;
+    });
+  });
+}
+
+function computeLineDiff(currentLines, compareLines) {
+  const result = [];
+  const m = currentLines.length;
+  const n = compareLines.length;
+
+  if (m * n > 25000000) {
+    const cSet = new Set(currentLines);
+    const pSet = new Set(compareLines);
+    currentLines.forEach(l => {
+      if (pSet.has(l)) result.push({ type: 'same', left: l, right: l });
+      else result.push({ type: 'remove', left: l, right: '' });
+    });
+    compareLines.forEach(l => {
+      if (!cSet.has(l)) result.push({ type: 'add', left: '', right: l });
+    });
+    return result;
+  }
+
+  const dp = Array.from({ length: m + 1 }, () => new Uint16Array(n + 1));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = currentLines[i - 1] === compareLines[j - 1]
+        ? dp[i - 1][j - 1] + 1
+        : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+
+  let i = m, j = n;
+  const parts = [];
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && currentLines[i - 1] === compareLines[j - 1]) {
+      parts.unshift({ type: 'same', left: currentLines[i - 1], right: compareLines[j - 1] });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      if (i > 0 && dp[i - 1][j - 1] >= dp[i][j - 1] - 1) {
+        const similarity = computeSimilarity(currentLines[i - 1], compareLines[j - 1]);
+        if (similarity > 0.4) {
+          parts.unshift({ type: 'modify', left: currentLines[i - 1], right: compareLines[j - 1] });
+          i--; j--;
+          continue;
+        }
+      }
+      parts.unshift({ type: 'add', left: '', right: compareLines[j - 1] });
+      j--;
+    } else {
+      parts.unshift({ type: 'remove', left: currentLines[i - 1], right: '' });
+      i--;
+    }
+  }
+
+  return parts;
+}
+
+function computeSimilarity(a, b) {
+  if (!a || !b) return 0;
+  const aWords = a.split(/\s+/);
+  const bWords = new Set(b.split(/\s+/));
+  let common = 0;
+  aWords.forEach(w => { if (bWords.has(w)) common++; });
+  return common / Math.max(aWords.length, bWords.size);
+}
+
+function highlightWordChanges(oldLine, newLine, side) {
+  const oldWords = oldLine.split(/(\s+)/);
+  const newWords = newLine.split(/(\s+)/);
+  const oldSet = new Set(oldWords.filter(w => w.trim()));
+  const newSet = new Set(newWords.filter(w => w.trim()));
+
+  if (side === 'old') {
+    return oldWords.map(w => {
+      if (!w.trim()) return escapeHtml(w);
+      return newSet.has(w) ? escapeHtml(w) : `<span class="vdiff-word-del">${escapeHtml(w)}</span>`;
+    }).join('');
+  } else {
+    return newWords.map(w => {
+      if (!w.trim()) return escapeHtml(w);
+      return oldSet.has(w) ? escapeHtml(w) : `<span class="vdiff-word-add">${escapeHtml(w)}</span>`;
+    }).join('');
+  }
+}
+
+export function saveVersionSnapshot() {
+  if (!editorEl) return;
+  const history = JSON.parse(localStorage.getItem('doc-version-history') || '[]');
+  history.push({
+    content: editorEl.innerText,
+    html: editorEl.innerHTML,
+    timestamp: Date.now(),
+    wordCount: getWordCount()
+  });
+  if (history.length > 20) history.splice(0, history.length - 20);
+  localStorage.setItem('doc-version-history', JSON.stringify(history));
+}
+
+function getWordCount() {
+  if (!editorEl) return 0;
+  const text = editorEl.innerText || '';
+  return text.trim() ? text.trim().split(/\s+/).length : 0;
+}
+
+/* ==================== Feature: Smart Styles (Enhanced) ==================== */
+
+const SMART_STYLES = [
+  { name: 'Title', tag: 'h1', css: 'font-size:32px;font-weight:800;color:var(--text-primary);margin:0 0 4px;line-height:1.2;letter-spacing:-0.5px', preview: 'Title' },
+  { name: 'Subtitle', tag: 'p', css: 'font-size:20px;font-weight:300;color:var(--text-secondary);margin:0 0 20px;line-height:1.4', preview: 'Subtitle text' },
+  { name: 'Abstract', tag: 'div', css: 'font-size:14px;font-style:italic;color:var(--text-secondary);padding:16px 24px;margin:16px 0;border:1px solid var(--border-color);border-radius:8px;background:var(--sidebar-bg);line-height:1.7', preview: 'Abstract paragraph...' },
+  { name: 'Block Quote', tag: 'blockquote', css: 'font-size:16px;font-style:italic;color:#555;border-left:4px solid var(--brand-color,#0071e3);padding:12px 20px;margin:16px 0;background:rgba(0,113,227,0.04);border-radius:0 8px 8px 0;line-height:1.7', preview: 'Quoted text...' },
+  { name: 'Code Block', tag: 'pre', css: 'font-family:"SF Mono","Fira Code",monospace;font-size:13px;background:#1e1e2e;color:#cdd6f4;padding:16px 20px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);white-space:pre-wrap;margin:16px 0;line-height:1.5;overflow-x:auto', preview: 'code { ... }' },
+  { name: 'Caption', tag: 'p', css: 'font-size:12px;color:var(--text-tertiary);text-align:center;font-style:italic;margin:4px 0 20px;line-height:1.5', preview: 'Figure 1: Caption text' },
+  { name: 'List Paragraph', tag: 'div', css: 'font-size:15px;line-height:1.8;padding-left:24px;margin:8px 0;border-left:2px solid var(--border-color)', preview: 'Indented list paragraph' },
+  { name: 'Heading 1', tag: 'h1', css: 'font-size:26px;font-weight:700;color:var(--brand-color,#0071e3);border-bottom:2px solid var(--brand-color,#0071e3);padding-bottom:6px;margin:28px 0 12px', preview: 'Heading 1' },
+  { name: 'Heading 2', tag: 'h2', css: 'font-size:22px;font-weight:600;color:var(--text-primary);margin:24px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--border-color)', preview: 'Heading 2' },
+  { name: 'Heading 3', tag: 'h3', css: 'font-size:18px;font-weight:600;color:var(--text-primary);margin:20px 0 6px', preview: 'Heading 3' },
+  { name: 'Lead Paragraph', tag: 'p', css: 'font-size:18px;font-weight:300;color:#444;line-height:1.8;margin:12px 0', preview: 'Lead paragraph text...' },
+  { name: 'Highlight Box', tag: 'div', css: 'background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:14px 18px;margin:16px 0;font-size:14px;line-height:1.6', preview: 'Important note...' },
+  { name: 'Info Box', tag: 'div', css: 'background:#e3f2fd;border:1px solid #2196f3;border-radius:8px;padding:14px 18px;margin:16px 0;font-size:14px;line-height:1.6', preview: 'Information...' },
+  { name: 'Success Box', tag: 'div', css: 'background:#e8f5e9;border:1px solid #4caf50;border-radius:8px;padding:14px 18px;margin:16px 0;font-size:14px;line-height:1.6', preview: 'Success message...' },
+  { name: 'Danger Box', tag: 'div', css: 'background:#ffebee;border:1px solid #f44336;border-radius:8px;padding:14px 18px;margin:16px 0;font-size:14px;line-height:1.6', preview: 'Warning/danger...' },
+];
+
+const CUSTOM_STYLES_KEY = 'doc-custom-styles';
+
+function getCustomStyles() {
+  try { return JSON.parse(localStorage.getItem(CUSTOM_STYLES_KEY) || '[]'); } catch { return []; }
+}
+
+function saveCustomStyles(styles) {
+  localStorage.setItem(CUSTOM_STYLES_KEY, JSON.stringify(styles));
+}
+
+function showSmartStyleGallery() {
+  document.querySelector('.doc-smart-style-gallery')?.remove();
+
+  const btn = document.getElementById('doc-smart-styles');
+  const rect = btn?.getBoundingClientRect() || { bottom: 100, left: 100 };
+  const customStyles = getCustomStyles();
+
+  const gallery = document.createElement('div');
+  gallery.className = 'doc-smart-style-gallery';
+  gallery.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${Math.min(rect.left, window.innerWidth - 380)}px;width:360px;max-height:500px;overflow-y:auto;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.18);z-index:2000;padding:0`;
+
+  let html = `<div style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center">
+    <span style="font-weight:700;font-size:14px;color:var(--text-primary)">Smart Styles</span>
+    <button id="ssg-add-custom" style="border:none;background:var(--brand-color);color:#fff;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600">+ Custom</button>
+  </div>
+  <div style="padding:8px">`;
+
+  SMART_STYLES.forEach((s, i) => {
+    const previewCss = s.css.replace(/font-size:\d+px/, 'font-size:13px').replace(/margin:[^;]+/g, 'margin:0').replace(/padding:[^;]+/g, 'padding:4px 8px');
+    html += `<div class="ssg-item" data-idx="${i}" style="cursor:pointer;border-radius:6px;margin-bottom:2px;padding:6px 10px;transition:background 0.15s">
+      <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:2px">${s.name}</div>
+      <div style="${previewCss};max-height:24px;overflow:hidden;pointer-events:none;border-radius:4px">${s.preview}</div>
+    </div>`;
+  });
+
+  if (customStyles.length > 0) {
+    html += `<div style="border-top:1px solid var(--border-color);margin:8px 0;padding-top:8px">
+      <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;padding:0 10px">Custom Styles</div>`;
+    customStyles.forEach((cs, i) => {
+      const previewCss = cs.css.replace(/font-size:\d+px/, 'font-size:13px').replace(/margin:[^;]+/g, 'margin:0').replace(/padding:[^;]+/g, 'padding:4px 8px');
+      html += `<div class="ssg-item ssg-custom" data-custom-idx="${i}" style="cursor:pointer;border-radius:6px;margin-bottom:2px;padding:6px 10px;transition:background 0.15s;display:flex;align-items:center;gap:8px">
+        <div style="flex:1">
+          <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:2px">${cs.name}</div>
+          <div style="${previewCss};max-height:24px;overflow:hidden;pointer-events:none;border-radius:4px">${cs.name}</div>
+        </div>
+        <button class="ssg-delete-custom" data-cidx="${i}" style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px" title="Delete">&times;</button>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
+  html += '</div>';
+  gallery.innerHTML = html;
+  document.body.appendChild(gallery);
+
+  gallery.querySelectorAll('.ssg-item:not(.ssg-custom)').forEach(item => {
+    item.addEventListener('mouseenter', () => item.style.background = 'var(--hover-bg)');
+    item.addEventListener('mouseleave', () => item.style.background = '');
+    item.addEventListener('click', () => {
+      const idx = parseInt(item.dataset.idx);
+      applySmartStyle(SMART_STYLES[idx]);
+      gallery.remove();
+    });
+  });
+
+  gallery.querySelectorAll('.ssg-custom').forEach(item => {
+    item.addEventListener('mouseenter', () => item.style.background = 'var(--hover-bg)');
+    item.addEventListener('mouseleave', () => item.style.background = '');
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.ssg-delete-custom')) return;
+      const idx = parseInt(item.dataset.customIdx);
+      if (customStyles[idx]) applySmartStyle(customStyles[idx]);
+      gallery.remove();
+    });
+  });
+
+  gallery.querySelectorAll('.ssg-delete-custom').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.cidx);
+      customStyles.splice(idx, 1);
+      saveCustomStyles(customStyles);
+      gallery.remove();
+      showSmartStyleGallery();
+    });
+  });
+
+  gallery.querySelector('#ssg-add-custom').addEventListener('click', (e) => {
+    e.stopPropagation();
+    gallery.remove();
+    showCustomStyleEditor();
+  });
+
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!gallery.contains(e.target) && e.target !== btn) {
+        gallery.remove();
+        document.removeEventListener('click', close);
+      }
+    });
+  }, 50);
+}
+
+function applySmartStyle(style) {
+  editorEl?.focus();
+  const placeholder = style.name === 'Code Block' ? 'code here...' : 'Type here...';
+  const html = `<${style.tag} style="${style.css}">${placeholder}</${style.tag}>`;
+  document.execCommand('insertHTML', false, html);
+  dirty = true;
+}
+
+function showCustomStyleEditor() {
+  const dlg = document.createElement('div');
+  dlg.className = 'doc-dialog-overlay';
+  dlg.innerHTML = `
+    <div class="doc-dialog" style="max-width:420px">
+      <h3 style="margin:0 0 12px">Create Custom Style</h3>
+      <div style="margin-bottom:10px">
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Style Name</label>
+        <input id="cs-name" type="text" placeholder="e.g. My Heading" style="width:100%;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Font Family</label>
+          <select id="cs-font" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;background:var(--bg-primary);color:var(--text-primary)">
+            <option value="inherit">Default</option>
+            <option value="serif">Serif</option>
+            <option value="sans-serif">Sans-serif</option>
+            <option value="monospace">Monospace</option>
+            <option value="Georgia,serif">Georgia</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Font Size (px)</label>
+          <input id="cs-size" type="number" value="16" min="8" max="72" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+        <div>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Text Color</label>
+          <input id="cs-color" type="color" value="#333333" style="width:100%;height:32px;border:1px solid var(--border-color);border-radius:6px">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">BG Color</label>
+          <input id="cs-bg" type="color" value="#ffffff" style="width:100%;height:32px;border:1px solid var(--border-color);border-radius:6px">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Border</label>
+          <input id="cs-border" type="color" value="#cccccc" style="width:100%;height:32px;border:1px solid var(--border-color);border-radius:6px">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Line Height</label>
+          <select id="cs-lh" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;background:var(--bg-primary);color:var(--text-primary)">
+            <option value="1.2">1.2</option><option value="1.5">1.5</option><option value="1.6" selected>1.6</option><option value="1.8">1.8</option><option value="2.0">2.0</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Element</label>
+          <select id="cs-tag" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;background:var(--bg-primary);color:var(--text-primary)">
+            <option value="div">Block (div)</option><option value="p">Paragraph</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option><option value="blockquote">Blockquote</option><option value="pre">Preformatted</option>
+          </select>
+        </div>
+      </div>
+      <div id="cs-preview" style="border:1px solid var(--border-color);border-radius:6px;padding:12px;margin-bottom:12px;min-height:40px">
+        <div id="cs-preview-text">Preview text</div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button id="cs-cancel" style="padding:6px 16px;border:1px solid var(--border-color);border-radius:6px;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:13px">Cancel</button>
+        <button id="cs-save" style="padding:6px 16px;border:none;border-radius:6px;background:var(--brand-color);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Save Style</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(dlg);
+
+  const buildCustomCSS = () => {
+    const font = dlg.querySelector('#cs-font').value;
+    const size = dlg.querySelector('#cs-size').value;
+    const color = dlg.querySelector('#cs-color').value;
+    const bg = dlg.querySelector('#cs-bg').value;
+    const border = dlg.querySelector('#cs-border').value;
+    const lh = dlg.querySelector('#cs-lh').value;
+    let css = `font-family:${font};font-size:${size}px;color:${color};line-height:${lh};padding:8px;margin:12px 0`;
+    if (bg !== '#ffffff') css += `;background:${bg};border-radius:8px`;
+    if (border !== '#cccccc') css += `;border:1px solid ${border}`;
+    return css;
+  };
+
+  const updatePreview = () => {
+    const previewText = dlg.querySelector('#cs-preview-text');
+    previewText.style.cssText = buildCustomCSS();
+    previewText.textContent = dlg.querySelector('#cs-name').value || 'Preview text';
+  };
+
+  dlg.querySelectorAll('input, select').forEach(el => {
+    el.addEventListener('input', updatePreview);
+    el.addEventListener('change', updatePreview);
+  });
+  updatePreview();
+
+  dlg.querySelector('#cs-cancel').addEventListener('click', () => dlg.remove());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.remove(); });
+
+  dlg.querySelector('#cs-save').addEventListener('click', () => {
+    const name = dlg.querySelector('#cs-name').value.trim();
+    if (!name) { alert('Please enter a style name'); return; }
+    const tag = dlg.querySelector('#cs-tag').value;
+    const css = buildCustomCSS();
+    const customs = getCustomStyles();
+    customs.push({ name, tag, css, preview: name });
+    saveCustomStyles(customs);
+    dlg.remove();
+  });
+}
+
+/* ==================== Feature: Document Outline Navigator (Right Sidebar) ==================== */
+
+let outlineNavVisible = false;
+
+function toggleDocOutlineNav() {
+  const panel = document.getElementById('doc-outline-nav-panel');
+  if (!panel) return;
+  outlineNavVisible = !outlineNavVisible;
+  panel.classList.toggle('hidden', !outlineNavVisible);
+  if (outlineNavVisible) updateDocOutlineNav();
+}
+
+function updateDocOutlineNav() {
+  const list = document.getElementById('doc-outline-nav-list');
+  if (!list || !editorEl) return;
+
+  const headings = editorEl.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  if (!headings.length) {
+    list.innerHTML = '<div style="padding:16px;color:var(--text-tertiary);font-size:12px;text-align:center">No headings found.<br>Add headings (H1-H6) to see<br>the document structure.</div>';
+    return;
+  }
+
+  const pageWrapper = editorEl.closest('.doc-page-wrapper');
+  let currentHeadingIdx = 0;
+  if (pageWrapper) {
+    const wrapperRect = pageWrapper.getBoundingClientRect();
+    headings.forEach((h, idx) => {
+      const hRect = h.getBoundingClientRect();
+      if (hRect.top - wrapperRect.top < wrapperRect.height * 0.3) {
+        currentHeadingIdx = idx;
+      }
+    });
+  }
+
+  list.innerHTML = '';
+
+  headings.forEach((h, idx) => {
+    const level = parseInt(h.tagName[1]);
+    if (!h.id) h.id = `outline-nav-h-${idx}`;
+
+    const item = document.createElement('div');
+    item.className = 'doc-outline-nav-item';
+    item.dataset.level = level;
+    item.dataset.idx = idx;
+    if (idx === currentHeadingIdx) item.classList.add('active');
+
+    // Check if has children
+    const hasChildren = Array.from(headings).slice(idx + 1).some(nextH => {
+      const nextLevel = parseInt(nextH.tagName[1]);
+      if (nextLevel <= level) return false;
+      return true;
+    });
+
+    item.innerHTML = `
+      <span class="outline-nav-toggle" style="width:14px;display:inline-block;text-align:center;font-size:10px;cursor:pointer;color:var(--text-tertiary)">${hasChildren ? '&#9660;' : '&nbsp;'}</span>
+      <span class="outline-nav-label" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${h.textContent || 'Untitled'}</span>
+      <span class="outline-nav-drag" draggable="true" style="cursor:grab;color:var(--text-tertiary);font-size:10px;opacity:0;transition:opacity 0.15s" title="Drag to reorder">&#x2630;</span>
+    `;
+
+    item.addEventListener('click', (e) => {
+      if (e.target.classList.contains('outline-nav-toggle')) {
+        toggleOutlineChildren(item, headings, idx, level);
+        return;
+      }
+      h.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const origBg = h.style.background;
+      h.style.background = 'rgba(59, 130, 246, 0.15)';
+      h.style.borderRadius = '4px';
+      h.style.transition = 'background 0.3s';
+      setTimeout(() => { h.style.background = origBg; h.style.borderRadius = ''; }, 2000);
+      list.querySelectorAll('.doc-outline-nav-item').forEach(el => el.classList.remove('active'));
+      item.classList.add('active');
+    });
+
+    item.addEventListener('mouseenter', () => {
+      const drag = item.querySelector('.outline-nav-drag');
+      if (drag) drag.style.opacity = '1';
+    });
+    item.addEventListener('mouseleave', () => {
+      const drag = item.querySelector('.outline-nav-drag');
+      if (drag) drag.style.opacity = '0';
+    });
+
+    // Drag reorder
+    const dragHandle = item.querySelector('.outline-nav-drag');
+    if (dragHandle) {
+      setupOutlineDrag(dragHandle, item, h, headings, idx, level, list);
+    }
+
+    list.appendChild(item);
+  });
+
+  // Listen for scroll to update active heading
+  if (pageWrapper && !pageWrapper._outlineNavScrollListener) {
+    pageWrapper._outlineNavScrollListener = true;
+    pageWrapper.addEventListener('scroll', () => {
+      if (outlineNavVisible) {
+        requestAnimationFrame(() => highlightCurrentHeading(list, headings, pageWrapper));
+      }
+    });
+  }
+}
+
+function highlightCurrentHeading(list, headings, pageWrapper) {
+  const wrapperRect = pageWrapper.getBoundingClientRect();
+  let activeIdx = 0;
+  headings.forEach((h, idx) => {
+    const hRect = h.getBoundingClientRect();
+    if (hRect.top - wrapperRect.top < wrapperRect.height * 0.3) {
+      activeIdx = idx;
+    }
+  });
+  list.querySelectorAll('.doc-outline-nav-item').forEach((el, i) => {
+    el.classList.toggle('active', i === activeIdx);
+  });
+  const activeItem = list.querySelector('.doc-outline-nav-item.active');
+  if (activeItem) activeItem.scrollIntoView({ block: 'nearest' });
+}
+
+function toggleOutlineChildren(item, headings, idx, level) {
+  const toggle = item.querySelector('.outline-nav-toggle');
+  const isCollapsed = toggle.textContent.trim() === '\u25B6';
+  toggle.innerHTML = isCollapsed ? '&#9660;' : '&#9654;';
+
+  let sibling = item.nextElementSibling;
+  while (sibling) {
+    const sibLevel = parseInt(sibling.dataset.level);
+    if (sibLevel <= level) break;
+    sibling.style.display = isCollapsed ? '' : 'none';
+    sibling = sibling.nextElementSibling;
+  }
+}
+
+function setupOutlineDrag(dragHandle, item, heading, headings, idx, level, list) {
+  dragHandle.addEventListener('dragstart', (e) => {
+    e.stopPropagation();
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(idx));
+    item.classList.add('dragging');
+  });
+
+  item.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    item.classList.add('drag-over');
+  });
+
+  item.addEventListener('dragleave', () => {
+    item.classList.remove('drag-over');
+  });
+
+  item.addEventListener('drop', (e) => {
+    e.preventDefault();
+    item.classList.remove('drag-over');
+    const srcIdx = parseInt(e.dataTransfer.getData('text/plain'));
+    const destIdx = parseInt(item.dataset.idx);
+    if (srcIdx === destIdx || isNaN(srcIdx) || isNaN(destIdx)) return;
+
+    moveHeadingBlock(headings, srcIdx, destIdx);
+    updateDocOutlineNav();
+    dirty = true;
+  });
+
+  item.addEventListener('dragend', () => {
+    item.classList.remove('dragging');
+    list.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+  });
+}
+
+function moveHeadingBlock(headings, srcIdx, destIdx) {
+  const srcHeading = headings[srcIdx];
+  const destHeading = headings[destIdx];
+  if (!srcHeading || !destHeading || !editorEl) return;
+
+  const srcLevel = parseInt(srcHeading.tagName[1]);
+
+  const elements = [srcHeading];
+  let sibling = srcHeading.nextElementSibling;
+  while (sibling) {
+    if (/^H[1-6]$/i.test(sibling.tagName) && parseInt(sibling.tagName[1]) <= srcLevel) break;
+    elements.push(sibling);
+    sibling = sibling.nextElementSibling;
+  }
+
+  const frag = document.createDocumentFragment();
+  elements.forEach(el => frag.appendChild(el));
+
+  if (srcIdx < destIdx) {
+    let insertAfter = destHeading;
+    let next = destHeading.nextElementSibling;
+    const destLevel = parseInt(destHeading.tagName[1]);
+    while (next) {
+      if (/^H[1-6]$/i.test(next.tagName) && parseInt(next.tagName[1]) <= destLevel) break;
+      insertAfter = next;
+      next = next.nextElementSibling;
+    }
+    insertAfter.after(frag);
+  } else {
+    destHeading.before(frag);
+  }
+}
+
+/* ==================== Feature: Word Count Goals & Writing Stats ==================== */
+
+function updateWritingStreak() {
+  const streakData = JSON.parse(localStorage.getItem(WRITING_STREAK_KEY) || '{"dates":[],"currentStreak":0,"bestStreak":0}');
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (!streakData.dates.includes(today)) {
+    streakData.dates.push(today);
+
+    const sorted = [...new Set(streakData.dates)].sort().reverse();
+    let streak = 1;
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = new Date(sorted[i - 1]);
+      const curr = new Date(sorted[i]);
+      const diff = (prev - curr) / (1000 * 60 * 60 * 24);
+      if (diff === 1) streak++;
+      else break;
+    }
+    streakData.currentStreak = streak;
+    if (streak > (streakData.bestStreak || 0)) streakData.bestStreak = streak;
+
+    localStorage.setItem(WRITING_STREAK_KEY, JSON.stringify(streakData));
+  }
+
+  return streakData;
+}
+
+function showWritingStatsDialog() {
+  document.querySelector('.doc-writing-stats-dialog')?.remove();
+
+  const text = editorEl?.innerText || '';
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const streakData = updateWritingStreak();
+
+  const sessionDuration = Math.round((Date.now() - sessionStartTime) / 1000);
+  const sessionMinutes = Math.max(1, Math.round(sessionDuration / 60));
+  const sessionWords = Math.max(0, words - sessionWordCountStart);
+  const wpm = sessionMinutes > 0 ? Math.round(sessionWords / sessionMinutes) : 0;
+
+  let totalEditTime = parseInt(localStorage.getItem('doc-total-edit-time') || '0');
+  totalEditTime += sessionDuration;
+  localStorage.setItem('doc-total-edit-time', String(totalEditTime));
+
+  const totalHours = Math.floor(totalEditTime / 3600);
+  const totalMins = Math.floor((totalEditTime % 3600) / 60);
+
+  const goalPct = wordGoal > 0 ? Math.min(100, Math.round((words / wordGoal) * 100)) : 0;
+
+  const dlg = document.createElement('div');
+  dlg.className = 'doc-dialog-overlay doc-writing-stats-dialog';
+  dlg.innerHTML = `
+    <div class="doc-dialog" style="max-width:480px;padding:0;overflow:hidden">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center">
+        <h3 style="margin:0;font-size:16px">Writing Stats & Goals</h3>
+        <button id="ws-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-secondary)">&times;</button>
+      </div>
+      <div style="padding:16px 20px">
+        ${wordGoal > 0 ? `
+        <div style="margin-bottom:20px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:12px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px">Word Goal Progress</span>
+            <span style="font-size:14px;font-weight:700;color:${goalPct >= 100 ? '#34a853' : 'var(--brand-color)'}">${goalPct}%</span>
+          </div>
+          <div style="height:8px;background:var(--border-color);border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${goalPct}%;background:${goalPct >= 100 ? '#34a853' : 'var(--brand-color)'};border-radius:4px;transition:width 0.5s"></div>
+          </div>
+          <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px">${words.toLocaleString()} / ${wordGoal.toLocaleString()} words ${goalPct >= 100 ? '-- Goal reached!' : `-- ${(wordGoal - words).toLocaleString()} to go`}</div>
+        </div>` : ''}
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
+          <div style="background:var(--sidebar-bg);border-radius:8px;padding:12px;text-align:center">
+            <div style="font-size:24px;font-weight:700;color:var(--text-primary)">${streakData.currentStreak}</div>
+            <div style="font-size:10px;color:var(--text-secondary);margin-top:2px">Day Streak</div>
+          </div>
+          <div style="background:var(--sidebar-bg);border-radius:8px;padding:12px;text-align:center">
+            <div style="font-size:24px;font-weight:700;color:var(--text-primary)">${streakData.bestStreak || streakData.currentStreak}</div>
+            <div style="font-size:10px;color:var(--text-secondary);margin-top:2px">Best Streak</div>
+          </div>
+          <div style="background:var(--sidebar-bg);border-radius:8px;padding:12px;text-align:center">
+            <div style="font-size:24px;font-weight:700;color:var(--text-primary)">${streakData.dates.length}</div>
+            <div style="font-size:10px;color:var(--text-secondary);margin-top:2px">Days Active</div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border-color);padding-top:16px;margin-bottom:16px">
+          <div style="font-size:12px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">This Session</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0"><span style="color:var(--text-secondary)">Duration</span><span style="font-weight:600">${sessionMinutes} min</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0"><span style="color:var(--text-secondary)">Words written</span><span style="font-weight:600">${sessionWords.toLocaleString()}</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0"><span style="color:var(--text-secondary)">Words/min</span><span style="font-weight:600">${wpm}</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0"><span style="color:var(--text-secondary)">Total words</span><span style="font-weight:600">${words.toLocaleString()}</span></div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border-color);padding-top:16px;margin-bottom:16px">
+          <div style="font-size:12px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">All-Time</div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0"><span style="color:var(--text-secondary)">Total editing time</span><span style="font-weight:600">${totalHours > 0 ? `${totalHours}h ` : ''}${totalMins}m</span></div>
+        </div>
+
+        <div style="border-top:1px solid var(--border-color);padding-top:12px">
+          <div style="display:flex;gap:8px;align-items:center">
+            <label style="font-size:12px;font-weight:600;white-space:nowrap">Set word goal:</label>
+            <input id="ws-goal-input" type="number" value="${wordGoal || ''}" placeholder="e.g. 1000" min="0" style="flex:1;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;background:var(--bg-primary);color:var(--text-primary)">
+            <button id="ws-goal-set" style="padding:5px 12px;border:none;border-radius:6px;background:var(--brand-color);color:#fff;cursor:pointer;font-size:12px;font-weight:600">Set</button>
+            ${wordGoal > 0 ? `<button id="ws-goal-clear" style="padding:5px 12px;border:1px solid var(--border-color);border-radius:6px;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:12px">Clear</button>` : ''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(dlg);
+
+  dlg.querySelector('#ws-close').addEventListener('click', () => dlg.remove());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.remove(); });
+
+  dlg.querySelector('#ws-goal-set').addEventListener('click', () => {
+    wordGoal = parseInt(dlg.querySelector('#ws-goal-input').value) || 0;
+    updateWordCount();
+    dlg.remove();
+  });
+
+  dlg.querySelector('#ws-goal-clear')?.addEventListener('click', () => {
+    wordGoal = 0;
+    updateWordCount();
+    dlg.remove();
+  });
 }

@@ -1,0 +1,417 @@
+/* ═══════════════════════════════════════════════════════════════
+   AI Co-work — Inline AI Features CSS
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Toast Notification ─────────────────────────────── */
+.ai-cowork-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--pane-header-bg, #333);
+  color: var(--text-primary, #fff);
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  z-index: 100000;
+  opacity: 0;
+  transition: opacity 0.3s, transform 0.3s;
+  pointer-events: none;
+}
+.ai-cowork-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ─── Loading Spinner ────────────────────────────────── */
+.ai-cowork-loading {
+  background: var(--bg-primary, #1e1e1e);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 10px;
+  padding: 12px 20px;
+  font-size: 13px;
+  color: var(--text-primary, #eee);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ai-cowork-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-color, #555);
+  border-top-color: var(--accent-color, #6366f1);
+  border-radius: 50%;
+  animation: ai-spin 0.8s linear infinite;
+}
+@keyframes ai-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Diff Approval Overlay ──────────────────────────── */
+.ai-cowork-diff {
+  background: var(--bg-primary, #1e1e1e);
+  border: 1px solid var(--accent-color, #6366f1);
+  border-radius: 12px;
+  padding: 0;
+  max-width: 500px;
+  min-width: 300px;
+  max-height: 400px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+}
+.ai-cowork-diff-header {
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent-color, #6366f1);
+  border-bottom: 1px solid var(--border-color, #333);
+  background: rgba(99, 102, 241, 0.05);
+}
+.ai-cowork-diff-body {
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-primary, #eee);
+  overflow-y: auto;
+  max-height: 280px;
+  white-space: pre-wrap;
+}
+.ai-cowork-diff-actions {
+  padding: 10px 16px;
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid var(--border-color, #333);
+  justify-content: flex-end;
+}
+
+/* ─── Buttons ────────────────────────────────────────── */
+.ai-cowork-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #444);
+  background: transparent;
+  color: var(--text-primary, #eee);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-weight: 500;
+}
+.ai-cowork-btn:hover {
+  background: var(--hover-bg, rgba(255,255,255,0.08));
+}
+.ai-cowork-btn.accept {
+  background: #22c55e;
+  color: #fff;
+  border-color: #22c55e;
+}
+.ai-cowork-btn.accept:hover { background: #16a34a; }
+.ai-cowork-btn.reject {
+  background: #ef4444;
+  color: #fff;
+  border-color: #ef4444;
+}
+.ai-cowork-btn.reject:hover { background: #dc2626; }
+.ai-cowork-btn.copy { border-color: var(--accent-color, #6366f1); color: var(--accent-color, #6366f1); }
+.ai-cowork-btn.accent {
+  background: var(--accent-color, #6366f1);
+  color: #fff;
+  border-color: var(--accent-color, #6366f1);
+}
+.ai-cowork-btn.accent:hover { opacity: 0.85; }
+.ai-cowork-btn.small { padding: 4px 10px; font-size: 11px; }
+.ai-cowork-btn.wide { width: 100%; text-align: left; padding: 10px 16px; font-size: 13px; }
+
+/* ─── Toolbar Button ─────────────────────────────────── */
+.ai-cowork-toolbar-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--accent-color, #6366f1);
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--accent-color, #6366f1);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.ai-cowork-toolbar-btn:hover {
+  background: var(--accent-color, #6366f1);
+  color: #fff;
+}
+.ai-cowork-toolbar-btn.small {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+/* ─── Floating Action Button ─────────────────────────── */
+.ai-cowork-fab {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent-color, #6366f1);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.ai-cowork-fab:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 24px rgba(99, 102, 241, 0.5);
+}
+
+/* ─── Context Menu ───────────────────────────────────── */
+.ai-ctx-menu {
+  position: fixed;
+  background: var(--bg-primary, #1e1e1e);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 10px;
+  padding: 6px 0;
+  min-width: 220px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  z-index: 99999;
+  font-size: 13px;
+  overflow: hidden;
+}
+.ai-ctx-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary, #eee);
+  transition: background 0.1s;
+  position: relative;
+}
+.ai-ctx-item:hover {
+  background: var(--hover-bg, rgba(255,255,255,0.08));
+}
+.ai-ctx-icon {
+  width: 20px;
+  text-align: center;
+  font-size: 14px;
+}
+.ai-ctx-item.has-submenu::after {
+  content: '▸';
+  position: absolute;
+  right: 12px;
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+}
+.ai-ctx-submenu {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: 0;
+  background: var(--bg-primary, #1e1e1e);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 10px;
+  padding: 6px 0;
+  min-width: 160px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  z-index: 100000;
+}
+.ai-ctx-item.has-submenu:hover > .ai-ctx-submenu {
+  display: block;
+}
+
+/* ─── Panel Overlay ──────────────────────────────────── */
+.ai-cowork-panel-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 99998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ai-cowork-panel {
+  background: var(--bg-primary, #1e1e1e);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 14px;
+  width: 90%;
+  max-width: 520px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: 0 16px 64px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+}
+.ai-cowork-panel-header {
+  padding: 14px 20px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary, #eee);
+  border-bottom: 1px solid var(--border-color, #333);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(99, 102, 241, 0.05);
+}
+.ai-cowork-panel-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #888);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.ai-cowork-panel-close:hover { color: var(--text-primary, #eee); }
+.ai-cowork-panel-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  max-height: calc(80vh - 60px);
+}
+.ai-cowork-panel-body label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #aaa);
+  margin-bottom: 6px;
+  margin-top: 10px;
+}
+.ai-cowork-panel-body textarea,
+.ai-cowork-panel-body input[type="text"],
+.ai-cowork-panel-body input:not([type]) {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #444);
+  border-radius: 8px;
+  background: var(--sidebar-bg, #252525);
+  color: var(--text-primary, #eee);
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  margin-bottom: 8px;
+  box-sizing: border-box;
+}
+.ai-cowork-panel-body textarea:focus,
+.ai-cowork-panel-body input:focus {
+  outline: none;
+  border-color: var(--accent-color, #6366f1);
+}
+
+/* ─── Tabs (in panel) ────────────────────────────────── */
+.ai-cowork-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-color, #333);
+  padding-bottom: 8px;
+  flex-wrap: wrap;
+}
+.ai-cowork-tab {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #888);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ai-cowork-tab:hover { color: var(--text-primary, #eee); }
+.ai-cowork-tab.active {
+  background: var(--accent-color, #6366f1);
+  color: #fff;
+}
+.ai-cowork-tab-content.hidden { display: none; }
+
+/* ─── Result area ────────────────────────────────────── */
+.ai-cowork-result {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--sidebar-bg, #252525);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-primary, #eee);
+  min-height: 40px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ai-cowork-result:empty { display: none; }
+
+/* ─── Formula code display ───────────────────────────── */
+.ai-formula-code {
+  display: block;
+  padding: 10px 14px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid var(--accent-color, #6366f1);
+  border-radius: 8px;
+  font-family: 'SF Mono', 'JetBrains Mono', monospace;
+  font-size: 14px;
+  color: var(--accent-color, #6366f1);
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+/* ─── Data / outline preview ─────────────────────────── */
+.ai-data-preview,
+.ai-outline-preview {
+  padding: 12px;
+  background: var(--sidebar-bg, #252525);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  margin-bottom: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* ─── Slide preview in panel ─────────────────────────── */
+.ai-slide-preview {
+  padding: 16px;
+  background: var(--sidebar-bg, #252525);
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #333);
+  margin-bottom: 8px;
+}
+.ai-slide-preview h2 { font-size: 16px; margin: 0 0 8px; }
+.ai-slide-preview ul { padding-left: 20px; font-size: 13px; }
+.ai-slide-preview li { margin: 4px 0; }
+
+/* ─── Notes preview ──────────────────────────────────── */
+.ai-notes-preview {
+  padding: 12px;
+  background: var(--sidebar-bg, #252525);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.7;
+  margin-bottom: 8px;
+}
+
+/* ─── MD Actions grid ────────────────────────────────── */
+.ai-cowork-md-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ─── Responsive ─────────────────────────────────────── */
+@media (max-width: 600px) {
+  .ai-cowork-panel { width: 96%; max-width: none; }
+  .ai-cowork-diff { max-width: 90vw; }
+  .ai-ctx-menu { max-width: 90vw; }
+  .ai-cowork-tabs { overflow-x: auto; flex-wrap: nowrap; }
+}

@@ -30,6 +30,10 @@ export function initCalculator() {
     if (typeof initDateCalc === 'function') initDateCalc();
     if (typeof initEquationSolver === 'function') initEquationSolver();
     if (typeof initConstantsLibrary === 'function') initConstantsLibrary();
+    init3DSurface();
+    initComplexCalc();
+    initBaseConverter();
+    initNumberTheory();
   }, 0);
 }
 
@@ -2170,4 +2174,745 @@ function initConstantsLibrary() {
 
   searchEl?.addEventListener('input', renderConstants);
   renderConstants();
+}
+
+/* ==================== 3D Surface Plot ==================== */
+
+let surface3dRotX = -0.6, surface3dRotY = 0.4, surface3dZoom = 1;
+let surface3dDrag = null;
+
+function init3DSurface() {
+  const plotBtn = document.getElementById('calc-3d-plot');
+  const presetSel = document.getElementById('calc-3d-preset');
+  const canvas = document.getElementById('calc-3d-canvas');
+  const resSlider = document.getElementById('calc-3d-resolution');
+  if (!plotBtn || !canvas) return;
+
+  plotBtn.addEventListener('click', () => render3DSurface());
+
+  presetSel?.addEventListener('change', () => {
+    if (presetSel.value) {
+      document.getElementById('calc-3d-expr').value = presetSel.value;
+      render3DSurface();
+    }
+  });
+
+  resSlider?.addEventListener('input', () => {
+    const label = document.getElementById('calc-3d-res-label');
+    if (label) label.textContent = resSlider.value;
+    render3DSurface();
+  });
+
+  document.getElementById('calc-3d-wireframe')?.addEventListener('change', () => render3DSurface());
+  document.getElementById('calc-3d-color')?.addEventListener('change', () => render3DSurface());
+
+  ['calc-3d-xmin', 'calc-3d-xmax', 'calc-3d-ymin', 'calc-3d-ymax'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => render3DSurface());
+  });
+
+  // Mouse drag for rotation
+  canvas.addEventListener('mousedown', (e) => {
+    surface3dDrag = { x: e.clientX, y: e.clientY, rotX: surface3dRotX, rotY: surface3dRotY };
+  });
+  canvas.addEventListener('mousemove', (e) => {
+    if (!surface3dDrag) return;
+    surface3dRotY = surface3dDrag.rotY + (e.clientX - surface3dDrag.x) * 0.01;
+    surface3dRotX = surface3dDrag.rotX + (e.clientY - surface3dDrag.y) * 0.01;
+    surface3dRotX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, surface3dRotX));
+    render3DSurface();
+  });
+  canvas.addEventListener('mouseup', () => { surface3dDrag = null; });
+  canvas.addEventListener('mouseleave', () => { surface3dDrag = null; });
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    surface3dZoom *= e.deltaY > 0 ? 0.9 : 1.1;
+    surface3dZoom = Math.max(0.2, Math.min(5, surface3dZoom));
+    render3DSurface();
+  }, { passive: false });
+
+  // Touch support for rotation
+  canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      surface3dDrag = { x: t.clientX, y: t.clientY, rotX: surface3dRotX, rotY: surface3dRotY };
+    }
+  }, { passive: true });
+  canvas.addEventListener('touchmove', (e) => {
+    if (!surface3dDrag || e.touches.length !== 1) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    surface3dRotY = surface3dDrag.rotY + (t.clientX - surface3dDrag.x) * 0.01;
+    surface3dRotX = surface3dDrag.rotX + (t.clientY - surface3dDrag.y) * 0.01;
+    surface3dRotX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, surface3dRotX));
+    render3DSurface();
+  }, { passive: false });
+  canvas.addEventListener('touchend', () => { surface3dDrag = null; });
+
+  document.getElementById('calc-3d-expr')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); render3DSurface(); }
+  });
+
+  window.addEventListener('resize', () => {
+    if (document.getElementById('calc-panel-surface3d')?.classList.contains('active')) render3DSurface();
+  });
+
+  // Initial plot after a short delay to let layout settle
+  setTimeout(() => render3DSurface(), 100);
+}
+
+function eval3DExpr(exprStr, x, y) {
+  let clean = exprStr
+    .replace(/\bsin\b/g, 'Math.sin').replace(/\bcos\b/g, 'Math.cos').replace(/\btan\b/g, 'Math.tan')
+    .replace(/\basin\b/g, 'Math.asin').replace(/\bacos\b/g, 'Math.acos').replace(/\batan\b/g, 'Math.atan')
+    .replace(/\bln\b/g, 'Math.log').replace(/\blog\b/g, 'Math.log10')
+    .replace(/\bsqrt\b/g, 'Math.sqrt').replace(/\bcbrt\b/g, 'Math.cbrt')
+    .replace(/\babs\b/g, 'Math.abs').replace(/\bexp\b/g, 'Math.exp')
+    .replace(/\bpi\b/gi, 'Math.PI').replace(/(?<![a-zA-Z])e(?![a-zA-Z])/g, 'Math.E')
+    .replace(/\^/g, '**');
+  try {
+    return Function('x', 'y', `"use strict"; return (${clean})`)(x, y);
+  } catch { return NaN; }
+}
+
+function render3DSurface() {
+  const canvas = document.getElementById('calc-3d-canvas');
+  const view = document.getElementById('calc-3d-view');
+  if (!canvas || !view) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = view.clientWidth * dpr;
+  canvas.height = view.clientHeight * dpr;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary')?.trim() || '#fff';
+  ctx.fillRect(0, 0, w, h);
+
+  const exprStr = document.getElementById('calc-3d-expr')?.value?.trim() || 'sin(sqrt(x*x+y*y))';
+  const res = parseInt(document.getElementById('calc-3d-resolution')?.value) || 30;
+  const showWire = document.getElementById('calc-3d-wireframe')?.checked !== false;
+  const showColor = document.getElementById('calc-3d-color')?.checked !== false;
+
+  const xmin = parseFloat(document.getElementById('calc-3d-xmin')?.value) || -5;
+  const xmax = parseFloat(document.getElementById('calc-3d-xmax')?.value) || 5;
+  const ymin = parseFloat(document.getElementById('calc-3d-ymin')?.value) || -5;
+  const ymax = parseFloat(document.getElementById('calc-3d-ymax')?.value) || 5;
+
+  // Compute z values
+  const grid = [];
+  let zmin = Infinity, zmax = -Infinity;
+  for (let i = 0; i <= res; i++) {
+    grid[i] = [];
+    for (let j = 0; j <= res; j++) {
+      const x = xmin + (i / res) * (xmax - xmin);
+      const y = ymin + (j / res) * (ymax - ymin);
+      const z = eval3DExpr(exprStr, x, y);
+      grid[i][j] = { x, y, z: isFinite(z) ? z : NaN };
+      if (isFinite(z)) {
+        if (z < zmin) zmin = z;
+        if (z > zmax) zmax = z;
+      }
+    }
+  }
+  if (!isFinite(zmin)) zmin = -1;
+  if (!isFinite(zmax)) zmax = 1;
+  if (zmax === zmin) zmax = zmin + 1;
+
+  // 3D projection
+  const cx = w / 2, cy = h / 2;
+  const scale = Math.min(w, h) * 0.3 * surface3dZoom;
+  const cosA = Math.cos(surface3dRotX), sinA = Math.sin(surface3dRotX);
+  const cosB = Math.cos(surface3dRotY), sinB = Math.sin(surface3dRotY);
+  const rangeX = xmax - xmin, rangeY = ymax - ymin, rangeZ = zmax - zmin;
+  const midX = (xmin + xmax) / 2, midY = (ymin + ymax) / 2, midZ = (zmin + zmax) / 2;
+  const maxRange = Math.max(rangeX, rangeY, rangeZ);
+
+  function project(x, y, z) {
+    // Normalize to [-1,1]
+    const nx = (x - midX) / maxRange * 2;
+    const ny = (y - midY) / maxRange * 2;
+    const nz = (z - midZ) / maxRange * 2;
+    // Rotate around Y then X
+    const x1 = nx * cosB - ny * sinB;
+    const y1 = nx * sinB * sinA + ny * cosB * sinA + nz * cosA;
+    const z1 = nx * sinB * cosA + ny * cosB * cosA - nz * sinA;
+    // Perspective-like projection
+    const perspFactor = 1 / (1 - z1 * 0.3);
+    return { px: cx + x1 * scale * perspFactor, py: cy - y1 * scale * perspFactor, depth: z1 };
+  }
+
+  // Height to color (blue-cyan-green-yellow-red)
+  function heightColor(z, alpha) {
+    const t = (z - zmin) / (zmax - zmin);
+    let r, g, b;
+    if (t < 0.25) { r = 0; g = Math.round(t * 4 * 255); b = 255; }
+    else if (t < 0.5) { r = 0; g = 255; b = Math.round((1 - (t - 0.25) * 4) * 255); }
+    else if (t < 0.75) { r = Math.round((t - 0.5) * 4 * 255); g = 255; b = 0; }
+    else { r = 255; g = Math.round((1 - (t - 0.75) * 4) * 255); b = 0; }
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  // Collect quads for painter's sort
+  const quads = [];
+  for (let i = 0; i < res; i++) {
+    for (let j = 0; j < res; j++) {
+      const p00 = grid[i][j], p10 = grid[i + 1][j], p11 = grid[i + 1][j + 1], p01 = grid[i][j + 1];
+      if (isNaN(p00.z) || isNaN(p10.z) || isNaN(p11.z) || isNaN(p01.z)) continue;
+      const s00 = project(p00.x, p00.y, p00.z);
+      const s10 = project(p10.x, p10.y, p10.z);
+      const s11 = project(p11.x, p11.y, p11.z);
+      const s01 = project(p01.x, p01.y, p01.z);
+      const avgDepth = (s00.depth + s10.depth + s11.depth + s01.depth) / 4;
+      const avgZ = (p00.z + p10.z + p11.z + p01.z) / 4;
+      quads.push({ pts: [s00, s10, s11, s01], depth: avgDepth, avgZ });
+    }
+  }
+
+  // Sort by depth (back to front)
+  quads.sort((a, b) => a.depth - b.depth);
+
+  // Draw quads
+  quads.forEach(q => {
+    ctx.beginPath();
+    ctx.moveTo(q.pts[0].px, q.pts[0].py);
+    ctx.lineTo(q.pts[1].px, q.pts[1].py);
+    ctx.lineTo(q.pts[2].px, q.pts[2].py);
+    ctx.lineTo(q.pts[3].px, q.pts[3].py);
+    ctx.closePath();
+    if (showColor) {
+      ctx.fillStyle = heightColor(q.avgZ, 0.8);
+      ctx.fill();
+    }
+    if (showWire) {
+      ctx.strokeStyle = showColor ? 'rgba(0,0,0,0.15)' : 'rgba(0,113,227,0.6)';
+      ctx.lineWidth = 0.5 * dpr;
+      ctx.stroke();
+    }
+  });
+
+  // Draw axes
+  const axLen = 1.2;
+  const axisColors = ['#e74c3c', '#2ecc71', '#3498db'];
+  const axisLabels = ['X', 'Y', 'Z'];
+  const origins = [
+    [axLen, 0, 0], [0, axLen, 0], [0, 0, axLen]
+  ];
+  const o = project(midX, midY, midZ);
+  origins.forEach((end, idx) => {
+    const e = project(midX + end[0] * maxRange / 2, midY + end[1] * maxRange / 2, midZ + end[2] * maxRange / 2);
+    ctx.strokeStyle = axisColors[idx];
+    ctx.lineWidth = 2 * dpr;
+    ctx.beginPath(); ctx.moveTo(o.px, o.py); ctx.lineTo(e.px, e.py); ctx.stroke();
+    ctx.fillStyle = axisColors[idx];
+    ctx.font = `bold ${12 * dpr}px system-ui`;
+    ctx.fillText(axisLabels[idx], e.px + 4 * dpr, e.py - 4 * dpr);
+  });
+
+  // Z range info
+  const info = document.getElementById('calc-3d-info');
+  if (info) info.textContent = `z: [${zmin.toFixed(2)}, ${zmax.toFixed(2)}] | Drag to rotate, scroll to zoom`;
+}
+
+/* ==================== Complex Number Calculator ==================== */
+
+function initComplexCalc() {
+  const panel = document.getElementById('calc-panel-complex');
+  if (!panel) return;
+
+  panel.querySelectorAll('[data-cx-op]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const op = btn.dataset.cxOp;
+      const aRe = parseFloat(document.getElementById('calc-cx-a-re')?.value) || 0;
+      const aIm = parseFloat(document.getElementById('calc-cx-a-im')?.value) || 0;
+      const bRe = parseFloat(document.getElementById('calc-cx-b-re')?.value) || 0;
+      const bIm = parseFloat(document.getElementById('calc-cx-b-im')?.value) || 0;
+      const n = parseFloat(document.getElementById('calc-cx-n')?.value) || 2;
+
+      let results = [];
+      const a = { re: aRe, im: aIm };
+      const b = { re: bRe, im: bIm };
+
+      switch (op) {
+        case 'add': results = [{ re: a.re + b.re, im: a.im + b.im }]; break;
+        case 'sub': results = [{ re: a.re - b.re, im: a.im - b.im }]; break;
+        case 'mul': results = [cxMul(a, b)]; break;
+        case 'div': results = [cxDiv(a, b)]; break;
+        case 'pow': results = [cxPow(a, n)]; break;
+        case 'root': results = cxNthRoots(a, Math.round(n)); break;
+        case 'conj': results = [{ re: a.re, im: -a.im }]; break;
+        case 'mod': results = [{ scalar: cxAbs(a) }]; break;
+        case 'arg': results = [{ scalar: Math.atan2(a.im, a.re) }]; break;
+      }
+
+      const contentEl = document.getElementById('calc-cx-result-content');
+      if (!contentEl) return;
+
+      let html = '';
+      results.forEach((r, i) => {
+        if (r.scalar !== undefined) {
+          const val = r.scalar;
+          html += `<div><strong>${op === 'arg' ? 'arg(A)' : '|A|'} = ${val.toFixed(8)}</strong>`;
+          if (op === 'arg') html += ` (${(val * 180 / Math.PI).toFixed(4)}°)`;
+          html += '</div>';
+        } else {
+          const mod = cxAbs(r);
+          const arg = Math.atan2(r.im, r.re);
+          const label = results.length > 1 ? `Root ${i + 1}: ` : '';
+          html += `<div>${label}<strong>${cxFormat(r)}</strong></div>`;
+          html += `<div style="color:var(--text-tertiary);font-size:12px;">Polar: ${mod.toFixed(6)} ∠ ${(arg * 180 / Math.PI).toFixed(4)}°</div>`;
+        }
+      });
+      contentEl.innerHTML = html;
+
+      // Draw Argand diagram
+      drawArgandDiagram(a, b, results, op);
+    });
+  });
+}
+
+function cxMul(a, b) { return { re: a.re * b.re - a.im * b.im, im: a.re * b.im + a.im * b.re }; }
+function cxDiv(a, b) {
+  const d = b.re * b.re + b.im * b.im;
+  if (d === 0) return { re: NaN, im: NaN };
+  return { re: (a.re * b.re + a.im * b.im) / d, im: (a.im * b.re - a.re * b.im) / d };
+}
+function cxAbs(a) { return Math.sqrt(a.re * a.re + a.im * a.im); }
+function cxPow(a, n) {
+  const r = cxAbs(a);
+  const theta = Math.atan2(a.im, a.re);
+  const rn = Math.pow(r, n);
+  return { re: rn * Math.cos(n * theta), im: rn * Math.sin(n * theta) };
+}
+function cxNthRoots(a, n) {
+  if (n < 1) n = 1;
+  const r = cxAbs(a);
+  const theta = Math.atan2(a.im, a.re);
+  const rRoot = Math.pow(r, 1 / n);
+  const roots = [];
+  for (let k = 0; k < n; k++) {
+    const angle = (theta + 2 * Math.PI * k) / n;
+    roots.push({ re: rRoot * Math.cos(angle), im: rRoot * Math.sin(angle) });
+  }
+  return roots;
+}
+function cxFormat(c) {
+  const re = Math.abs(c.re) < 1e-12 ? 0 : c.re;
+  const im = Math.abs(c.im) < 1e-12 ? 0 : c.im;
+  if (im === 0) return re.toFixed(6).replace(/\.?0+$/, '');
+  if (re === 0) return `${im.toFixed(6).replace(/\.?0+$/, '')}i`;
+  const sign = im >= 0 ? '+' : '-';
+  return `${re.toFixed(6).replace(/\.?0+$/, '')} ${sign} ${Math.abs(im).toFixed(6).replace(/\.?0+$/, '')}i`;
+}
+
+function drawArgandDiagram(a, b, results, op) {
+  const canvas = document.getElementById('calc-cx-canvas');
+  if (!canvas) return;
+  const parent = canvas.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = parent.clientWidth * dpr;
+  canvas.height = parent.clientHeight * dpr;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary')?.trim() || '#fff';
+  ctx.fillRect(0, 0, w, h);
+
+  // Find range
+  const points = [a, b, ...results.filter(r => r.scalar === undefined)];
+  let maxVal = 1;
+  points.forEach(p => {
+    maxVal = Math.max(maxVal, Math.abs(p.re) * 1.3, Math.abs(p.im) * 1.3);
+  });
+  const range = maxVal;
+  const cx = w / 2, cy = h / 2;
+  const scale = Math.min(w, h) / 2 / range * 0.85;
+
+  const toX = (re) => cx + re * scale;
+  const toY = (im) => cy - im * scale;
+
+  // Grid
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border-color')?.trim() || '#e0e0e0';
+  ctx.lineWidth = 0.5 * dpr;
+  const gridStep = niceStep(range / 4);
+  for (let g = -range; g <= range; g += gridStep) {
+    ctx.beginPath(); ctx.moveTo(toX(g), 0); ctx.lineTo(toX(g), h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, toY(g)); ctx.lineTo(w, toY(g)); ctx.stroke();
+  }
+
+  // Axes
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-tertiary')?.trim() || '#888';
+  ctx.lineWidth = 1.5 * dpr;
+  ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(w, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, h); ctx.stroke();
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.font = `${10 * dpr}px system-ui`;
+  ctx.fillText('Re', w - 16 * dpr, cy - 4 * dpr);
+  ctx.fillText('Im', cx + 4 * dpr, 12 * dpr);
+
+  // Draw point helper
+  function drawPoint(p, color, label) {
+    if (p.scalar !== undefined) return;
+    const px = toX(p.re), py = toY(p.im);
+    // Vector from origin
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5 * dpr;
+    ctx.setLineDash([4 * dpr, 3 * dpr]);
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, py); ctx.stroke();
+    ctx.setLineDash([]);
+    // Dot
+    ctx.beginPath();
+    ctx.arc(px, py, 5 * dpr, 0, 2 * Math.PI);
+    ctx.fillStyle = color;
+    ctx.fill();
+    // Label
+    ctx.fillStyle = color;
+    ctx.font = `bold ${11 * dpr}px system-ui`;
+    ctx.fillText(label, px + 8 * dpr, py - 8 * dpr);
+  }
+
+  drawPoint(a, '#0071e3', 'A');
+  if (['add', 'sub', 'mul', 'div'].includes(op)) drawPoint(b, '#e74c3c', 'B');
+  results.forEach((r, i) => {
+    const label = results.length > 1 ? `R${i + 1}` : 'R';
+    drawPoint(r, '#2ecc71', label);
+  });
+}
+
+/* ==================== Base Converter ==================== */
+
+function initBaseConverter() {
+  const ids = ['calc-base-bin', 'calc-base-oct', 'calc-base-dec', 'calc-base-hex', 'calc-base-b36'];
+  const bases = [2, 8, 10, 16, 36];
+
+  ids.forEach((id, idx) => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    input.addEventListener('input', () => {
+      const val = input.value.trim();
+      if (!val) { ids.forEach(otherId => { if (otherId !== id) document.getElementById(otherId).value = ''; }); return; }
+
+      const base = bases[idx];
+      let decValue;
+      let fractionalPart = '';
+      let intPart = val;
+
+      // Handle fractional
+      const dotIdx = val.indexOf('.');
+      if (dotIdx >= 0) {
+        intPart = val.substring(0, dotIdx);
+        fractionalPart = val.substring(dotIdx + 1);
+      }
+
+      // Parse integer part
+      try {
+        if (!intPart || intPart === '-') intPart = '0';
+        const neg = intPart.startsWith('-');
+        const absInt = neg ? intPart.substring(1) : intPart;
+        // Use BigInt for large numbers when possible
+        if (base === 10) {
+          decValue = BigInt(absInt) * (neg ? -1n : 1n);
+        } else {
+          decValue = BigInt('0') ;
+          const digits = absInt.toUpperCase();
+          for (let i = 0; i < digits.length; i++) {
+            const d = parseInt(digits[i], base);
+            if (isNaN(d) || d >= base) { ids.forEach(otherId => { if (otherId !== id) document.getElementById(otherId).value = 'Invalid'; }); return; }
+            decValue = decValue * BigInt(base) + BigInt(d);
+          }
+          if (neg) decValue = -decValue;
+        }
+      } catch {
+        ids.forEach(otherId => { if (otherId !== id) document.getElementById(otherId).value = 'Error'; });
+        return;
+      }
+
+      // Parse fractional part (as float)
+      let fracDec = 0;
+      if (fractionalPart) {
+        for (let i = 0; i < fractionalPart.length; i++) {
+          const d = parseInt(fractionalPart[i], base);
+          if (isNaN(d) || d >= base) break;
+          fracDec += d / Math.pow(base, i + 1);
+        }
+      }
+
+      // Convert to all bases
+      ids.forEach((otherId, otherIdx) => {
+        if (otherId === id) return;
+        const otherBase = bases[otherIdx];
+        const el = document.getElementById(otherId);
+        if (!el) return;
+
+        // Integer part
+        let intStr;
+        if (decValue === 0n) {
+          intStr = '0';
+        } else {
+          const neg = decValue < 0n;
+          let abs = neg ? -decValue : decValue;
+          intStr = '';
+          while (abs > 0n) {
+            const rem = Number(abs % BigInt(otherBase));
+            intStr = rem.toString(otherBase).toUpperCase() + intStr;
+            abs = abs / BigInt(otherBase);
+          }
+          if (neg) intStr = '-' + intStr;
+        }
+
+        // Fractional part
+        let fracStr = '';
+        if (fracDec > 0) {
+          fracStr = '.';
+          let frac = fracDec;
+          for (let i = 0; i < 16 && frac > 1e-15; i++) {
+            frac *= otherBase;
+            const digit = Math.floor(frac);
+            fracStr += digit.toString(otherBase).toUpperCase();
+            frac -= digit;
+          }
+          // Remove trailing zeros
+          fracStr = fracStr.replace(/0+$/, '');
+          if (fracStr === '.') fracStr = '';
+        }
+
+        el.value = intStr + fracStr;
+      });
+    });
+  });
+
+  // Copy buttons
+  document.querySelectorAll('.calc-base-copy').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const inputId = btn.dataset.copy;
+      const input = document.getElementById(inputId);
+      if (input && input.value) {
+        navigator.clipboard.writeText(input.value).then(() => {
+          const orig = btn.textContent;
+          btn.textContent = 'OK';
+          setTimeout(() => btn.textContent = orig, 1000);
+        }).catch(() => {});
+      }
+    });
+  });
+
+  // Trigger initial conversion from DEC
+  document.getElementById('calc-base-dec')?.dispatchEvent(new Event('input'));
+}
+
+/* ==================== Number Theory Tools ==================== */
+
+function initNumberTheory() {
+  const panel = document.getElementById('calc-panel-numtheory');
+  if (!panel) return;
+
+  // Tab switching
+  panel.querySelectorAll('.calc-nt-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.ntTab;
+      panel.querySelectorAll('.calc-nt-tab').forEach(b => b.classList.toggle('active', b === btn));
+      panel.querySelectorAll('.calc-nt-panel').forEach(p => {
+        p.classList.toggle('active', p.id === `calc-nt-${tab}`);
+      });
+    });
+  });
+
+  // Prime Factorization
+  document.getElementById('calc-nt-factor-btn')?.addEventListener('click', () => {
+    let n = parseInt(document.getElementById('calc-nt-factor-n')?.value);
+    const el = document.getElementById('calc-nt-factor-content');
+    if (!el || isNaN(n) || n < 2) { if (el) el.innerHTML = '<span style="color:#e74c3c">Enter an integer >= 2</span>'; return; }
+
+    const original = n;
+    const factors = [];
+    const steps = [];
+    let d = 2;
+
+    steps.push(`Starting with n = ${n}`);
+    while (d * d <= n) {
+      while (n % d === 0) {
+        factors.push(d);
+        steps.push(`${n} ÷ ${d} = ${n / d}`);
+        n = n / d;
+      }
+      d++;
+    }
+    if (n > 1) {
+      factors.push(n);
+      steps.push(`${n} is prime (remaining factor)`);
+    }
+
+    // Group factors
+    const grouped = {};
+    factors.forEach(f => grouped[f] = (grouped[f] || 0) + 1);
+    const factorStr = Object.entries(grouped).map(([p, e]) => e > 1 ? `${p}^${e}` : p).join(' × ');
+
+    let html = `<div style="font-size:18px;font-weight:700;margin-bottom:12px;color:var(--text-primary);">${original} = ${factorStr}</div>`;
+    html += '<div style="font-size:12px;color:var(--text-secondary);">';
+    html += '<strong>Steps:</strong><br/>';
+    steps.forEach(s => html += `${esc(s)}<br/>`);
+    html += '</div>';
+
+    // Divisors
+    const divisors = getDivisors(original);
+    html += `<div style="margin-top:12px;font-size:13px;"><strong>Number of divisors:</strong> ${divisors.length}</div>`;
+    html += `<div style="font-size:12px;color:var(--text-secondary);">Divisors: ${divisors.join(', ')}</div>`;
+
+    // Primality
+    const isPrime = factors.length === 1 && factors[0] === original;
+    html += `<div style="margin-top:8px;font-size:13px;"><strong>${original} is ${isPrime ? 'PRIME' : 'COMPOSITE'}</strong></div>`;
+
+    el.innerHTML = html;
+  });
+
+  document.getElementById('calc-nt-factor-n')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('calc-nt-factor-btn')?.click(); }
+  });
+
+  // GCD / LCM
+  document.getElementById('calc-nt-gcd-btn')?.addEventListener('click', () => {
+    const input = document.getElementById('calc-nt-gcd-input')?.value || '';
+    const nums = input.split(/[,\s]+/).map(Number).filter(n => !isNaN(n) && n > 0 && Number.isInteger(n));
+    const el = document.getElementById('calc-nt-gcd-content');
+    if (!el || nums.length < 2) { if (el) el.innerHTML = '<span style="color:#e74c3c">Enter at least 2 positive integers</span>'; return; }
+
+    let gcd = nums[0];
+    for (let i = 1; i < nums.length; i++) gcd = gcdTwo(gcd, nums[i]);
+
+    let lcm = nums[0];
+    for (let i = 1; i < nums.length; i++) lcm = lcmTwo(lcm, nums[i]);
+
+    let html = `<div style="font-size:18px;font-weight:700;color:var(--text-primary);">GCD(${nums.join(', ')}) = ${gcd}</div>`;
+    html += `<div style="font-size:18px;font-weight:700;color:var(--text-primary);margin-top:8px;">LCM(${nums.join(', ')}) = ${lcm}</div>`;
+
+    // Show Euclidean steps for 2 numbers
+    if (nums.length === 2) {
+      html += '<div style="margin-top:12px;font-size:12px;color:var(--text-secondary);">';
+      html += '<strong>Euclidean Algorithm:</strong><br/>';
+      let a = nums[0], b = nums[1];
+      while (b > 0) {
+        html += `gcd(${a}, ${b}) = gcd(${b}, ${a % b}) [${a} = ${Math.floor(a / b)} × ${b} + ${a % b}]<br/>`;
+        const temp = b;
+        b = a % b;
+        a = temp;
+      }
+      html += `GCD = ${a}`;
+      html += '</div>';
+    }
+
+    el.innerHTML = html;
+  });
+
+  document.getElementById('calc-nt-gcd-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('calc-nt-gcd-btn')?.click(); }
+  });
+
+  // Modular Arithmetic
+  panel.querySelectorAll('[data-nt-mod]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const op = btn.dataset.ntMod;
+      const a = parseInt(document.getElementById('calc-nt-mod-a')?.value);
+      const n = parseInt(document.getElementById('calc-nt-mod-n')?.value);
+      const b = parseInt(document.getElementById('calc-nt-mod-b')?.value);
+      const el = document.getElementById('calc-nt-mod-content');
+      if (!el) return;
+
+      let html = '';
+      switch (op) {
+        case 'mod':
+          if (isNaN(a) || isNaN(n) || n === 0) { el.innerHTML = '<span style="color:#e74c3c">Invalid input</span>'; return; }
+          const mod = ((a % n) + n) % n;
+          html = `<div style="font-size:18px;font-weight:700;">${a} mod ${n} = ${mod}</div>`;
+          break;
+        case 'inv': {
+          if (isNaN(a) || isNaN(n) || n <= 0) { el.innerHTML = '<span style="color:#e74c3c">Invalid input</span>'; return; }
+          const inv = modInverse(a, n);
+          if (inv === null) {
+            html = `<div style="color:#e74c3c;">No modular inverse exists for ${a} mod ${n} (gcd(${a}, ${n}) ≠ 1)</div>`;
+          } else {
+            html = `<div style="font-size:18px;font-weight:700;">${a}⁻¹ mod ${n} = ${inv}</div>`;
+            html += `<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">Verification: ${a} × ${inv} = ${a * inv} ≡ ${(a * inv) % n} (mod ${n})</div>`;
+          }
+          break;
+        }
+        case 'pow': {
+          if (isNaN(a) || isNaN(n) || isNaN(b) || n <= 0) { el.innerHTML = '<span style="color:#e74c3c">Invalid input</span>'; return; }
+          const result = modPow(a, b, n);
+          html = `<div style="font-size:18px;font-weight:700;">${a}^${b} mod ${n} = ${result}</div>`;
+          html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:8px;">';
+          html += '<strong>Binary exponentiation steps:</strong><br/>';
+          // Show steps
+          let base = ((a % n) + n) % n;
+          let exp = b < 0 ? -b : b;
+          let res = 1;
+          const binStr = exp.toString(2);
+          html += `b in binary: ${binStr}<br/>`;
+          let step = 0;
+          let tempExp = exp;
+          while (tempExp > 0) {
+            if (tempExp & 1) {
+              res = (res * base) % n;
+              html += `Step ${step}: bit=1, result = result × base mod n = ${res}<br/>`;
+            } else {
+              html += `Step ${step}: bit=0, result unchanged = ${res}<br/>`;
+            }
+            base = (base * base) % n;
+            tempExp >>= 1;
+            step++;
+          }
+          html += '</div>';
+          el.innerHTML = html;
+          return;
+        }
+      }
+      el.innerHTML = html;
+    });
+  });
+}
+
+function gcdTwo(a, b) { while (b) { [a, b] = [b, a % b]; } return a; }
+function lcmTwo(a, b) { return (a / gcdTwo(a, b)) * b; }
+
+function getDivisors(n) {
+  const divs = [];
+  for (let i = 1; i * i <= n; i++) {
+    if (n % i === 0) {
+      divs.push(i);
+      if (i !== n / i) divs.push(n / i);
+    }
+  }
+  return divs.sort((a, b) => a - b);
+}
+
+function modInverse(a, m) {
+  a = ((a % m) + m) % m;
+  if (gcdTwo(a, m) !== 1) return null;
+  // Extended Euclidean
+  let [old_r, r] = [a, m];
+  let [old_s, s] = [1, 0];
+  while (r !== 0) {
+    const q = Math.floor(old_r / r);
+    [old_r, r] = [r, old_r - q * r];
+    [old_s, s] = [s, old_s - q * s];
+  }
+  return ((old_s % m) + m) % m;
+}
+
+function modPow(base, exp, mod) {
+  if (mod === 1) return 0;
+  base = ((base % mod) + mod) % mod;
+  if (exp < 0) {
+    const inv = modInverse(base, mod);
+    if (inv === null) return NaN;
+    base = inv;
+    exp = -exp;
+  }
+  let result = 1;
+  while (exp > 0) {
+    if (exp & 1) result = (result * base) % mod;
+    base = (base * base) % mod;
+    exp >>= 1;
+  }
+  return result;
 }

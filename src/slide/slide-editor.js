@@ -555,6 +555,20 @@ function startPresentation() {
       'split':       { from: { opacity: '0', clipPath: 'inset(50% 0)' }, to: { opacity: '1', clipPath: 'inset(0 0)' } },
     };
 
+    // Handle morph transition specially
+    if (transition === 'morph' && morphPreviousSlide) {
+      const transDurM = slide.transitionDuration || 0.5;
+      const transEasingM = slide.transitionEasing || 'ease';
+      morphTransition(morphPreviousSlide, slide, slideEl, transDurM, transEasingM);
+      counter.textContent = `${idx + 1} / ${slides.length}`;
+      if (slideCounter) slideCounter.textContent = `${idx + 1}/${slides.length}`;
+      if (notesPanel?.style.display !== 'none') updatePresNotes(idx);
+      if (slide.customBg) slideEl.style.background = slide.customBg;
+      morphPreviousSlide = slide;
+      return;
+    }
+    morphPreviousSlide = slide;
+
     const fx = transitionMap[transition];
     const transDur = slide.transitionDuration || 0.5;
     const transEasing = slide.transitionEasing || 'ease';
@@ -3032,13 +3046,56 @@ export function initSlideEditorEnhanced() {
   initObjectSelection();
   initTextFormatBar();
   initRichNotes();
+  initEnhancedDragging();
 
   // Group/Ungroup buttons
-  document.getElementById('slide-obj-group')?.addEventListener('click', groupSelectedObjects);
-  document.getElementById('slide-obj-ungroup')?.addEventListener('click', ungroupSelectedObjects);
+  document.getElementById('slide-obj-group')?.addEventListener('click', () => groupSelectedObjects());
+  document.getElementById('slide-obj-ungroup')?.addEventListener('click', () => ungroupSelectedObjects());
 
   // Shape Library
-  document.getElementById('slide-shape-lib')?.addEventListener('click', showShapeLibrary);
+  document.getElementById('slide-shape-lib')?.addEventListener('click', () => showShapeLibrary());
+
+  // Enhanced Grid toggle (overrides the old one)
+  const gridBtn = document.getElementById('slide-toggle-grid');
+  if (gridBtn) {
+    // Remove old listener by replacing node
+    const newGridBtn = gridBtn.cloneNode(true);
+    gridBtn.parentNode.replaceChild(newGridBtn, gridBtn);
+    newGridBtn.addEventListener('click', () => toggleSnapGrid());
+  }
+
+  // Grid size selector
+  document.getElementById('slide-grid-size')?.addEventListener('change', (e) => {
+    snapGridSize = parseInt(e.target.value) || 20;
+    if (snapGridEnabled) {
+      const dotsOverlay = canvasEl?.querySelector('.slide-grid-overlay-dots');
+      if (dotsOverlay) renderGridDots(dotsOverlay);
+    }
+  });
+
+  // Smart Guides toggle
+  document.getElementById('slide-smart-guides-toggle')?.addEventListener('click', () => {
+    smartGuidesEnabled = !smartGuidesEnabled;
+    const btn = document.getElementById('slide-smart-guides-toggle');
+    if (btn) {
+      btn.style.background = smartGuidesEnabled ? 'var(--accent-color)' : '';
+      btn.style.color = smartGuidesEnabled ? '#fff' : '';
+    }
+  });
+
+  // Master Editor
+  document.getElementById('slide-master-editor')?.addEventListener('click', () => openMasterEditor());
+
+  // View Toggle (Normal/Sorter)
+  document.getElementById('slide-view-toggle')?.addEventListener('click', () => toggleSlideView());
+
+  // Override the sorter button to use enhanced sorter
+  const sorterBtn = document.getElementById('slide-sorter');
+  if (sorterBtn) {
+    const newSorterBtn = sorterBtn.cloneNode(true);
+    sorterBtn.parentNode.replaceChild(newSorterBtn, sorterBtn);
+    newSorterBtn.addEventListener('click', () => showEnhancedSlideSorter());
+  }
 
   // Keyboard shortcuts for group
   document.addEventListener('keydown', (e) => {
@@ -3059,7 +3116,7 @@ export function initSlideEditorEnhanced() {
     if (e.key === 'Delete' || e.key === 'Backspace') {
       if (slideSelectedObjects.length > 0 && document.activeElement !== canvasEl) {
         e.preventDefault();
-        slideSelectedObjects.forEach(obj => obj.remove());
+        slideSelectedObjects.forEach((obj) => obj.remove());
         slideSelectedObjects = [];
         slides[activeSlideIdx].content = canvasEl.innerHTML;
         updateThumb(activeSlideIdx);
@@ -3712,3 +3769,929 @@ function openPresenterView() {
   }
   window.addEventListener('message', handleMsg);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE: Morph Transition
+   ═══════════════════════════════════════════════════════════════ */
+
+function morphTransition(fromSlide, toSlide, slideEl, duration, easing) {
+  // Capture "from" elements with morph IDs
+  const fromContainer = document.createElement('div');
+  fromContainer.innerHTML = fromSlide.content;
+  const toContainer = document.createElement('div');
+  toContainer.innerHTML = toSlide.content;
+
+  const getMatchKey = (el) => el.dataset?.morphId || el.id || null;
+
+  const fromEls = {};
+  fromContainer.querySelectorAll('[data-morph-id], [id]').forEach((el) => {
+    const key = getMatchKey(el);
+    if (key) fromEls[key] = el;
+  });
+
+  const toEls = {};
+  toContainer.querySelectorAll('[data-morph-id], [id]').forEach((el) => {
+    const key = getMatchKey(el);
+    if (key) toEls[key] = el;
+  });
+
+  // Show the "from" state first
+  slideEl.innerHTML = fromSlide.content;
+  const fromTheme = fromSlide.theme === 'default' ? '' : fromSlide.theme;
+  slideEl.setAttribute('data-theme', fromTheme);
+  if (fromSlide.customBg) slideEl.style.background = fromSlide.customBg;
+
+  // Capture from rects
+  const fromRects = {};
+  slideEl.querySelectorAll('[data-morph-id], [id]').forEach((el) => {
+    const key = getMatchKey(el);
+    if (key && toEls[key]) {
+      const r = el.getBoundingClientRect();
+      const parentR = slideEl.getBoundingClientRect();
+      fromRects[key] = {
+        x: r.left - parentR.left,
+        y: r.top - parentR.top,
+        w: r.width,
+        h: r.height,
+        opacity: parseFloat(window.getComputedStyle(el).opacity) || 1,
+        rotation: getRotationDeg(el),
+      };
+    }
+  });
+
+  // Now switch to "to" content
+  slideEl.innerHTML = toSlide.content;
+  const toTheme = toSlide.theme === 'default' ? '' : toSlide.theme;
+  slideEl.setAttribute('data-theme', toTheme);
+  if (toSlide.customBg) slideEl.style.background = toSlide.customBg;
+  else slideEl.style.background = '';
+
+  // Capture to rects and animate
+  const matchedEls = [];
+  slideEl.querySelectorAll('[data-morph-id], [id]').forEach((el) => {
+    const key = getMatchKey(el);
+    if (key && fromRects[key]) {
+      const r = el.getBoundingClientRect();
+      const parentR = slideEl.getBoundingClientRect();
+      const toRect = {
+        x: r.left - parentR.left,
+        y: r.top - parentR.top,
+        w: r.width,
+        h: r.height,
+        opacity: parseFloat(window.getComputedStyle(el).opacity) || 1,
+        rotation: getRotationDeg(el),
+      };
+      const from = fromRects[key];
+      matchedEls.push({ el, from, to: toRect });
+    }
+  });
+
+  // Apply "from" state to matched elements, then animate to "to" state
+  matchedEls.forEach(({ el, from, to }) => {
+    const dx = from.x - to.x;
+    const dy = from.y - to.y;
+    const sx = from.w / (to.w || 1);
+    const sy = from.h / (to.h || 1);
+    const dr = from.rotation - to.rotation;
+
+    el.style.transition = 'none';
+    el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy}) rotate(${dr}deg)`;
+    el.style.opacity = String(from.opacity);
+    el.style.transformOrigin = 'top left';
+  });
+
+  // Trigger reflow
+  void slideEl.offsetWidth;
+
+  // Animate to final state
+  matchedEls.forEach(({ el, to }) => {
+    el.style.transition = `all ${duration}s ${easing}`;
+    el.style.transform = 'translate(0, 0) scale(1, 1) rotate(0deg)';
+    el.style.opacity = String(to.opacity);
+  });
+
+  // Non-matched elements: fade in
+  slideEl.querySelectorAll('[data-morph-id], [id]').forEach((el) => {
+    const key = getMatchKey(el);
+    if (key && !fromRects[key]) {
+      el.style.transition = 'none';
+      el.style.opacity = '0';
+      void el.offsetWidth;
+      el.style.transition = `opacity ${duration}s ${easing}`;
+      el.style.opacity = '1';
+    }
+  });
+
+  // Clean up after transition
+  setTimeout(() => {
+    matchedEls.forEach(({ el }) => {
+      el.style.transition = '';
+      el.style.transform = '';
+      el.style.opacity = '';
+      el.style.transformOrigin = '';
+    });
+  }, duration * 1000 + 100);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE: Smart Guides
+   ═══════════════════════════════════════════════════════════════ */
+
+let smartGuidesEnabled = true;
+const SNAP_THRESHOLD = 5;
+
+function clearSmartGuides() {
+  canvasEl?.querySelectorAll('.slide-smart-guide').forEach((g) => g.remove());
+}
+
+function getOtherElements(draggedEl) {
+  const all = Array.from(canvasEl.children).filter((el) =>
+    el !== draggedEl &&
+    !el.classList.contains('slide-grid-overlay') &&
+    !el.classList.contains('slide-grid-overlay-dots') &&
+    !el.classList.contains('slide-smart-guide') &&
+    el.offsetWidth > 0
+  );
+  return all;
+}
+
+function showSmartGuides(draggedEl) {
+  clearSmartGuides();
+  if (!smartGuidesEnabled || !canvasEl) return { snapDx: 0, snapDy: 0 };
+
+  const canvasRect = canvasEl.getBoundingClientRect();
+  const dragRect = draggedEl.getBoundingClientRect();
+  const dragCx = dragRect.left + dragRect.width / 2 - canvasRect.left;
+  const dragCy = dragRect.top + dragRect.height / 2 - canvasRect.top;
+  const dragL = dragRect.left - canvasRect.left;
+  const dragR = dragRect.right - canvasRect.left;
+  const dragT = dragRect.top - canvasRect.top;
+  const dragB = dragRect.bottom - canvasRect.top;
+
+  const canvasCx = canvasRect.width / 2;
+  const canvasCy = canvasRect.height / 2;
+
+  let snapDx = 0, snapDy = 0;
+  const guides = [];
+
+  // Check canvas center
+  if (Math.abs(dragCx - canvasCx) < SNAP_THRESHOLD) {
+    guides.push({ type: 'vertical', pos: canvasCx });
+    snapDx = canvasCx - dragCx;
+  }
+  if (Math.abs(dragCy - canvasCy) < SNAP_THRESHOLD) {
+    guides.push({ type: 'horizontal', pos: canvasCy });
+    snapDy = canvasCy - dragCy;
+  }
+
+  // Check other elements
+  const others = getOtherElements(draggedEl);
+  others.forEach((el) => {
+    const r = el.getBoundingClientRect();
+    const elL = r.left - canvasRect.left;
+    const elR = r.right - canvasRect.left;
+    const elT = r.top - canvasRect.top;
+    const elB = r.bottom - canvasRect.top;
+    const elCx = elL + r.width / 2;
+    const elCy = elT + r.height / 2;
+
+    // Vertical alignment (left, center, right edges)
+    const vChecks = [
+      { drag: dragL, ref: elL }, { drag: dragL, ref: elR },
+      { drag: dragR, ref: elL }, { drag: dragR, ref: elR },
+      { drag: dragCx, ref: elCx },
+    ];
+    for (const c of vChecks) {
+      if (Math.abs(c.drag - c.ref) < SNAP_THRESHOLD && snapDx === 0) {
+        guides.push({ type: 'vertical', pos: c.ref });
+        snapDx = c.ref - c.drag;
+        break;
+      }
+    }
+
+    // Horizontal alignment (top, center, bottom edges)
+    const hChecks = [
+      { drag: dragT, ref: elT }, { drag: dragT, ref: elB },
+      { drag: dragB, ref: elT }, { drag: dragB, ref: elB },
+      { drag: dragCy, ref: elCy },
+    ];
+    for (const c of hChecks) {
+      if (Math.abs(c.drag - c.ref) < SNAP_THRESHOLD && snapDy === 0) {
+        guides.push({ type: 'horizontal', pos: c.ref });
+        snapDy = c.ref - c.drag;
+        break;
+      }
+    }
+  });
+
+  // Equal spacing check (simplified: between consecutive elements in same row/col)
+  // We'll check if dragged element can be equally spaced between two others
+  if (others.length >= 2) {
+    others.sort((a, b) => {
+      const aR = a.getBoundingClientRect();
+      const bR = b.getBoundingClientRect();
+      return (aR.left - canvasRect.left) - (bR.left - canvasRect.left);
+    });
+    for (let i = 0; i < others.length - 1; i++) {
+      const r1 = others[i].getBoundingClientRect();
+      const r2 = others[i + 1].getBoundingClientRect();
+      const gap = (r2.left - canvasRect.left) - (r1.right - canvasRect.left);
+      if (gap > 10) {
+        // Check if dragged element can fit in-between with equal spacing
+        const idealX = (r1.right - canvasRect.left) + gap / 2 - dragRect.width / 2;
+        if (Math.abs(dragL - idealX) < SNAP_THRESHOLD && snapDx === 0) {
+          snapDx = idealX - dragL;
+          guides.push({ type: 'vertical', pos: idealX });
+          guides.push({ type: 'vertical', pos: idealX + dragRect.width });
+        }
+      }
+    }
+  }
+
+  // Render guides
+  guides.forEach((g) => {
+    const guideEl = document.createElement('div');
+    guideEl.className = `slide-smart-guide ${g.type}`;
+    if (g.type === 'vertical') {
+      guideEl.style.left = g.pos + 'px';
+    } else {
+      guideEl.style.top = g.pos + 'px';
+    }
+    canvasEl.appendChild(guideEl);
+  });
+
+  return { snapDx, snapDy };
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE: Enhanced Snap-to-Grid
+   ═══════════════════════════════════════════════════════════════ */
+
+let snapGridSize = 20;
+let snapGridEnabled = false;
+
+function toggleSnapGrid() {
+  snapGridEnabled = !snapGridEnabled;
+  const btn = document.getElementById('slide-toggle-grid');
+
+  let gridOverlay = canvasEl?.querySelector('.slide-grid-overlay');
+  let gridDotsOverlay = canvasEl?.querySelector('.slide-grid-overlay-dots');
+
+  if (snapGridEnabled) {
+    // Remove old grid overlay (the percentage-based one)
+    if (gridOverlay) gridOverlay.style.display = 'none';
+
+    // Create dot-based grid
+    if (!gridDotsOverlay) {
+      gridDotsOverlay = document.createElement('canvas');
+      gridDotsOverlay.className = 'slide-grid-overlay-dots';
+      canvasEl.style.position = 'relative';
+      canvasEl.appendChild(gridDotsOverlay);
+    }
+    renderGridDots(gridDotsOverlay);
+    gridDotsOverlay.style.display = '';
+    if (btn) {
+      btn.style.background = 'var(--accent-color)';
+      btn.style.color = '#fff';
+    }
+  } else {
+    if (gridDotsOverlay) gridDotsOverlay.style.display = 'none';
+    if (btn) {
+      btn.style.background = '';
+      btn.style.color = '';
+    }
+  }
+
+  // Also toggle the old grid variable
+  slideGridVisible = snapGridEnabled;
+}
+
+function renderGridDots(canvas) {
+  const w = canvasEl.offsetWidth;
+  const h = canvasEl.offsetHeight;
+  canvas.width = w;
+  canvas.height = h;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+
+  const size = snapGridSize;
+
+  // Draw dots
+  ctx.fillStyle = '#888';
+  for (let x = size; x < w; x += size) {
+    for (let y = size; y < h; y += size) {
+      const dotSize = (x % (size * 5) === 0 && y % (size * 5) === 0) ? 2 : 1;
+      ctx.beginPath();
+      ctx.arc(x, y, dotSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Draw center lines
+  ctx.strokeStyle = 'rgba(234, 67, 53, 0.5)';
+  ctx.lineWidth = 0.5;
+  ctx.setLineDash([4, 4]);
+
+  // Horizontal center
+  ctx.beginPath();
+  ctx.moveTo(0, h / 2);
+  ctx.lineTo(w, h / 2);
+  ctx.stroke();
+
+  // Vertical center
+  ctx.beginPath();
+  ctx.moveTo(w / 2, 0);
+  ctx.lineTo(w / 2, h);
+  ctx.stroke();
+}
+
+function snapToGrid(x, y) {
+  if (!snapGridEnabled) return { x, y };
+  return {
+    x: Math.round(x / snapGridSize) * snapGridSize,
+    y: Math.round(y / snapGridSize) * snapGridSize,
+  };
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE: Enhanced Slide Sorter View
+   ═══════════════════════════════════════════════════════════════ */
+
+let sorterSelectedIndices = new Set();
+let sorterClipboard = [];
+
+function showEnhancedSlideSorter() {
+  const existing = document.querySelector('.slide-sorter-overlay');
+  if (existing) { existing.remove(); return; }
+
+  saveCurrentSlide();
+  sorterSelectedIndices.clear();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'slide-sorter-overlay';
+
+  renderSorterView(overlay);
+  document.body.appendChild(overlay);
+}
+
+function renderSorterView(overlay) {
+  sorterSelectedIndices = new Set(
+    Array.from(sorterSelectedIndices).filter((i) => i < slides.length)
+  );
+
+  let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <h2 style="margin:0;font-size:20px;font-weight:700">Slide Sorter</h2>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="font-size:12px;color:var(--text-secondary)">${slides.length} slides${sorterSelectedIndices.size > 0 ? `, ${sorterSelectedIndices.size} selected` : ''}</span>
+      <button id="sorter-select-all" style="padding:4px 12px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);cursor:pointer;font-size:11px">Select All</button>
+      <button id="sorter-close" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--text-primary)">&times;</button>
+    </div>
+  </div>
+  <p style="font-size:12px;color:var(--text-secondary);margin-bottom:16px">Drag to reorder. Shift+click or Ctrl+click to multi-select. Right-click for context menu. Double-click to edit.</p>
+  <div id="sorter-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:16px">`;
+
+  slides.forEach((slide, i) => {
+    const bgStyle = slide.theme === 'dark' ? 'background:#1a1a2e;color:#eee' :
+                    slide.theme === 'blue' ? 'background:#0f3460;color:#eee' :
+                    slide.theme === 'gradient' ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff' :
+                    slide.theme === 'green' ? 'background:linear-gradient(135deg,#1a3c34,#2d6a4f);color:#eee' :
+                    slide.theme === 'red' ? 'background:linear-gradient(135deg,#4a1a1a,#7c2d2d);color:#eee' :
+                    slide.theme === 'purple' ? 'background:linear-gradient(135deg,#2d1b4e,#4a1a6b);color:#eee' :
+                    'background:#fff;color:#333';
+    const isSelected = sorterSelectedIndices.has(i);
+    const isActive = i === activeSlideIdx;
+    html += `<div class="sorter-card${isSelected ? ' selected' : ''}" draggable="true" data-idx="${i}"
+              style="border-color:${isActive ? 'var(--accent-color)' : isSelected ? '#4285f4' : 'var(--border-color)'}">
+      <div style="aspect-ratio:16/9;${bgStyle};padding:12px;font-size:9px;line-height:1.3;overflow:hidden;pointer-events:none">${slide.content}</div>
+      <div style="padding:6px 8px;font-size:11px;display:flex;justify-content:space-between;align-items:center;background:var(--hover-bg)">
+        <span style="font-weight:600">Slide ${i + 1}</span>
+        <span style="font-size:10px;color:var(--text-secondary)">${slide.transition !== 'none' ? slide.transition : ''}</span>
+      </div>
+    </div>`;
+  });
+
+  html += '</div>';
+  overlay.innerHTML = html;
+
+  // Close
+  overlay.querySelector('#sorter-close').addEventListener('click', () => overlay.remove());
+
+  // Select all
+  overlay.querySelector('#sorter-select-all').addEventListener('click', () => {
+    if (sorterSelectedIndices.size === slides.length) {
+      sorterSelectedIndices.clear();
+    } else {
+      slides.forEach((_, i) => sorterSelectedIndices.add(i));
+    }
+    renderSorterView(overlay);
+  });
+
+  // Card interactions
+  const grid = overlay.querySelector('#sorter-grid');
+  let dragIdx = -1;
+
+  grid.querySelectorAll('.sorter-card').forEach((card) => {
+    const idx = parseInt(card.dataset.idx);
+
+    // Click to select
+    card.addEventListener('click', (e) => {
+      if (e.shiftKey) {
+        // Range select
+        const min = Math.min(activeSlideIdx, idx);
+        const max = Math.max(activeSlideIdx, idx);
+        for (let i = min; i <= max; i++) sorterSelectedIndices.add(i);
+      } else if (e.ctrlKey || e.metaKey) {
+        // Toggle select
+        if (sorterSelectedIndices.has(idx)) sorterSelectedIndices.delete(idx);
+        else sorterSelectedIndices.add(idx);
+      } else {
+        sorterSelectedIndices.clear();
+        sorterSelectedIndices.add(idx);
+        activeSlideIdx = idx;
+      }
+      renderSorterView(overlay);
+    });
+
+    // Double click to edit
+    card.addEventListener('dblclick', () => {
+      activeSlideIdx = idx;
+      renderPanel();
+      loadSlide(idx);
+      overlay.remove();
+    });
+
+    // Right-click context menu
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (!sorterSelectedIndices.has(idx)) {
+        sorterSelectedIndices.clear();
+        sorterSelectedIndices.add(idx);
+        renderSorterView(overlay);
+      }
+      showSorterContextMenu(e.clientX, e.clientY, overlay);
+    });
+
+    // Drag and drop
+    card.addEventListener('dragstart', (e) => {
+      dragIdx = idx;
+      card.style.opacity = '0.5';
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      card.style.opacity = '1';
+    });
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      card.classList.add('drag-over');
+    });
+    card.addEventListener('dragleave', () => {
+      card.classList.remove('drag-over');
+    });
+    card.addEventListener('drop', (e) => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      const dropIdx = parseInt(card.dataset.idx);
+      if (dragIdx >= 0 && dragIdx !== dropIdx) {
+        const [moved] = slides.splice(dragIdx, 1);
+        slides.splice(dropIdx, 0, moved);
+        if (activeSlideIdx === dragIdx) activeSlideIdx = dropIdx;
+        else if (dragIdx < activeSlideIdx && dropIdx >= activeSlideIdx) activeSlideIdx--;
+        else if (dragIdx > activeSlideIdx && dropIdx <= activeSlideIdx) activeSlideIdx++;
+        sorterSelectedIndices.clear();
+        renderSorterView(overlay);
+        renderPanel();
+      }
+    });
+  });
+}
+
+function showSorterContextMenu(x, y, overlay) {
+  // Remove any existing context menus
+  document.querySelectorAll('.slide-context-menu').forEach((m) => m.remove());
+
+  const menu = document.createElement('div');
+  menu.className = 'slide-context-menu';
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+
+  const selectedCount = sorterSelectedIndices.size;
+  const actions = [
+    { label: `Duplicate (${selectedCount})`, action: 'duplicate' },
+    { label: `Delete (${selectedCount})`, action: 'delete' },
+    { divider: true },
+    { label: 'Copy', action: 'copy' },
+    { label: 'Paste', action: 'paste', disabled: sorterClipboard.length === 0 },
+    { divider: true },
+    { label: 'Select All', action: 'select-all' },
+  ];
+
+  actions.forEach((item) => {
+    if (item.divider) {
+      const div = document.createElement('div');
+      div.className = 'ctx-divider';
+      menu.appendChild(div);
+      return;
+    }
+    const btn = document.createElement('button');
+    btn.textContent = item.label;
+    if (item.disabled) {
+      btn.style.opacity = '0.4';
+      btn.style.cursor = 'default';
+    }
+    btn.addEventListener('click', () => {
+      menu.remove();
+      if (item.disabled) return;
+      executeSorterAction(item.action, overlay);
+    });
+    menu.appendChild(btn);
+  });
+
+  document.body.appendChild(menu);
+
+  // Close on click outside
+  const closeHandler = (e) => {
+    if (!menu.contains(e.target)) {
+      menu.remove();
+      document.removeEventListener('click', closeHandler);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', closeHandler), 0);
+}
+
+function executeSorterAction(action, overlay) {
+  const selected = Array.from(sorterSelectedIndices).sort((a, b) => a - b);
+
+  switch (action) {
+    case 'duplicate': {
+      const newSlides = [];
+      selected.forEach((idx) => {
+        newSlides.push({ ...slides[idx], notes: slides[idx].notes, animations: slides[idx].animations ? [...slides[idx].animations] : [] });
+      });
+      const insertAt = Math.max(...selected) + 1;
+      slides.splice(insertAt, 0, ...newSlides);
+      sorterSelectedIndices.clear();
+      renderSorterView(overlay);
+      renderPanel();
+      break;
+    }
+    case 'delete': {
+      if (selected.length >= slides.length) {
+        alert('Cannot delete all slides.');
+        return;
+      }
+      // Remove from end to start to preserve indices
+      for (let i = selected.length - 1; i >= 0; i--) {
+        slides.splice(selected[i], 1);
+      }
+      if (activeSlideIdx >= slides.length) activeSlideIdx = slides.length - 1;
+      sorterSelectedIndices.clear();
+      renderSorterView(overlay);
+      renderPanel();
+      loadSlide(activeSlideIdx);
+      break;
+    }
+    case 'copy': {
+      sorterClipboard = selected.map((idx) => ({
+        ...slides[idx],
+        notes: slides[idx].notes,
+        animations: slides[idx].animations ? [...slides[idx].animations] : [],
+      }));
+      break;
+    }
+    case 'paste': {
+      if (sorterClipboard.length === 0) return;
+      const insertAt = selected.length > 0 ? Math.max(...selected) + 1 : activeSlideIdx + 1;
+      const pasted = sorterClipboard.map((s) => ({ ...s, notes: s.notes, animations: s.animations ? [...s.animations] : [] }));
+      slides.splice(insertAt, 0, ...pasted);
+      sorterSelectedIndices.clear();
+      renderSorterView(overlay);
+      renderPanel();
+      break;
+    }
+    case 'select-all': {
+      slides.forEach((_, i) => sorterSelectedIndices.add(i));
+      renderSorterView(overlay);
+      break;
+    }
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE: Slide Master Editor
+   ═══════════════════════════════════════════════════════════════ */
+
+function openMasterEditor() {
+  const existing = document.querySelector('.slide-master-editor-overlay');
+  if (existing) { existing.remove(); return; }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'slide-master-editor-overlay';
+
+  let activeMasterKey = Object.keys(MASTER_SLIDES)[0];
+  renderMasterEditor(overlay, activeMasterKey);
+  document.body.appendChild(overlay);
+}
+
+function renderMasterEditor(overlay, activeMasterKey) {
+  const master = MASTER_SLIDES[activeMasterKey];
+
+  let sidebarHTML = '';
+  for (const [key, m] of Object.entries(MASTER_SLIDES)) {
+    sidebarHTML += `<div class="master-thumb${key === activeMasterKey ? ' active' : ''}" data-key="${key}">
+      <div style="aspect-ratio:16/9;background:${m.bg};color:${m.color};font-family:${m.fontFamily};padding:8px;font-size:7px;display:flex;flex-direction:column;justify-content:center;overflow:hidden">
+        <div style="${m.headerStyle};font-size:8px;margin-bottom:2px">${m.name}</div>
+        <div style="font-size:5px;opacity:0.6">Subtitle</div>
+      </div>
+      <div style="padding:4px 6px;font-size:9px;font-weight:600;text-align:center;background:var(--hover-bg)">${m.name}</div>
+    </div>`;
+  }
+  sidebarHTML += `<button id="master-add-new" style="padding:8px;border:1px dashed var(--border-color);border-radius:6px;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:11px;text-align:center">+ New Master</button>`;
+
+  overlay.innerHTML = `
+    <div class="slide-master-editor-toolbar">
+      <h3 style="margin:0;font-size:14px;font-weight:700">Slide Master Editor</h3>
+      <div style="flex:1"></div>
+      <button id="master-apply-slides" style="padding:6px 16px;border:none;border-radius:6px;background:var(--accent-color);color:#fff;cursor:pointer;font-size:12px;font-weight:600">Apply to All Slides</button>
+      <button id="master-apply-current" style="padding:6px 16px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);cursor:pointer;font-size:12px">Apply to Current Slide</button>
+      <button id="master-editor-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-primary);margin-left:8px">&times;</button>
+    </div>
+    <div class="slide-master-editor-body">
+      <div class="slide-master-sidebar">${sidebarHTML}</div>
+      <div class="slide-master-canvas-area">
+        <div class="slide-canvas-wrapper">
+          <div id="master-canvas" class="slide-canvas" style="background:${master.bg};color:${master.color};font-family:${master.fontFamily}" contenteditable="true">
+            <h1 style="${master.headerStyle};font-size:44px;margin:0 0 16px">Title Placeholder</h1>
+            <p style="font-size:24px;opacity:0.7;margin:0 0 24px">Subtitle placeholder</p>
+            <ul style="padding-left:1.5em"><li style="font-size:22px;margin:4px 0">Content item 1</li><li style="font-size:22px;margin:4px 0">Content item 2</li><li style="font-size:22px;margin:4px 0">Content item 3</li></ul>
+          </div>
+        </div>
+      </div>
+      <div class="slide-master-props">
+        <h4 style="margin:0 0 12px;font-size:13px;font-weight:700">Master Properties</h4>
+        <label>Name</label>
+        <input type="text" id="master-prop-name" value="${master.name}">
+        <label>Background</label>
+        <input type="text" id="master-prop-bg" value="${master.bg}" placeholder="CSS background value">
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <input type="color" id="master-prop-bg-color" value="${master.bg.startsWith('#') ? master.bg : '#ffffff'}" style="width:36px;height:28px;border:none;cursor:pointer">
+          <button id="master-prop-bg-gradient" style="flex:1;padding:4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);cursor:pointer;font-size:10px">Gradient...</button>
+        </div>
+        <label>Text Color</label>
+        <input type="color" id="master-prop-color" value="${master.color}" style="width:100%;height:28px;border:none;cursor:pointer">
+        <label>Accent Color</label>
+        <input type="color" id="master-prop-accent" value="${master.accentColor}" style="width:100%;height:28px;border:none;cursor:pointer">
+        <label>Font Family</label>
+        <select id="master-prop-font">
+          <option value="'Segoe UI', system-ui, sans-serif" ${master.fontFamily.includes('Segoe') ? 'selected' : ''}>Segoe UI</option>
+          <option value="-apple-system, BlinkMacSystemFont, sans-serif" ${master.fontFamily.includes('apple-system') ? 'selected' : ''}>System Default</option>
+          <option value="'Inter', system-ui, sans-serif" ${master.fontFamily.includes('Inter') ? 'selected' : ''}>Inter</option>
+          <option value="'Georgia', serif" ${master.fontFamily.includes('Georgia') ? 'selected' : ''}>Georgia</option>
+          <option value="'Palatino', 'Book Antiqua', serif" ${master.fontFamily.includes('Palatino') ? 'selected' : ''}>Palatino</option>
+          <option value="'SF Mono', 'Fira Code', monospace" ${master.fontFamily.includes('Mono') || master.fontFamily.includes('monospace') ? 'selected' : ''}>Monospace</option>
+          <option value="'Nunito', system-ui, sans-serif" ${master.fontFamily.includes('Nunito') ? 'selected' : ''}>Nunito</option>
+          <option value="Arial, sans-serif" ${master.fontFamily.includes('Arial') ? 'selected' : ''}>Arial</option>
+        </select>
+        <label>Header Style (CSS)</label>
+        <textarea id="master-prop-header" rows="3" style="font-family:monospace;font-size:10px">${master.headerStyle}</textarea>
+        <button id="master-prop-save" style="width:100%;margin-top:12px;padding:8px;border:none;border-radius:6px;background:var(--accent-color);color:#fff;cursor:pointer;font-size:12px;font-weight:600">Save Changes</button>
+        <button id="master-prop-delete" style="width:100%;margin-top:8px;padding:8px;border:1px solid #ea4335;border-radius:6px;background:transparent;color:#ea4335;cursor:pointer;font-size:12px">Delete Master</button>
+      </div>
+    </div>
+  `;
+
+  // Event handlers
+  overlay.querySelector('#master-editor-close').addEventListener('click', () => overlay.remove());
+
+  // Sidebar thumb clicks
+  overlay.querySelectorAll('.master-thumb').forEach((thumb) => {
+    thumb.addEventListener('click', () => {
+      activeMasterKey = thumb.dataset.key;
+      renderMasterEditor(overlay, activeMasterKey);
+    });
+  });
+
+  // Add new master
+  overlay.querySelector('#master-add-new')?.addEventListener('click', () => {
+    const name = prompt('Master slide name:');
+    if (!name) return;
+    const key = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    if (MASTER_SLIDES[key]) {
+      alert('A master with that name already exists.');
+      return;
+    }
+    MASTER_SLIDES[key] = {
+      name,
+      bg: '#ffffff',
+      color: '#333333',
+      accentColor: '#4285f4',
+      fontFamily: "'Segoe UI', system-ui, sans-serif",
+      headerStyle: 'font-weight:700',
+      logo: '',
+    };
+    activeMasterKey = key;
+    renderMasterEditor(overlay, activeMasterKey);
+  });
+
+  // Save changes
+  overlay.querySelector('#master-prop-save')?.addEventListener('click', () => {
+    const m = MASTER_SLIDES[activeMasterKey];
+    m.name = overlay.querySelector('#master-prop-name').value;
+    m.bg = overlay.querySelector('#master-prop-bg').value;
+    m.color = overlay.querySelector('#master-prop-color').value;
+    m.accentColor = overlay.querySelector('#master-prop-accent').value;
+    m.fontFamily = overlay.querySelector('#master-prop-font').value;
+    m.headerStyle = overlay.querySelector('#master-prop-header').value;
+    renderMasterEditor(overlay, activeMasterKey);
+  });
+
+  // Background color picker
+  overlay.querySelector('#master-prop-bg-color')?.addEventListener('input', (e) => {
+    overlay.querySelector('#master-prop-bg').value = e.target.value;
+    const canvas = overlay.querySelector('#master-canvas');
+    if (canvas) canvas.style.background = e.target.value;
+  });
+
+  // Background text input
+  overlay.querySelector('#master-prop-bg')?.addEventListener('input', (e) => {
+    const canvas = overlay.querySelector('#master-canvas');
+    if (canvas) canvas.style.background = e.target.value;
+  });
+
+  // Text color
+  overlay.querySelector('#master-prop-color')?.addEventListener('input', (e) => {
+    const canvas = overlay.querySelector('#master-canvas');
+    if (canvas) canvas.style.color = e.target.value;
+  });
+
+  // Font
+  overlay.querySelector('#master-prop-font')?.addEventListener('change', (e) => {
+    const canvas = overlay.querySelector('#master-canvas');
+    if (canvas) canvas.style.fontFamily = e.target.value;
+  });
+
+  // Delete master
+  overlay.querySelector('#master-prop-delete')?.addEventListener('click', () => {
+    if (Object.keys(MASTER_SLIDES).length <= 1) {
+      alert('Cannot delete the last master slide.');
+      return;
+    }
+    if (!confirm(`Delete master "${MASTER_SLIDES[activeMasterKey].name}"?`)) return;
+    delete MASTER_SLIDES[activeMasterKey];
+    activeMasterKey = Object.keys(MASTER_SLIDES)[0];
+    renderMasterEditor(overlay, activeMasterKey);
+  });
+
+  // Apply to all slides
+  overlay.querySelector('#master-apply-slides')?.addEventListener('click', () => {
+    slides.forEach((s) => { s.master = activeMasterKey; });
+    applyMasterToCanvas(MASTER_SLIDES[activeMasterKey]);
+    renderPanel();
+    overlay.remove();
+  });
+
+  // Apply to current slide
+  overlay.querySelector('#master-apply-current')?.addEventListener('click', () => {
+    slides[activeSlideIdx].master = activeMasterKey;
+    applyMasterToCanvas(MASTER_SLIDES[activeMasterKey]);
+    updateThumb(activeSlideIdx);
+    overlay.remove();
+  });
+
+  // Gradient button
+  overlay.querySelector('#master-prop-bg-gradient')?.addEventListener('click', () => {
+    const c1 = prompt('Gradient color 1 (hex):', '#667eea');
+    const c2 = prompt('Gradient color 2 (hex):', '#764ba2');
+    if (c1 && c2) {
+      const grad = `linear-gradient(135deg, ${c1} 0%, ${c2} 100%)`;
+      overlay.querySelector('#master-prop-bg').value = grad;
+      const canvas = overlay.querySelector('#master-canvas');
+      if (canvas) canvas.style.background = grad;
+    }
+  });
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE: Enhanced Object Dragging with Smart Guides + Grid Snap
+   ═══════════════════════════════════════════════════════════════ */
+
+function initEnhancedDragging() {
+  if (!canvasEl) return;
+
+  // Override the existing drag behavior on mousedown
+  canvasEl.addEventListener('mousedown', (e) => {
+    const target = findSelectableElement(e.target);
+    if (!target) return;
+    if (!target.classList.contains('slide-obj-selected') && !target.classList.contains('slide-obj-multi-selected')) return;
+    if (e.target.classList.contains('slide-resize-handle') || e.target.classList.contains('slide-rotate-handle')) return;
+
+    const style = window.getComputedStyle(target);
+    if (style.position !== 'absolute' && style.display !== 'inline-block') return;
+
+    // Prevent default drag if we'll handle with smart guides
+    if (!smartGuidesEnabled && !snapGridEnabled) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    slideIsDragging = true;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const origPositions = slideSelectedObjects.map((obj) => {
+      const cs = window.getComputedStyle(obj);
+      return {
+        el: obj,
+        left: parseInt(cs.marginLeft) || 0,
+        top: parseInt(cs.marginTop) || 0,
+      };
+    });
+
+    const onMove = (ev) => {
+      ev.preventDefault();
+      let dx = ev.clientX - startX;
+      let dy = ev.clientY - startY;
+
+      // Apply grid snap
+      if (snapGridEnabled) {
+        const firstOrig = origPositions[0];
+        const snapped = snapToGrid(firstOrig.left + dx, firstOrig.top + dy);
+        dx = snapped.x - firstOrig.left;
+        dy = snapped.y - firstOrig.top;
+      }
+
+      // Apply to elements first
+      origPositions.forEach((p) => {
+        p.el.style.marginLeft = (p.left + dx) + 'px';
+        p.el.style.marginTop = (p.top + dy) + 'px';
+      });
+
+      // Show smart guides after moving
+      if (smartGuidesEnabled && slideSelectedObjects.length === 1) {
+        const snap = showSmartGuides(slideSelectedObjects[0]);
+        if (snap.snapDx !== 0 || snap.snapDy !== 0) {
+          origPositions.forEach((p) => {
+            p.el.style.marginLeft = (p.left + dx + snap.snapDx) + 'px';
+            p.el.style.marginTop = (p.top + dy + snap.snapDy) + 'px';
+          });
+        }
+      }
+    };
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      clearSmartGuides();
+      setTimeout(() => { slideIsDragging = false; }, 50);
+      slides[activeSlideIdx].content = canvasEl.innerHTML;
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, true); // capture phase to intercept before the original handler
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE: View Toggle (Normal / Sorter)
+   ═══════════════════════════════════════════════════════════════ */
+
+let currentSlideView = 'normal'; // 'normal' | 'sorter'
+
+function toggleSlideView() {
+  if (currentSlideView === 'normal') {
+    currentSlideView = 'sorter';
+    showEnhancedSlideSorter();
+  } else {
+    currentSlideView = 'normal';
+    const overlay = document.querySelector('.slide-sorter-overlay');
+    if (overlay) overlay.remove();
+  }
+
+  const btn = document.getElementById('slide-view-toggle');
+  if (btn) {
+    btn.textContent = currentSlideView === 'sorter' ? '☰ Normal' : '⊞ View';
+    btn.style.background = currentSlideView === 'sorter' ? 'var(--accent-color)' : '';
+    btn.style.color = currentSlideView === 'sorter' ? '#fff' : '';
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Wire up Morph transition in presentation mode
+   ═══════════════════════════════════════════════════════════════ */
+
+// Patch the existing startPresentation transition map to include morph
+const _origStartPresentation = startPresentation;
+
+// We need to override the showSlide function inside startPresentation
+// Since we can't directly patch inside a closure, we'll handle morph
+// by hooking into the transition mechanism via a flag
+let morphPreviousSlide = null;

@@ -250,3 +250,433 @@
   from { opacity: 1; }
   to { opacity: 0; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   SNIPPET LIBRARY PANEL
+   ═══════════════════════════════════════════════════════════════ */
+
+.md-snippet-panel {
+  width: 340px;
+  max-height: 460px;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.snippet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  font-weight: 700;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border-color, #ddd);
+  color: var(--text-primary, #222);
+}
+
+.snippet-add-btn {
+  font-size: 18px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  line-height: 1;
+  border-radius: 6px;
+}
+
+.snippet-filter {
+  margin: 8px 12px 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--bg-secondary, #f8f8f8);
+  color: var(--text-primary, #222);
+  outline: none;
+}
+
+.snippet-filter:focus {
+  border-color: var(--brand-color, #0071e3);
+}
+
+.snippet-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-color, #eee);
+}
+
+.snippet-cat-tab {
+  padding: 3px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+}
+
+.snippet-cat-tab.active {
+  background: var(--brand-color, #0071e3);
+  color: #fff;
+  border-color: var(--brand-color, #0071e3);
+}
+
+.snippet-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.snippet-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary, #222);
+  transition: background 0.15s;
+}
+
+.snippet-item:hover {
+  background: var(--hover-bg, #f0f0f0);
+}
+
+.snippet-icon {
+  font-size: 15px;
+  width: 22px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.snippet-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.snippet-cat-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--bg-secondary, #eee);
+  color: var(--text-tertiary, #999);
+  flex-shrink: 0;
+}
+
+.snippet-delete {
+  font-size: 16px;
+  background: none;
+  border: none;
+  color: var(--text-tertiary, #999);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.snippet-delete:hover {
+  color: #e53e3e;
+}
+
+/* Snippet Add Form */
+.snippet-add-form {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-color, #ddd);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.snippet-add-form input,
+.snippet-add-form textarea {
+  padding: 6px 10px;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--bg-secondary, #f8f8f8);
+  color: var(--text-primary, #222);
+  font-family: inherit;
+  resize: vertical;
+}
+
+.snippet-add-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.snippet-save-btn,
+.snippet-cancel-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #222);
+}
+
+.snippet-save-btn {
+  background: var(--brand-color, #0071e3);
+  color: #fff;
+  border-color: var(--brand-color, #0071e3);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ZEN / FOCUS MODE
+   ═══════════════════════════════════════════════════════════════ */
+
+body.zen-mode .top-bar,
+body.zen-mode .tab-bar,
+body.zen-mode .md-toolbar,
+body.zen-mode .md-outline-panel,
+body.zen-mode .preview-pane,
+body.zen-mode .divider,
+body.zen-mode .pane-header,
+body.zen-mode .sidebar,
+body.zen-mode .status-bar,
+body.zen-mode .md-stats-bar,
+body.zen-mode .ad-banner-wrapper {
+  display: none !important;
+}
+
+body.zen-mode .app-view {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9000;
+}
+
+body.zen-mode #view-markdown {
+  display: flex !important;
+}
+
+body.zen-mode .md-main-area {
+  flex: 1;
+}
+
+body.zen-mode .split-pane {
+  flex: 1;
+}
+
+body.zen-mode .editor-pane {
+  flex: 1 !important;
+}
+
+body.zen-mode .editor-container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+body.zen-mode .editor-container .cm-editor {
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+body.zen-mode .editor-container .cm-gutters {
+  display: none;
+}
+
+/* Zen mode exit button (floating) */
+body.zen-mode::after {
+  content: 'ESC to exit Zen';
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
+  background: var(--bg-primary, #fff);
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #ddd);
+  z-index: 9999;
+  opacity: 0.6;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+/* Smooth transitions for zen mode */
+body .top-bar,
+body .tab-bar,
+body .md-toolbar,
+body .status-bar {
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   WORD / CHARACTER COUNT BAR (MD STATS)
+   ═══════════════════════════════════════════════════════════════ */
+
+.md-stats-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 12px;
+  font-size: 11px;
+  color: var(--text-secondary, #666);
+  background: var(--pane-header-bg, #f5f5f5);
+  border-top: 1px solid var(--border-color, #ddd);
+  flex-shrink: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  flex-wrap: nowrap;
+}
+
+.md-stats-bar .stat-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  cursor: default;
+}
+
+.md-stats-bar .stat-item b {
+  font-weight: 600;
+  color: var(--text-primary, #333);
+}
+
+.md-stats-bar .stat-sep {
+  color: var(--border-color, #ccc);
+  margin: 0 4px;
+  font-size: 10px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   KEYBOARD SHORTCUTS OVERLAY
+   ═══════════════════════════════════════════════════════════════ */
+
+.md-shortcut-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.shortcut-modal {
+  background: var(--bg-primary, #fff);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.25);
+  width: 420px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.shortcut-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color, #ddd);
+}
+
+.shortcut-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary, #222);
+}
+
+.shortcut-close {
+  font-size: 20px;
+  background: none;
+  border: none;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.shortcut-close:hover {
+  background: var(--hover-bg, #f0f0f0);
+}
+
+.shortcut-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.shortcut-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 20px;
+}
+
+.shortcut-row:hover {
+  background: var(--hover-bg, #f8f8f8);
+}
+
+.shortcut-keys {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  padding: 3px 8px;
+  background: var(--bg-secondary, #f0f0f0);
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 5px;
+  color: var(--text-primary, #333);
+  white-space: nowrap;
+}
+
+.shortcut-action {
+  font-size: 13px;
+  color: var(--text-secondary, #555);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   AUTOCOMPLETE POPUP
+   ═══════════════════════════════════════════════════════════════ */
+
+.md-autocomplete {
+  width: 240px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.ac-item {
+  padding: 7px 12px;
+  cursor: pointer;
+  color: var(--text-primary, #222);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ac-item:hover,
+.ac-item.active {
+  background: var(--brand-color-light, rgba(0, 113, 227, 0.1));
+  color: var(--brand-color, #0071e3);
+}
+
+/* Autocomplete scrollbar */
+.md-autocomplete::-webkit-scrollbar {
+  width: 5px;
+}
+
+.md-autocomplete::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, #ccc);
+  border-radius: 3px;
+}

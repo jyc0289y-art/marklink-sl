@@ -2,9 +2,9 @@
 // Architecture adapted from T1.15wc security consultation agent
 
 import {
-  checkOllamaStatus, listModels, pullModel, chat,
-  MODEL_TIERS, getRecommendedTier, isVisionModel,
-  setOllamaUrl, getOllamaUrl
+  checkOllamaStatus, listModels, pullModel, chat, testConnection,
+  MODEL_TIERS, getRecommendedTier, isVisionModel, formatModelSize,
+  setOllamaUrl, getOllamaUrl, saveSelectedModel, getSavedModel
 } from './ollama-client.js';
 import { t } from '../ui/i18n.js';
 
@@ -81,7 +81,7 @@ export function initAiChat() {
   // Model select
   modelSelectEl?.addEventListener('change', () => {
     selectedModel = modelSelectEl.value;
-    localStorage.setItem('marklink-ai-model', selectedModel);
+    saveSelectedModel(selectedModel);
   });
 
   // Clear
@@ -96,7 +96,7 @@ export function initAiChat() {
   document.getElementById('ai-sessions-btn')?.addEventListener('click', showSessionsModal);
 
   // Restore saved model
-  selectedModel = localStorage.getItem('marklink-ai-model') || '';
+  selectedModel = getSavedModel();
 
   // Full-screen AI tab elements
   fullChatAreaEl = document.getElementById('ai-full-chat-area');
@@ -112,7 +112,7 @@ export function initAiChat() {
   if (fullModelSelectEl) {
     fullModelSelectEl.addEventListener('change', () => {
       selectedModel = fullModelSelectEl.value;
-      localStorage.setItem('marklink-ai-model', selectedModel);
+      saveSelectedModel(selectedModel);
       if (modelSelectEl) modelSelectEl.value = selectedModel;
     });
   }
@@ -126,12 +126,15 @@ export function initAiChat() {
 
 // ─── URL Settings ────────────────────────────────────────
 
+let connectionRetryInterval = null;
+
 function initUrlSettings() {
   const settingsBtn = document.getElementById('ai-url-settings-btn');
   const settingsPanel = document.getElementById('ai-url-settings');
   const urlInput = document.getElementById('ai-ollama-url-input');
   const saveBtn = document.getElementById('ai-url-save-btn');
   const resetBtn = document.getElementById('ai-url-reset-btn');
+  const testBtn = document.getElementById('ai-url-test-btn');
 
   if (!settingsBtn || !settingsPanel) return;
 
@@ -147,6 +150,32 @@ function initUrlSettings() {
     }
   });
 
+  // Test Connection button
+  if (testBtn) {
+    testBtn.addEventListener('click', async () => {
+      const resultEl = document.getElementById('ai-url-test-result');
+      testBtn.disabled = true;
+      testBtn.textContent = 'Testing...';
+      const urlToTest = urlInput?.value?.trim() || getOllamaUrl();
+      const result = await testConnection(urlToTest);
+      testBtn.disabled = false;
+      testBtn.textContent = 'Test';
+      if (resultEl) {
+        if (result.success) {
+          resultEl.innerHTML = `<span style="color:#4caf50">Connected — ${result.modelCount} model(s) found</span>`;
+        } else if (result.corsError) {
+          resultEl.innerHTML = `<span style="color:#f44336">CORS blocked.</span> <a href="#" class="ai-cors-help-link" style="color:var(--brand-color);font-size:11px">Fix CORS</a>`;
+          resultEl.querySelector('.ai-cors-help-link')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            showCorsHelp();
+          });
+        } else {
+          resultEl.innerHTML = `<span style="color:#f44336">${result.message}</span>`;
+        }
+      }
+    });
+  }
+
   // Save URL
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
@@ -154,7 +183,6 @@ function initUrlSettings() {
       if (!newUrl) return;
       setOllamaUrl(newUrl);
       addSystemMessage(`Ollama URL set to: ${newUrl}`);
-      // Re-check connection with new URL
       await checkStatus();
       updateUrlStatusDot();
     });
@@ -170,6 +198,9 @@ function initUrlSettings() {
       updateUrlStatusDot();
     });
   }
+
+  // Start auto-retry when disconnected
+  startConnectionRetry();
 }
 
 function updateUrlStatusDot() {
@@ -180,11 +211,116 @@ function updateUrlStatusDot() {
   }
 }
 
+/**
+ * Auto-retry connection every 30 seconds when disconnected
+ */
+function startConnectionRetry() {
+  if (connectionRetryInterval) clearInterval(connectionRetryInterval);
+  connectionRetryInterval = setInterval(async () => {
+    if (!ollamaReady) {
+      await checkStatus();
+    }
+  }, 30000);
+}
+
+/**
+ * Show CORS troubleshooting help
+ */
+function showCorsHelp() {
+  document.querySelector('.ai-cors-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'ai-setup-modal ai-cors-modal';
+  modal.innerHTML = `
+    <div class="ai-setup-content" style="max-width:480px">
+      <div class="ai-setup-header">
+        <h3>CORS Fix Guide</h3>
+        <button class="ai-setup-close">&times;</button>
+      </div>
+      <div class="ai-setup-body">
+        <p style="font-size:13px;margin:0 0 12px;color:var(--text-secondary)">
+          Ollama blocks web browser requests by default. You need to allow this app to connect.
+        </p>
+
+        <div class="ai-cors-os-section">
+          <h4 style="font-size:13px;margin:0 0 8px">macOS</h4>
+          <div class="ai-step-desc" style="margin-bottom:8px">
+            <strong>Option A — One-time (Terminal):</strong>
+          </div>
+          <div class="ai-copy-cmd" style="margin-bottom:8px">
+            <code id="cors-mac-cmd1">OLLAMA_ORIGINS="*" ollama serve</code>
+            <button class="ai-copy-btn" data-copy="cors-mac-cmd1" title="Copy">Copy</button>
+          </div>
+          <div class="ai-step-desc" style="margin-bottom:8px">
+            <strong>Option B — Permanent:</strong>
+          </div>
+          <div class="ai-copy-cmd" style="margin-bottom:4px">
+            <code id="cors-mac-cmd2">launchctl setenv OLLAMA_ORIGINS "*"</code>
+            <button class="ai-copy-btn" data-copy="cors-mac-cmd2" title="Copy">Copy</button>
+          </div>
+          <div class="ai-step-desc" style="font-size:11px;color:var(--text-secondary)">
+            Then restart Ollama (quit from menu bar and reopen).
+          </div>
+        </div>
+
+        <div class="ai-cors-os-section" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color)">
+          <h4 style="font-size:13px;margin:0 0 8px">Windows</h4>
+          <div class="ai-step-desc" style="margin-bottom:8px">
+            Set system environment variable, then restart Ollama:
+          </div>
+          <div class="ai-copy-cmd" style="margin-bottom:4px">
+            <code id="cors-win-cmd">setx OLLAMA_ORIGINS "*"</code>
+            <button class="ai-copy-btn" data-copy="cors-win-cmd" title="Copy">Copy</button>
+          </div>
+          <div class="ai-step-desc" style="font-size:11px;color:var(--text-secondary)">
+            Run in Command Prompt (cmd), then restart Ollama from system tray.
+          </div>
+        </div>
+
+        <div class="ai-cors-os-section" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color)">
+          <h4 style="font-size:13px;margin:0 0 8px">Linux</h4>
+          <div class="ai-copy-cmd" style="margin-bottom:4px">
+            <code id="cors-linux-cmd">OLLAMA_ORIGINS="*" ollama serve</code>
+            <button class="ai-copy-btn" data-copy="cors-linux-cmd" title="Copy">Copy</button>
+          </div>
+          <div class="ai-step-desc" style="font-size:11px;color:var(--text-secondary)">
+            Or add <code>OLLAMA_ORIGINS=*</code> to <code>/etc/systemd/system/ollama.service</code> then <code>systemctl restart ollama</code>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;padding:10px;background:rgba(255,152,0,0.1);border-radius:8px">
+          <strong style="font-size:12px">After setting CORS:</strong>
+          <ol style="margin:4px 0 0;padding-left:20px;font-size:12px;color:var(--text-secondary)">
+            <li>Restart Ollama completely</li>
+            <li>Come back here and click "Test Connection"</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector('.ai-setup-close')?.addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+  // Copy buttons
+  modal.querySelectorAll('.ai-copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const codeEl = document.getElementById(btn.dataset.copy);
+      if (codeEl) {
+        navigator.clipboard.writeText(codeEl.textContent).then(() => {
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+        });
+      }
+    });
+  });
+}
+
 async function checkStatus() {
   const status = await checkOllamaStatus();
   ollamaReady = status.running;
-  updateStatusUI(status.running);
+  updateStatusUI(status.running, status.corsError);
   updateUrlStatusDot();
+  updateStatusBarWidget(status.running);
 
   if (status.running) {
     const models = await listModels();
@@ -192,18 +328,55 @@ async function checkStatus() {
   }
 }
 
-function updateStatusUI(running) {
+function updateStatusUI(running, corsError) {
   if (statusDotEl) {
     statusDotEl.className = `ai-status-dot ${running ? 'online' : 'offline'}`;
-    statusDotEl.title = running ? 'Ollama is running' : 'Ollama is not running — click AI Setup';
+    statusDotEl.title = running ? 'Ollama connected' : (corsError ? 'CORS error — click gear icon' : 'Ollama not connected — click Setup');
   }
   // Sync full-screen status
   if (fullStatusDotEl) {
     fullStatusDotEl.className = `ai-status-dot ${running ? 'online' : 'offline'}`;
   }
   if (fullStatusTextEl) {
-    fullStatusTextEl.textContent = running ? 'Ollama is running' : 'Ollama is not running';
+    if (running) {
+      fullStatusTextEl.textContent = 'Ollama connected';
+      fullStatusTextEl.style.color = '#4caf50';
+    } else if (corsError) {
+      fullStatusTextEl.textContent = 'CORS error — click Setup to fix';
+      fullStatusTextEl.style.color = '#ff9800';
+    } else {
+      fullStatusTextEl.textContent = 'Ollama not connected';
+      fullStatusTextEl.style.color = '#f44336';
+    }
   }
+}
+
+/**
+ * Update the persistent status bar AI widget
+ */
+function updateStatusBarWidget(running) {
+  let widget = document.getElementById('ai-statusbar-widget');
+  if (!widget) {
+    // Create the widget in the status bar
+    const statusRight = document.getElementById('status-right');
+    if (!statusRight) return;
+    widget = document.createElement('span');
+    widget.id = 'ai-statusbar-widget';
+    widget.className = 'ai-statusbar-widget';
+    widget.title = 'AI Connection Status — click to open settings';
+    widget.addEventListener('click', () => {
+      // Open the settings panel
+      const settingsPanel = document.getElementById('ai-url-settings');
+      if (settingsPanel) {
+        settingsPanel.classList.remove('hidden');
+        // Also open the AI panel if not in fullscreen mode
+        if (!isFullscreenMode && !isOpen) togglePanel();
+      }
+    });
+    statusRight.appendChild(widget);
+  }
+  widget.innerHTML = `<span class="ai-statusbar-dot ${running ? 'online' : 'offline'}"></span> AI`;
+  widget.title = running ? 'AI: Connected' : 'AI: Disconnected — click to configure';
 }
 
 function populateModelSelect(models) {
@@ -212,19 +385,24 @@ function populateModelSelect(models) {
 
   if (models.length === 0) {
     modelSelectEl.innerHTML = '<option value="">No models installed</option>';
+    if (fullModelSelectEl) fullModelSelectEl.innerHTML = modelSelectEl.innerHTML;
     return;
   }
 
-  const recommended = getRecommendedTier();
   for (const m of models) {
     const opt = document.createElement('option');
     opt.value = m.name;
-    opt.textContent = m.name;
+    const sizeStr = m.size ? ` (${formatModelSize(m.size)})` : '';
+    opt.textContent = `${m.name}${sizeStr}`;
     modelSelectEl.appendChild(opt);
   }
 
   // Try to restore saved model or pick first
-  if (selectedModel && models.find(m => m.name === selectedModel)) {
+  const saved = getSavedModel();
+  if (saved && models.find(m => m.name === saved)) {
+    selectedModel = saved;
+    modelSelectEl.value = saved;
+  } else if (selectedModel && models.find(m => m.name === selectedModel)) {
     modelSelectEl.value = selectedModel;
   } else if (models.length > 0) {
     selectedModel = models[0].name;
@@ -447,6 +625,8 @@ async function showSetupModal() {
   const recommended = getRecommendedTier();
   const ram = navigator.deviceMemory || '(unknown)';
   const detectedOS = detectOS();
+  const recTier = MODEL_TIERS.find(t => t.id === recommended);
+  const recModel = recTier ? recTier.model : 'qwen2.5-coder:7b';
 
   const modal = document.createElement('div');
   modal.className = 'ai-setup-modal';
@@ -462,15 +642,16 @@ async function showSetupModal() {
 
       <div class="ai-setup-body">
         <div class="ai-setup-status ${status.running ? 'online' : 'offline'}">
-          <span class="ai-status-icon">${status.running ? '✅' : '❌'}</span>
-          <span>${status.running ? 'Ollama is running' : 'Ollama is not running'}</span>
+          <span class="ai-status-icon">${status.running ? '✅' : (status.corsError ? '⚠️' : '❌')}</span>
+          <span>${status.running ? 'Ollama connected' : (status.corsError ? 'CORS error — see Step 4 below' : 'Ollama not connected')}</span>
+          ${status.running ? `<span style="margin-left:auto;font-size:11px;color:var(--text-secondary)">${models.length} model(s) installed</span>` : ''}
         </div>
 
         ${!status.running ? `
         <div class="ai-install-section">
-          <h4 style="font-size:16px;margin-bottom:4px">AI 설치 가이드</h4>
+          <h4 style="font-size:16px;margin-bottom:4px">AI Setup Guide</h4>
           <p class="ai-install-desc" style="margin-bottom:16px">
-            내 PC에서 무료로 동작하는 AI를 설치합니다. <strong>약 5분</strong>이면 완료됩니다.
+            Set up a free AI that runs on your PC. Takes about <strong>5 minutes</strong>.
           </p>
 
           <!-- OS Detection -->
@@ -482,69 +663,95 @@ async function showSetupModal() {
 
           <!-- Wizard Steps -->
           <div class="ai-wizard-steps">
-            <!-- Step 1: Download -->
+            <!-- Step 1: Download Ollama -->
             <div class="ai-wizard-step active">
               <div class="ai-step-num">1</div>
               <div class="ai-step-body">
-                <div class="ai-step-title">Ollama 다운로드</div>
+                <div class="ai-step-title">Download Ollama</div>
                 <div class="ai-step-desc">
-                  Ollama는 AI를 내 PC에서 실행하는 무료 프로그램입니다.<br>
-                  설치 파일 크기: 약 300MB (1회만 다운로드)
+                  Ollama is a free program that runs AI models on your PC.<br>
+                  Download size: ~300MB (one-time only)
                 </div>
                 <div class="ai-step-action">
                   <a href="https://ollama.com/download" target="_blank" rel="noopener" class="ai-install-btn"
                      id="ai-download-link"
                      style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;font-size:14px">
-                    <span style="font-size:20px">⬇</span> 무료 다운로드
+                    <span style="font-size:20px">⬇</span> Free Download
                   </a>
                 </div>
               </div>
             </div>
 
-            <!-- Step 2: Install -->
+            <!-- Step 2: Install & Run -->
             <div class="ai-wizard-step">
               <div class="ai-step-num">2</div>
               <div class="ai-step-body">
-                <div class="ai-step-title">설치하기</div>
+                <div class="ai-step-title">Install & Run</div>
                 <div class="ai-step-desc ai-os-content" data-os="mac">
-                  <strong>1.</strong> 다운로드된 <code>Ollama-darwin.zip</code> 파일을 더블 클릭<br>
-                  <strong>2.</strong> <code>Ollama.app</code>을 <strong>응용 프로그램</strong> 폴더로 드래그<br>
-                  <strong>3.</strong> Ollama 앱을 실행하면 메뉴바에 아이콘이 나타납니다<br>
-                  <span style="color:#4caf50">→ macOS는 설치 후 자동으로 실행됩니다!</span>
+                  <strong>1.</strong> Open the downloaded <code>Ollama-darwin.zip</code> file<br>
+                  <strong>2.</strong> Drag <code>Ollama.app</code> to your <strong>Applications</strong> folder<br>
+                  <strong>3.</strong> Open Ollama — a llama icon appears in the menu bar<br>
+                  <span style="color:#4caf50">It starts automatically after installation.</span>
                 </div>
                 <div class="ai-step-desc ai-os-content" data-os="win" style="display:none">
-                  <strong>1.</strong> 다운로드된 <code>OllamaSetup.exe</code>를 더블 클릭<br>
-                  <strong>2.</strong> "Install" 버튼 클릭 (약 1분 소요)<br>
-                  <strong>3.</strong> 설치 완료 후 시스템 트레이에 아이콘이 나타납니다<br>
-                  <span style="color:#4caf50">→ Windows는 설치 후 자동으로 실행됩니다!</span>
+                  <strong>1.</strong> Double-click <code>OllamaSetup.exe</code><br>
+                  <strong>2.</strong> Click "Install" (takes about 1 minute)<br>
+                  <strong>3.</strong> A llama icon appears in the system tray (bottom right)<br>
+                  <span style="color:#4caf50">It starts automatically after installation.</span>
                 </div>
                 <div class="ai-step-desc ai-os-content" data-os="linux" style="display:none">
-                  터미널에서 아래 명령어를 실행하세요:<br>
-                  <code style="display:block;margin:6px 0;padding:8px;background:var(--pane-header-bg);border-radius:6px;font-size:12px">curl -fsSL https://ollama.com/install.sh | sh</code>
-                  설치 후 <code>ollama serve</code>로 실행합니다.
+                  Run this in your terminal:<br>
+                  <div class="ai-copy-cmd">
+                    <code id="linux-install-cmd">curl -fsSL https://ollama.com/install.sh | sh</code>
+                    <button class="ai-copy-btn" data-copy="linux-install-cmd" title="Copy">Copy</button>
+                  </div>
+                  Then start with <code>ollama serve</code>
                 </div>
               </div>
             </div>
 
-            <!-- Step 3: Connect -->
+            <!-- Step 3: Download an AI Model -->
             <div class="ai-wizard-step">
               <div class="ai-step-num">3</div>
               <div class="ai-step-body">
-                <div class="ai-step-title">연결 확인</div>
+                <div class="ai-step-title">Download an AI Model</div>
                 <div class="ai-step-desc">
-                  설치와 실행이 완료되면 아래 버튼을 눌러 연결 상태를 확인하세요.
+                  Open <strong>Terminal</strong> (macOS/Linux) or <strong>Command Prompt</strong> (Windows) and run:
+                </div>
+                <div class="ai-copy-cmd">
+                  <code id="pull-model-cmd">ollama pull qwen2.5-coder:7b</code>
+                  <button class="ai-copy-btn" data-copy="pull-model-cmd" title="Copy to clipboard">Copy</button>
+                </div>
+                <div class="ai-step-desc" style="margin-top:8px">
+                  <span style="color:var(--text-secondary)">This downloads a ~4.5GB AI model (one-time). Wait until it says "success".</span><br>
+                  <span style="color:var(--text-secondary);font-size:11px">
+                    How to open Terminal:<br>
+                    <strong>macOS:</strong> Press <kbd>Cmd</kbd>+<kbd>Space</kbd>, type "Terminal", press Enter<br>
+                    <strong>Windows:</strong> Press <kbd>Win</kbd>+<kbd>R</kbd>, type "cmd", press Enter
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 4: Test Connection -->
+            <div class="ai-wizard-step">
+              <div class="ai-step-num">4</div>
+              <div class="ai-step-body">
+                <div class="ai-step-title">Test Connection</div>
+                <div class="ai-step-desc">
+                  Once Ollama is running and a model is downloaded, click below to verify:
                 </div>
                 <div class="ai-step-action">
                   <button class="ai-install-btn" id="ai-check-connection"
                     style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;font-size:13px;border:none;cursor:pointer">
-                    <span style="font-size:16px">🔍</span> 연결 확인하기
+                    Test Connection
                   </button>
                 </div>
                 <div id="ai-check-result" style="margin-top:8px"></div>
                 <div id="ai-auto-scan" style="display:none;margin-top:8px">
                   <span class="ai-scanning">
                     <span class="ai-scanning-dot"></span>
-                    Ollama 연결을 자동으로 감지하고 있습니다...
+                    Auto-detecting Ollama...
                   </span>
                 </div>
               </div>
@@ -554,57 +761,88 @@ async function showSetupModal() {
           <!-- Comparison -->
           <details style="margin-top:12px;border-top:1px solid var(--border-color);padding-top:12px">
             <summary style="font-size:13px;cursor:pointer;color:var(--text-primary);font-weight:500">
-              유료 AI(ChatGPT, Claude)와 무엇이 다른가요?
+              How is this different from ChatGPT/Claude?
             </summary>
             <table class="ai-compare-table">
               <tr>
                 <th style="text-align:left"></th>
-                <th>OfficeLink AI<br><span style="font-size:10px;color:#4caf50">내 PC</span></th>
-                <th>ChatGPT / Claude<br><span style="font-size:10px">클라우드</span></th>
+                <th>OfficeLink AI<br><span style="font-size:10px;color:#4caf50">Your PC</span></th>
+                <th>ChatGPT / Claude<br><span style="font-size:10px">Cloud</span></th>
               </tr>
-              <tr><td>월 비용</td><td class="win" style="text-align:center">무료</td><td style="text-align:center">$20~25/월</td></tr>
-              <tr><td>내 데이터</td><td class="win" style="text-align:center">PC에서만 처리</td><td style="text-align:center">서버로 전송</td></tr>
-              <tr><td>오프라인 사용</td><td class="win" style="text-align:center">가능</td><td style="text-align:center">불가</td></tr>
-              <tr><td>속도</td><td style="text-align:center">PC에 따라 다름</td><td class="win" style="text-align:center">빠름</td></tr>
-              <tr><td>문서 분석</td><td class="win" style="text-align:center">가능</td><td class="win" style="text-align:center">가능</td></tr>
-              <tr><td>시작하기</td><td style="text-align:center">5분 설치</td><td style="text-align:center">가입 + 결제</td></tr>
+              <tr><td>Monthly cost</td><td class="win" style="text-align:center">Free</td><td style="text-align:center">$20~25/mo</td></tr>
+              <tr><td>Your data</td><td class="win" style="text-align:center">Stays on PC</td><td style="text-align:center">Sent to servers</td></tr>
+              <tr><td>Offline use</td><td class="win" style="text-align:center">Yes</td><td style="text-align:center">No</td></tr>
+              <tr><td>Speed</td><td style="text-align:center">Depends on PC</td><td class="win" style="text-align:center">Fast</td></tr>
+              <tr><td>Document analysis</td><td class="win" style="text-align:center">Yes</td><td class="win" style="text-align:center">Yes</td></tr>
+              <tr><td>Get started</td><td style="text-align:center">5 min install</td><td style="text-align:center">Sign up + pay</td></tr>
             </table>
           </details>
         </div>
         ` : ''}
 
         <div class="ai-model-section">
-          <h4>AI 모델 선택 — PC 사양에 맞게 선택하세요</h4>
-          <p class="ai-ram-info">감지된 RAM: <strong>${ram}GB</strong> · 추천 모델: <strong>${MODEL_TIERS.find(t => t.id === recommended)?.label || 'Standard'}</strong></p>
+          <h4>AI Models ${status.running ? '' : '(connect first)'}</h4>
+          <p class="ai-ram-info">Detected RAM: <strong>${ram}GB</strong> · Recommended: <strong>${recTier?.label || 'Standard'}</strong></p>
 
-          <div class="ai-model-list">
-            ${MODEL_TIERS.map(tier => {
-              const installed = installedNames.some(n => n.startsWith(tier.model.split(':')[0]) && n.includes(tier.model.split(':')[1]));
-              const isRec = tier.id === recommended;
-              return `
-              <div class="ai-model-card ${isRec ? 'recommended' : ''} ${installed ? 'installed' : ''}"
-                title="${tier.capabilities ? '가능: ' + tier.capabilities.join(', ') + '\\n제한: ' + tier.limitations.join(', ') : ''}">
-                <div class="ai-model-info">
-                  <strong>${tier.label}</strong> ${isRec ? '<span class="ai-badge">Recommended</span>' : ''}
-                  ${installed ? '<span class="ai-badge installed">Installed</span>' : ''}
-                  ${tier.isVision ? '<span class="ai-badge" style="background:#9c27b0">Vision</span>' : ''}
-                  <br><code>${tier.model}</code> · ${tier.size}
-                  <br><small>${tier.desc}</small>
-                  <br><small>최소 RAM: ${tier.minRAM}GB</small>
-                  ${tier.capabilities ? `<br><small style="color:#4caf50">✓ ${tier.capabilities.join(' · ')}</small>` : ''}
-                  ${tier.limitations ? `<br><small style="color:var(--text-secondary)">✗ ${tier.limitations.join(' · ')}</small>` : ''}
+          ${status.running ? `
+          <!-- Installed models from Ollama -->
+          ${models.length > 0 ? `
+          <div style="margin-bottom:12px">
+            <h5 style="font-size:12px;color:var(--text-secondary);margin:0 0 6px">Installed Models (auto-detected)</h5>
+            <div class="ai-model-list">
+              ${models.map(m => `
+                <div class="ai-model-card installed" style="padding:8px 12px">
+                  <div class="ai-model-info">
+                    <strong>${m.name}</strong>
+                    <span class="ai-badge installed">Ready</span>
+                    ${isVisionModel(m.name) ? '<span class="ai-badge" style="background:#9c27b0">Vision</span>' : ''}
+                    <br><small>${formatModelSize(m.size)} · Modified: ${new Date(m.modified_at).toLocaleDateString()}</small>
+                  </div>
+                  <span class="ai-check">✓</span>
                 </div>
-                <div class="ai-model-actions">
-                  ${!installed && status.running ? `
-                    <button class="ai-pull-btn" data-model="${tier.model}"
-                      title="이 모델을 다운로드합니다.&#10;용량: ${tier.size} (최초 1회)&#10;다운로드 후 영구 무료 사용">
-                      Install
-                    </button>
-                  ` : installed ? '<span class="ai-check">✓</span>' : ''}
-                </div>
-              </div>`;
-            }).join('')}
+              `).join('')}
+            </div>
           </div>
+          ` : '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:12px">No models installed. Install one below or run <code>ollama pull qwen2.5-coder:7b</code> in terminal.</p>'}
+          ` : ''}
+
+          <details ${!status.running || models.length === 0 ? 'open' : ''}>
+            <summary style="font-size:13px;cursor:pointer;color:var(--text-primary);font-weight:500;margin-bottom:8px">
+              ${status.running ? 'Install More Models' : 'Available Models'}
+            </summary>
+            <div class="ai-model-list">
+              ${MODEL_TIERS.map(tier => {
+                const installed = installedNames.some(n => n.startsWith(tier.model.split(':')[0]) && n.includes(tier.model.split(':')[1]));
+                const isRec = tier.id === recommended;
+                return `
+                <div class="ai-model-card ${isRec ? 'recommended' : ''} ${installed ? 'installed' : ''}"
+                  title="${tier.capabilities ? 'Can do: ' + tier.capabilities.join(', ') + '\\nLimitations: ' + tier.limitations.join(', ') : ''}">
+                  <div class="ai-model-info">
+                    <strong>${tier.label}</strong> ${isRec ? '<span class="ai-badge">Recommended</span>' : ''}
+                    ${installed ? '<span class="ai-badge installed">Installed</span>' : ''}
+                    ${tier.isVision ? '<span class="ai-badge" style="background:#9c27b0">Vision</span>' : ''}
+                    <br><code>${tier.model}</code> · ${tier.size}
+                    <br><small>${tier.desc}</small>
+                    <br><small>Min RAM: ${tier.minRAM}GB</small>
+                    ${tier.capabilities ? `<br><small style="color:#4caf50">+ ${tier.capabilities.join(' · ')}</small>` : ''}
+                  </div>
+                  <div class="ai-model-actions" style="display:flex;flex-direction:column;gap:4px;align-items:center">
+                    ${!installed && status.running ? `
+                      <button class="ai-pull-btn" data-model="${tier.model}"
+                        title="Download this model.&#10;Size: ${tier.size} (one-time)&#10;Free forever after download">
+                        Install
+                      </button>
+                    ` : installed ? '<span class="ai-check">✓</span>' : ''}
+                    ${!installed ? `
+                      <div class="ai-copy-cmd-inline">
+                        <code style="font-size:10px">ollama pull ${tier.model}</code>
+                      </div>
+                    ` : ''}
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>
+          </details>
         </div>
 
         <div class="ai-progress-section hidden" id="ai-pull-progress">
@@ -613,6 +851,23 @@ async function showSetupModal() {
             <div class="ai-progress-fill" id="ai-pull-fill" style="width:0%"></div>
           </div>
         </div>
+
+        <!-- Cloudflare Tunnel (Remote Access) -->
+        <details style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:12px">
+          <summary style="font-size:13px;cursor:pointer;color:var(--text-primary);font-weight:500">
+            Remote Access (use from phone/other devices)
+          </summary>
+          <div style="padding:8px 0;font-size:12px;color:var(--text-secondary);line-height:1.6">
+            <p style="margin:0 0 8px">To access Ollama from another device, use Cloudflare Tunnel:</p>
+            <ol style="margin:0;padding-left:20px">
+              <li>Install cloudflared: <code>brew install cloudflare/cloudflare/cloudflared</code></li>
+              <li>Run: <div class="ai-copy-cmd" style="margin:4px 0"><code id="cf-tunnel-cmd">cloudflared tunnel --url http://localhost:11434</code><button class="ai-copy-btn" data-copy="cf-tunnel-cmd">Copy</button></div></li>
+              <li>Copy the generated <code>https://xxx.trycloudflare.com</code> URL</li>
+              <li>Enter that URL in the Ollama URL field (gear icon) on your other device</li>
+            </ol>
+            <p style="margin:8px 0 0;color:#ff9800">Note: Set <code>OLLAMA_ORIGINS=*</code> on the host PC first.</p>
+          </div>
+        </details>
       </div>
     </div>
   `;
@@ -632,6 +887,19 @@ async function showSetupModal() {
       modal.querySelectorAll('.ai-os-content').forEach(el => {
         el.style.display = el.dataset.os === os ? '' : 'none';
       });
+    });
+  });
+
+  // Copy buttons
+  modal.querySelectorAll('.ai-copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const codeEl = document.getElementById(btn.dataset.copy);
+      if (codeEl) {
+        navigator.clipboard.writeText(codeEl.textContent).then(() => {
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+        });
+      }
     });
   });
 
@@ -655,7 +923,8 @@ async function showSetupModal() {
         if (s.running) {
           clearInterval(scanInterval);
           ollamaReady = true;
-          updateStatusUI(true);
+          updateStatusUI(true, false);
+          updateStatusBarWidget(true);
           modal.remove();
           showSetupModal();
         }
@@ -669,10 +938,10 @@ async function showSetupModal() {
   const checkResult = modal.querySelector('#ai-check-result');
   if (checkBtn) {
     checkBtn.addEventListener('click', async () => {
-      checkBtn.innerHTML = '<span class="ai-scanning"><span class="ai-scanning-dot"></span> 확인 중...</span>';
+      checkBtn.innerHTML = '<span class="ai-scanning"><span class="ai-scanning-dot"></span> Testing...</span>';
       checkBtn.disabled = true;
-      const s = await checkOllamaStatus();
-      if (s.running) {
+      const result = await testConnection();
+      if (result.success) {
         // Mark all steps done
         modal.querySelectorAll('.ai-wizard-step').forEach(st => {
           st.classList.add('done');
@@ -680,37 +949,53 @@ async function showSetupModal() {
         });
         checkResult.innerHTML = `
           <div style="background:rgba(76,175,80,0.1);padding:12px;border-radius:8px;margin-top:8px">
-            <span style="font-size:24px">🎉</span>
-            <strong style="color:#4caf50;font-size:14px"> 연결 성공!</strong><br>
-            <span style="font-size:12px;color:var(--text-secondary)">아래에서 AI 모델을 선택하고 설치하면 바로 사용할 수 있습니다.</span>
+            <strong style="color:#4caf50;font-size:14px">Connection successful!</strong><br>
+            <span style="font-size:12px;color:var(--text-secondary)">${result.modelCount} model(s) found. ${result.modelCount === 0 ? 'Install a model above to get started.' : 'You are ready to use AI!'}</span>
           </div>`;
         ollamaReady = true;
-        updateStatusUI(true);
+        updateStatusUI(true, false);
+        updateStatusBarWidget(true);
         // Refresh after short delay to show install buttons
         setTimeout(() => { modal.remove(); showSetupModal(); }, 2000);
+      } else if (result.corsError) {
+        checkResult.innerHTML = `
+          <div style="background:rgba(255,152,0,0.1);padding:12px;border-radius:8px;margin-top:8px">
+            <strong style="color:#ff9800">CORS Error</strong><br>
+            <span style="font-size:12px;line-height:1.8">
+              Ollama is running but blocking browser requests.<br>
+              <strong>Fix:</strong> Set <code>OLLAMA_ORIGINS=*</code> and restart Ollama.
+            </span>
+            <div style="margin-top:8px">
+              <button class="ai-pull-btn" id="ai-cors-fix-btn" style="font-size:11px">Show Fix Instructions</button>
+            </div>
+          </div>`;
+        checkResult.querySelector('#ai-cors-fix-btn')?.addEventListener('click', () => showCorsHelp());
+        checkBtn.innerHTML = 'Test Connection';
+        checkBtn.disabled = false;
       } else {
         checkResult.innerHTML = `
           <div style="background:rgba(244,67,54,0.1);padding:12px;border-radius:8px;margin-top:8px">
-            <strong style="color:#f44336">연결할 수 없습니다</strong><br>
+            <strong style="color:#f44336">Cannot connect</strong><br>
             <span style="font-size:12px;line-height:1.8">
-              아래 사항을 확인해주세요:<br>
-              <strong>1.</strong> 위 1단계에서 Ollama를 다운로드했나요?<br>
-              <strong>2.</strong> 다운로드된 파일을 실행(설치)했나요?<br>
-              <strong>3.</strong> 설치 후 Ollama 앱이 실행되고 있나요?<br>
-              <span style="color:var(--text-secondary)">macOS: 메뉴바에 라마 아이콘 확인<br>
-              Windows: 시스템 트레이(우측 하단)에 아이콘 확인</span>
+              Please check:<br>
+              <strong>1.</strong> Did you download Ollama from Step 1?<br>
+              <strong>2.</strong> Did you install and open it?<br>
+              <strong>3.</strong> Is the Ollama app running?<br>
+              <span style="color:var(--text-secondary)">macOS: Look for llama icon in the menu bar<br>
+              Windows: Look for icon in the system tray (bottom right)</span>
             </span>
           </div>`;
-        checkBtn.innerHTML = '🔍 다시 확인하기';
+        checkBtn.innerHTML = 'Test Connection';
         checkBtn.disabled = false;
       }
     });
   }
 
   // Pull buttons
-  modal.querySelectorAll('.ai-pull-btn').forEach(btn => {
+  modal.querySelectorAll('.ai-pull-btn[data-model]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const modelName = btn.dataset.model;
+      if (!modelName) return;
       btn.disabled = true;
       btn.textContent = 'Downloading...';
 
@@ -730,17 +1015,19 @@ async function showSetupModal() {
           }
         });
 
-        btn.textContent = '✓ Installed';
+        btn.textContent = 'Installed!';
         if (progressLabel) progressLabel.textContent = 'Download complete!';
 
         // Refresh model list
         const newModels = await listModels();
         populateModelSelect(newModels);
         ollamaReady = true;
-        updateStatusUI(true);
+        updateStatusUI(true, false);
+        updateStatusBarWidget(true);
       } catch (e) {
         btn.textContent = 'Error';
         if (progressLabel) progressLabel.textContent = `Error: ${e.message}`;
+        btn.disabled = false;
       }
     });
   });
