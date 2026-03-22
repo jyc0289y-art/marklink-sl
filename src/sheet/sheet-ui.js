@@ -94,13 +94,24 @@ function renderGrid() {
   html += '</tr></thead><tbody>';
 
   for (let r = 0; r < sheet.rows; r++) {
+    // Check if row is in a collapsed group
+    const collapsedGroup = rowGroups.find(g => g.collapsed && r >= g.r1 && r <= g.r2);
+    if (collapsedGroup && r > collapsedGroup.r1) {
+      // Hide rows inside collapsed group (except the first row which shows the toggle)
+      continue;
+    }
     if (hiddenRows.has(r)) {
       html += `<tr style="display:none" data-hidden-row="${r}"><th class="sheet-row-header" data-row="${r}">${r + 1}</th></tr>`;
       continue;
     }
+    // Check if this row starts a group
+    const groupIdx = rowGroups.findIndex(g => g.r1 === r);
+    const groupIndicator = groupIdx >= 0
+      ? `<span class="sheet-group-toggle" data-group="${groupIdx}" style="cursor:pointer;font-size:9px;margin-right:2px;color:var(--accent-color)" title="Toggle group">${rowGroups[groupIdx].collapsed ? '▶' : '▼'}</span>`
+      : '';
     const rowCls = r < freezeRows ? 'sheet-frozen-row' : '';
     const rh = getRowHeight(r);
-    html += `<tr class="${rowCls}"><th class="sheet-row-header" data-row="${r}" style="height:${rh}px">${r + 1}</th>`;
+    html += `<tr class="${rowCls}"><th class="sheet-row-header" data-row="${r}" style="height:${rh}px">${groupIndicator}${r + 1}</th>`;
     for (let c = 0; c < sheet.cols; c++) {
       if (hiddenCols.has(c)) {
         html += `<td data-row="${r}" data-col="${c}" style="display:none"></td>`;
@@ -169,6 +180,16 @@ function escapeHTML(s) {
 /* ==================== Events ==================== */
 
 function bindEvents() {
+  // Group toggle click
+  gridEl.addEventListener('click', (e) => {
+    const toggle = e.target.closest('.sheet-group-toggle');
+    if (toggle) {
+      const idx = parseInt(toggle.dataset.group);
+      toggleGroupCollapse(idx);
+      e.stopPropagation();
+    }
+  });
+
   // Cell click → select or insert reference
   gridEl.addEventListener('mousedown', (e) => {
     const td = e.target.closest('td[data-row]');
@@ -538,6 +559,10 @@ function bindEvents() {
   document.getElementById('sheet-sparkline')?.addEventListener('click', () => insertSparkline());
   // Chart
   document.getElementById('sheet-insert-chart')?.addEventListener('click', () => showChartDialog());
+  // Pivot Table
+  document.getElementById('sheet-pivot')?.addEventListener('click', () => showPivotTableDialog());
+  // Group Rows
+  document.getElementById('sheet-group-rows')?.addEventListener('click', () => toggleGroupRows());
   // Merge Cells
   document.getElementById('sheet-merge-cells')?.addEventListener('click', () => toggleMergeCells());
   // Conditional Formatting
@@ -3129,6 +3154,221 @@ function interpolateColor(c1, c2, c3, ratio) {
     b = Math.round(b2 + (b3 - b2) * t);
   }
   return `rgb(${r},${g},${b})`;
+}
+
+/* ==================== Pivot Table ==================== */
+
+function showPivotTableDialog() {
+  const sheet = getSheet();
+  const { r1, c1, r2, c2 } = getSelectionRange();
+  if (r2 - r1 < 1 || c2 - c1 < 0) {
+    alert('Select a data range with at least 2 rows (header + data) to create a pivot table.');
+    return;
+  }
+
+  // Get headers from first row
+  const headers = [];
+  for (let c = c1; c <= c2; c++) {
+    headers.push(getDisplayValue(sheet, r1, c) || colToLetter(c));
+  }
+
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay';
+  dlg.innerHTML = `<div class="modal-content" style="width:560px;max-height:85vh;overflow:auto">
+    <h3 style="margin:0 0 12px">Pivot Table Builder</h3>
+    <p style="font-size:12px;color:var(--text-secondary);margin:0 0 16px">Data range: ${colToLetter(c1)}${r1 + 1}:${colToLetter(c2)}${r2 + 1} (${r2 - r1} data rows, ${headers.length} columns)</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Row Field</label>
+        <select id="pivot-row" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+          ${headers.map((h, i) => `<option value="${i}">${h}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Column Field (optional)</label>
+        <select id="pivot-col" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+          <option value="-1">— None —</option>
+          ${headers.map((h, i) => `<option value="${i}">${h}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Value Field</label>
+        <select id="pivot-val" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+          ${headers.map((h, i) => `<option value="${i}"${i === headers.length - 1 ? ' selected' : ''}>${h}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Aggregate Function</label>
+        <select id="pivot-agg" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+          <option value="sum">SUM</option>
+          <option value="count">COUNT</option>
+          <option value="average">AVERAGE</option>
+          <option value="min">MIN</option>
+          <option value="max">MAX</option>
+        </select>
+      </div>
+    </div>
+    <div id="pivot-preview" style="margin-top:16px;max-height:300px;overflow:auto;border:1px solid var(--border-color);border-radius:4px"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="toolbar-btn" id="pivot-cancel" style="padding:6px 16px">Cancel</button>
+      <button class="toolbar-btn" id="pivot-preview-btn" style="padding:6px 16px">Preview</button>
+      <button class="toolbar-btn" id="pivot-insert" style="padding:6px 16px;background:var(--accent-color);color:white;border-radius:4px">Insert as New Sheet</button>
+    </div>
+  </div>`;
+  document.body.appendChild(dlg);
+
+  function buildPivotData() {
+    const rowIdx = parseInt(dlg.querySelector('#pivot-row').value);
+    const colIdx = parseInt(dlg.querySelector('#pivot-col').value);
+    const valIdx = parseInt(dlg.querySelector('#pivot-val').value);
+    const aggFn = dlg.querySelector('#pivot-agg').value;
+
+    // Collect data (skip header row)
+    const data = [];
+    for (let r = r1 + 1; r <= r2; r++) {
+      const rowVal = getDisplayValue(sheet, r, c1 + rowIdx);
+      const colVal = colIdx >= 0 ? getDisplayValue(sheet, r, c1 + colIdx) : '__total__';
+      const numVal = parseFloat(getDisplayValue(sheet, r, c1 + valIdx)) || 0;
+      data.push({ row: rowVal, col: colVal, val: numVal });
+    }
+
+    // Get unique row/col values
+    const rowVals = [...new Set(data.map(d => d.row))].sort();
+    const colVals = [...new Set(data.map(d => d.col))].sort();
+
+    // Build aggregation map
+    const agg = {};
+    rowVals.forEach(rv => {
+      agg[rv] = {};
+      colVals.forEach(cv => { agg[rv][cv] = []; });
+    });
+    data.forEach(d => { agg[d.row][d.col].push(d.val); });
+
+    // Apply aggregate function
+    const result = {};
+    rowVals.forEach(rv => {
+      result[rv] = {};
+      colVals.forEach(cv => {
+        const vals = agg[rv][cv];
+        if (vals.length === 0) { result[rv][cv] = ''; return; }
+        if (aggFn === 'sum') result[rv][cv] = vals.reduce((a, b) => a + b, 0);
+        else if (aggFn === 'count') result[rv][cv] = vals.length;
+        else if (aggFn === 'average') result[rv][cv] = (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2);
+        else if (aggFn === 'min') result[rv][cv] = Math.min(...vals);
+        else if (aggFn === 'max') result[rv][cv] = Math.max(...vals);
+      });
+    });
+
+    return { rowVals, colVals, result, rowHeader: headers[rowIdx], colHeader: colIdx >= 0 ? headers[colIdx] : '', valHeader: headers[valIdx], aggFn };
+  }
+
+  function renderPreview() {
+    const { rowVals, colVals, result, rowHeader, colHeader, valHeader, aggFn } = buildPivotData();
+    const previewEl = dlg.querySelector('#pivot-preview');
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    html += '<thead><tr><th style="border:1px solid var(--border-color);padding:6px;background:var(--hover-bg);font-weight:700">' + rowHeader + '</th>';
+    if (colVals[0] === '__total__') {
+      html += `<th style="border:1px solid var(--border-color);padding:6px;background:var(--hover-bg);font-weight:700">${aggFn.toUpperCase()} of ${valHeader}</th>`;
+    } else {
+      colVals.forEach(cv => {
+        html += `<th style="border:1px solid var(--border-color);padding:6px;background:var(--hover-bg);font-weight:700">${cv}</th>`;
+      });
+    }
+    html += '</tr></thead><tbody>';
+    rowVals.forEach(rv => {
+      html += `<tr><td style="border:1px solid var(--border-color);padding:6px;font-weight:600">${rv}</td>`;
+      colVals.forEach(cv => {
+        html += `<td style="border:1px solid var(--border-color);padding:6px;text-align:right">${result[rv][cv]}</td>`;
+      });
+      html += '</tr>';
+    });
+    // Grand total row
+    html += `<tr><td style="border:1px solid var(--border-color);padding:6px;font-weight:700;background:var(--hover-bg)">Grand Total</td>`;
+    colVals.forEach(cv => {
+      const colTotal = rowVals.reduce((sum, rv) => sum + (parseFloat(result[rv][cv]) || 0), 0);
+      html += `<td style="border:1px solid var(--border-color);padding:6px;text-align:right;font-weight:700;background:var(--hover-bg)">${aggFn === 'average' ? (colTotal / rowVals.length).toFixed(2) : colTotal}</td>`;
+    });
+    html += '</tr></tbody></table>';
+    previewEl.innerHTML = html;
+  }
+
+  dlg.querySelector('#pivot-preview-btn').onclick = renderPreview;
+  dlg.querySelector('#pivot-cancel').onclick = () => dlg.remove();
+  dlg.querySelector('#pivot-insert').onclick = () => {
+    const { rowVals, colVals, result, rowHeader, colHeader, valHeader, aggFn } = buildPivotData();
+
+    // Create new sheet with pivot data
+    const pivotSheet = createSheetData();
+    // Header row
+    setCell(pivotSheet, 0, 0, rowHeader);
+    if (colVals[0] === '__total__') {
+      setCell(pivotSheet, 0, 1, `${aggFn.toUpperCase()} of ${valHeader}`);
+    } else {
+      colVals.forEach((cv, ci) => setCell(pivotSheet, 0, ci + 1, cv));
+    }
+    // Data rows
+    rowVals.forEach((rv, ri) => {
+      setCell(pivotSheet, ri + 1, 0, rv);
+      colVals.forEach((cv, ci) => {
+        const v = result[rv][cv];
+        setCell(pivotSheet, ri + 1, ci + 1, String(v));
+      });
+    });
+    // Grand total
+    const gtRow = rowVals.length + 1;
+    setCell(pivotSheet, gtRow, 0, 'Grand Total');
+    colVals.forEach((cv, ci) => {
+      const total = rowVals.reduce((s, rv) => s + (parseFloat(result[rv][cv]) || 0), 0);
+      setCell(pivotSheet, gtRow, ci + 1, String(aggFn === 'average' ? (total / rowVals.length).toFixed(2) : total));
+    });
+
+    // Bold header row
+    for (let c = 0; c <= colVals.length; c++) {
+      setCellFormat(pivotSheet, 0, c, 'bold', true);
+      setCellFormat(pivotSheet, 0, c, 'bg', '#e8f0fe');
+    }
+    // Bold grand total row
+    for (let c = 0; c <= colVals.length; c++) {
+      setCellFormat(pivotSheet, gtRow, c, 'bold', true);
+      setCellFormat(pivotSheet, gtRow, c, 'bg', '#f3f3f3');
+    }
+
+    sheets.push(pivotSheet);
+    activeSheetIdx = sheets.length - 1;
+    renderSheetTabs();
+    renderGrid();
+    updateSelection();
+    dlg.remove();
+  };
+
+  // Auto-preview on load
+  renderPreview();
+}
+
+/* ==================== Data Grouping ==================== */
+
+let rowGroups = []; // [{r1, r2, collapsed}]
+
+function toggleGroupRows() {
+  const { r1, r2 } = getSelectionRange();
+  // Check if selection is already in a group
+  const existingIdx = rowGroups.findIndex(g => g.r1 === r1 && g.r2 === r2);
+  if (existingIdx >= 0) {
+    // Ungroup
+    rowGroups.splice(existingIdx, 1);
+  } else if (r1 !== r2) {
+    rowGroups.push({ r1, r2, collapsed: false });
+  }
+  renderGrid();
+  updateSelection();
+}
+
+function toggleGroupCollapse(groupIdx) {
+  const group = rowGroups[groupIdx];
+  if (!group) return;
+  group.collapsed = !group.collapsed;
+  renderGrid();
+  updateSelection();
 }
 
 /* ==================== Export ==================== */

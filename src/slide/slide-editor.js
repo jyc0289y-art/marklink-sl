@@ -444,45 +444,44 @@ function startPresentation() {
   function showSlide(idx, direction = 1) {
     const slide = slides[idx];
     const transition = slide.transition || 'none';
+    const d = direction;
 
-    // Pre-transition
-    if (transition === 'fade') {
-      slideEl.style.opacity = '0';
-      setTimeout(() => {
-        slideEl.innerHTML = slide.content;
-        applyThemeToEl(slideEl, slide.theme);
-        slideEl.style.opacity = '1';
-      }, 250);
-    } else if (transition === 'slide-left') {
-      slideEl.style.transform = `translateX(${direction * 100}%)`;
-      slideEl.style.opacity = '0';
-      setTimeout(() => {
-        slideEl.innerHTML = slide.content;
-        applyThemeToEl(slideEl, slide.theme);
-        slideEl.style.transform = 'translateX(0)';
-        slideEl.style.opacity = '1';
-      }, 250);
-    } else if (transition === 'slide-up') {
-      slideEl.style.transform = `translateY(${direction * 100}%)`;
-      slideEl.style.opacity = '0';
-      setTimeout(() => {
-        slideEl.innerHTML = slide.content;
-        applyThemeToEl(slideEl, slide.theme);
-        slideEl.style.transform = 'translateY(0)';
-        slideEl.style.opacity = '1';
-      }, 250);
-    } else if (transition === 'zoom') {
-      slideEl.style.transform = 'scale(0.5)';
-      slideEl.style.opacity = '0';
-      setTimeout(() => {
-        slideEl.innerHTML = slide.content;
-        applyThemeToEl(slideEl, slide.theme);
-        slideEl.style.transform = 'scale(1)';
-        slideEl.style.opacity = '1';
-      }, 250);
-    } else {
+    const applyContent = () => {
       slideEl.innerHTML = slide.content;
       applyThemeToEl(slideEl, slide.theme);
+      if (slide.master && MASTER_SLIDES[slide.master]) {
+        const m = MASTER_SLIDES[slide.master];
+        slideEl.style.background = m.bg;
+        slideEl.style.color = m.color;
+        slideEl.style.fontFamily = m.fontFamily;
+      }
+    };
+
+    const transitionMap = {
+      'fade':        { from: { opacity: '0' }, to: { opacity: '1', transform: 'none' } },
+      'slide-left':  { from: { opacity: '0', transform: `translateX(${d * 100}%)` }, to: { opacity: '1', transform: 'translateX(0)' } },
+      'slide-right': { from: { opacity: '0', transform: `translateX(${-d * 100}%)` }, to: { opacity: '1', transform: 'translateX(0)' } },
+      'slide-up':    { from: { opacity: '0', transform: `translateY(${d * 100}%)` }, to: { opacity: '1', transform: 'translateY(0)' } },
+      'slide-down':  { from: { opacity: '0', transform: `translateY(${-d * 100}%)` }, to: { opacity: '1', transform: 'translateY(0)' } },
+      'zoom':        { from: { opacity: '0', transform: 'scale(0.3)' }, to: { opacity: '1', transform: 'scale(1)' } },
+      'zoom-out':    { from: { opacity: '0', transform: 'scale(2)' }, to: { opacity: '1', transform: 'scale(1)' } },
+      'rotate':      { from: { opacity: '0', transform: 'rotate(90deg) scale(0.5)' }, to: { opacity: '1', transform: 'rotate(0) scale(1)' } },
+      'flip':        { from: { opacity: '0', transform: 'perspective(800px) rotateY(90deg)' }, to: { opacity: '1', transform: 'perspective(800px) rotateY(0)' } },
+      'cube':        { from: { opacity: '0', transform: `perspective(800px) rotateY(${d * 90}deg)` }, to: { opacity: '1', transform: 'perspective(800px) rotateY(0)' } },
+      'dissolve':    { from: { opacity: '0', filter: 'blur(8px)' }, to: { opacity: '1', filter: 'blur(0)' } },
+      'wipe-right':  { from: { opacity: '0', clipPath: 'inset(0 100% 0 0)' }, to: { opacity: '1', clipPath: 'inset(0 0 0 0)' } },
+      'split':       { from: { opacity: '0', clipPath: 'inset(50% 0)' }, to: { opacity: '1', clipPath: 'inset(0 0)' } },
+    };
+
+    const fx = transitionMap[transition];
+    if (fx) {
+      Object.assign(slideEl.style, fx.from);
+      setTimeout(() => {
+        applyContent();
+        Object.assign(slideEl.style, fx.to);
+      }, 250);
+    } else {
+      applyContent();
     }
 
     counter.textContent = `${idx + 1} / ${slides.length}`;

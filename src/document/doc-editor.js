@@ -550,24 +550,50 @@ function insertTableOfContents() {
   editorEl.querySelector('.doc-toc')?.remove();
 
   // Find all headings in the document
-  const headings = editorEl.querySelectorAll('h1, h2, h3, h4');
+  const headings = editorEl.querySelectorAll('h1, h2, h3, h4, h5, h6');
   if (headings.length === 0) {
-    alert('No headings found. Add headings (H1-H4) first.');
+    alert('No headings found. Add headings (H1-H6) first.');
     return;
   }
+
+  // Build hierarchical numbering
+  const counters = [0, 0, 0, 0, 0, 0]; // h1-h6
 
   // Build TOC
   const toc = document.createElement('div');
   toc.className = 'doc-toc';
   toc.contentEditable = 'false';
 
-  let tocHtml = '<div class="doc-toc-title">Table of Contents</div><nav class="doc-toc-list">';
+  let tocHtml = `<div class="doc-toc-title" style="font-size:18px;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--accent-color, #0071e3)">Table of Contents</div>
+  <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">${headings.length} sections</div>
+  <nav class="doc-toc-list">`;
+
   headings.forEach((h, i) => {
     const level = parseInt(h.tagName[1]);
     const id = `toc-heading-${i}`;
     h.id = id;
+
+    // Update counters
+    counters[level - 1]++;
+    for (let j = level; j < 6; j++) counters[j] = 0;
+
+    // Build number string (e.g., "1.2.3")
+    const numParts = [];
+    for (let j = 0; j < level; j++) {
+      if (counters[j] > 0) numParts.push(counters[j]);
+    }
+    const numStr = numParts.join('.');
+
     const indent = (level - 1) * 20;
-    tocHtml += `<a href="#${id}" class="doc-toc-item" style="padding-left:${indent}px" onclick="event.preventDefault();document.getElementById('${id}').scrollIntoView({behavior:'smooth'})">${h.textContent}</a>`;
+    const fontSize = Math.max(11, 15 - level);
+    const fontWeight = level <= 2 ? '600' : '400';
+    const color = level === 1 ? 'var(--text-primary)' : 'var(--text-secondary)';
+
+    tocHtml += `<a href="#${id}" class="doc-toc-item" style="padding-left:${indent}px;font-size:${fontSize}px;font-weight:${fontWeight};color:${color};display:flex;align-items:baseline;gap:6px;text-decoration:none;padding:4px 8px;border-radius:4px;transition:background 0.15s" onclick="event.preventDefault();document.getElementById('${id}').scrollIntoView({behavior:'smooth'})" onmouseenter="this.style.background='var(--hover-bg, #f0f0f0)'" onmouseleave="this.style.background='transparent'">
+      <span style="color:var(--accent-color, #0071e3);font-size:${fontSize - 1}px;min-width:${level * 16}px">${numStr}</span>
+      <span style="flex:1">${h.textContent}</span>
+      <span style="border-bottom:1px dotted var(--border-color);flex:1;min-width:20px;margin:0 4px"></span>
+    </a>`;
   });
   tocHtml += '</nav>';
   toc.innerHTML = tocHtml;
