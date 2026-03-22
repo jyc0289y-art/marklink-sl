@@ -446,6 +446,9 @@ export async function initApp() {
   // 27. Zoom controls
   initZoomControls();
 
+  // 29. Status bar
+  initStatusBar();
+
   // 28. Undo/Redo toolbar buttons
   document.getElementById('btn-undo')?.addEventListener('click', () => {
     document.execCommand('undo');
@@ -1346,4 +1349,55 @@ export function markSaved() {
   _hasUnsaved = false;
   const dot = document.getElementById('unsaved-dot');
   if (dot) dot.style.display = 'none';
+}
+
+/* ==================== Status Bar ==================== */
+
+function initStatusBar() {
+  const statusLeft = document.getElementById('status-left');
+  const statusCenter = document.getElementById('status-center');
+  const statusRight = document.getElementById('status-right');
+  if (!statusLeft) return;
+
+  function updateStatus() {
+    const tab = getCurrentTab();
+    const now = new Date();
+    statusRight.textContent = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+
+    if (tab === 'document') {
+      const editor = document.getElementById('doc-editor');
+      if (editor) {
+        const text = editor.innerText || '';
+        const words = text.trim().split(/\s+/).filter(Boolean).length;
+        const chars = text.length;
+        statusLeft.textContent = `Words: ${words.toLocaleString()} | Characters: ${chars.toLocaleString()}`;
+        const pages = Math.max(1, Math.ceil(chars / 3000));
+        statusCenter.textContent = `~${pages} page${pages > 1 ? 's' : ''}`;
+      }
+    } else if (tab === 'sheet') {
+      const cellRef = document.getElementById('sheet-cell-ref');
+      const formulaBar = document.getElementById('sheet-formula-bar');
+      statusLeft.textContent = cellRef ? `Cell: ${cellRef.textContent}` : '';
+      statusCenter.textContent = formulaBar?.value ? `Formula: ${formulaBar.value}` : '';
+    } else if (tab === 'slide') {
+      const slides = document.querySelectorAll('.slide-thumb');
+      const active = document.querySelector('.slide-thumb.active');
+      const idx = active ? Array.from(slides).indexOf(active) + 1 : 1;
+      statusLeft.textContent = `Slide ${idx} of ${slides.length || 1}`;
+      statusCenter.textContent = '';
+    } else if (tab === 'markdown') {
+      const content = getContent();
+      const words = content.trim().split(/\s+/).filter(Boolean).length;
+      const lines = content.split('\n').length;
+      statusLeft.textContent = `Words: ${words.toLocaleString()} | Lines: ${lines}`;
+      statusCenter.textContent = '';
+    } else {
+      statusLeft.textContent = '';
+      statusCenter.textContent = '';
+    }
+  }
+
+  setInterval(updateStatus, 2000);
+  onTabChange(updateStatus);
+  updateStatus();
 }

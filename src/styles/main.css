@@ -402,10 +402,30 @@ html, body {
   font-size: 12px;
 }
 
+/* Status Bar */
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 22px;
+  padding: 0 12px;
+  background: var(--toolbar-bg);
+  border-top: 1px solid var(--border-color);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  user-select: none;
+  flex-shrink: 0;
+}
+.status-bar span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* App Container */
 .app-container {
   display: flex;
-  height: calc(100vh - 44px - 34px);
+  height: calc(100vh - 44px - 34px - 22px);
 }
 
 /* Sidebar */
@@ -761,7 +781,12 @@ html.rtl .lang-picker-grid {
 
   /* App container height adjustment */
   .app-container {
-    height: calc(100vh - 40px - 32px);
+    height: calc(100vh - 40px - 32px - 20px);
+  }
+  .status-bar {
+    height: 20px;
+    font-size: 10px;
+    padding: 0 6px;
   }
 
   /* Touch-friendly inputs */
@@ -808,6 +833,11 @@ html.rtl .lang-picker-grid {
     font-size: 10px;
   }
   .app-container {
-    height: calc(100vh - 36px - 32px);
+    height: calc(100vh - 36px - 32px - 18px);
   }
+  .status-bar {
+    height: 18px;
+    font-size: 9px;
+  }
+  .status-bar #status-center { display: none; }
 }

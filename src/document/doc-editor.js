@@ -43,6 +43,9 @@ export function initDocEditor() {
   // Bookmarks
   document.getElementById('doc-insert-bookmark')?.addEventListener('click', () => insertBookmark());
 
+  // Document Compare
+  document.getElementById('doc-compare')?.addEventListener('click', () => showDocCompare());
+
   // Undo / Redo buttons
   const undoBtn = document.getElementById('doc-undo');
   if (undoBtn) {
@@ -2035,4 +2038,150 @@ function showParagraphSpacingDialog() {
     editorEl?.focus();
     dirty = true;
   });
+}
+
+/* ==================== Document Compare ==================== */
+
+function showDocCompare() {
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay';
+  const inputStyle = 'width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box;font-size:13px';
+
+  dlg.innerHTML = `<div class="modal-content" style="width:90vw;max-width:900px;max-height:90vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">Document Compare</h3>
+      <button id="doc-compare-close" style="border:none;background:none;font-size:18px;cursor:pointer;color:var(--text-secondary)">&times;</button>
+    </div>
+    <div style="margin-bottom:12px">
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Paste or upload the comparison text below. The current document will be compared against it.</p>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="toolbar-btn" id="doc-compare-paste" style="padding:4px 12px;font-size:12px">Paste Text</button>
+        <button class="toolbar-btn" id="doc-compare-file" style="padding:4px 12px;font-size:12px">Load File</button>
+        <input type="file" id="doc-compare-file-input" accept=".txt,.html,.htm,.md" style="display:none">
+      </div>
+      <textarea id="doc-compare-input" style="${inputStyle};height:120px;resize:vertical" placeholder="Paste comparison text here..."></textarea>
+    </div>
+    <button class="toolbar-btn" id="doc-compare-run" style="padding:6px 16px;background:var(--accent-color);color:white;border-radius:4px;margin-bottom:12px">Compare</button>
+    <div id="doc-compare-result" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:8px;font-size:12px">
+        <span style="background:#d4edda;padding:2px 8px;border-radius:4px">Added</span>
+        <span style="background:#f8d7da;padding:2px 8px;border-radius:4px;text-decoration:line-through">Removed</span>
+        <span style="color:var(--text-secondary)">| <span id="doc-compare-stats"></span></span>
+      </div>
+      <div id="doc-compare-output" style="border:1px solid var(--border-color);border-radius:8px;padding:16px;max-height:400px;overflow:auto;font-size:13px;line-height:1.8;background:var(--bg-primary)"></div>
+    </div>
+  </div>`;
+  document.body.appendChild(dlg);
+
+  dlg.querySelector('#doc-compare-close').onclick = () => dlg.remove();
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.remove(); });
+
+  const fileInput = dlg.querySelector('#doc-compare-file-input');
+  dlg.querySelector('#doc-compare-file').onclick = () => fileInput.click();
+  fileInput.onchange = async () => {
+    const file = fileInput.files?.[0];
+    if (file) {
+      const text = await file.text();
+      dlg.querySelector('#doc-compare-input').value = text;
+    }
+  };
+
+  dlg.querySelector('#doc-compare-run').onclick = () => {
+    const compareText = dlg.querySelector('#doc-compare-input').value;
+    if (!compareText.trim()) return;
+
+    // Extract plain text from current document
+    const currentText = editorEl?.innerText || '';
+    const diff = computeWordDiff(currentText, compareText);
+
+    const resultEl = dlg.querySelector('#doc-compare-result');
+    const outputEl = dlg.querySelector('#doc-compare-output');
+    const statsEl = dlg.querySelector('#doc-compare-stats');
+    resultEl.style.display = 'block';
+
+    let added = 0, removed = 0;
+    let html = '';
+    for (const part of diff) {
+      if (part.type === 'add') {
+        html += `<span style="background:#d4edda;padding:1px 2px">${escapeHtml(part.text)}</span>`;
+        added++;
+      } else if (part.type === 'remove') {
+        html += `<span style="background:#f8d7da;padding:1px 2px;text-decoration:line-through">${escapeHtml(part.text)}</span>`;
+        removed++;
+      } else {
+        html += escapeHtml(part.text);
+      }
+    }
+    outputEl.innerHTML = html;
+    statsEl.textContent = `${added} additions, ${removed} deletions`;
+  };
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function computeWordDiff(oldText, newText) {
+  const oldWords = oldText.split(/(\s+)/);
+  const newWords = newText.split(/(\s+)/);
+  const result = [];
+
+  // Simple LCS-based diff
+  const m = oldWords.length, n = newWords.length;
+  // For large texts, use a simplified approach
+  if (m * n > 1000000) {
+    return simpleDiff(oldWords, newWords);
+  }
+
+  // Build LCS table
+  const dp = Array.from({ length: m + 1 }, () => new Uint16Array(n + 1));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = oldWords[i - 1] === newWords[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+
+  // Backtrack
+  let i = m, j = n;
+  const parts = [];
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldWords[i - 1] === newWords[j - 1]) {
+      parts.unshift({ type: 'same', text: oldWords[i - 1] });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      parts.unshift({ type: 'add', text: newWords[j - 1] });
+      j--;
+    } else {
+      parts.unshift({ type: 'remove', text: oldWords[i - 1] });
+      i--;
+    }
+  }
+
+  // Merge consecutive same-type parts
+  for (const part of parts) {
+    if (result.length > 0 && result[result.length - 1].type === part.type) {
+      result[result.length - 1].text += part.text;
+    } else {
+      result.push({ ...part });
+    }
+  }
+  return result;
+}
+
+function simpleDiff(oldWords, newWords) {
+  // Line-based simplified diff for large documents
+  const result = [];
+  const oldSet = new Set(oldWords.filter(w => w.trim()));
+  const newSet = new Set(newWords.filter(w => w.trim()));
+
+  for (const w of oldWords) {
+    if (!w.trim()) { result.push({ type: 'same', text: w }); continue; }
+    if (newSet.has(w)) result.push({ type: 'same', text: w });
+    else result.push({ type: 'remove', text: w });
+  }
+  for (const w of newWords) {
+    if (!w.trim()) continue;
+    if (!oldSet.has(w)) result.push({ type: 'add', text: w });
+  }
+  return result;
 }

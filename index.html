@@ -268,6 +268,7 @@
         <button class="toolbar-btn" id="doc-insert-equation" title="Insert Equation" style="font-size:11px">∑</button>
         <button class="toolbar-btn" id="doc-track-changes" title="Track Changes" style="font-size:11px">📋</button>
         <button class="toolbar-btn" id="doc-insert-bookmark" title="Insert Bookmark" style="font-size:11px">🔖</button>
+        <button class="toolbar-btn" id="doc-compare" title="Compare Documents" style="font-size:11px">⇔ Diff</button>
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="doc-undo" title="Undo (⌘Z)">↩</button>
         <button class="toolbar-btn" id="doc-redo" title="Redo (⌘⇧Z)">↪</button>
@@ -933,6 +934,13 @@
       <button class="ai-action-btn" id="ai-clear-btn" data-tip="ai.clear">Clear</button>
     </div>
   </aside>
+
+  <!-- Status Bar -->
+  <footer id="status-bar" class="status-bar">
+    <span id="status-left"></span>
+    <span id="status-center"></span>
+    <span id="status-right"></span>
+  </footer>
 
   <!-- Drop Zone Overlay -->
   <div id="drop-overlay" class="drop-overlay hidden">
