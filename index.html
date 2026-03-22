@@ -410,81 +410,158 @@
 
     <!-- Calculator View -->
     <div id="view-calculator" class="app-view">
-      <div class="calc-container">
-        <div class="calc-main">
-          <!-- History panel -->
-          <div class="calc-history" id="calc-history">
-            <div class="calc-history-header">History</div>
-            <div class="calc-history-list" id="calc-history-list"></div>
-          </div>
-          <!-- Display -->
-          <div class="calc-display">
-            <div class="calc-expression" id="calc-expression"></div>
-            <div class="calc-result" id="calc-result">0</div>
-          </div>
-          <!-- Mode toggle -->
-          <div class="calc-modes">
-            <button class="calc-mode-btn active" id="calc-mode-deg">DEG</button>
-            <button class="calc-mode-btn" id="calc-mode-rad">RAD</button>
-            <div class="calc-memory-indicator" id="calc-mem-indicator"></div>
-          </div>
-          <!-- Scientific buttons -->
-          <div class="calc-sci-grid">
-            <button class="calc-btn calc-fn" data-fn="sin">sin</button>
-            <button class="calc-btn calc-fn" data-fn="cos">cos</button>
-            <button class="calc-btn calc-fn" data-fn="tan">tan</button>
-            <button class="calc-btn calc-fn" data-fn="asin">sin⁻¹</button>
-            <button class="calc-btn calc-fn" data-fn="acos">cos⁻¹</button>
-            <button class="calc-btn calc-fn" data-fn="atan">tan⁻¹</button>
-            <button class="calc-btn calc-fn" data-fn="ln">ln</button>
-            <button class="calc-btn calc-fn" data-fn="log">log</button>
-            <button class="calc-btn calc-fn" data-fn="sqrt">√</button>
-            <button class="calc-btn calc-fn" data-fn="cbrt">∛</button>
-            <button class="calc-btn calc-fn" data-fn="pow">xʸ</button>
-            <button class="calc-btn calc-fn" data-fn="sq">x²</button>
-            <button class="calc-btn calc-fn" data-fn="exp">eˣ</button>
-            <button class="calc-btn calc-fn" data-fn="10pow">10ˣ</button>
-            <button class="calc-btn calc-fn" data-fn="abs">|x|</button>
-            <button class="calc-btn calc-fn" data-fn="inv">1/x</button>
-            <button class="calc-btn calc-fn" data-fn="fact">n!</button>
-            <button class="calc-btn calc-fn" data-fn="pi">π</button>
-            <button class="calc-btn calc-fn" data-fn="e">e</button>
-            <button class="calc-btn calc-fn" data-fn="mod">mod</button>
-          </div>
-          <!-- Memory row -->
-          <div class="calc-mem-grid">
-            <button class="calc-btn calc-mem" data-mem="mc">MC</button>
-            <button class="calc-btn calc-mem" data-mem="mr">MR</button>
-            <button class="calc-btn calc-mem" data-mem="m+">M+</button>
-            <button class="calc-btn calc-mem" data-mem="m-">M−</button>
-          </div>
-          <!-- Main keypad -->
-          <div class="calc-num-grid">
-            <button class="calc-btn calc-op" data-val="(">(</button>
-            <button class="calc-btn calc-op" data-val=")">)</button>
-            <button class="calc-btn calc-clear" data-action="clear">C</button>
-            <button class="calc-btn calc-clear" data-action="backspace">⌫</button>
+      <!-- Calculator toolbar -->
+      <div class="calc-toolbar">
+        <div class="calc-tab-bar">
+          <button class="calc-tab active" data-calc-tab="calc">Calculator</button>
+          <button class="calc-tab" data-calc-tab="graph">Graph</button>
+          <button class="calc-tab" data-calc-tab="convert">Unit Convert</button>
+          <button class="calc-tab" data-calc-tab="saved">Saved</button>
+        </div>
+        <div class="calc-toolbar-right">
+          <button class="calc-toolbar-btn" id="calc-add-home" title="Add to Home Screen">📲</button>
+          <button class="calc-toolbar-btn" id="calc-fullscreen" title="Fullscreen">⛶</button>
+        </div>
+      </div>
 
-            <button class="calc-btn calc-digit" data-val="7">7</button>
-            <button class="calc-btn calc-digit" data-val="8">8</button>
-            <button class="calc-btn calc-digit" data-val="9">9</button>
-            <button class="calc-btn calc-op calc-op-highlight" data-val="÷">÷</button>
-
-            <button class="calc-btn calc-digit" data-val="4">4</button>
-            <button class="calc-btn calc-digit" data-val="5">5</button>
-            <button class="calc-btn calc-digit" data-val="6">6</button>
-            <button class="calc-btn calc-op calc-op-highlight" data-val="×">×</button>
-
-            <button class="calc-btn calc-digit" data-val="1">1</button>
-            <button class="calc-btn calc-digit" data-val="2">2</button>
-            <button class="calc-btn calc-digit" data-val="3">3</button>
-            <button class="calc-btn calc-op calc-op-highlight" data-val="−">−</button>
-
-            <button class="calc-btn calc-digit" data-val="0">0</button>
-            <button class="calc-btn calc-digit" data-val=".">.</button>
-            <button class="calc-btn calc-equals" data-action="equals">=</button>
-            <button class="calc-btn calc-op calc-op-highlight" data-val="+">+</button>
+      <!-- Panel: Calculator -->
+      <div class="calc-panel active" id="calc-panel-calc">
+        <div class="calc-container">
+          <!-- PC: side-by-side layout via CSS -->
+          <div class="calc-main">
+            <div class="calc-left">
+              <!-- History panel -->
+              <div class="calc-history" id="calc-history">
+                <div class="calc-history-header">History</div>
+                <div class="calc-history-list" id="calc-history-list"></div>
+              </div>
+              <!-- Display -->
+              <div class="calc-display">
+                <div class="calc-expression" id="calc-expression"></div>
+                <div class="calc-result" id="calc-result">0</div>
+              </div>
+              <!-- Mode toggle -->
+              <div class="calc-modes">
+                <button class="calc-mode-btn active" id="calc-mode-deg">DEG</button>
+                <button class="calc-mode-btn" id="calc-mode-rad">RAD</button>
+                <button class="calc-mode-btn calc-save-expr" id="calc-save-btn" title="Save expression">💾</button>
+                <div class="calc-memory-indicator" id="calc-mem-indicator"></div>
+              </div>
+              <!-- Scientific buttons -->
+              <div class="calc-sci-grid">
+                <button class="calc-btn calc-fn" data-fn="sin">sin</button>
+                <button class="calc-btn calc-fn" data-fn="cos">cos</button>
+                <button class="calc-btn calc-fn" data-fn="tan">tan</button>
+                <button class="calc-btn calc-fn" data-fn="asin">sin⁻¹</button>
+                <button class="calc-btn calc-fn" data-fn="acos">cos⁻¹</button>
+                <button class="calc-btn calc-fn" data-fn="atan">tan⁻¹</button>
+                <button class="calc-btn calc-fn" data-fn="ln">ln</button>
+                <button class="calc-btn calc-fn" data-fn="log">log</button>
+                <button class="calc-btn calc-fn" data-fn="sqrt">√</button>
+                <button class="calc-btn calc-fn" data-fn="cbrt">∛</button>
+                <button class="calc-btn calc-fn" data-fn="pow">xʸ</button>
+                <button class="calc-btn calc-fn" data-fn="sq">x²</button>
+                <button class="calc-btn calc-fn" data-fn="exp">eˣ</button>
+                <button class="calc-btn calc-fn" data-fn="10pow">10ˣ</button>
+                <button class="calc-btn calc-fn" data-fn="abs">|x|</button>
+                <button class="calc-btn calc-fn" data-fn="inv">1/x</button>
+                <button class="calc-btn calc-fn" data-fn="fact">n!</button>
+                <button class="calc-btn calc-fn" data-fn="pi">π</button>
+                <button class="calc-btn calc-fn" data-fn="e">e</button>
+                <button class="calc-btn calc-fn" data-fn="mod">mod</button>
+              </div>
+            </div>
+            <div class="calc-right">
+              <!-- Memory row -->
+              <div class="calc-mem-grid">
+                <button class="calc-btn calc-mem" data-mem="mc">MC</button>
+                <button class="calc-btn calc-mem" data-mem="mr">MR</button>
+                <button class="calc-btn calc-mem" data-mem="m+">M+</button>
+                <button class="calc-btn calc-mem" data-mem="m-">M−</button>
+              </div>
+              <!-- Main keypad -->
+              <div class="calc-num-grid">
+                <button class="calc-btn calc-op" data-val="(">(</button>
+                <button class="calc-btn calc-op" data-val=")">)</button>
+                <button class="calc-btn calc-clear" data-action="clear">C</button>
+                <button class="calc-btn calc-clear" data-action="backspace">⌫</button>
+                <button class="calc-btn calc-digit" data-val="7">7</button>
+                <button class="calc-btn calc-digit" data-val="8">8</button>
+                <button class="calc-btn calc-digit" data-val="9">9</button>
+                <button class="calc-btn calc-op calc-op-highlight" data-val="÷">÷</button>
+                <button class="calc-btn calc-digit" data-val="4">4</button>
+                <button class="calc-btn calc-digit" data-val="5">5</button>
+                <button class="calc-btn calc-digit" data-val="6">6</button>
+                <button class="calc-btn calc-op calc-op-highlight" data-val="×">×</button>
+                <button class="calc-btn calc-digit" data-val="1">1</button>
+                <button class="calc-btn calc-digit" data-val="2">2</button>
+                <button class="calc-btn calc-digit" data-val="3">3</button>
+                <button class="calc-btn calc-op calc-op-highlight" data-val="−">−</button>
+                <button class="calc-btn calc-digit" data-val="0">0</button>
+                <button class="calc-btn calc-digit" data-val=".">.</button>
+                <button class="calc-btn calc-equals" data-action="equals">=</button>
+                <button class="calc-btn calc-op calc-op-highlight" data-val="+">+</button>
+              </div>
+            </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Panel: Graph -->
+      <div class="calc-panel" id="calc-panel-graph">
+        <div class="calc-graph-container">
+          <div class="calc-graph-controls">
+            <label>y =</label>
+            <input type="text" id="calc-graph-expr" class="calc-graph-input" placeholder="sin(x), x^2, log(x)..." value="sin(x)" />
+            <button class="calc-graph-plot-btn" id="calc-graph-plot">Plot</button>
+            <button class="calc-graph-plot-btn calc-graph-add-btn" id="calc-graph-add">+ Add</button>
+          </div>
+          <div class="calc-graph-func-list" id="calc-graph-func-list"></div>
+          <div class="calc-graph-view">
+            <canvas id="calc-graph-canvas" width="800" height="500"></canvas>
+            <div class="calc-graph-info" id="calc-graph-info"></div>
+          </div>
+          <div class="calc-graph-range">
+            <label>x: <input type="number" id="calc-graph-xmin" value="-10" step="1" /></label>
+            <label>to <input type="number" id="calc-graph-xmax" value="10" step="1" /></label>
+            <label>y: <input type="number" id="calc-graph-ymin" value="-10" step="1" /></label>
+            <label>to <input type="number" id="calc-graph-ymax" value="10" step="1" /></label>
+            <button id="calc-graph-reset" class="calc-graph-plot-btn">Reset</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Unit Converter -->
+      <div class="calc-panel" id="calc-panel-convert">
+        <div class="calc-convert-container">
+          <div class="calc-convert-card">
+            <div class="calc-convert-header">
+              <select id="calc-conv-category" class="calc-conv-select"></select>
+            </div>
+            <div class="calc-convert-body">
+              <div class="calc-convert-row">
+                <input type="number" id="calc-conv-from-val" class="calc-conv-input" value="1" />
+                <select id="calc-conv-from-unit" class="calc-conv-select"></select>
+              </div>
+              <div class="calc-convert-arrow">⇅</div>
+              <div class="calc-convert-row">
+                <input type="number" id="calc-conv-to-val" class="calc-conv-input" readonly />
+                <select id="calc-conv-to-unit" class="calc-conv-select"></select>
+              </div>
+            </div>
+            <div class="calc-convert-formula" id="calc-conv-formula"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Saved Formulas -->
+      <div class="calc-panel" id="calc-panel-saved">
+        <div class="calc-saved-container">
+          <div class="calc-saved-header">
+            <h3>Saved Formulas</h3>
+            <button class="calc-saved-add-btn" id="calc-saved-add">+ New</button>
+          </div>
+          <div class="calc-saved-list" id="calc-saved-list"></div>
         </div>
       </div>
     </div>

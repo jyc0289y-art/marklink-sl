@@ -429,6 +429,23 @@ export async function initApp() {
 
   // 23. PWA Install (Add to Home Screen / Desktop shortcut)
   initPwaInstall();
+
+  // 24. URL query: auto-switch tab (for PWA shortcuts)
+  const params = new URLSearchParams(window.location.search);
+  const tabParam = params.get('tab');
+  if (tabParam) {
+    switchTab(tabParam);
+    if (params.get('fullscreen') === '1') {
+      // Auto-enter fullscreen for calculator shortcut (mobile home screen)
+      setTimeout(() => {
+        const view = document.getElementById(`view-${tabParam}`);
+        if (view && tabParam === 'calculator') {
+          view.classList.add('calc-fullscreen');
+          view.requestFullscreen?.().catch(() => {});
+        }
+      }, 500);
+    }
+  }
 }
 
 /**

@@ -9,6 +9,15 @@
   "theme_color": "#0071e3",
   "orientation": "any",
   "categories": ["productivity", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Calculator",
+      "short_name": "Calc",
+      "description": "Scientific Calculator with Graph & Unit Converter",
+      "url": "./?tab=calculator&fullscreen=1",
+      "icons": [{ "src": "favicon.svg", "sizes": "any" }]
+    }
+  ],
   "icons": [
     {
       "src": "favicon.svg",
