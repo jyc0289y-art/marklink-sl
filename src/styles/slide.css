@@ -82,6 +82,15 @@
   color: var(--text-tertiary);
 }
 
+.slide-thumb-transition {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 10px;
+  color: var(--accent-color);
+  opacity: 0.8;
+}
+
 /* Editor area */
 .slide-editor-area {
   flex: 1;

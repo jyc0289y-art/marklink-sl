@@ -984,6 +984,11 @@ function bindEvents() {
   // Flash Fill
   document.getElementById('sheet-flash-fill')?.addEventListener('click', () => flashFill());
 
+  // Formula Audit
+  document.getElementById('sheet-trace-precedents')?.addEventListener('click', () => tracePrecedents());
+  document.getElementById('sheet-trace-dependents')?.addEventListener('click', () => traceDependents());
+  document.getElementById('sheet-clear-arrows')?.addEventListener('click', () => clearTraceArrows());
+
   // Sheet Protection
   document.getElementById('sheet-protect')?.addEventListener('click', () => toggleSheetProtection());
 
@@ -1212,7 +1217,10 @@ function startEdit(initialChar) {
   input.addEventListener('keydown', (e) => {
     if (handleAcKeydown(e, input)) return;
 
-    if (e.key === 'Enter') {
+    if (e.key === 'F4' && isFormulaMode) {
+      e.preventDefault();
+      toggleAbsoluteRef(input);
+    } else if (e.key === 'Enter') {
       hideAutocomplete();
       commitEdit();
       moveSelection(1, 0);
@@ -1763,6 +1771,49 @@ function highlightFormulaRefs(formula) {
 
 function letterToCol(letter) {
   return engineLetterToCol(letter);
+}
+
+/**
+ * Toggle absolute/relative reference at cursor position (F4 key)
+ * Cycles: A1 → $A$1 → A$1 → $A1 → A1
+ */
+function toggleAbsoluteRef(input) {
+  const val = input.value;
+  const pos = input.selectionStart;
+
+  // Find the cell reference at/near cursor
+  const refPattern = /\$?([A-Z]+)\$?(\d+)/gi;
+  let match;
+  while ((match = refPattern.exec(val)) !== null) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (pos >= start && pos <= end) {
+      const col = match[1];
+      const row = match[2];
+      const ref = match[0];
+
+      let newRef;
+      if (!ref.includes('$')) {
+        // A1 → $A$1
+        newRef = `$${col}$${row}`;
+      } else if (ref.startsWith('$') && ref.includes('$' + row)) {
+        // $A$1 → A$1
+        newRef = `${col}$${row}`;
+      } else if (!ref.startsWith('$') && ref.includes('$')) {
+        // A$1 → $A1
+        newRef = `$${col}${row}`;
+      } else {
+        // $A1 → A1
+        newRef = `${col}${row}`;
+      }
+
+      const newVal = val.substring(0, start) + newRef + val.substring(end);
+      input.value = newVal;
+      formulaBarEl.value = newVal;
+      input.setSelectionRange(start + newRef.length, start + newRef.length);
+      return;
+    }
+  }
 }
 
 function clearFormulaRefHighlights() {
@@ -5524,6 +5575,130 @@ function toggleBandedRows() {
     if (btn) btn.classList.toggle('active', bandedRowsEnabled);
     dlg.remove();
   });
+}
+
+/* ==================== Formula Audit (Trace Precedents/Dependents) ==================== */
+
+let traceArrowsSvg = null;
+
+function ensureTraceOverlay() {
+  if (traceArrowsSvg && traceArrowsSvg.parentElement) return traceArrowsSvg;
+  const grid = document.querySelector('.sheet-grid');
+  if (!grid) return null;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5';
+  svg.innerHTML = `<defs>
+    <marker id="trace-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4285f4"/>
+    </marker>
+    <marker id="trace-arrow-dep" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ea4335"/>
+    </marker>
+  </defs>`;
+  grid.style.position = 'relative';
+  grid.appendChild(svg);
+  traceArrowsSvg = svg;
+  return svg;
+}
+
+function getCellCenter(r, c) {
+  const grid = document.querySelector('.sheet-grid');
+  if (!grid) return null;
+  const cell = grid.querySelector(`td[data-r="${r}"][data-c="${c}"]`);
+  if (!cell) return null;
+  const gridRect = grid.getBoundingClientRect();
+  const cellRect = cell.getBoundingClientRect();
+  return {
+    x: cellRect.left + cellRect.width / 2 - gridRect.left + grid.scrollLeft,
+    y: cellRect.top + cellRect.height / 2 - gridRect.top + grid.scrollTop
+  };
+}
+
+function drawTraceArrow(fromR, fromC, toR, toC, type) {
+  const svg = ensureTraceOverlay();
+  if (!svg) return;
+  const from = getCellCenter(fromR, fromC);
+  const to = getCellCenter(toR, toC);
+  if (!from || !to) return;
+
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.setAttribute('x1', from.x);
+  line.setAttribute('y1', from.y);
+  line.setAttribute('x2', to.x);
+  line.setAttribute('y2', to.y);
+  line.setAttribute('stroke', type === 'precedent' ? '#4285f4' : '#ea4335');
+  line.setAttribute('stroke-width', '2');
+  line.setAttribute('marker-end', `url(#trace-arrow${type === 'dependent' ? '-dep' : ''})`);
+  line.classList.add('trace-arrow-line');
+  svg.appendChild(line);
+
+  // Add dot at source
+  const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  dot.setAttribute('cx', from.x);
+  dot.setAttribute('cy', from.y);
+  dot.setAttribute('r', '4');
+  dot.setAttribute('fill', type === 'precedent' ? '#4285f4' : '#ea4335');
+  dot.classList.add('trace-arrow-line');
+  svg.appendChild(dot);
+}
+
+function parseCellRefs(formula) {
+  if (!formula || !formula.startsWith('=')) return [];
+  const refs = [];
+  const refPattern = /\$?([A-Z]+)\$?(\d+)/gi;
+  const expr = formula.substring(1);
+  let match;
+  while ((match = refPattern.exec(expr)) !== null) {
+    const col = letterToCol(match[1].toUpperCase());
+    const row = parseInt(match[2]) - 1;
+    refs.push({ r: row, c: col });
+  }
+  return refs;
+}
+
+function tracePrecedents() {
+  const sheet = sheets[activeSheetIdx];
+  const key = `${selectedRow},${selectedCol}`;
+  const cell = sheet.cells[key];
+  if (!cell || !cell.raw || !cell.raw.startsWith('=')) {
+    alert('Select a cell with a formula to trace precedents');
+    return;
+  }
+  const refs = parseCellRefs(cell.raw);
+  if (refs.length === 0) {
+    alert('No cell references found in formula');
+    return;
+  }
+  refs.forEach(ref => {
+    drawTraceArrow(ref.r, ref.c, selectedRow, selectedCol, 'precedent');
+  });
+}
+
+function traceDependents() {
+  const sheet = sheets[activeSheetIdx];
+  const deps = [];
+  // Scan all cells for formulas referencing the selected cell
+  for (const [key, cell] of Object.entries(sheet.cells)) {
+    if (!cell.raw || !cell.raw.startsWith('=')) continue;
+    const refs = parseCellRefs(cell.raw);
+    const [r, c] = key.split(',').map(Number);
+    if (refs.some(ref => ref.r === selectedRow && ref.c === selectedCol)) {
+      deps.push({ r, c });
+    }
+  }
+  if (deps.length === 0) {
+    alert('No dependent cells found');
+    return;
+  }
+  deps.forEach(dep => {
+    drawTraceArrow(selectedRow, selectedCol, dep.r, dep.c, 'dependent');
+  });
+}
+
+function clearTraceArrows() {
+  if (traceArrowsSvg) {
+    traceArrowsSvg.querySelectorAll('.trace-arrow-line').forEach(el => el.remove());
+  }
 }
 
 /* ==================== Export ==================== */

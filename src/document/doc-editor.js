@@ -28,6 +28,9 @@ export function initDocEditor() {
   document.getElementById('doc-outline-toggle')?.addEventListener('click', toggleDocOutline);
   document.getElementById('doc-outline-close')?.addEventListener('click', toggleDocOutline);
 
+  // Insert Date/Time
+  document.getElementById('doc-insert-datetime')?.addEventListener('click', () => showDateTimePicker());
+
   // Comments
   document.getElementById('doc-insert-comment')?.addEventListener('click', () => addComment());
 
@@ -2579,4 +2582,84 @@ function simpleDiff(oldWords, newWords) {
     if (!oldSet.has(w)) result.push({ type: 'add', text: w });
   }
   return result;
+}
+
+/* ── Insert Date/Time Picker ── */
+function showDateTimePicker() {
+  const existing = document.querySelector('.datetime-picker-dialog');
+  if (existing) { existing.remove(); return; }
+
+  const now = new Date();
+  const formats = [
+    { label: 'Full Date', fn: () => now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) },
+    { label: 'Short Date', fn: () => now.toLocaleDateString('en-US') },
+    { label: 'ISO Date', fn: () => now.toISOString().slice(0, 10) },
+    { label: 'Date & Time', fn: () => now.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) },
+    { label: 'Time Only', fn: () => now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) },
+    { label: 'ISO DateTime', fn: () => now.toISOString().slice(0, 16).replace('T', ' ') },
+    { label: 'Korean Date', fn: () => now.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) },
+    { label: 'Korean DateTime', fn: () => now.toLocaleString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) },
+  ];
+
+  const dlg = document.createElement('div');
+  dlg.className = 'datetime-picker-dialog';
+  dlg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;z-index:10010;min-width:340px;box-shadow:0 8px 32px rgba(0,0,0,0.3)';
+
+  let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <h3 style="margin:0;font-size:15px;color:var(--text-primary)">Insert Date / Time</h3>
+    <button id="dt-close" style="border:none;background:none;font-size:18px;cursor:pointer;color:var(--text-secondary)">&times;</button>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:6px">`;
+
+  formats.forEach((f, i) => {
+    const val = f.fn();
+    html += `<button class="dt-fmt-btn" data-idx="${i}" style="text-align:left;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);cursor:pointer;font-size:13px;color:var(--text-primary);transition:background 0.15s">
+      <span style="color:var(--text-secondary);font-size:11px">${f.label}</span><br>
+      <span style="font-weight:500">${val}</span>
+    </button>`;
+  });
+
+  html += `</div>
+  <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-color)">
+    <label style="font-size:12px;color:var(--text-secondary)">Custom format</label>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <input id="dt-custom" type="text" value="${now.toISOString().slice(0, 10)}" style="flex:1;padding:6px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+      <button id="dt-insert-custom" class="toolbar-btn" style="padding:6px 14px;background:var(--accent-color);color:white;border-radius:6px;font-size:12px">Insert</button>
+    </div>
+  </div>`;
+
+  dlg.innerHTML = html;
+  document.body.appendChild(dlg);
+
+  const editorEl = document.getElementById('doc-editor');
+
+  dlg.querySelector('#dt-close').onclick = () => dlg.remove();
+  dlg.querySelectorAll('.dt-fmt-btn').forEach(btn => {
+    btn.onmouseenter = () => btn.style.background = 'var(--accent-color-light, rgba(66,133,244,0.1))';
+    btn.onmouseleave = () => btn.style.background = 'var(--bg-primary)';
+    btn.onclick = () => {
+      const idx = parseInt(btn.dataset.idx);
+      insertTextAtCursor(formats[idx].fn());
+      dlg.remove();
+    };
+  });
+  dlg.querySelector('#dt-insert-custom').onclick = () => {
+    const val = dlg.querySelector('#dt-custom').value;
+    if (val) { insertTextAtCursor(val); dlg.remove(); }
+  };
+
+  function insertTextAtCursor(text) {
+    editorEl.focus();
+    const sel = window.getSelection();
+    if (sel.rangeCount) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(document.createTextNode(text));
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      document.execCommand('insertText', false, text);
+    }
+  }
 }

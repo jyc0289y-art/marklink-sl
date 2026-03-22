@@ -216,6 +216,9 @@ function bindEvents() {
   // Rehearse timings
   document.getElementById('slide-rehearse')?.addEventListener('click', startRehearsal);
 
+  // Presentation timer
+  document.getElementById('slide-pres-timer')?.addEventListener('click', showPresentationTimer);
+
   // Thumbnail click
   panelEl?.addEventListener('click', (e) => {
     const thumb = e.target.closest('.slide-thumb');
@@ -323,8 +326,10 @@ function renderPanel() {
     thumb.className = `slide-thumb ${i === activeSlideIdx ? 'active' : ''}`;
     thumb.dataset.idx = i;
     thumb.draggable = true;
+    const transIcon = slide.transition && slide.transition !== 'none'
+      ? `<span class="slide-thumb-transition" title="${slide.transition}">✦</span>` : '';
     thumb.innerHTML = miniContent(slide.content, slide.theme) +
-      `<span class="slide-thumb-number">${i + 1}</span>`;
+      `<span class="slide-thumb-number">${i + 1}</span>${transIcon}`;
     panelEl.appendChild(thumb);
   });
 }
@@ -332,8 +337,11 @@ function renderPanel() {
 function updateThumb(idx) {
   const thumb = panelEl?.querySelector(`.slide-thumb[data-idx="${idx}"]`);
   if (thumb) {
-    thumb.innerHTML = miniContent(slides[idx].content, slides[idx].theme) +
-      `<span class="slide-thumb-number">${idx + 1}</span>`;
+    const slide = slides[idx];
+    const transIcon = slide.transition && slide.transition !== 'none'
+      ? `<span class="slide-thumb-transition" title="${slide.transition}">✦</span>` : '';
+    thumb.innerHTML = miniContent(slide.content, slide.theme) +
+      `<span class="slide-thumb-number">${idx + 1}</span>${transIcon}`;
   }
 }
 
@@ -2178,4 +2186,128 @@ function startRehearsal() {
 
   // Click to advance
   slideEl.addEventListener('click', nextSlide);
+}
+
+/* ── Presentation Timer ── */
+function showPresentationTimer() {
+  const existing = document.querySelector('.pres-timer-dialog');
+  if (existing) { existing.remove(); return; }
+
+  const dlg = document.createElement('div');
+  dlg.className = 'pres-timer-dialog';
+  dlg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:24px;z-index:10010;min-width:320px;box-shadow:0 8px 32px rgba(0,0,0,0.3)';
+
+  dlg.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="margin:0;font-size:15px;color:var(--text-primary)">Presentation Timer</h3>
+      <button id="pres-timer-close" style="border:none;background:none;font-size:18px;cursor:pointer;color:var(--text-secondary)">&times;</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <label style="font-size:13px;color:var(--text-secondary);min-width:80px">Duration</label>
+        <input type="number" id="pres-timer-min" min="1" max="180" value="15" style="width:60px;padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+        <span style="color:var(--text-secondary);font-size:13px">minutes</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label style="font-size:13px;color:var(--text-secondary);min-width:80px">Warning at</label>
+        <input type="number" id="pres-timer-warn" min="1" max="60" value="5" style="width:60px;padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+        <span style="color:var(--text-secondary);font-size:13px">min remaining</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="pres-timer-start" class="toolbar-btn" style="flex:1;padding:8px;background:var(--accent-color);color:white;border-radius:6px;font-size:13px">Start Timer</button>
+        <button id="pres-timer-stopwatch" class="toolbar-btn" style="flex:1;padding:8px;border-radius:6px;font-size:13px">Stopwatch</button>
+      </div>
+    </div>`;
+  document.body.appendChild(dlg);
+
+  dlg.querySelector('#pres-timer-close').onclick = () => dlg.remove();
+
+  dlg.querySelector('#pres-timer-start').onclick = () => {
+    const mins = parseInt(dlg.querySelector('#pres-timer-min').value) || 15;
+    const warnMins = parseInt(dlg.querySelector('#pres-timer-warn').value) || 5;
+    dlg.remove();
+    launchTimerOverlay(mins * 60, warnMins * 60);
+  };
+
+  dlg.querySelector('#pres-timer-stopwatch').onclick = () => {
+    dlg.remove();
+    launchTimerOverlay(0, 0); // stopwatch mode (count up)
+  };
+}
+
+function launchTimerOverlay(totalSecs, warnSecs) {
+  const isCountdown = totalSecs > 0;
+  let elapsed = 0;
+  let paused = false;
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;bottom:60px;right:20px;background:rgba(0,0,0,0.85);color:white;padding:12px 20px;border-radius:12px;z-index:10008;font-family:monospace;font-size:32px;cursor:move;user-select:none;min-width:140px;text-align:center;backdrop-filter:blur(8px)';
+
+  const timeEl = document.createElement('div');
+  timeEl.style.cssText = 'font-size:36px;font-weight:700;letter-spacing:2px';
+  overlay.appendChild(timeEl);
+
+  const controls = document.createElement('div');
+  controls.style.cssText = 'display:flex;gap:8px;justify-content:center;margin-top:8px';
+  controls.innerHTML = `
+    <button id="timer-pause" style="border:none;background:rgba(255,255,255,0.2);color:white;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:14px">⏸</button>
+    <button id="timer-reset" style="border:none;background:rgba(255,255,255,0.2);color:white;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:14px">↻</button>
+    <button id="timer-close" style="border:none;background:rgba(255,255,255,0.2);color:white;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:14px">✕</button>
+  `;
+  overlay.appendChild(controls);
+  document.body.appendChild(overlay);
+
+  // Draggable
+  let dragX, dragY;
+  overlay.addEventListener('mousedown', (e) => {
+    if (e.target.tagName === 'BUTTON') return;
+    dragX = e.clientX - overlay.offsetLeft;
+    dragY = e.clientY - overlay.offsetTop;
+    const move = (ev) => {
+      overlay.style.left = (ev.clientX - dragX) + 'px';
+      overlay.style.top = (ev.clientY - dragY) + 'px';
+      overlay.style.right = 'auto';
+      overlay.style.bottom = 'auto';
+    };
+    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  });
+
+  function formatTime(secs) {
+    const m = Math.floor(Math.abs(secs) / 60);
+    const s = Math.abs(secs) % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }
+
+  function update() {
+    const remaining = isCountdown ? totalSecs - elapsed : elapsed;
+    timeEl.textContent = formatTime(isCountdown ? remaining : elapsed);
+
+    if (isCountdown) {
+      if (remaining <= 0) {
+        timeEl.style.color = '#ea4335';
+        timeEl.textContent = '00:00';
+        overlay.style.background = 'rgba(234,67,53,0.9)';
+      } else if (remaining <= warnSecs) {
+        timeEl.style.color = '#fbbc04';
+      } else {
+        timeEl.style.color = '#34a853';
+      }
+    }
+  }
+
+  update();
+
+  const interval = setInterval(() => {
+    if (!document.body.contains(overlay)) { clearInterval(interval); return; }
+    if (!paused) { elapsed++; update(); }
+  }, 1000);
+
+  controls.querySelector('#timer-pause').onclick = () => {
+    paused = !paused;
+    controls.querySelector('#timer-pause').textContent = paused ? '▶' : '⏸';
+  };
+  controls.querySelector('#timer-reset').onclick = () => { elapsed = 0; update(); };
+  controls.querySelector('#timer-close').onclick = () => { clearInterval(interval); overlay.remove(); };
 }
