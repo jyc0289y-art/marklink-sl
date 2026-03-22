@@ -1386,4 +1386,434 @@ export const TRANSLATIONS = {
     en: 'No', ko: '아니요', ja: 'いいえ', zh: '否',
     es: 'No', fr: 'Non', de: 'Nein',
   },
+
+  // ===== ADDITIONAL MISSING KEYS =====
+
+  // --- AI ---
+  'ai.clear': {
+    en: 'Clear', ko: '지우기', ja: 'クリア', zh: '清除',
+    es: 'Borrar', fr: 'Effacer', de: 'Löschen',
+  },
+
+  // --- Document (additional) ---
+  'doc.datetime': {
+    en: 'Insert Date/Time', ko: '날짜/시간 삽입', ja: '日付/時刻の挿入', zh: '插入日期/时间',
+    es: 'Insertar fecha/hora', fr: 'Insérer date/heure', de: 'Datum/Uhrzeit einfügen',
+  },
+  'doc.findCase': {
+    en: 'Match Case', ko: '대소문자 구분', ja: '大文字小文字を区別', zh: '区分大小写',
+    es: 'Coincidir mayúsculas', fr: 'Respecter la casse', de: 'Groß-/Kleinschreibung',
+  },
+  'doc.findRegex': {
+    en: 'Use Regular Expression', ko: '정규식 사용', ja: '正規表現を使用', zh: '使用正则表达式',
+    es: 'Usar expresión regular', fr: 'Utiliser une expression régulière', de: 'Regulären Ausdruck verwenden',
+  },
+  'doc.horizontalRule': {
+    en: 'Horizontal Rule', ko: '구분선', ja: '水平線', zh: '水平线',
+    es: 'Línea horizontal', fr: 'Ligne horizontale', de: 'Horizontale Linie',
+  },
+  'doc.outlineNav': {
+    en: 'Outline Navigator', ko: '개요 탐색기', ja: 'アウトラインナビ', zh: '大纲导航',
+    es: 'Navegador de esquema', fr: 'Navigateur de plan', de: 'Gliederungsnavigator',
+  },
+  'doc.quickHighlight': {
+    en: 'Quick Highlight', ko: '빠른 형광펜', ja: 'クイックハイライト', zh: '快速高亮',
+    es: 'Resaltado rápido', fr: 'Surlignage rapide', de: 'Schnelles Hervorheben',
+  },
+  'doc.smartStyles': {
+    en: 'Smart Styles Gallery', ko: '스마트 스타일 갤러리', ja: 'スマートスタイルギャラリー', zh: '智能样式库',
+    es: 'Galería de estilos inteligentes', fr: 'Galerie de styles intelligents', de: 'Intelligente Stilgalerie',
+  },
+  'doc.statusBar': {
+    en: 'Words: 0  |  Characters: 0  |  Paragraphs: 0', ko: '단어: 0  |  글자: 0  |  단락: 0',
+    ja: '語数: 0  |  文字数: 0  |  段落: 0', zh: '词数: 0  |  字符: 0  |  段落: 0',
+    es: 'Palabras: 0  |  Caracteres: 0  |  Párrafos: 0', fr: 'Mots : 0  |  Caractères : 0  |  Paragraphes : 0',
+    de: 'Wörter: 0  |  Zeichen: 0  |  Absätze: 0',
+  },
+  'doc.templates': {
+    en: 'Document Templates', ko: '문서 템플릿', ja: 'ドキュメントテンプレート', zh: '文档模板',
+    es: 'Plantillas de documento', fr: 'Modèles de document', de: 'Dokumentvorlagen',
+  },
+  'doc.versionDiff': {
+    en: 'Version Compare/Diff', ko: '버전 비교/차이', ja: 'バージョン比較/差分', zh: '版本比较/差异',
+    es: 'Comparar versiones', fr: 'Comparer les versions', de: 'Versionsvergleich',
+  },
+  'doc.writingStats': {
+    en: 'Writing Stats & Goals', ko: '글쓰기 통계 및 목표', ja: 'ライティング統計と目標', zh: '写作统计与目标',
+    es: 'Estadísticas de escritura', fr: 'Statistiques d\'écriture', de: 'Schreibstatistiken & Ziele',
+  },
+
+  // --- PDF (additional) ---
+  'pdf.addSignature': {
+    en: 'Add Signature', ko: '서명 추가', ja: '署名を追加', zh: '添加签名',
+    es: 'Añadir firma', fr: 'Ajouter une signature', de: 'Unterschrift hinzufügen',
+  },
+  'pdf.addStamp': {
+    en: 'Add Stamp', ko: '도장 추가', ja: 'スタンプを追加', zh: '添加印章',
+    es: 'Añadir sello', fr: 'Ajouter un tampon', de: 'Stempel hinzufügen',
+  },
+  'pdf.bookmarkAdd': {
+    en: 'Add Bookmark', ko: '책갈피 추가', ja: 'ブックマークを追加', zh: '添加书签',
+    es: 'Añadir marcador', fr: 'Ajouter un signet', de: 'Lesezeichen hinzufügen',
+  },
+  'pdf.bookmarksToggle': {
+    en: 'Toggle Bookmarks Panel', ko: '책갈피 패널 열기/닫기', ja: 'ブックマークパネル切替', zh: '切换书签面板',
+    es: 'Panel de marcadores', fr: 'Panneau des signets', de: 'Lesezeichen-Panel',
+  },
+  'pdf.clearAnnot': {
+    en: 'Clear Annotations', ko: '주석 지우기', ja: '注釈をクリア', zh: '清除注释',
+    es: 'Borrar anotaciones', fr: 'Effacer les annotations', de: 'Anmerkungen löschen',
+  },
+  'pdf.convertDoc': {
+    en: 'Convert Document to PDF', ko: '문서를 PDF로 변환', ja: 'ドキュメントをPDFに変換', zh: '文档转PDF',
+    es: 'Convertir documento a PDF', fr: 'Convertir document en PDF', de: 'Dokument in PDF umwandeln',
+  },
+  'pdf.convertMd': {
+    en: 'Convert Markdown to PDF', ko: '마크다운을 PDF로 변환', ja: 'MarkdownをPDFに変換', zh: 'Markdown转PDF',
+    es: 'Convertir Markdown a PDF', fr: 'Convertir Markdown en PDF', de: 'Markdown in PDF umwandeln',
+  },
+  'pdf.deletePage': {
+    en: 'Delete Current Page', ko: '현재 페이지 삭제', ja: '現在のページを削除', zh: '删除当前页面',
+    es: 'Eliminar página actual', fr: 'Supprimer la page actuelle', de: 'Aktuelle Seite löschen',
+  },
+  'pdf.deskew': {
+    en: 'Auto-straighten Page', ko: '자동 보정', ja: '自動補正', zh: '自动校正',
+    es: 'Corregir inclinación', fr: 'Corriger l\'inclinaison', de: 'Automatisch begradigen',
+  },
+  'pdf.extract': {
+    en: 'Extract Page as PDF', ko: '페이지를 PDF로 추출', ja: 'ページをPDFとして抽出', zh: '提取页面为PDF',
+    es: 'Extraer página como PDF', fr: 'Extraire la page en PDF', de: 'Seite als PDF extrahieren',
+  },
+  'pdf.fitWidth': {
+    en: 'Fit Width', ko: '너비 맞춤', ja: '幅に合わせる', zh: '适合宽度',
+    es: 'Ajustar al ancho', fr: 'Ajuster à la largeur', de: 'An Breite anpassen',
+  },
+  'pdf.formFill': {
+    en: 'Detect & Fill Form Fields', ko: '양식 필드 감지 및 채우기', ja: 'フォームフィールドの検出と入力', zh: '检测并填写表单',
+    es: 'Detectar y rellenar campos', fr: 'Détecter et remplir les champs', de: 'Formularfelder erkennen & ausfüllen',
+  },
+  'pdf.freehand': {
+    en: 'Freehand Drawing', ko: '자유 그리기', ja: 'フリーハンド描画', zh: '自由绘画',
+    es: 'Dibujo a mano alzada', fr: 'Dessin à main levée', de: 'Freihandzeichnung',
+  },
+  'pdf.highlight': {
+    en: 'Highlight Text', ko: '텍스트 강조', ja: 'テキストをハイライト', zh: '高亮文本',
+    es: 'Resaltar texto', fr: 'Surligner le texte', de: 'Text hervorheben',
+  },
+  'pdf.insertBlank': {
+    en: 'Insert Blank Page', ko: '빈 페이지 삽입', ja: '空白ページを挿入', zh: '插入空白页',
+    es: 'Insertar página en blanco', fr: 'Insérer une page vierge', de: 'Leere Seite einfügen',
+  },
+  'pdf.nextPage': {
+    en: 'Next Page', ko: '다음 페이지', ja: '次のページ', zh: '下一页',
+    es: 'Página siguiente', fr: 'Page suivante', de: 'Nächste Seite',
+  },
+  'pdf.prevPage': {
+    en: 'Previous Page', ko: '이전 페이지', ja: '前のページ', zh: '上一页',
+    es: 'Página anterior', fr: 'Page précédente', de: 'Vorherige Seite',
+  },
+  'pdf.redactApply': {
+    en: 'Apply Redactions', ko: '편집 적용', ja: '墨消しを適用', zh: '应用涂黑',
+    es: 'Aplicar redacciones', fr: 'Appliquer les caviardages', de: 'Schwärzungen anwenden',
+  },
+  'pdf.rotate': {
+    en: 'Rotate Page 90°', ko: '페이지 90° 회전', ja: 'ページを90°回転', zh: '旋转页面90°',
+    es: 'Rotar página 90°', fr: 'Pivoter la page de 90°', de: 'Seite um 90° drehen',
+  },
+  'pdf.stickyNote': {
+    en: 'Add Sticky Note', ko: '메모 추가', ja: '付箋を追加', zh: '添加便签',
+    es: 'Añadir nota adhesiva', fr: 'Ajouter une note', de: 'Haftnotiz hinzufügen',
+  },
+  'pdf.strikethrough': {
+    en: 'Strikethrough Text', ko: '텍스트 취소선', ja: 'テキスト取り消し線', zh: '删除线文本',
+    es: 'Tachar texto', fr: 'Texte barré', de: 'Text durchstreichen',
+  },
+  'pdf.underline': {
+    en: 'Underline Text', ko: '텍스트 밑줄', ja: 'テキスト下線', zh: '下划线文本',
+    es: 'Subrayar texto', fr: 'Souligner le texte', de: 'Text unterstreichen',
+  },
+
+  // --- Photo (additional) ---
+  'photo.clone': {
+    en: 'Clone/Stamp', ko: '복제/도장', ja: 'クローン/スタンプ', zh: '克隆/印章',
+    es: 'Clonar/Sello', fr: 'Cloner/Tampon', de: 'Klonen/Stempel',
+  },
+  'photo.compare': {
+    en: 'Compare (hold)', ko: '비교 (길게 누르기)', ja: '比較（長押し）', zh: '比较（按住）',
+    es: 'Comparar (mantener)', fr: 'Comparer (maintenir)', de: 'Vergleichen (halten)',
+  },
+  'photo.createGif': {
+    en: 'Create GIF', ko: 'GIF 만들기', ja: 'GIF作成', zh: '创建GIF',
+    es: 'Crear GIF', fr: 'Créer un GIF', de: 'GIF erstellen',
+  },
+  'photo.flipH': {
+    en: 'Flip Horizontal', ko: '좌우 반전', ja: '左右反転', zh: '水平翻转',
+    es: 'Voltear horizontal', fr: 'Retourner horizontalement', de: 'Horizontal spiegeln',
+  },
+  'photo.flipV': {
+    en: 'Flip Vertical', ko: '상하 반전', ja: '上下反転', zh: '垂直翻转',
+    es: 'Voltear vertical', fr: 'Retourner verticalement', de: 'Vertikal spiegeln',
+  },
+  'photo.histogram': {
+    en: 'Toggle Histogram', ko: '히스토그램 표시/숨기기', ja: 'ヒストグラム切替', zh: '切换直方图',
+    es: 'Histograma', fr: 'Histogramme', de: 'Histogramm umschalten',
+  },
+  'photo.open': {
+    en: 'Open Image', ko: '이미지 열기', ja: '画像を開く', zh: '打开图片',
+    es: 'Abrir imagen', fr: 'Ouvrir une image', de: 'Bild öffnen',
+  },
+  'photo.perspective': {
+    en: 'Perspective Transform', ko: '원근 변환', ja: 'パース変換', zh: '透视变换',
+    es: 'Transformación de perspectiva', fr: 'Transformation de perspective', de: 'Perspektive transformieren',
+  },
+  'photo.reset': {
+    en: 'Reset', ko: '초기화', ja: 'リセット', zh: '重置',
+    es: 'Restablecer', fr: 'Réinitialiser', de: 'Zurücksetzen',
+  },
+  'photo.rotate': {
+    en: 'Rotate 90°', ko: '90° 회전', ja: '90°回転', zh: '旋转90°',
+    es: 'Rotar 90°', fr: 'Pivoter 90°', de: 'Um 90° drehen',
+  },
+  'photo.splitView': {
+    en: 'Before/After Split View', ko: '전후 분할 보기', ja: '前後分割表示', zh: '前后对比视图',
+    es: 'Vista dividida antes/después', fr: 'Vue fractionnée avant/après', de: 'Vorher/Nachher Ansicht',
+  },
+  'photo.spotHeal': {
+    en: 'Spot Healing', ko: '스팟 힐링', ja: 'スポット修正', zh: '污点修复',
+    es: 'Corrección puntual', fr: 'Correction de défaut', de: 'Bereichsreparatur',
+  },
+  'photo.textOverlay': {
+    en: 'Text Overlay', ko: '텍스트 오버레이', ja: 'テキストオーバーレイ', zh: '文字叠加',
+    es: 'Superposición de texto', fr: 'Superposition de texte', de: 'Textüberlagerung',
+  },
+  'photo.watermark': {
+    en: 'Add Watermark', ko: '워터마크 추가', ja: '透かしを追加', zh: '添加水印',
+    es: 'Añadir marca de agua', fr: 'Ajouter un filigrane', de: 'Wasserzeichen hinzufügen',
+  },
+
+  // --- Sheet (additional) ---
+  'sheet.bandedRows': {
+    en: 'Alternating Row Colors', ko: '교대 행 색상', ja: '交互行の色', zh: '交替行颜色',
+    es: 'Colores alternos de fila', fr: 'Couleurs de lignes alternées', de: 'Wechselnde Zeilenfarben',
+  },
+  'sheet.cellBg': {
+    en: 'Cell Background', ko: '셀 배경색', ja: 'セル背景色', zh: '单元格背景',
+    es: 'Fondo de celda', fr: 'Arrière-plan de cellule', de: 'Zellhintergrund',
+  },
+  'sheet.cfManager': {
+    en: 'Manage CF Rules', ko: '조건부 서식 규칙 관리', ja: '条件付き書式ルール管理', zh: '管理条件格式规则',
+    es: 'Administrar reglas CF', fr: 'Gérer les règles FC', de: 'BF-Regeln verwalten',
+  },
+  'sheet.clearArrows': {
+    en: 'Clear Trace Arrows', ko: '추적 화살표 지우기', ja: 'トレース矢印をクリア', zh: '清除追踪箭头',
+    es: 'Borrar flechas de rastreo', fr: 'Effacer les flèches de traçage', de: 'Spurpfeile löschen',
+  },
+  'sheet.dataValid': {
+    en: 'Data Validation', ko: '데이터 유효성 검사', ja: 'データ検証', zh: '数据验证',
+    es: 'Validación de datos', fr: 'Validation des données', de: 'Datenvalidierung',
+  },
+  'sheet.exportDialog': {
+    en: 'Export (CSV/JSON)', ko: '내보내기 (CSV/JSON)', ja: 'エクスポート (CSV/JSON)', zh: '导出 (CSV/JSON)',
+    es: 'Exportar (CSV/JSON)', fr: 'Exporter (CSV/JSON)', de: 'Exportieren (CSV/JSON)',
+  },
+  'sheet.findReplace': {
+    en: 'Find & Replace', ko: '찾기 및 바꾸기', ja: '検索と置換', zh: '查找和替换',
+    es: 'Buscar y reemplazar', fr: 'Rechercher et remplacer', de: 'Suchen und Ersetzen',
+  },
+  'sheet.flashFill': {
+    en: 'Flash Fill', ko: '빠른 채우기', ja: 'フラッシュフィル', zh: '快速填充',
+    es: 'Relleno rápido', fr: 'Remplissage instantané', de: 'Blitzvorschau',
+  },
+  'sheet.freezeCol': {
+    en: 'Freeze First Column', ko: '첫 열 고정', ja: '先頭列を固定', zh: '冻结首列',
+    es: 'Inmovilizar primera columna', fr: 'Figer la première colonne', de: 'Erste Spalte fixieren',
+  },
+  'sheet.freezeRow': {
+    en: 'Freeze Top Row', ko: '상단 행 고정', ja: '先頭行を固定', zh: '冻结首行',
+    es: 'Inmovilizar fila superior', fr: 'Figer la ligne supérieure', de: 'Oberste Zeile fixieren',
+  },
+  'sheet.goalSeek': {
+    en: 'Goal Seek (What-If)', ko: '목표값 찾기', ja: 'ゴールシーク', zh: '目标值求解',
+    es: 'Buscar objetivo', fr: 'Valeur cible', de: 'Zielwertsuche',
+  },
+  'sheet.groupRows': {
+    en: 'Group/Ungroup Rows', ko: '행 그룹화/해제', ja: '行のグループ化/解除', zh: '行分组/取消分组',
+    es: 'Agrupar/Desagrupar filas', fr: 'Grouper/Dégrouper les lignes', de: 'Zeilen gruppieren/aufheben',
+  },
+  'sheet.namedRange': {
+    en: 'Named Ranges', ko: '이름 범위', ja: '名前付き範囲', zh: '命名范围',
+    es: 'Rangos con nombre', fr: 'Plages nommées', de: 'Benannte Bereiche',
+  },
+  'sheet.pivotRefresh': {
+    en: 'Refresh Pivot Table', ko: '피벗 테이블 새로고침', ja: 'ピボットテーブルを更新', zh: '刷新透视表',
+    es: 'Actualizar tabla dinámica', fr: 'Actualiser le tableau croisé', de: 'Pivot-Tabelle aktualisieren',
+  },
+  'sheet.print': {
+    en: 'Print Sheet', ko: '시트 인쇄', ja: 'シートを印刷', zh: '打印工作表',
+    es: 'Imprimir hoja', fr: 'Imprimer la feuille', de: 'Tabelle drucken',
+  },
+  'sheet.protect': {
+    en: 'Protect Sheet', ko: '시트 보호', ja: 'シートを保護', zh: '保护工作表',
+    es: 'Proteger hoja', fr: 'Protéger la feuille', de: 'Tabelle schützen',
+  },
+  'sheet.removeDups': {
+    en: 'Remove Duplicates', ko: '중복 제거', ja: '重複の削除', zh: '删除重复项',
+    es: 'Quitar duplicados', fr: 'Supprimer les doublons', de: 'Duplikate entfernen',
+  },
+  'sheet.slicer': {
+    en: 'Insert Slicer', ko: '슬라이서 삽입', ja: 'スライサーを挿入', zh: '插入切片器',
+    es: 'Insertar segmentación', fr: 'Insérer un segment', de: 'Datenschnitt einfügen',
+  },
+  'sheet.sortCustom': {
+    en: 'Custom Sort', ko: '사용자 지정 정렬', ja: 'カスタムソート', zh: '自定义排序',
+    es: 'Orden personalizado', fr: 'Tri personnalisé', de: 'Benutzerdefinierte Sortierung',
+  },
+  'sheet.sparkline': {
+    en: 'Insert Sparkline', ko: '스파크라인 삽입', ja: 'スパークラインを挿入', zh: '插入迷你图',
+    es: 'Insertar minigráfico', fr: 'Insérer un graphique sparkline', de: 'Sparkline einfügen',
+  },
+  'sheet.subtotals': {
+    en: 'Subtotals', ko: '부분합', ja: '小計', zh: '分类汇总',
+    es: 'Subtotales', fr: 'Sous-totaux', de: 'Teilergebnisse',
+  },
+  'sheet.textToCols': {
+    en: 'Text to Columns', ko: '텍스트 나누기', ja: 'テキストを列に分割', zh: '分列',
+    es: 'Texto en columnas', fr: 'Texte en colonnes', de: 'Text in Spalten',
+  },
+  'sheet.traceDependents': {
+    en: 'Trace Dependents', ko: '종속 항목 추적', ja: '従属セルのトレース', zh: '追踪从属单元格',
+    es: 'Rastrear dependientes', fr: 'Tracer les dépendants', de: 'Abhängige verfolgen',
+  },
+  'sheet.tracePrecedents': {
+    en: 'Trace Precedents', ko: '선행 항목 추적', ja: '参照元のトレース', zh: '追踪引用单元格',
+    es: 'Rastrear precedentes', fr: 'Tracer les précédents', de: 'Vorgänger verfolgen',
+  },
+  'sheet.transpose': {
+    en: 'Transpose Selection', ko: '선택 영역 전치', ja: '選択範囲の転置', zh: '转置选区',
+    es: 'Transponer selección', fr: 'Transposer la sélection', de: 'Auswahl transponieren',
+  },
+
+  // --- Slide (additional) ---
+  'slide.addSlide': {
+    en: 'New Slide', ko: '새 슬라이드', ja: '新しいスライド', zh: '新幻灯片',
+    es: 'Nueva diapositiva', fr: 'Nouvelle diapositive', de: 'Neue Folie',
+  },
+  'slide.alignObjects': {
+    en: 'Align Objects', ko: '개체 정렬', ja: 'オブジェクトの整列', zh: '对齐对象',
+    es: 'Alinear objetos', fr: 'Aligner les objets', de: 'Objekte ausrichten',
+  },
+  'slide.animTimeline': {
+    en: 'Animation Timeline', ko: '애니메이션 타임라인', ja: 'アニメーションタイムライン', zh: '动画时间线',
+    es: 'Línea de tiempo de animación', fr: 'Chronologie d\'animation', de: 'Animations-Zeitleiste',
+  },
+  'slide.bringForward': {
+    en: 'Bring Forward', ko: '앞으로 가져오기', ja: '前面へ移動', zh: '上移一层',
+    es: 'Traer adelante', fr: 'Avancer', de: 'Eine Ebene nach vorne',
+  },
+  'slide.deleteSlide': {
+    en: 'Delete Slide', ko: '슬라이드 삭제', ja: 'スライドを削除', zh: '删除幻灯片',
+    es: 'Eliminar diapositiva', fr: 'Supprimer la diapositive', de: 'Folie löschen',
+  },
+  'slide.drawTools': {
+    en: 'Drawing Tools', ko: '그리기 도구', ja: '描画ツール', zh: '绘图工具',
+    es: 'Herramientas de dibujo', fr: 'Outils de dessin', de: 'Zeichenwerkzeuge',
+  },
+  'slide.dupSlide': {
+    en: 'Duplicate Slide', ko: '슬라이드 복제', ja: 'スライドを複製', zh: '复制幻灯片',
+    es: 'Duplicar diapositiva', fr: 'Dupliquer la diapositive', de: 'Folie duplizieren',
+  },
+  'slide.exportImg': {
+    en: 'Export as Image', ko: '이미지로 내보내기', ja: '画像としてエクスポート', zh: '导出为图片',
+    es: 'Exportar como imagen', fr: 'Exporter en image', de: 'Als Bild exportieren',
+  },
+  'slide.exportPptx': {
+    en: 'Export as PPTX', ko: 'PPTX로 내보내기', ja: 'PPTXとしてエクスポート', zh: '导出为PPTX',
+    es: 'Exportar como PPTX', fr: 'Exporter en PPTX', de: 'Als PPTX exportieren',
+  },
+  'slide.gradientBg': {
+    en: 'Gradient Background', ko: '그라데이션 배경', ja: 'グラデーション背景', zh: '渐变背景',
+    es: 'Fondo degradado', fr: 'Arrière-plan dégradé', de: 'Verlaufshintergrund',
+  },
+  'slide.grid': {
+    en: 'Toggle Grid', ko: '격자 표시/숨기기', ja: 'グリッド切替', zh: '切换网格',
+    es: 'Alternar cuadrícula', fr: 'Basculer la grille', de: 'Raster umschalten',
+  },
+  'slide.group': {
+    en: 'Group Selected', ko: '선택 항목 그룹화', ja: '選択をグループ化', zh: '组合选区',
+    es: 'Agrupar selección', fr: 'Grouper la sélection', de: 'Auswahl gruppieren',
+  },
+  'slide.insertVideo': {
+    en: 'Insert Video', ko: '비디오 삽입', ja: '動画を挿入', zh: '插入视频',
+    es: 'Insertar vídeo', fr: 'Insérer une vidéo', de: 'Video einfügen',
+  },
+  'slide.layoutGallery': {
+    en: 'Layout Gallery', ko: '레이아웃 갤러리', ja: 'レイアウトギャラリー', zh: '布局库',
+    es: 'Galería de diseños', fr: 'Galerie de mises en page', de: 'Layoutgalerie',
+  },
+  'slide.masterEdit': {
+    en: 'Edit Slide Master', ko: '슬라이드 마스터 편집', ja: 'スライドマスターを編集', zh: '编辑幻灯片母版',
+    es: 'Editar patrón de diapositivas', fr: 'Modifier le masque', de: 'Folienmaster bearbeiten',
+  },
+  'slide.masterSlides': {
+    en: 'Master Slides', ko: '슬라이드 마스터', ja: 'スライドマスター', zh: '幻灯片母版',
+    es: 'Patrón de diapositivas', fr: 'Masque de diapositive', de: 'Folienmaster',
+  },
+  'slide.presTimer': {
+    en: 'Presentation Timer', ko: '발표 타이머', ja: 'プレゼンタイマー', zh: '演示计时器',
+    es: 'Temporizador de presentación', fr: 'Minuteur de présentation', de: 'Präsentations-Timer',
+  },
+  'slide.presenterView': {
+    en: 'Presenter View', ko: '발표자 보기', ja: 'プレゼンター表示', zh: '演示者视图',
+    es: 'Vista del presentador', fr: 'Mode présentateur', de: 'Referentenansicht',
+  },
+  'slide.printHandout': {
+    en: 'Print Handout', ko: '유인물 인쇄', ja: '配布資料の印刷', zh: '打印讲义',
+    es: 'Imprimir folleto', fr: 'Imprimer le prospectus', de: 'Handout drucken',
+  },
+  'slide.rehearse': {
+    en: 'Rehearse Timings', ko: '시간 리허설', ja: 'タイミングのリハーサル', zh: '排练计时',
+    es: 'Ensayar intervalos', fr: 'Répéter le minutage', de: 'Zeiten proben',
+  },
+  'slide.sendBackward': {
+    en: 'Send Backward', ko: '뒤로 보내기', ja: '背面へ移動', zh: '下移一层',
+    es: 'Enviar atrás', fr: 'Reculer', de: 'Eine Ebene nach hinten',
+  },
+  'slide.shapeLib': {
+    en: 'Shape Library', ko: '도형 라이브러리', ja: '図形ライブラリ', zh: '形状库',
+    es: 'Biblioteca de formas', fr: 'Bibliothèque de formes', de: 'Formbibliothek',
+  },
+  'slide.smartGuides': {
+    en: 'Toggle Smart Guides', ko: '스마트 가이드 표시/숨기기', ja: 'スマートガイド切替', zh: '切换智能参考线',
+    es: 'Guías inteligentes', fr: 'Guides intelligents', de: 'Intelligente Hilfslinien',
+  },
+  'slide.sorter': {
+    en: 'Slide Sorter', ko: '슬라이드 정렬', ja: 'スライド一覧', zh: '幻灯片浏览',
+    es: 'Clasificador de diapositivas', fr: 'Trieuse de diapositives', de: 'Foliensortierung',
+  },
+  'slide.speakerView': {
+    en: 'Speaker View', ko: '발표자 보기', ja: 'スピーカービュー', zh: '演讲者视图',
+    es: 'Vista del ponente', fr: 'Mode intervenants', de: 'Sprecheransicht',
+  },
+  'slide.ungroup': {
+    en: 'Ungroup', ko: '그룹 해제', ja: 'グループ解除', zh: '取消组合',
+    es: 'Desagrupar', fr: 'Dégrouper', de: 'Gruppierung aufheben',
+  },
+  'slide.viewToggle': {
+    en: 'Toggle View', ko: '보기 전환', ja: '表示切替', zh: '切换视图',
+    es: 'Alternar vista', fr: 'Basculer la vue', de: 'Ansicht wechseln',
+  },
+
+  // --- Markdown toolbar (additional) ---
+  'tip.snippets': {
+    en: 'Snippet Library', ko: '스니펫 라이브러리', ja: 'スニペットライブラリ', zh: '代码片段库',
+    es: 'Biblioteca de fragmentos', fr: 'Bibliothèque d\'extraits', de: 'Snippet-Bibliothek',
+  },
+  'tip.zenMode': {
+    en: 'Zen/Focus Mode', ko: '집중 모드', ja: '集中モード', zh: '专注模式',
+    es: 'Modo zen/enfoque', fr: 'Mode zen/concentration', de: 'Zen-/Fokusmodus',
+  },
+  'tip.shortcuts': {
+    en: 'Keyboard Shortcuts', ko: '키보드 단축키', ja: 'キーボードショートカット', zh: '键盘快捷键',
+    es: 'Atajos de teclado', fr: 'Raccourcis clavier', de: 'Tastaturkürzel',
+  },
 };

@@ -157,9 +157,9 @@
         <button id="btn-toggle-outline" class="toolbar-btn" data-i18n-title="tip.toggleOutline" title="Toggle Outline (TOC)"><span class="icon">📑</span></button>
         <button id="btn-copy-richtext" class="toolbar-btn" data-i18n-title="tip.copyRichText" title="Copy as Rich Text"><span class="icon">📋</span></button>
         <span class="toolbar-sep"></span>
-        <button id="btn-snippets" class="toolbar-btn" title="Snippet Library"><span class="icon">🧩</span></button>
-        <button id="btn-zen" class="toolbar-btn" title="Zen/Focus Mode (Ctrl+Shift+Z)"><span class="icon">🧘</span></button>
-        <button id="btn-shortcuts" class="toolbar-btn" title="Keyboard Shortcuts (Ctrl+/)"><span class="icon">⌨</span></button>
+        <button id="btn-snippets" class="toolbar-btn" data-i18n-title="tip.snippets" title="Snippet Library"><span class="icon">🧩</span></button>
+        <button id="btn-zen" class="toolbar-btn" data-i18n-title="tip.zenMode" title="Zen/Focus Mode (Ctrl+Shift+Z)"><span class="icon">🧘</span></button>
+        <button id="btn-shortcuts" class="toolbar-btn" data-i18n-title="tip.shortcuts" title="Keyboard Shortcuts (Ctrl+/)"><span class="icon">⌨</span></button>
       </div>
       <div class="md-main-area">
         <!-- Outline / TOC Panel -->
@@ -236,18 +236,18 @@
         <button class="toolbar-btn doc-cmd" data-cmd="superscript" data-i18n-title="doc.superscript" title="Superscript">X<sup>2</sup></button>
         <button class="toolbar-btn doc-cmd" data-cmd="subscript" data-i18n-title="doc.subscript" title="Subscript">X<sub>2</sub></button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn doc-cmd" data-cmd="justifyLeft" title="Align Left" style="font-size:13px">≡◁</button>
-        <button class="toolbar-btn doc-cmd" data-cmd="justifyCenter" title="Align Center" style="font-size:13px">≡◇</button>
-        <button class="toolbar-btn doc-cmd" data-cmd="justifyRight" title="Align Right" style="font-size:13px">▷≡</button>
-        <button class="toolbar-btn doc-cmd" data-cmd="justifyFull" title="Justify" style="font-size:13px">≡≡</button>
+        <button class="toolbar-btn doc-cmd" data-cmd="justifyLeft" data-i18n-title="doc.alignLeft" title="Align Left" style="font-size:13px">≡◁</button>
+        <button class="toolbar-btn doc-cmd" data-cmd="justifyCenter" data-i18n-title="doc.alignCenter" title="Align Center" style="font-size:13px">≡◇</button>
+        <button class="toolbar-btn doc-cmd" data-cmd="justifyRight" data-i18n-title="doc.alignRight" title="Align Right" style="font-size:13px">▷≡</button>
+        <button class="toolbar-btn doc-cmd" data-cmd="justifyFull" data-i18n-title="doc.justify" title="Justify" style="font-size:13px">≡≡</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn doc-cmd" data-cmd="indent" title="Increase Indent">⇥</button>
-        <button class="toolbar-btn doc-cmd" data-cmd="outdent" title="Decrease Indent">⇤</button>
+        <button class="toolbar-btn doc-cmd" data-cmd="indent" data-i18n-title="doc.indent" title="Increase Indent">⇥</button>
+        <button class="toolbar-btn doc-cmd" data-cmd="outdent" data-i18n-title="doc.outdent" title="Decrease Indent">⇤</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn doc-cmd" data-cmd="insertUnorderedList" title="Bullet List">&#8226;</button>
-        <button class="toolbar-btn doc-cmd" data-cmd="insertOrderedList" title="Numbered List">1.</button>
+        <button class="toolbar-btn doc-cmd" data-cmd="insertUnorderedList" data-i18n-title="doc.bulletList" title="Bullet List">&#8226;</button>
+        <button class="toolbar-btn doc-cmd" data-cmd="insertOrderedList" data-i18n-title="doc.numberedList" title="Numbered List">1.</button>
         <div class="toolbar-divider"></div>
-        <select id="doc-heading" title="Heading">
+        <select id="doc-heading" data-i18n-title="doc.heading" title="Heading">
           <option value="">Paragraph</option>
           <option value="H1">Heading 1</option>
           <option value="H2">Heading 2</option>
@@ -256,7 +256,7 @@
           <option value="H5">Heading 5</option>
           <option value="H6">Heading 6</option>
         </select>
-        <select id="doc-line-spacing" title="Line Spacing">
+        <select id="doc-line-spacing" data-i18n-title="doc.lineSpacing" title="Line Spacing">
           <option value="1">1.0</option>
           <option value="1.15">1.15</option>
           <option value="1.5">1.5</option>
@@ -265,72 +265,72 @@
           <option value="2.5">2.5</option>
           <option value="3">3.0</option>
         </select>
-        <button class="toolbar-btn" id="doc-para-spacing" title="Paragraph Spacing" style="font-size:11px">¶ Space</button>
-        <button class="toolbar-btn" id="doc-clear-format" title="Clear Formatting" style="font-size:11px">⊘</button>
-        <button class="toolbar-btn" id="doc-styles" title="Quick Styles" style="font-size:11px">🎨 Styles</button>
-        <button class="toolbar-btn" id="doc-section-break" title="Section Break" style="font-size:11px">§ Break</button>
-        <button class="toolbar-btn" id="doc-columns" title="Columns Layout" style="font-size:11px">⫞ Cols</button>
+        <button class="toolbar-btn" id="doc-para-spacing" data-i18n-title="doc.paraSpacing" title="Paragraph Spacing" style="font-size:11px">¶ Space</button>
+        <button class="toolbar-btn" id="doc-clear-format" data-i18n-title="doc.clearFormat" title="Clear Formatting" style="font-size:11px">⊘</button>
+        <button class="toolbar-btn" id="doc-styles" data-i18n-title="doc.styles" title="Quick Styles" style="font-size:11px">🎨 Styles</button>
+        <button class="toolbar-btn" id="doc-section-break" data-i18n-title="doc.sectionBreak" title="Section Break" style="font-size:11px">§ Break</button>
+        <button class="toolbar-btn" id="doc-columns" data-i18n-title="doc.columns" title="Columns Layout" style="font-size:11px">⫞ Cols</button>
         <div class="toolbar-divider"></div>
-        <input type="color" id="doc-color" value="#000000" title="Text Color">
-        <input type="color" id="doc-bg-color" value="#ffffff" title="Highlight Color">
-        <button class="toolbar-btn" id="doc-highlight-menu" title="Quick Highlight" style="font-size:11px;position:relative">🖍</button>
+        <input type="color" id="doc-color" value="#000000" data-i18n-title="doc.textColor" title="Text Color">
+        <input type="color" id="doc-bg-color" value="#ffffff" data-i18n-title="doc.highlightColor" title="Highlight Color">
+        <button class="toolbar-btn" id="doc-highlight-menu" data-i18n-title="doc.quickHighlight" title="Quick Highlight" style="font-size:11px;position:relative">🖍</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn doc-insert-btn" id="doc-insert-link" title="Insert Link">🔗 Link</button>
-        <button class="toolbar-btn doc-insert-btn" id="doc-insert-image" title="Insert Image">🖼️ Image</button>
-        <button class="toolbar-btn doc-insert-btn" id="doc-insert-table" title="Insert Table">📊 Table</button>
-        <button class="toolbar-btn doc-insert-btn" id="doc-insert-hr" title="Horizontal Rule">― Line</button>
-        <button class="toolbar-btn" id="doc-insert-toc" title="Table of Contents" style="font-size:11px">TOC</button>
-        <button class="toolbar-btn" id="doc-page-numbers" title="Toggle Page Numbers" style="font-size:11px">pg#</button>
-        <button class="toolbar-btn" id="doc-header-footer" title="Header & Footer" style="font-size:11px">H/F</button>
-        <button class="toolbar-btn" id="doc-page-setup" title="Page Layout" style="font-size:11px">📄</button>
-        <button class="toolbar-btn" id="doc-insert-columns" title="Columns Layout" style="font-size:11px">❙❙</button>
-        <button class="toolbar-btn" id="doc-insert-footnote" title="Insert Footnote" style="font-size:11px">fn</button>
-        <button class="toolbar-btn" id="doc-insert-endnote" title="Insert Endnote" style="font-size:11px">en</button>
-        <button class="toolbar-btn" id="doc-watermark" title="Watermark" style="font-size:11px">💧</button>
-        <button class="toolbar-btn" id="doc-mail-merge" title="Mail Merge" style="font-size:11px">📧 Merge</button>
-        <button class="toolbar-btn" id="doc-print" title="Print (⌘P)" style="font-size:11px">🖨</button>
-        <button class="toolbar-btn" id="doc-outline-toggle" title="Document Outline" style="font-size:11px">📑</button>
-        <button class="toolbar-btn" id="doc-insert-datetime" title="Insert Date/Time" style="font-size:11px">📅</button>
-        <button class="toolbar-btn" id="doc-insert-comment" title="Add Comment" style="font-size:11px">💬</button>
-        <button class="toolbar-btn" id="doc-insert-pagebreak" title="Page Break" style="font-size:11px">⏎</button>
-        <button class="toolbar-btn" id="doc-insert-equation" title="Insert Equation" style="font-size:11px">∑</button>
-        <button class="toolbar-btn" id="doc-track-changes" title="Track Changes" style="font-size:11px">📋 Track</button>
-        <button class="toolbar-btn" id="doc-track-panel" title="Changes Panel" style="font-size:11px;display:none">📋 Panel</button>
-        <button class="toolbar-btn" id="doc-accept-all" title="Accept All Changes" style="font-size:11px;display:none">✓ All</button>
-        <button class="toolbar-btn" id="doc-reject-all" title="Reject All Changes" style="font-size:11px;display:none">✗ All</button>
+        <button class="toolbar-btn doc-insert-btn" id="doc-insert-link" data-i18n-title="doc.insertLink" title="Insert Link">🔗 Link</button>
+        <button class="toolbar-btn doc-insert-btn" id="doc-insert-image" data-i18n-title="doc.insertImage" title="Insert Image">🖼️ Image</button>
+        <button class="toolbar-btn doc-insert-btn" id="doc-insert-table" data-i18n-title="doc.insertTable" title="Insert Table">📊 Table</button>
+        <button class="toolbar-btn doc-insert-btn" id="doc-insert-hr" data-i18n-title="doc.horizontalRule" title="Horizontal Rule">― Line</button>
+        <button class="toolbar-btn" id="doc-insert-toc" data-i18n-title="doc.toc" title="Table of Contents" style="font-size:11px">TOC</button>
+        <button class="toolbar-btn" id="doc-page-numbers" data-i18n-title="doc.pageNumbers" title="Toggle Page Numbers" style="font-size:11px">pg#</button>
+        <button class="toolbar-btn" id="doc-header-footer" data-i18n-title="doc.headerFooter" title="Header & Footer" style="font-size:11px">H/F</button>
+        <button class="toolbar-btn" id="doc-page-setup" data-i18n-title="doc.pageSetup" title="Page Layout" style="font-size:11px">📄</button>
+        <button class="toolbar-btn" id="doc-insert-columns" data-i18n-title="doc.columns" title="Columns Layout" style="font-size:11px">❙❙</button>
+        <button class="toolbar-btn" id="doc-insert-footnote" data-i18n-title="doc.footnote" title="Insert Footnote" style="font-size:11px">fn</button>
+        <button class="toolbar-btn" id="doc-insert-endnote" data-i18n-title="doc.endnote" title="Insert Endnote" style="font-size:11px">en</button>
+        <button class="toolbar-btn" id="doc-watermark" data-i18n-title="doc.watermark" title="Watermark" style="font-size:11px">💧</button>
+        <button class="toolbar-btn" id="doc-mail-merge" data-i18n-title="doc.mailMerge" title="Mail Merge" style="font-size:11px">📧 Merge</button>
+        <button class="toolbar-btn" id="doc-print" data-i18n-title="doc.print" title="Print (⌘P)" style="font-size:11px">🖨</button>
+        <button class="toolbar-btn" id="doc-outline-toggle" data-i18n-title="doc.outline" title="Document Outline" style="font-size:11px">📑</button>
+        <button class="toolbar-btn" id="doc-insert-datetime" data-i18n-title="doc.datetime" title="Insert Date/Time" style="font-size:11px">📅</button>
+        <button class="toolbar-btn" id="doc-insert-comment" data-i18n-title="doc.comment" title="Add Comment" style="font-size:11px">💬</button>
+        <button class="toolbar-btn" id="doc-insert-pagebreak" data-i18n-title="doc.pageBreak" title="Page Break" style="font-size:11px">⏎</button>
+        <button class="toolbar-btn" id="doc-insert-equation" data-i18n-title="doc.equation" title="Insert Equation" style="font-size:11px">∑</button>
+        <button class="toolbar-btn" id="doc-track-changes" data-i18n-title="doc.trackChanges" title="Track Changes" style="font-size:11px">📋 Track</button>
+        <button class="toolbar-btn" id="doc-track-panel" data-i18n-title="doc.changesPanel" title="Changes Panel" style="font-size:11px;display:none">📋 Panel</button>
+        <button class="toolbar-btn" id="doc-accept-all" data-i18n-title="doc.acceptAll" title="Accept All Changes" style="font-size:11px;display:none">✓ All</button>
+        <button class="toolbar-btn" id="doc-reject-all" data-i18n-title="doc.rejectAll" title="Reject All Changes" style="font-size:11px;display:none">✗ All</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="doc-spell-check" title="Spell Check" style="font-size:11px">🔤 Spell</button>
-        <button class="toolbar-btn" id="doc-comments-panel" title="Comments Panel" style="font-size:11px">💬 Panel</button>
+        <button class="toolbar-btn" id="doc-spell-check" data-i18n-title="doc.spellCheck" title="Spell Check" style="font-size:11px">🔤 Spell</button>
+        <button class="toolbar-btn" id="doc-comments-panel" data-i18n-title="doc.commentsPanel" title="Comments Panel" style="font-size:11px">💬 Panel</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="doc-insert-bookmark" title="Insert Bookmark" style="font-size:11px">🔖</button>
-        <button class="toolbar-btn" id="doc-compare" title="Compare Documents" style="font-size:11px">⇔ Diff</button>
-        <button class="toolbar-btn" id="doc-version-diff" title="Version Compare/Diff (side-by-side)" style="font-size:11px">⚡ VDiff</button>
-        <button class="toolbar-btn" id="doc-smart-styles" title="Smart Styles Gallery" style="font-size:11px">🎭 Styles+</button>
-        <button class="toolbar-btn" id="doc-outline-nav" title="Outline Navigator (right sidebar)" style="font-size:11px">🗂 Nav</button>
-        <button class="toolbar-btn" id="doc-writing-stats" title="Writing Stats & Goals" style="font-size:11px">📊 Stats</button>
-        <button class="toolbar-btn" id="doc-focus-mode" title="Focus Mode (Zen)" style="font-size:11px">🧘 Focus</button>
-        <button class="toolbar-btn" id="doc-reading-mode" title="Reading Mode" style="font-size:11px">📖 Read</button>
+        <button class="toolbar-btn" id="doc-insert-bookmark" data-i18n-title="doc.bookmark" title="Insert Bookmark" style="font-size:11px">🔖</button>
+        <button class="toolbar-btn" id="doc-compare" data-i18n-title="doc.compare" title="Compare Documents" style="font-size:11px">⇔ Diff</button>
+        <button class="toolbar-btn" id="doc-version-diff" data-i18n-title="doc.versionDiff" title="Version Compare/Diff (side-by-side)" style="font-size:11px">⚡ VDiff</button>
+        <button class="toolbar-btn" id="doc-smart-styles" data-i18n-title="doc.smartStyles" title="Smart Styles Gallery" style="font-size:11px">🎭 Styles+</button>
+        <button class="toolbar-btn" id="doc-outline-nav" data-i18n-title="doc.outlineNav" title="Outline Navigator (right sidebar)" style="font-size:11px">🗂 Nav</button>
+        <button class="toolbar-btn" id="doc-writing-stats" data-i18n-title="doc.writingStats" title="Writing Stats & Goals" style="font-size:11px">📊 Stats</button>
+        <button class="toolbar-btn" id="doc-focus-mode" data-i18n-title="doc.focusMode" title="Focus Mode (Zen)" style="font-size:11px">🧘 Focus</button>
+        <button class="toolbar-btn" id="doc-reading-mode" data-i18n-title="doc.readingMode" title="Reading Mode" style="font-size:11px">📖 Read</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="doc-multi-column" title="Multi-Column Layout" style="font-size:11px">⫟ Cols</button>
-        <button class="toolbar-btn" id="doc-drag-reorder" title="Toggle Paragraph Drag Reorder" style="font-size:11px">☰ Drag</button>
-        <button class="toolbar-btn" id="doc-table-ops" title="Smart Table Operations" style="font-size:11px">⊞ TblOps</button>
-        <button class="toolbar-btn" id="doc-templates" title="Document Templates" style="font-size:11px">📋 Templates</button>
-        <button class="toolbar-btn" id="doc-citation" title="Insert Citation" style="font-size:11px">📚 Cite</button>
+        <button class="toolbar-btn" id="doc-multi-column" data-i18n-title="doc.multiColumn" title="Multi-Column Layout" style="font-size:11px">⫟ Cols</button>
+        <button class="toolbar-btn" id="doc-drag-reorder" data-i18n-title="doc.dragReorder" title="Toggle Paragraph Drag Reorder" style="font-size:11px">☰ Drag</button>
+        <button class="toolbar-btn" id="doc-table-ops" data-i18n-title="doc.tableOps" title="Smart Table Operations" style="font-size:11px">⊞ TblOps</button>
+        <button class="toolbar-btn" id="doc-templates" data-i18n-title="doc.templates" title="Document Templates" style="font-size:11px">📋 Templates</button>
+        <button class="toolbar-btn" id="doc-citation" data-i18n-title="doc.citation" title="Insert Citation" style="font-size:11px">📚 Cite</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="doc-undo" title="Undo (⌘Z)">↩</button>
-        <button class="toolbar-btn" id="doc-redo" title="Redo (⌘⇧Z)">↪</button>
+        <button class="toolbar-btn" id="doc-undo" data-i18n-title="tip.undo" title="Undo (⌘Z)">↩</button>
+        <button class="toolbar-btn" id="doc-redo" data-i18n-title="tip.redo" title="Redo (⌘⇧Z)">↪</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="doc-import-hwpx" title="Import HWPX (한컴)" style="font-size:11px">HWPX↑</button>
-        <button class="toolbar-btn" id="doc-export-hwpx" title="Export HWPX (한컴)" style="font-size:11px">HWPX↓</button>
-        <button class="toolbar-btn" id="doc-import-docx" title="Import DOCX" style="font-size:11px">DOCX↑</button>
-        <button class="toolbar-btn" id="doc-export-docx" title="Export DOCX" style="font-size:11px">DOCX↓</button>
+        <button class="toolbar-btn" id="doc-import-hwpx" data-i18n-title="doc.importHwpx" title="Import HWPX (한컴)" style="font-size:11px">HWPX↑</button>
+        <button class="toolbar-btn" id="doc-export-hwpx" data-i18n-title="doc.exportHwpx" title="Export HWPX (한컴)" style="font-size:11px">HWPX↓</button>
+        <button class="toolbar-btn" id="doc-import-docx" data-i18n-title="doc.importDocx" title="Import DOCX" style="font-size:11px">DOCX↑</button>
+        <button class="toolbar-btn" id="doc-export-docx" data-i18n-title="doc.exportDocx" title="Export DOCX" style="font-size:11px">DOCX↓</button>
       </div>
       <!-- Find/Replace Bar -->
       <div id="doc-find-bar" class="doc-find-bar hidden">
         <div class="doc-find-row">
           <input type="text" id="doc-find-input" class="doc-find-input" data-i18n-placeholder="doc.find" placeholder="Find...">
-          <button class="toolbar-btn" id="doc-find-regex" title="Use Regular Expression" style="font-size:10px;opacity:0.6">.*</button>
-          <button class="toolbar-btn" id="doc-find-case" title="Match Case" style="font-size:10px;opacity:0.6">Aa</button>
+          <button class="toolbar-btn" id="doc-find-regex" data-i18n-title="doc.findRegex" title="Use Regular Expression" style="font-size:10px;opacity:0.6">.*</button>
+          <button class="toolbar-btn" id="doc-find-case" data-i18n-title="doc.findCase" title="Match Case" style="font-size:10px;opacity:0.6">Aa</button>
           <button class="toolbar-btn" id="doc-find-prev" title="Previous">&#9650;</button>
           <button class="toolbar-btn" id="doc-find-next" title="Next">&#9660;</button>
           <span id="doc-find-count" class="doc-find-count"></span>
@@ -416,28 +416,28 @@
           <option value="28">28</option>
           <option value="36">36</option>
         </select>
-        <button class="toolbar-btn doc-cmd" id="sheet-bold" title="Bold"><b>B</b></button>
-        <button class="toolbar-btn" id="sheet-italic" title="Italic"><i>I</i></button>
-        <button class="toolbar-btn" id="sheet-underline" title="Underline"><u>U</u></button>
-        <button class="toolbar-btn" id="sheet-strikethrough" title="Strikethrough"><s>S</s></button>
-        <button class="toolbar-btn" id="sheet-format-painter" title="Format Painter (copy formatting)" style="font-size:11px">🖌</button>
-        <button class="toolbar-btn" id="sheet-wrap" title="Wrap Text" style="font-size:10px">↩ Wrap</button>
-        <button class="toolbar-btn doc-cmd" id="sheet-align-left" title="Align Left">&#9776;</button>
-        <button class="toolbar-btn doc-cmd" id="sheet-align-center" title="Align Center">&#9776;</button>
-        <button class="toolbar-btn doc-cmd" id="sheet-align-right" title="Align Right">&#9776;</button>
-        <button class="toolbar-btn" id="sheet-indent-inc" title="Increase Indent" style="font-size:11px">→|</button>
-        <button class="toolbar-btn" id="sheet-indent-dec" title="Decrease Indent" style="font-size:11px">|←</button>
+        <button class="toolbar-btn doc-cmd" id="sheet-bold" data-i18n-title="doc.bold" title="Bold"><b>B</b></button>
+        <button class="toolbar-btn" id="sheet-italic" data-i18n-title="doc.italic" title="Italic"><i>I</i></button>
+        <button class="toolbar-btn" id="sheet-underline" data-i18n-title="doc.underline" title="Underline"><u>U</u></button>
+        <button class="toolbar-btn" id="sheet-strikethrough" data-i18n-title="doc.strikethrough" title="Strikethrough"><s>S</s></button>
+        <button class="toolbar-btn" id="sheet-format-painter" data-i18n-title="sheet.formatPainter" title="Format Painter (copy formatting)" style="font-size:11px">🖌</button>
+        <button class="toolbar-btn" id="sheet-wrap" data-i18n-title="sheet.wrapText" title="Wrap Text" style="font-size:10px">↩ Wrap</button>
+        <button class="toolbar-btn doc-cmd" id="sheet-align-left" data-i18n-title="doc.alignLeft" title="Align Left">&#9776;</button>
+        <button class="toolbar-btn doc-cmd" id="sheet-align-center" data-i18n-title="doc.alignCenter" title="Align Center">&#9776;</button>
+        <button class="toolbar-btn doc-cmd" id="sheet-align-right" data-i18n-title="doc.alignRight" title="Align Right">&#9776;</button>
+        <button class="toolbar-btn" id="sheet-indent-inc" data-i18n-title="doc.indent" title="Increase Indent" style="font-size:11px">→|</button>
+        <button class="toolbar-btn" id="sheet-indent-dec" data-i18n-title="doc.outdent" title="Decrease Indent" style="font-size:11px">|←</button>
         <select id="sheet-valign" title="Vertical Align" style="padding:2px;font-size:10px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
           <option value="">V-Align</option>
           <option value="top">Top</option>
           <option value="middle">Middle</option>
           <option value="bottom">Bottom</option>
         </select>
-        <button class="toolbar-btn" id="sheet-clear-format" title="Clear Formatting" style="font-size:10px">⊘ Clear</button>
+        <button class="toolbar-btn" id="sheet-clear-format" data-i18n-title="doc.clearFormat" title="Clear Formatting" style="font-size:10px">⊘ Clear</button>
         <div class="toolbar-divider"></div>
-        <input type="color" id="sheet-bg-color" value="#ffffff" title="Cell Background">
-        <input type="color" id="sheet-text-color" value="#000000" title="Text Color">
-        <button class="toolbar-btn" id="sheet-borders" title="Cell Borders" style="font-size:11px">⊞</button>
+        <input type="color" id="sheet-bg-color" value="#ffffff" data-i18n-title="sheet.cellBg" title="Cell Background">
+        <input type="color" id="sheet-text-color" value="#000000" data-i18n-title="doc.textColor" title="Text Color">
+        <button class="toolbar-btn" id="sheet-borders" data-i18n-title="sheet.borders" title="Cell Borders" style="font-size:11px">⊞</button>
         <select id="sheet-number-format" title="Number Format" style="padding:2px;font-size:11px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
           <option value="">Auto</option>
           <option value="number">Number (1,234.56)</option>
@@ -453,18 +453,18 @@
           <option value="text">Plain Text</option>
         </select>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="sheet-add-row" title="Add Row">+R</button>
-        <button class="toolbar-btn" id="sheet-add-col" title="Add Column">+C</button>
-        <button class="toolbar-btn" id="sheet-del-row" title="Delete Row">-R</button>
-        <button class="toolbar-btn" id="sheet-del-col" title="Delete Column">-C</button>
+        <button class="toolbar-btn" id="sheet-add-row" data-i18n-title="sheet.addRow" title="Add Row">+R</button>
+        <button class="toolbar-btn" id="sheet-add-col" data-i18n-title="sheet.addCol" title="Add Column">+C</button>
+        <button class="toolbar-btn" id="sheet-del-row" data-i18n-title="sheet.delRow" title="Delete Row">-R</button>
+        <button class="toolbar-btn" id="sheet-del-col" data-i18n-title="sheet.delCol" title="Delete Column">-C</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="sheet-sort-asc" title="Sort Ascending">↑</button>
-        <button class="toolbar-btn" id="sheet-sort-desc" title="Sort Descending">↓</button>
-        <button class="toolbar-btn" id="sheet-sort-custom" title="Custom Sort (Multi-level)" style="font-size:11px">Sort+</button>
-        <button class="toolbar-btn" id="sheet-named-range" title="Named Ranges" style="font-size:11px">📌 Name</button>
-        <button class="toolbar-btn" id="sheet-freeze" title="Freeze Rows/Columns (Shift+click for options)">❄</button>
-        <button class="toolbar-btn" id="sheet-freeze-row" title="Freeze Top Row" style="font-size:10px">❄R</button>
-        <button class="toolbar-btn" id="sheet-freeze-col" title="Freeze First Column" style="font-size:10px">❄C</button>
+        <button class="toolbar-btn" id="sheet-sort-asc" data-i18n-title="sheet.sortAsc" title="Sort Ascending">↑</button>
+        <button class="toolbar-btn" id="sheet-sort-desc" data-i18n-title="sheet.sortDesc" title="Sort Descending">↓</button>
+        <button class="toolbar-btn" id="sheet-sort-custom" data-i18n-title="sheet.sortCustom" title="Custom Sort (Multi-level)" style="font-size:11px">Sort+</button>
+        <button class="toolbar-btn" id="sheet-named-range" data-i18n-title="sheet.namedRange" title="Named Ranges" style="font-size:11px">📌 Name</button>
+        <button class="toolbar-btn" id="sheet-freeze" data-i18n-title="sheet.freeze" title="Freeze Rows/Columns (Shift+click for options)">❄</button>
+        <button class="toolbar-btn" id="sheet-freeze-row" data-i18n-title="sheet.freezeRow" title="Freeze Top Row" style="font-size:10px">❄R</button>
+        <button class="toolbar-btn" id="sheet-freeze-col" data-i18n-title="sheet.freezeCol" title="Freeze First Column" style="font-size:10px">❄C</button>
         <div class="toolbar-divider"></div>
         <select id="sheet-num-format" title="Number Format" style="font-size:11px;padding:2px 4px">
           <option value="general">General</option>
@@ -473,42 +473,42 @@
           <option value="percent">Percent (12.3%)</option>
           <option value="date">Date (2024-01-01)</option>
         </select>
-        <button class="toolbar-btn" id="sheet-merge" title="Merge/Unmerge Cells" style="font-size:11px">⊞</button>
-        <button class="toolbar-btn" id="sheet-banded-rows" title="Alternating Row Colors" style="font-size:11px">≡</button>
-        <button class="toolbar-btn" id="sheet-cond-fmt" title="Conditional Formatting" style="font-size:11px">🎨</button>
-        <button class="toolbar-btn" id="sheet-chart" title="Insert Chart" style="font-size:11px">📈</button>
-        <button class="toolbar-btn" id="sheet-filter" title="Auto Filter" style="font-size:11px">🔽</button>
-        <button class="toolbar-btn" id="sheet-find" title="Find & Replace (⌘F)" style="font-size:11px">🔍</button>
+        <button class="toolbar-btn" id="sheet-merge" data-i18n-title="sheet.merge" title="Merge/Unmerge Cells" style="font-size:11px">⊞</button>
+        <button class="toolbar-btn" id="sheet-banded-rows" data-i18n-title="sheet.bandedRows" title="Alternating Row Colors" style="font-size:11px">≡</button>
+        <button class="toolbar-btn" id="sheet-cond-fmt" data-i18n-title="sheet.condFormat" title="Conditional Formatting" style="font-size:11px">🎨</button>
+        <button class="toolbar-btn" id="sheet-chart" data-i18n-title="sheet.chart" title="Insert Chart" style="font-size:11px">📈</button>
+        <button class="toolbar-btn" id="sheet-filter" data-i18n-title="sheet.filter" title="Auto Filter" style="font-size:11px">🔽</button>
+        <button class="toolbar-btn" id="sheet-find" data-i18n-title="sheet.findReplace" title="Find & Replace (⌘F)" style="font-size:11px">🔍</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="sheet-undo" title="Undo (⌘Z)" style="font-size:11px">↩</button>
-        <button class="toolbar-btn" id="sheet-redo" title="Redo (⌘⇧Z)" style="font-size:11px">↪</button>
+        <button class="toolbar-btn" id="sheet-undo" data-i18n-title="tip.undo" title="Undo (⌘Z)" style="font-size:11px">↩</button>
+        <button class="toolbar-btn" id="sheet-redo" data-i18n-title="tip.redo" title="Redo (⌘⇧Z)" style="font-size:11px">↪</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="sheet-import-csv" title="Import CSV" style="font-size:11px">CSV↑</button>
-        <button class="toolbar-btn" id="sheet-export-csv" title="Export CSV" style="font-size:11px">CSV↓</button>
-        <button class="toolbar-btn" id="sheet-export-xlsx" title="Export XLSX" style="font-size:11px">XLSX↓</button>
-        <button class="toolbar-btn" id="sheet-export-dialog" title="Export (CSV/JSON with options)" style="font-size:11px">📤 Export</button>
-        <button class="toolbar-btn" id="sheet-slicer" title="Insert Slicer Filter" style="font-size:11px">🔘 Slicer</button>
-        <button class="toolbar-btn" id="sheet-sparkline" title="Insert Sparkline" style="font-size:11px">📊</button>
-        <button class="toolbar-btn" id="sheet-insert-chart" title="Insert Chart" style="font-size:11px">📈 Chart</button>
-        <button class="toolbar-btn" id="sheet-pivot" title="Pivot Table" style="font-size:11px">📊 Pivot</button>
-        <button class="toolbar-btn" id="sheet-pivot-refresh" title="Refresh Pivot Table" style="font-size:11px">🔄 Refresh</button>
-        <button class="toolbar-btn" id="sheet-group-rows" title="Group/Ungroup Rows" style="font-size:11px">⊟ Group</button>
-        <button class="toolbar-btn" id="sheet-merge-cells" title="Merge Cells" style="font-size:11px">⊞ Merge</button>
-        <button class="toolbar-btn" id="sheet-cond-format" title="Conditional Formatting" style="font-size:11px">🎨 CFormat</button>
-        <button class="toolbar-btn" id="sheet-goal-seek" title="Goal Seek (What-If)" style="font-size:11px">🎯 Goal</button>
-        <button class="toolbar-btn" id="sheet-subtotals" title="Subtotals" style="font-size:11px">∑ Sub</button>
-        <button class="toolbar-btn" id="sheet-transpose" title="Transpose Selection" style="font-size:11px">⤡ T</button>
-        <button class="toolbar-btn" id="sheet-remove-dups" title="Remove Duplicates" style="font-size:11px">🔄</button>
-        <button class="toolbar-btn" id="sheet-text-to-cols" title="Text to Columns" style="font-size:11px">↔️</button>
-        <button class="toolbar-btn" id="sheet-flash-fill" title="Flash Fill (Ctrl+E)" style="font-size:11px">⚡ Fill</button>
-        <button class="toolbar-btn" id="sheet-trace-precedents" title="Trace Precedents" style="font-size:11px">⬆ Prec</button>
-        <button class="toolbar-btn" id="sheet-trace-dependents" title="Trace Dependents" style="font-size:11px">⬇ Dep</button>
-        <button class="toolbar-btn" id="sheet-clear-arrows" title="Clear Trace Arrows" style="font-size:11px">✕ Arr</button>
-        <button class="toolbar-btn" id="sheet-print" title="Print Sheet" style="font-size:11px">🖨</button>
-        <button class="toolbar-btn" id="sheet-protect" title="Protect Sheet" style="font-size:11px">🔒 Protect</button>
-        <button class="toolbar-btn" id="sheet-data-valid" title="Data Validation" style="font-size:11px">✓ Valid</button>
-        <button class="toolbar-btn" id="sheet-cf-manager" title="Manage CF Rules" style="font-size:11px">📋 Rules</button>
-        <button class="toolbar-btn" id="sheet-find-replace" title="Find & Replace (⌘H)" style="font-size:11px">🔍</button>
+        <button class="toolbar-btn" id="sheet-import-csv" data-i18n-title="sheet.importCsv" title="Import CSV" style="font-size:11px">CSV↑</button>
+        <button class="toolbar-btn" id="sheet-export-csv" data-i18n-title="sheet.exportCsv" title="Export CSV" style="font-size:11px">CSV↓</button>
+        <button class="toolbar-btn" id="sheet-export-xlsx" data-i18n-title="sheet.exportXlsx" title="Export XLSX" style="font-size:11px">XLSX↓</button>
+        <button class="toolbar-btn" id="sheet-export-dialog" data-i18n-title="sheet.exportDialog" title="Export (CSV/JSON with options)" style="font-size:11px">📤 Export</button>
+        <button class="toolbar-btn" id="sheet-slicer" data-i18n-title="sheet.slicer" title="Insert Slicer Filter" style="font-size:11px">🔘 Slicer</button>
+        <button class="toolbar-btn" id="sheet-sparkline" data-i18n-title="sheet.sparkline" title="Insert Sparkline" style="font-size:11px">📊</button>
+        <button class="toolbar-btn" id="sheet-insert-chart" data-i18n-title="sheet.chart" title="Insert Chart" style="font-size:11px">📈 Chart</button>
+        <button class="toolbar-btn" id="sheet-pivot" data-i18n-title="sheet.pivot" title="Pivot Table" style="font-size:11px">📊 Pivot</button>
+        <button class="toolbar-btn" id="sheet-pivot-refresh" data-i18n-title="sheet.pivotRefresh" title="Refresh Pivot Table" style="font-size:11px">🔄 Refresh</button>
+        <button class="toolbar-btn" id="sheet-group-rows" data-i18n-title="sheet.groupRows" title="Group/Ungroup Rows" style="font-size:11px">⊟ Group</button>
+        <button class="toolbar-btn" id="sheet-merge-cells" data-i18n-title="sheet.merge" title="Merge Cells" style="font-size:11px">⊞ Merge</button>
+        <button class="toolbar-btn" id="sheet-cond-format" data-i18n-title="sheet.condFormat" title="Conditional Formatting" style="font-size:11px">🎨 CFormat</button>
+        <button class="toolbar-btn" id="sheet-goal-seek" data-i18n-title="sheet.goalSeek" title="Goal Seek (What-If)" style="font-size:11px">🎯 Goal</button>
+        <button class="toolbar-btn" id="sheet-subtotals" data-i18n-title="sheet.subtotals" title="Subtotals" style="font-size:11px">∑ Sub</button>
+        <button class="toolbar-btn" id="sheet-transpose" data-i18n-title="sheet.transpose" title="Transpose Selection" style="font-size:11px">⤡ T</button>
+        <button class="toolbar-btn" id="sheet-remove-dups" data-i18n-title="sheet.removeDups" title="Remove Duplicates" style="font-size:11px">🔄</button>
+        <button class="toolbar-btn" id="sheet-text-to-cols" data-i18n-title="sheet.textToCols" title="Text to Columns" style="font-size:11px">↔️</button>
+        <button class="toolbar-btn" id="sheet-flash-fill" data-i18n-title="sheet.flashFill" title="Flash Fill (Ctrl+E)" style="font-size:11px">⚡ Fill</button>
+        <button class="toolbar-btn" id="sheet-trace-precedents" data-i18n-title="sheet.tracePrecedents" title="Trace Precedents" style="font-size:11px">⬆ Prec</button>
+        <button class="toolbar-btn" id="sheet-trace-dependents" data-i18n-title="sheet.traceDependents" title="Trace Dependents" style="font-size:11px">⬇ Dep</button>
+        <button class="toolbar-btn" id="sheet-clear-arrows" data-i18n-title="sheet.clearArrows" title="Clear Trace Arrows" style="font-size:11px">✕ Arr</button>
+        <button class="toolbar-btn" id="sheet-print" data-i18n-title="sheet.print" title="Print Sheet" style="font-size:11px">🖨</button>
+        <button class="toolbar-btn" id="sheet-protect" data-i18n-title="sheet.protect" title="Protect Sheet" style="font-size:11px">🔒 Protect</button>
+        <button class="toolbar-btn" id="sheet-data-valid" data-i18n-title="sheet.dataValid" title="Data Validation" style="font-size:11px">✓ Valid</button>
+        <button class="toolbar-btn" id="sheet-cf-manager" data-i18n-title="sheet.cfManager" title="Manage CF Rules" style="font-size:11px">📋 Rules</button>
+        <button class="toolbar-btn" id="sheet-find-replace" data-i18n-title="sheet.findReplace" title="Find & Replace (⌘H)" style="font-size:11px">🔍</button>
       </div>
       <!-- Sheet Find/Replace Bar -->
       <div id="sheet-find-bar" class="doc-find-bar hidden" style="padding:6px 12px;background:var(--pane-header-bg);border-bottom:1px solid var(--border-color)">
@@ -541,9 +541,9 @@
     <!-- Slide View -->
     <div id="view-slide" class="app-view">
       <div class="slide-toolbar">
-        <button class="toolbar-btn" id="slide-add" title="New Slide">+ Slide</button>
-        <button class="toolbar-btn" id="slide-del" title="Delete Slide">- Slide</button>
-        <button class="toolbar-btn" id="slide-dup" title="Duplicate Slide">⧉</button>
+        <button class="toolbar-btn" id="slide-add" data-i18n-title="slide.addSlide" title="New Slide">+ Slide</button>
+        <button class="toolbar-btn" id="slide-del" data-i18n-title="slide.deleteSlide" title="Delete Slide">- Slide</button>
+        <button class="toolbar-btn" id="slide-dup" data-i18n-title="slide.dupSlide" title="Duplicate Slide">⧉</button>
         <div class="toolbar-divider"></div>
         <select id="slide-layout" title="Layout">
           <option value="title">Title Slide</option>
@@ -557,7 +557,7 @@
           <option value="big-number">Big Number</option>
           <option value="quote">Quote</option>
         </select>
-        <button class="toolbar-btn" id="slide-layout-picker" title="Layout Gallery" style="font-size:11px">&#8862; Layouts</button>
+        <button class="toolbar-btn" id="slide-layout-picker" data-i18n-title="slide.layoutGallery" title="Layout Gallery" style="font-size:11px">&#8862; Layouts</button>
         <select id="slide-theme" title="Theme">
           <option value="default">Default</option>
           <option value="dark">Dark</option>
@@ -598,24 +598,24 @@
         </select>
         <button class="toolbar-btn" id="slide-transition-apply-all" title="Apply transition to all slides" style="font-size:10px;padding:0 6px">All</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn slide-fmt-cmd" data-cmd="bold" title="Bold"><b>B</b></button>
-        <button class="toolbar-btn slide-fmt-cmd" data-cmd="italic" title="Italic"><i>I</i></button>
-        <button class="toolbar-btn slide-fmt-cmd" data-cmd="underline" title="Underline"><u>U</u></button>
+        <button class="toolbar-btn slide-fmt-cmd" data-cmd="bold" data-i18n-title="doc.bold" title="Bold"><b>B</b></button>
+        <button class="toolbar-btn slide-fmt-cmd" data-cmd="italic" data-i18n-title="doc.italic" title="Italic"><i>I</i></button>
+        <button class="toolbar-btn slide-fmt-cmd" data-cmd="underline" data-i18n-title="doc.underline" title="Underline"><u>U</u></button>
         <input type="color" id="slide-text-color" value="#333333" title="Text Color" style="width:26px;height:26px;border:1px solid var(--border-color);border-radius:4px;cursor:pointer">
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="slide-insert-image" title="Insert Image">🖼</button>
-        <button class="toolbar-btn" id="slide-insert-shape" title="Insert Shape">⬜</button>
-        <button class="toolbar-btn" id="slide-draw-shapes" title="Drawing Tools" style="font-size:11px">🔷 Draw</button>
-        <button class="toolbar-btn" id="slide-insert-table" title="Insert Table">▦</button>
-        <button class="toolbar-btn" id="slide-insert-video" title="Insert Video URL" style="font-size:11px">🎬</button>
-        <button class="toolbar-btn" id="slide-master" title="Master Slides" style="font-size:11px">🎨 Master</button>
-        <button class="toolbar-btn" id="slide-gradient-bg" title="Gradient Background" style="font-size:11px">🌈 BG</button>
-        <button class="toolbar-btn" id="slide-layer-up" title="Bring Forward" style="font-size:11px">⬆</button>
-        <button class="toolbar-btn" id="slide-layer-down" title="Send Backward" style="font-size:11px">⬇</button>
-        <button class="toolbar-btn" id="slide-align" title="Align Objects" style="font-size:11px">⊞</button>
+        <button class="toolbar-btn" id="slide-insert-image" data-i18n-title="slide.insertImage" title="Insert Image">🖼</button>
+        <button class="toolbar-btn" id="slide-insert-shape" data-i18n-title="slide.insertShape" title="Insert Shape">⬜</button>
+        <button class="toolbar-btn" id="slide-draw-shapes" data-i18n-title="slide.drawTools" title="Drawing Tools" style="font-size:11px">🔷 Draw</button>
+        <button class="toolbar-btn" id="slide-insert-table" data-i18n-title="slide.insertTable" title="Insert Table">▦</button>
+        <button class="toolbar-btn" id="slide-insert-video" data-i18n-title="slide.insertVideo" title="Insert Video URL" style="font-size:11px">🎬</button>
+        <button class="toolbar-btn" id="slide-master" data-i18n-title="slide.masterSlides" title="Master Slides" style="font-size:11px">🎨 Master</button>
+        <button class="toolbar-btn" id="slide-gradient-bg" data-i18n-title="slide.gradientBg" title="Gradient Background" style="font-size:11px">🌈 BG</button>
+        <button class="toolbar-btn" id="slide-layer-up" data-i18n-title="slide.bringForward" title="Bring Forward" style="font-size:11px">⬆</button>
+        <button class="toolbar-btn" id="slide-layer-down" data-i18n-title="slide.sendBackward" title="Send Backward" style="font-size:11px">⬇</button>
+        <button class="toolbar-btn" id="slide-align" data-i18n-title="slide.alignObjects" title="Align Objects" style="font-size:11px">⊞</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="slide-anim" title="Animations" style="font-size:11px">✨ Anim</button>
-        <button class="toolbar-btn" id="slide-anim-timeline" title="Animation Timeline" style="font-size:11px">🎬 Timeline</button>
+        <button class="toolbar-btn" id="slide-anim" data-i18n-title="slide.animations" title="Animations" style="font-size:11px">✨ Anim</button>
+        <button class="toolbar-btn" id="slide-anim-timeline" data-i18n-title="slide.animTimeline" title="Animation Timeline" style="font-size:11px">🎬 Timeline</button>
         <div class="toolbar-divider"></div>
         <select id="slide-size" title="Slide Size" style="font-size:11px;padding:2px 4px">
           <option value="16:9" selected>16:9 (Widescreen)</option>
@@ -624,27 +624,27 @@
           <option value="a4">A4 Portrait</option>
         </select>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="slide-present" title="Present (F5)">▶ Present</button>
-        <button class="toolbar-btn" id="slide-sorter" title="Slide Sorter View" style="font-size:11px">⊞ Sorter</button>
-        <button class="toolbar-btn" id="slide-speaker-view" title="Speaker View" style="font-size:11px">🎤</button>
-        <button class="toolbar-btn" id="slide-presenter-view" title="Presenter View (separate window)" style="font-size:11px">🖥 Presenter</button>
-        <button class="toolbar-btn" id="slide-rehearse" title="Rehearse Timings" style="font-size:11px">⏱️</button>
-        <button class="toolbar-btn" id="slide-pres-timer" title="Presentation Timer" style="font-size:11px">⏰ Timer</button>
-        <button class="toolbar-btn" id="slide-toggle-grid" title="Toggle Snap-to-Grid Overlay" style="font-size:11px"># Grid</button>
+        <button class="toolbar-btn" id="slide-present" data-i18n-title="slide.present" title="Present (F5)">▶ Present</button>
+        <button class="toolbar-btn" id="slide-sorter" data-i18n-title="slide.sorter" title="Slide Sorter View" style="font-size:11px">⊞ Sorter</button>
+        <button class="toolbar-btn" id="slide-speaker-view" data-i18n-title="slide.speakerView" title="Speaker View" style="font-size:11px">🎤</button>
+        <button class="toolbar-btn" id="slide-presenter-view" data-i18n-title="slide.presenterView" title="Presenter View (separate window)" style="font-size:11px">🖥 Presenter</button>
+        <button class="toolbar-btn" id="slide-rehearse" data-i18n-title="slide.rehearse" title="Rehearse Timings" style="font-size:11px">⏱️</button>
+        <button class="toolbar-btn" id="slide-pres-timer" data-i18n-title="slide.presTimer" title="Presentation Timer" style="font-size:11px">⏰ Timer</button>
+        <button class="toolbar-btn" id="slide-toggle-grid" data-i18n-title="slide.grid" title="Toggle Snap-to-Grid Overlay" style="font-size:11px"># Grid</button>
         <select id="slide-grid-size" title="Grid Size" style="font-size:10px;padding:2px 4px;width:50px">
           <option value="10">10px</option>
           <option value="20" selected>20px</option>
           <option value="50">50px</option>
         </select>
-        <button class="toolbar-btn" id="slide-smart-guides-toggle" title="Toggle Smart Guides" style="font-size:11px">📏 Guides</button>
-        <button class="toolbar-btn" id="slide-master-editor" title="Edit Slide Master" style="font-size:11px">🎓 Master Edit</button>
-        <button class="toolbar-btn" id="slide-view-toggle" title="Toggle Normal/Sorter View" style="font-size:11px">⊞ View</button>
-        <button class="toolbar-btn" id="slide-obj-group" title="Group Selected (Ctrl+G)" style="font-size:11px">Group</button>
-        <button class="toolbar-btn" id="slide-obj-ungroup" title="Ungroup (Ctrl+Shift+G)" style="font-size:11px">Ungroup</button>
-        <button class="toolbar-btn" id="slide-shape-lib" title="Shape Library" style="font-size:11px">Shapes+</button>
-        <button class="toolbar-btn" id="slide-export-img" title="Export as Image" style="font-size:11px">📷</button>
-        <button class="toolbar-btn" id="slide-export-pptx" title="Export as PPTX" style="font-size:11px">PPTX↓</button>
-        <button class="toolbar-btn" id="slide-print-handout" title="Print Handout" style="font-size:11px">🖨</button>
+        <button class="toolbar-btn" id="slide-smart-guides-toggle" data-i18n-title="slide.smartGuides" title="Toggle Smart Guides" style="font-size:11px">📏 Guides</button>
+        <button class="toolbar-btn" id="slide-master-editor" data-i18n-title="slide.masterEdit" title="Edit Slide Master" style="font-size:11px">🎓 Master Edit</button>
+        <button class="toolbar-btn" id="slide-view-toggle" data-i18n-title="slide.viewToggle" title="Toggle Normal/Sorter View" style="font-size:11px">⊞ View</button>
+        <button class="toolbar-btn" id="slide-obj-group" data-i18n-title="slide.group" title="Group Selected (Ctrl+G)" style="font-size:11px">Group</button>
+        <button class="toolbar-btn" id="slide-obj-ungroup" data-i18n-title="slide.ungroup" title="Ungroup (Ctrl+Shift+G)" style="font-size:11px">Ungroup</button>
+        <button class="toolbar-btn" id="slide-shape-lib" data-i18n-title="slide.shapeLib" title="Shape Library" style="font-size:11px">Shapes+</button>
+        <button class="toolbar-btn" id="slide-export-img" data-i18n-title="slide.exportImg" title="Export as Image" style="font-size:11px">📷</button>
+        <button class="toolbar-btn" id="slide-export-pptx" data-i18n-title="slide.exportPptx" title="Export as PPTX" style="font-size:11px">PPTX↓</button>
+        <button class="toolbar-btn" id="slide-print-handout" data-i18n-title="slide.printHandout" title="Print Handout" style="font-size:11px">🖨</button>
         <label style="font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:4px" title="Auto-advance (seconds, 0=manual)">⏱<input type="number" id="slide-auto-advance" min="0" max="60" value="0" style="width:40px;padding:2px 4px;font-size:11px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">s</label>
       </div>
       <!-- Rich text formatting toolbar (shown when text selected in slide) -->
@@ -728,43 +728,43 @@
       <div class="pdf-toolbar">
         <button class="toolbar-btn" id="pdf-open" data-i18n-title="pdf.openPdf" title="Open PDF"><span data-i18n="pdf.openPdf">Open PDF</span></button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="pdf-prev" title="Previous Page">&larr;</button>
+        <button class="toolbar-btn" id="pdf-prev" data-i18n-title="pdf.prevPage" title="Previous Page">&larr;</button>
         <span class="pdf-page-info"><span id="pdf-page-num">0</span> / <span id="pdf-page-count">0</span></span>
-        <button class="toolbar-btn" id="pdf-next" title="Next Page">&rarr;</button>
+        <button class="toolbar-btn" id="pdf-next" data-i18n-title="pdf.nextPage" title="Next Page">&rarr;</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="pdf-zoom-out" title="Zoom Out">-</button>
+        <button class="toolbar-btn" id="pdf-zoom-out" data-i18n-title="tip.zoomOut" title="Zoom Out">-</button>
         <span class="pdf-zoom-info" id="pdf-zoom-info">100%</span>
-        <button class="toolbar-btn" id="pdf-zoom-in" title="Zoom In">+</button>
-        <button class="toolbar-btn" id="pdf-fit" title="Fit Width">Fit</button>
+        <button class="toolbar-btn" id="pdf-zoom-in" data-i18n-title="tip.zoomIn" title="Zoom In">+</button>
+        <button class="toolbar-btn" id="pdf-fit" data-i18n-title="pdf.fitWidth" title="Fit Width">Fit</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="pdf-convert-md" title="Convert Markdown to PDF">MD → PDF</button>
-        <button class="toolbar-btn" id="pdf-convert-doc" title="Convert Document to PDF">Doc → PDF</button>
+        <button class="toolbar-btn" id="pdf-convert-md" data-i18n-title="pdf.convertMd" title="Convert Markdown to PDF">MD → PDF</button>
+        <button class="toolbar-btn" id="pdf-convert-doc" data-i18n-title="pdf.convertDoc" title="Convert Document to PDF">Doc → PDF</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="pdf-rotate" title="Rotate Page 90°">⟳ Rotate</button>
-        <button class="toolbar-btn" id="pdf-deskew" title="Auto-straighten skewed page">⊿ Deskew</button>
-        <button class="toolbar-btn" id="pdf-delete-page" title="Delete Current Page">✕ Del</button>
-        <button class="toolbar-btn" id="pdf-insert-blank" title="Insert Blank Page after current">＋ Blank</button>
-        <button class="toolbar-btn" id="pdf-extract" title="Extract Current Page as PDF">⇥ Extract</button>
+        <button class="toolbar-btn" id="pdf-rotate" data-i18n-title="pdf.rotate" title="Rotate Page 90°">⟳ Rotate</button>
+        <button class="toolbar-btn" id="pdf-deskew" data-i18n-title="pdf.deskew" title="Auto-straighten skewed page">⊿ Deskew</button>
+        <button class="toolbar-btn" id="pdf-delete-page" data-i18n-title="pdf.deletePage" title="Delete Current Page">✕ Del</button>
+        <button class="toolbar-btn" id="pdf-insert-blank" data-i18n-title="pdf.insertBlank" title="Insert Blank Page after current">＋ Blank</button>
+        <button class="toolbar-btn" id="pdf-extract" data-i18n-title="pdf.extract" title="Extract Current Page as PDF">⇥ Extract</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn pdf-annot-btn" id="pdf-highlight" title="Highlight Text" data-tool="highlight">🖍 Highlight</button>
-        <button class="toolbar-btn pdf-annot-btn" id="pdf-underline" title="Underline Text" data-tool="underline">U̲ Underline</button>
-        <button class="toolbar-btn pdf-annot-btn" id="pdf-strikethrough" title="Strikethrough Text" data-tool="strikethrough">S̶ Strike</button>
-        <button class="toolbar-btn pdf-annot-btn" id="pdf-sticky-note" title="Add Sticky Note" data-tool="sticky">📝 Note</button>
-        <button class="toolbar-btn pdf-annot-btn" id="pdf-freehand" title="Freehand Drawing" data-tool="freehand">✏ Draw</button>
-        <button class="toolbar-btn" id="pdf-clear-annot" title="Clear Annotations on Page">🗑 Clear</button>
+        <button class="toolbar-btn pdf-annot-btn" id="pdf-highlight" data-i18n-title="pdf.highlight" title="Highlight Text" data-tool="highlight">🖍 Highlight</button>
+        <button class="toolbar-btn pdf-annot-btn" id="pdf-underline" data-i18n-title="pdf.underline" title="Underline Text" data-tool="underline">U̲ Underline</button>
+        <button class="toolbar-btn pdf-annot-btn" id="pdf-strikethrough" data-i18n-title="pdf.strikethrough" title="Strikethrough Text" data-tool="strikethrough">S̶ Strike</button>
+        <button class="toolbar-btn pdf-annot-btn" id="pdf-sticky-note" data-i18n-title="pdf.stickyNote" title="Add Sticky Note" data-tool="sticky">📝 Note</button>
+        <button class="toolbar-btn pdf-annot-btn" id="pdf-freehand" data-i18n-title="pdf.freehand" title="Freehand Drawing" data-tool="freehand">✏ Draw</button>
+        <button class="toolbar-btn" id="pdf-clear-annot" data-i18n-title="pdf.clearAnnot" title="Clear Annotations on Page">🗑 Clear</button>
         <div class="toolbar-divider"></div>
         <!-- Form Filling -->
-        <button class="toolbar-btn pdf-annot-btn" id="pdf-form-fill" title="Detect & Fill Form Fields" data-tool="formfill">📋 Forms</button>
+        <button class="toolbar-btn pdf-annot-btn" id="pdf-form-fill" data-i18n-title="pdf.formFill" title="Detect & Fill Form Fields" data-tool="formfill">📋 Forms</button>
         <!-- Digital Signature -->
-        <button class="toolbar-btn" id="pdf-signature" title="Add Signature">✍ Sign</button>
+        <button class="toolbar-btn" id="pdf-signature" data-i18n-title="pdf.addSignature" title="Add Signature">✍ Sign</button>
         <!-- Redaction -->
-        <button class="toolbar-btn pdf-annot-btn" id="pdf-redact" title="Redact Sensitive Content" data-tool="redact">██ Redact</button>
-        <button class="toolbar-btn" id="pdf-redact-apply" title="Apply Redactions Permanently">Apply Redact</button>
+        <button class="toolbar-btn pdf-annot-btn" id="pdf-redact" data-i18n-title="pdf.redact" title="Redact Sensitive Content" data-tool="redact">██ Redact</button>
+        <button class="toolbar-btn" id="pdf-redact-apply" data-i18n-title="pdf.redactApply" title="Apply Redactions Permanently">Apply Redact</button>
         <!-- Stamp Tool -->
-        <button class="toolbar-btn" id="pdf-stamp" title="Add Stamp">🔖 Stamp</button>
+        <button class="toolbar-btn" id="pdf-stamp" data-i18n-title="pdf.addStamp" title="Add Stamp">🔖 Stamp</button>
         <div class="toolbar-divider"></div>
         <!-- OCR -->
-        <button class="toolbar-btn" id="pdf-ocr" title="OCR (Recognize Text)">🔍 OCR</button>
+        <button class="toolbar-btn" id="pdf-ocr" data-i18n-title="pdf.ocr" title="OCR (Recognize Text)">🔍 OCR</button>
         <select id="pdf-ocr-lang" title="OCR Language" style="font-size:11px;padding:2px 4px;border:1px solid var(--border-color);border-radius:4px;background:var(--editor-bg,#fff);color:var(--text-primary)">
           <option value="eng">English</option>
           <option value="kor">한국어</option>
@@ -776,13 +776,13 @@
         </select>
         <div class="toolbar-divider"></div>
         <!-- Bookmarks -->
-        <button class="toolbar-btn" id="pdf-bookmarks-toggle" title="Toggle Bookmarks Panel">📑 Bookmarks</button>
-        <button class="toolbar-btn" id="pdf-bookmark-add" title="Add Bookmark at Current Page">＋ Bookmark</button>
+        <button class="toolbar-btn" id="pdf-bookmarks-toggle" data-i18n-title="pdf.bookmarksToggle" title="Toggle Bookmarks Panel">📑 Bookmarks</button>
+        <button class="toolbar-btn" id="pdf-bookmark-add" data-i18n-title="pdf.bookmarkAdd" title="Add Bookmark at Current Page">＋ Bookmark</button>
         <div class="toolbar-divider"></div>
         <!-- Merge / Split / Compare -->
-        <button class="toolbar-btn" id="pdf-merge" title="Merge PDFs">⊕ Merge</button>
-        <button class="toolbar-btn" id="pdf-split" title="Split PDF">✂ Split</button>
-        <button class="toolbar-btn" id="pdf-compare" title="Compare PDFs">⇄ Compare</button>
+        <button class="toolbar-btn" id="pdf-merge" data-i18n-title="pdf.merge" title="Merge PDFs">⊕ Merge</button>
+        <button class="toolbar-btn" id="pdf-split" data-i18n-title="pdf.split" title="Split PDF">✂ Split</button>
+        <button class="toolbar-btn" id="pdf-compare" data-i18n-title="pdf.compare" title="Compare PDFs">⇄ Compare</button>
         <div class="toolbar-divider"></div>
         <input type="text" id="pdf-search-input" class="pdf-search-input" data-i18n-placeholder="pdf.searchText" placeholder="Search text…" />
         <button class="toolbar-btn" id="pdf-search-prev" title="Previous Match">◀</button>
@@ -958,37 +958,37 @@
     <div id="view-photo" class="app-view">
       <div id="photo-container" class="photo-container">
       <div class="photo-toolbar">
-        <button class="toolbar-btn" id="photo-open" title="Open Image">📂 Open</button>
+        <button class="toolbar-btn" id="photo-open" data-i18n-title="photo.open" title="Open Image">📂 Open</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="photo-undo" title="Undo" disabled>↩</button>
-        <button class="toolbar-btn" id="photo-redo" title="Redo" disabled>↪</button>
-        <button class="toolbar-btn" id="photo-reset" title="Reset">⟲ Reset</button>
+        <button class="toolbar-btn" id="photo-undo" data-i18n-title="tip.undo" title="Undo" disabled>↩</button>
+        <button class="toolbar-btn" id="photo-redo" data-i18n-title="tip.redo" title="Redo" disabled>↪</button>
+        <button class="toolbar-btn" id="photo-reset" data-i18n-title="photo.reset" title="Reset">⟲ Reset</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="photo-compare" title="Compare (hold)">👁 Compare</button>
+        <button class="toolbar-btn" id="photo-compare" data-i18n-title="photo.compare" title="Compare (hold)">👁 Compare</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="photo-rotate-cw" title="Rotate 90°">⟳</button>
-        <button class="toolbar-btn" id="photo-flip-h" title="Flip Horizontal">↔</button>
-        <button class="toolbar-btn" id="photo-flip-v" title="Flip Vertical">↕</button>
+        <button class="toolbar-btn" id="photo-rotate-cw" data-i18n-title="photo.rotate" title="Rotate 90°">⟳</button>
+        <button class="toolbar-btn" id="photo-flip-h" data-i18n-title="photo.flipH" title="Flip Horizontal">↔</button>
+        <button class="toolbar-btn" id="photo-flip-v" data-i18n-title="photo.flipV" title="Flip Vertical">↕</button>
         <div class="toolbar-divider"></div>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="photo-crop" title="Crop">✂ Crop</button>
-        <button class="toolbar-btn" id="photo-resize" title="Resize">⤢ Resize</button>
-        <button class="toolbar-btn" id="photo-text" title="Text Overlay">T Text</button>
-        <button class="toolbar-btn" id="photo-draw" title="Draw">✏ Draw</button>
-        <button class="toolbar-btn" id="photo-filters" title="Filters">🎨 Filters</button>
-        <button class="toolbar-btn" id="photo-batch" title="Batch">📑 Batch</button>
-        <button class="toolbar-btn" id="photo-gif" title="Create GIF">GIF</button>
+        <button class="toolbar-btn" id="photo-crop" data-i18n-title="photo.crop" title="Crop">✂ Crop</button>
+        <button class="toolbar-btn" id="photo-resize" data-i18n-title="photo.resize" title="Resize">⤢ Resize</button>
+        <button class="toolbar-btn" id="photo-text" data-i18n-title="photo.textOverlay" title="Text Overlay">T Text</button>
+        <button class="toolbar-btn" id="photo-draw" data-i18n-title="photo.draw" title="Draw">✏ Draw</button>
+        <button class="toolbar-btn" id="photo-filters" data-i18n-title="photo.filters" title="Filters">🎨 Filters</button>
+        <button class="toolbar-btn" id="photo-batch" data-i18n-title="photo.batch" title="Batch">📑 Batch</button>
+        <button class="toolbar-btn" id="photo-gif" data-i18n-title="photo.createGif" title="Create GIF">GIF</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="photo-clone" title="Clone/Stamp (Alt+click source)">🖌 Clone</button>
-        <button class="toolbar-btn" id="photo-spot-heal" title="Spot Healing">🩹 Heal</button>
+        <button class="toolbar-btn" id="photo-clone" data-i18n-title="photo.clone" title="Clone/Stamp (Alt+click source)">🖌 Clone</button>
+        <button class="toolbar-btn" id="photo-spot-heal" data-i18n-title="photo.spotHeal" title="Spot Healing">🩹 Heal</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="photo-perspective" title="Perspective Transform">⬦ Perspective</button>
-        <button class="toolbar-btn" id="photo-watermark" title="Add Watermark">💧 Watermark</button>
+        <button class="toolbar-btn" id="photo-perspective" data-i18n-title="photo.perspective" title="Perspective Transform">⬦ Perspective</button>
+        <button class="toolbar-btn" id="photo-watermark" data-i18n-title="photo.watermark" title="Add Watermark">💧 Watermark</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="photo-split-view" title="Before/After Split View">◧ Split</button>
-        <button class="toolbar-btn" id="photo-histogram" title="Toggle Histogram">📊 Hist</button>
+        <button class="toolbar-btn" id="photo-split-view" data-i18n-title="photo.splitView" title="Before/After Split View">◧ Split</button>
+        <button class="toolbar-btn" id="photo-histogram" data-i18n-title="photo.histogram" title="Toggle Histogram">📊 Hist</button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="photo-export" title="Export" style="background:var(--brand-color);color:#fff;border-radius:6px">⬇ Export</button>
+        <button class="toolbar-btn" id="photo-export" data-i18n-title="tip.export" title="Export" style="background:var(--brand-color);color:#fff;border-radius:6px">⬇ Export</button>
       </div>
       <!-- Empty state / Drop zone -->
       <div class="photo-workspace">
