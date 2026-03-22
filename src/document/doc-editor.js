@@ -176,6 +176,11 @@ export function initDocEditor() {
     showWatermarkDialog();
   });
 
+  // Mail Merge
+  document.getElementById('doc-mail-merge')?.addEventListener('click', () => {
+    showMailMergeDialog();
+  });
+
   // Print
   document.getElementById('doc-print')?.addEventListener('click', () => {
     printDocument();
@@ -945,6 +950,144 @@ function showWatermarkDialog() {
     }
     dialog.remove();
   });
+}
+
+// ─── Mail Merge ─────────────────────────────────────────────
+function showMailMergeDialog() {
+  if (!editorEl) return;
+
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay';
+  dlg.innerHTML = `<div class="modal-content" style="width:600px;max-height:85vh;overflow:auto">
+    <h3 style="margin:0 0 4px">Mail Merge</h3>
+    <p style="font-size:12px;color:var(--text-secondary);margin:0 0 16px">
+      Use <code>{{field_name}}</code> placeholders in your document. Upload CSV data to generate merged documents.
+    </p>
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Step 1: Data Source (CSV)</label>
+      <input type="file" id="mm-file" accept=".csv,.tsv,.txt" style="font-size:12px">
+      <div style="margin-top:4px;font-size:11px;color:var(--text-secondary)">Or paste data below:</div>
+      <textarea id="mm-data" rows="4" placeholder="name,email,company&#10;John,john@example.com,Acme Inc&#10;Jane,jane@example.com,Corp Ltd" style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:4px;font-family:monospace;font-size:11px;background:var(--bg-primary);color:var(--text-primary);margin-top:4px;resize:vertical"></textarea>
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Step 2: Available Fields</label>
+      <div id="mm-fields" style="display:flex;flex-wrap:wrap;gap:4px;min-height:30px;padding:8px;border:1px solid var(--border-color);border-radius:4px;background:var(--hover-bg)">
+        <span style="font-size:11px;color:var(--text-secondary)">Load data to see fields</span>
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Step 3: Preview</label>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+        <button id="mm-prev-rec" class="toolbar-btn" style="padding:2px 8px">◀</button>
+        <span id="mm-rec-num" style="font-size:12px">Record 1</span>
+        <button id="mm-next-rec" class="toolbar-btn" style="padding:2px 8px">▶</button>
+      </div>
+      <div id="mm-preview" style="border:1px solid var(--border-color);border-radius:4px;padding:12px;min-height:100px;font-size:13px;max-height:200px;overflow:auto;background:var(--bg-primary)"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="toolbar-btn" id="mm-cancel" style="padding:6px 16px">Cancel</button>
+      <button class="toolbar-btn" id="mm-generate" style="padding:6px 16px;background:var(--accent-color);color:white;border-radius:4px">Generate All Documents</button>
+    </div>
+  </div>`;
+  document.body.appendChild(dlg);
+
+  let records = [];
+  let headers = [];
+  let previewIdx = 0;
+
+  function parseCSVData(text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+    if (lines.length < 2) return;
+    headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    records = [];
+    for (let i = 1; i < lines.length; i++) {
+      const vals = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+      const rec = {};
+      headers.forEach((h, j) => { rec[h] = vals[j] || ''; });
+      records.push(rec);
+    }
+    updateFields();
+    updatePreview();
+  }
+
+  function updateFields() {
+    const fieldsEl = dlg.querySelector('#mm-fields');
+    fieldsEl.innerHTML = headers.map(h =>
+      `<button class="mm-field-btn" data-field="${h}" style="padding:2px 8px;font-size:11px;border:1px solid var(--accent-color);border-radius:4px;background:transparent;color:var(--accent-color);cursor:pointer" title="Click to insert {{${h}}} at cursor">{{${h}}}</button>`
+    ).join('');
+    fieldsEl.querySelectorAll('.mm-field-btn').forEach(btn => {
+      btn.onclick = () => {
+        editorEl.focus();
+        document.execCommand('insertText', false, `{{${btn.dataset.field}}}`);
+      };
+    });
+  }
+
+  function mergeTemplate(template, record) {
+    let result = template;
+    for (const [key, val] of Object.entries(record)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val);
+    }
+    return result;
+  }
+
+  function updatePreview() {
+    if (records.length === 0) return;
+    previewIdx = Math.max(0, Math.min(previewIdx, records.length - 1));
+    dlg.querySelector('#mm-rec-num').textContent = `Record ${previewIdx + 1} of ${records.length}`;
+    const merged = mergeTemplate(editorEl.innerHTML, records[previewIdx]);
+    dlg.querySelector('#mm-preview').innerHTML = merged;
+  }
+
+  // File upload
+  dlg.querySelector('#mm-file').onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      dlg.querySelector('#mm-data').value = ev.target.result;
+      parseCSVData(ev.target.result);
+    };
+    reader.readAsText(file);
+  };
+
+  // Paste data
+  dlg.querySelector('#mm-data').onblur = () => {
+    const text = dlg.querySelector('#mm-data').value;
+    if (text.trim()) parseCSVData(text);
+  };
+
+  dlg.querySelector('#mm-prev-rec').onclick = () => { previewIdx--; updatePreview(); };
+  dlg.querySelector('#mm-next-rec').onclick = () => { previewIdx++; updatePreview(); };
+  dlg.querySelector('#mm-cancel').onclick = () => dlg.remove();
+
+  dlg.querySelector('#mm-generate').onclick = () => {
+    if (records.length === 0) { alert('No data loaded.'); return; }
+    // Generate merged documents in a new window
+    const win = window.open('', '_blank');
+    let html = `<!DOCTYPE html><html><head><title>Mail Merge Results</title>
+    <style>
+      body { font-family: -apple-system, sans-serif; padding: 20px; }
+      .merge-doc { border: 1px solid #ccc; padding: 24px 32px; margin-bottom: 24px; page-break-after: always; max-width: 700px; margin-left: auto; margin-right: auto; }
+      .merge-doc:last-child { page-break-after: auto; }
+      .merge-header { font-size: 11px; color: #999; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px dashed #ccc; }
+      @media print { .merge-header { display: none; } }
+    </style></head><body>
+    <h2 style="text-align:center;margin-bottom:24px">Mail Merge — ${records.length} Documents</h2>`;
+
+    records.forEach((rec, i) => {
+      const merged = mergeTemplate(editorEl.innerHTML, rec);
+      html += `<div class="merge-doc">
+        <div class="merge-header">Document ${i + 1} — ${Object.values(rec)[0] || ''}</div>
+        ${merged}
+      </div>`;
+    });
+
+    html += '<script>setTimeout(()=>window.print(),500)<\/script></body></html>';
+    win.document.write(html);
+    win.document.close();
+    dlg.remove();
+  };
 }
 
 // ─── Print ──────────────────────────────────────────────────

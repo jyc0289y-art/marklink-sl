@@ -555,6 +555,10 @@ function bindEvents() {
   // Undo/Redo
   document.getElementById('sheet-undo')?.addEventListener('click', () => sheetUndo());
   document.getElementById('sheet-redo')?.addEventListener('click', () => sheetRedo());
+  // Custom Sort
+  document.getElementById('sheet-sort-custom')?.addEventListener('click', () => showMultiSortDialog());
+  // Named Ranges
+  document.getElementById('sheet-named-range')?.addEventListener('click', () => showNamedRangeDialog());
   // Sparkline
   document.getElementById('sheet-sparkline')?.addEventListener('click', () => insertSparkline());
   // Chart
@@ -3154,6 +3158,193 @@ function interpolateColor(c1, c2, c3, ratio) {
     b = Math.round(b2 + (b3 - b2) * t);
   }
   return `rgb(${r},${g},${b})`;
+}
+
+/* ==================== Multi-Level Sort ==================== */
+
+function showMultiSortDialog() {
+  const sheet = getSheet();
+  const { r1, c1, r2, c2 } = getSelectionRange();
+
+  // Get column headers
+  const colOptions = [];
+  for (let c = 0; c < sheet.cols; c++) {
+    const label = getDisplayValue(sheet, 0, c) || colToLetter(c);
+    colOptions.push(`<option value="${c}">${colToLetter(c)} — ${label}</option>`);
+  }
+
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay';
+  dlg.innerHTML = `<div class="modal-content" style="width:480px">
+    <h3 style="margin:0 0 12px">Custom Sort</h3>
+    <div id="sort-levels" style="display:flex;flex-direction:column;gap:8px"></div>
+    <button id="sort-add-level" style="margin-top:8px;padding:4px 12px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);cursor:pointer">+ Add Level</button>
+    <label style="font-size:12px;display:block;margin-top:8px"><input type="checkbox" id="sort-has-header" checked> My data has headers</label>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="toolbar-btn" id="sort-cancel" style="padding:6px 16px">Cancel</button>
+      <button class="toolbar-btn" id="sort-apply" style="padding:6px 16px;background:var(--accent-color);color:white;border-radius:4px">Sort</button>
+    </div>
+  </div>`;
+  document.body.appendChild(dlg);
+
+  const levelsEl = dlg.querySelector('#sort-levels');
+  let sortLevels = [{ col: selectedCol, asc: true }];
+
+  function renderLevels() {
+    levelsEl.innerHTML = sortLevels.map((lvl, i) => `
+      <div style="display:flex;gap:8px;align-items:center;padding:8px;background:var(--hover-bg);border-radius:4px">
+        <span style="font-size:11px;font-weight:600;min-width:60px">${i === 0 ? 'Sort by' : 'Then by'}</span>
+        <select data-level="${i}" data-field="col" style="flex:1;padding:4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:12px">
+          ${colOptions.join('')}
+        </select>
+        <select data-level="${i}" data-field="order" style="padding:4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:12px">
+          <option value="asc"${lvl.asc ? ' selected' : ''}>A→Z / Small→Large</option>
+          <option value="desc"${!lvl.asc ? ' selected' : ''}>Z→A / Large→Small</option>
+        </select>
+        ${i > 0 ? `<button data-del="${i}" style="border:none;background:none;cursor:pointer;font-size:14px;color:var(--text-secondary)">✕</button>` : ''}
+      </div>
+    `).join('');
+
+    // Set selected values
+    levelsEl.querySelectorAll('select[data-field="col"]').forEach(sel => {
+      const i = parseInt(sel.dataset.level);
+      sel.value = sortLevels[i].col;
+      sel.onchange = () => { sortLevels[i].col = parseInt(sel.value); };
+    });
+    levelsEl.querySelectorAll('select[data-field="order"]').forEach(sel => {
+      const i = parseInt(sel.dataset.level);
+      sel.onchange = () => { sortLevels[i].asc = sel.value === 'asc'; };
+    });
+    levelsEl.querySelectorAll('[data-del]').forEach(btn => {
+      btn.onclick = () => { sortLevels.splice(parseInt(btn.dataset.del), 1); renderLevels(); };
+    });
+  }
+  renderLevels();
+
+  dlg.querySelector('#sort-add-level').onclick = () => {
+    sortLevels.push({ col: 0, asc: true });
+    renderLevels();
+  };
+  dlg.querySelector('#sort-cancel').onclick = () => dlg.remove();
+  dlg.querySelector('#sort-apply').onclick = () => {
+    const hasHeader = dlg.querySelector('#sort-has-header').checked;
+    multiLevelSort(sortLevels, hasHeader);
+    dlg.remove();
+  };
+}
+
+function multiLevelSort(levels, hasHeader) {
+  const sheet = getSheet();
+  saveUndoState();
+
+  const startRow = hasHeader ? 1 : 0;
+  const rowData = [];
+  for (let r = startRow; r < sheet.rows; r++) {
+    const row = {};
+    for (let c = 0; c < sheet.cols; c++) {
+      row[c] = { ...getCell(sheet, r, c) };
+    }
+    rowData.push(row);
+  }
+
+  rowData.sort((a, b) => {
+    for (const lvl of levels) {
+      const aVal = a[lvl.col]?.value ?? '';
+      const bVal = b[lvl.col]?.value ?? '';
+      const aNum = parseFloat(aVal);
+      const bNum = parseFloat(bVal);
+      let cmp;
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        cmp = aNum - bNum;
+      } else {
+        cmp = String(aVal).localeCompare(String(bVal), 'ko');
+      }
+      if (!lvl.asc) cmp = -cmp;
+      if (cmp !== 0) return cmp;
+    }
+    return 0;
+  });
+
+  // Write sorted data back
+  for (let r = 0; r < rowData.length; r++) {
+    const tr = startRow + r;
+    for (let c = 0; c < sheet.cols; c++) {
+      const cellData = rowData[r][c];
+      if (cellData) {
+        const key = `${tr},${c}`;
+        sheet.cells[key] = cellData;
+      }
+    }
+  }
+
+  recalcAll(sheet);
+  renderGrid();
+  updateSelection();
+}
+
+/* ==================== Named Ranges ==================== */
+
+let namedRanges = {}; // name → { r1, c1, r2, c2, sheetIdx }
+
+function showNamedRangeDialog() {
+  const { r1, c1, r2, c2 } = getSelectionRange();
+  const rangeStr = `${colToLetter(c1)}${r1 + 1}:${colToLetter(c2)}${r2 + 1}`;
+
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay';
+  dlg.innerHTML = `<div class="modal-content" style="width:420px">
+    <h3 style="margin:0 0 12px">Named Ranges</h3>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input type="text" id="nr-name" placeholder="Range name..." style="flex:1;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+      <input type="text" id="nr-range" value="${rangeStr}" style="width:120px;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+      <button id="nr-add" style="padding:6px 12px;background:var(--accent-color);color:white;border:none;border-radius:4px;cursor:pointer">Add</button>
+    </div>
+    <div id="nr-list" style="max-height:200px;overflow:auto"></div>
+    <div style="text-align:right;margin-top:12px">
+      <button class="toolbar-btn" id="nr-close" style="padding:6px 16px">Close</button>
+    </div>
+  </div>`;
+  document.body.appendChild(dlg);
+
+  function renderList() {
+    const list = dlg.querySelector('#nr-list');
+    const entries = Object.entries(namedRanges);
+    if (entries.length === 0) {
+      list.innerHTML = '<div style="font-size:12px;color:var(--text-secondary);text-align:center;padding:16px">No named ranges defined</div>';
+      return;
+    }
+    list.innerHTML = entries.map(([name, r]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid var(--border-color);font-size:12px">
+        <span><strong>${name}</strong> → ${colToLetter(r.c1)}${r.r1 + 1}:${colToLetter(r.c2)}${r.r2 + 1}</span>
+        <div>
+          <button data-goto="${name}" style="border:none;background:none;cursor:pointer;font-size:12px;color:var(--accent-color)">Go</button>
+          <button data-del="${name}" style="border:none;background:none;cursor:pointer;font-size:12px;color:var(--text-secondary)">✕</button>
+        </div>
+      </div>
+    `).join('');
+    list.querySelectorAll('[data-goto]').forEach(btn => {
+      btn.onclick = () => {
+        const r = namedRanges[btn.dataset.goto];
+        selectedRow = r.r1; selectedCol = r.c1;
+        selAnchorRow = r.r2; selAnchorCol = r.c2;
+        updateSelection();
+        dlg.remove();
+      };
+    });
+    list.querySelectorAll('[data-del]').forEach(btn => {
+      btn.onclick = () => { delete namedRanges[btn.dataset.del]; renderList(); };
+    });
+  }
+  renderList();
+
+  dlg.querySelector('#nr-add').onclick = () => {
+    const name = dlg.querySelector('#nr-name').value.trim();
+    if (!name) return;
+    namedRanges[name] = { r1, c1, r2, c2, sheetIdx: activeSheetIdx };
+    dlg.querySelector('#nr-name').value = '';
+    renderList();
+  };
+  dlg.querySelector('#nr-close').onclick = () => dlg.remove();
 }
 
 /* ==================== Pivot Table ==================== */
