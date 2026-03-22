@@ -133,6 +133,27 @@
   color: #eee;
 }
 
+.slide-canvas[data-theme="red"] {
+  background: linear-gradient(135deg, #4a1a1a, #7c2d2d);
+  color: #eee;
+}
+
+.slide-canvas[data-theme="purple"] {
+  background: linear-gradient(135deg, #2d1b4e, #4a1a6b);
+  color: #eee;
+}
+
+.slide-canvas[data-theme="gradient"] {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+}
+
+.slide-canvas[data-theme="minimal"] {
+  background: #fafafa;
+  color: #222;
+  font-family: 'Georgia', serif;
+}
+
 /* Slide content */
 .slide-title {
   font-size: 44px;

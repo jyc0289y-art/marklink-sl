@@ -321,24 +321,46 @@
       <div class="slide-toolbar">
         <button class="toolbar-btn" id="slide-add" title="New Slide">+ Slide</button>
         <button class="toolbar-btn" id="slide-del" title="Delete Slide">- Slide</button>
+        <button class="toolbar-btn" id="slide-dup" title="Duplicate Slide">⧉</button>
         <div class="toolbar-divider"></div>
         <select id="slide-layout" title="Layout">
           <option value="title">Title Slide</option>
           <option value="content" selected>Title + Content</option>
           <option value="two-col">Two Columns</option>
+          <option value="section">Section Header</option>
+          <option value="comparison">Comparison</option>
           <option value="blank">Blank</option>
           <option value="image">Image</option>
         </select>
-        <div class="toolbar-divider"></div>
         <select id="slide-theme" title="Theme">
           <option value="default">Default</option>
           <option value="dark">Dark</option>
           <option value="blue">Blue</option>
           <option value="green">Green</option>
+          <option value="red">Red</option>
+          <option value="purple">Purple</option>
+          <option value="gradient">Gradient</option>
+          <option value="minimal">Minimal</option>
+        </select>
+        <select id="slide-transition" title="Transition">
+          <option value="none">No Transition</option>
+          <option value="fade">Fade</option>
+          <option value="slide-left">Slide Left</option>
+          <option value="slide-up">Slide Up</option>
+          <option value="zoom">Zoom</option>
         </select>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn" id="slide-present" title="Present (F5)">&#9654; Present</button>
+        <button class="toolbar-btn slide-fmt-cmd" data-cmd="bold" title="Bold"><b>B</b></button>
+        <button class="toolbar-btn slide-fmt-cmd" data-cmd="italic" title="Italic"><i>I</i></button>
+        <button class="toolbar-btn slide-fmt-cmd" data-cmd="underline" title="Underline"><u>U</u></button>
+        <input type="color" id="slide-text-color" value="#333333" title="Text Color" style="width:26px;height:26px;border:1px solid var(--border-color);border-radius:4px;cursor:pointer">
+        <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="slide-insert-image" title="Insert Image">🖼</button>
+        <button class="toolbar-btn" id="slide-insert-shape" title="Insert Shape">⬜</button>
+        <button class="toolbar-btn" id="slide-insert-table" title="Insert Table">▦</button>
+        <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" id="slide-present" title="Present (F5)">▶ Present</button>
+        <button class="toolbar-btn" id="slide-export-img" title="Export as Image" style="font-size:11px">📷</button>
       </div>
       <div class="slide-workspace">
         <div class="slide-panel" id="slide-panel"></div>
