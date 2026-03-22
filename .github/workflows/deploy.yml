@@ -32,7 +32,7 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          VITE_BASE_PATH: /officelink-sl/
+          VITE_BASE_PATH: /marklink-sl/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
