@@ -180,6 +180,11 @@ export function initDocEditor() {
     insertFootnote();
   });
 
+  // Endnote
+  document.getElementById('doc-insert-endnote')?.addEventListener('click', () => {
+    insertEndnote();
+  });
+
   // Watermark
   document.getElementById('doc-watermark')?.addEventListener('click', () => {
     showWatermarkDialog();
@@ -922,6 +927,57 @@ function insertFootnote() {
   // Focus on the footnote text
   fnItem.focus();
   dirty = true;
+}
+
+// ─── Endnotes ──────────────────────────────────────────────
+let endnoteCounter = 0;
+
+function insertEndnote() {
+  if (!editorEl) return;
+
+  endnoteCounter++;
+  const id = `en-${endnoteCounter}`;
+
+  // Insert superscript reference at cursor (Roman numeral style for distinction)
+  const romanNum = toRoman(endnoteCounter);
+  const refHtml = `<sup class="doc-en-ref" data-en="${id}" style="color:#9333ea;cursor:pointer;font-weight:700">[${romanNum}]</sup>`;
+  insertHTMLAtCursor(refHtml);
+
+  // Add/update endnote section at the very end
+  let enSection = editorEl.querySelector('.doc-endnotes');
+  if (!enSection) {
+    enSection = document.createElement('div');
+    enSection.className = 'doc-endnotes';
+    enSection.contentEditable = 'false';
+    enSection.innerHTML = '<hr style="margin-top:48px;border-top:2px double var(--border-color)"><div style="font-size:13px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">Endnotes</div>';
+    editorEl.appendChild(enSection);
+  }
+  // Ensure endnotes section is always after footnotes
+  const fnSection = editorEl.querySelector('.doc-footnotes');
+  if (fnSection && fnSection.nextSibling !== enSection) {
+    editorEl.appendChild(enSection);
+  }
+
+  const enItem = document.createElement('div');
+  enItem.className = 'doc-en-item';
+  enItem.contentEditable = 'true';
+  enItem.id = id;
+  enItem.style.cssText = 'font-size:12px;color:var(--text-secondary);padding:3px 0;margin-left:20px;text-indent:-20px';
+  enItem.innerHTML = `<sup style="color:#9333ea;font-weight:700">[${romanNum}]</sup> <span>Enter endnote text...</span>`;
+  enSection.appendChild(enItem);
+
+  enItem.focus();
+  dirty = true;
+}
+
+function toRoman(n) {
+  const vals = [1000,900,500,400,100,90,50,40,10,9,5,4,1];
+  const syms = ['M','CM','D','CD','C','XC','L','XL','X','IX','V','IV','I'];
+  let r = '';
+  for (let i = 0; i < vals.length; i++) {
+    while (n >= vals[i]) { r += syms[i]; n -= vals[i]; }
+  }
+  return r.toLowerCase();
 }
 
 // ─── Watermark ──────────────────────────────────────────────

@@ -737,6 +737,7 @@ function showAnimationPanel() {
     <div style="display:flex;flex-direction:column;gap:6px">
       <label style="font-size:11px;font-weight:600;color:var(--text-secondary)">Effect</label>
       <select id="anim-effect" style="padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:12px">
+        <optgroup label="Entrance">
         <option value="fadeIn">Fade In</option>
         <option value="slideInLeft">Slide In Left</option>
         <option value="slideInRight">Slide In Right</option>
@@ -746,6 +747,22 @@ function showAnimationPanel() {
         <option value="bounceIn">Bounce In</option>
         <option value="rotateIn">Rotate In</option>
         <option value="flipIn">Flip In</option>
+        </optgroup>
+        <optgroup label="Emphasis">
+        <option value="pulse">Pulse</option>
+        <option value="shake">Shake</option>
+        <option value="wobble">Wobble</option>
+        <option value="flash">Flash</option>
+        <option value="rubberBand">Rubber Band</option>
+        <option value="colorHighlight">Color Highlight</option>
+        </optgroup>
+        <optgroup label="Exit">
+        <option value="fadeOut">Fade Out</option>
+        <option value="slideOutLeft">Slide Out Left</option>
+        <option value="slideOutRight">Slide Out Right</option>
+        <option value="zoomOut">Zoom Out</option>
+        <option value="shrinkOut">Shrink Out</option>
+        </optgroup>
       </select>
       <label style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-top:4px">Trigger</label>
       <select id="anim-trigger" style="padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:12px">
@@ -878,6 +895,7 @@ function playAnimation(el, effect, duration) {
   el.style.transition = `all ${duration}s ease`;
 
   const effects = {
+    // Entrance
     fadeIn: { from: { opacity: '0' }, to: { opacity: '1' } },
     slideInLeft: { from: { opacity: '0', transform: 'translateX(-100px)' }, to: { opacity: '1', transform: 'translateX(0)' } },
     slideInRight: { from: { opacity: '0', transform: 'translateX(100px)' }, to: { opacity: '1', transform: 'translateX(0)' } },
@@ -887,7 +905,21 @@ function playAnimation(el, effect, duration) {
     bounceIn: { from: { opacity: '0', transform: 'scale(0.5)' }, to: { opacity: '1', transform: 'scale(1)' } },
     rotateIn: { from: { opacity: '0', transform: 'rotate(-90deg)' }, to: { opacity: '1', transform: 'rotate(0)' } },
     flipIn: { from: { opacity: '0', transform: 'perspective(600px) rotateY(90deg)' }, to: { opacity: '1', transform: 'perspective(600px) rotateY(0)' } },
+    // Exit
+    fadeOut: { from: { opacity: '1' }, to: { opacity: '0' } },
+    slideOutLeft: { from: { opacity: '1', transform: 'translateX(0)' }, to: { opacity: '0', transform: 'translateX(-100px)' } },
+    slideOutRight: { from: { opacity: '1', transform: 'translateX(0)' }, to: { opacity: '0', transform: 'translateX(100px)' } },
+    zoomOut: { from: { opacity: '1', transform: 'scale(1)' }, to: { opacity: '0', transform: 'scale(0.3)' } },
+    shrinkOut: { from: { opacity: '1', transform: 'scale(1)' }, to: { opacity: '0', transform: 'scale(0) rotate(180deg)' } },
   };
+
+  // Emphasis effects use CSS keyframe-like approach
+  const emphasisEffects = ['pulse', 'shake', 'wobble', 'flash', 'rubberBand', 'colorHighlight'];
+  if (emphasisEffects.includes(effect)) {
+    el.style.opacity = '1';
+    playEmphasisAnimation(el, effect, duration);
+    return;
+  }
 
   const fx = effects[effect] || effects.fadeIn;
 
@@ -899,6 +931,74 @@ function playAnimation(el, effect, duration) {
   requestAnimationFrame(() => {
     Object.assign(el.style, fx.to);
   });
+}
+
+function playEmphasisAnimation(el, effect, duration) {
+  const ms = duration * 1000;
+  const steps = 6;
+  const stepMs = ms / steps;
+
+  if (effect === 'pulse') {
+    el.style.transition = `transform ${stepMs}ms ease`;
+    let i = 0;
+    const tick = () => {
+      el.style.transform = i % 2 === 0 ? 'scale(1.15)' : 'scale(1)';
+      i++;
+      if (i < steps) setTimeout(tick, stepMs);
+      else { el.style.transform = ''; el.style.transition = ''; }
+    };
+    tick();
+  } else if (effect === 'shake') {
+    el.style.transition = `transform ${stepMs * 0.5}ms ease`;
+    const offsets = [-10, 10, -8, 8, -4, 0];
+    let i = 0;
+    const tick = () => {
+      el.style.transform = `translateX(${offsets[i]}px)`;
+      i++;
+      if (i < offsets.length) setTimeout(tick, stepMs * 0.5);
+      else { el.style.transform = ''; el.style.transition = ''; }
+    };
+    tick();
+  } else if (effect === 'wobble') {
+    el.style.transition = `transform ${stepMs}ms ease`;
+    const rotations = [-5, 5, -3, 3, -1, 0];
+    let i = 0;
+    const tick = () => {
+      el.style.transform = `rotate(${rotations[i]}deg)`;
+      i++;
+      if (i < rotations.length) setTimeout(tick, stepMs);
+      else { el.style.transform = ''; el.style.transition = ''; }
+    };
+    tick();
+  } else if (effect === 'flash') {
+    let i = 0;
+    const tick = () => {
+      el.style.opacity = i % 2 === 0 ? '0.2' : '1';
+      i++;
+      if (i < steps) setTimeout(tick, stepMs);
+      else { el.style.opacity = '1'; }
+    };
+    tick();
+  } else if (effect === 'rubberBand') {
+    el.style.transition = `transform ${stepMs}ms ease`;
+    const scales = ['scaleX(1.3) scaleY(0.8)', 'scaleX(0.8) scaleY(1.2)', 'scaleX(1.15) scaleY(0.9)', 'scaleX(0.95) scaleY(1.05)', 'scaleX(1.02) scaleY(0.98)', 'scale(1)'];
+    let i = 0;
+    const tick = () => {
+      el.style.transform = scales[i];
+      i++;
+      if (i < scales.length) setTimeout(tick, stepMs);
+      else { el.style.transform = ''; el.style.transition = ''; }
+    };
+    tick();
+  } else if (effect === 'colorHighlight') {
+    const origBg = el.style.background || '';
+    el.style.transition = `background ${ms * 0.3}ms ease`;
+    el.style.background = '#fef08a';
+    setTimeout(() => {
+      el.style.background = origBg;
+      setTimeout(() => { el.style.transition = ''; }, ms * 0.3);
+    }, ms * 0.7);
+  }
 }
 
 /* ==================== Speaker View ==================== */

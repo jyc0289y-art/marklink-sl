@@ -504,6 +504,14 @@ function bindEvents() {
       return;
     }
 
+    // Find & Replace
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'h' || e.key === 'f')) {
+      e.preventDefault();
+      if (!sheetFindVisible) toggleSheetFindReplace();
+      document.getElementById('sheet-find-input')?.focus();
+      return;
+    }
+
     // Flash Fill
     if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
       e.preventDefault();
@@ -862,6 +870,16 @@ function bindEvents() {
   // Sheet Protection
   document.getElementById('sheet-protect')?.addEventListener('click', () => toggleSheetProtection());
 
+  // Data Validation
+  document.getElementById('sheet-data-valid')?.addEventListener('click', () => showDataValidationDialog(selectedRow, selectedCol));
+
+  // CF Rules Manager
+  document.getElementById('sheet-cf-manager')?.addEventListener('click', () => showCondFormatRulesManager());
+
+  // Sheet Find & Replace
+  document.getElementById('sheet-find-replace')?.addEventListener('click', () => toggleSheetFindReplace());
+  initSheetFindReplace();
+
   // CSV Import
   document.getElementById('sheet-import-csv')?.addEventListener('click', () => importCSV());
   // CSV Export
@@ -1136,6 +1154,18 @@ function commitEdit() {
   const input = td.querySelector('input');
   const val = input ? input.value : (formulaEditTarget === 'bar' ? formulaBarEl.value : '');
   if (val !== undefined) {
+    // Data validation check
+    const dvRule = validations[`${editingRow},${editingCol}`];
+    if (dvRule && !val.startsWith('=')) {
+      if (dvRule.type === 'list' && dvRule.values && !dvRule.values.includes(val) && val !== '') {
+        alert('Value must be from the list: ' + dvRule.values.join(', '));
+        return;
+      }
+      if (dvRule.type === 'number' && val !== '' && isNaN(parseFloat(val))) {
+        alert('Only numbers allowed in this cell');
+        return;
+      }
+    }
     saveUndoState();
     setCell(getSheet(), editingRow, editingCol, val);
     recalcAll(getSheet());
@@ -4602,6 +4632,202 @@ function applyBorderStyle(action) {
     }
   }
   renderGrid(); updateSelection();
+}
+
+/* ==================== Conditional Format Rules Manager ==================== */
+
+function showCondFormatRulesManager() {
+  const existing = document.querySelector('.cf-rules-manager');
+  if (existing) { existing.remove(); return; }
+
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay cf-rules-manager';
+
+  function renderRules() {
+    const rulesHtml = condFormats.length === 0
+      ? '<p style="color:var(--text-secondary);font-size:13px;text-align:center;padding:20px 0">No conditional formatting rules yet.</p>'
+      : condFormats.map((cf, i) => {
+        const range = `${rcToRef(cf.range.r1, cf.range.c1)}:${rcToRef(cf.range.r2, cf.range.c2)}`;
+        const type = cf.config ? cf.config.type : cf.type;
+        const color = cf.config ? (cf.config.highlight || cf.config.minColor || cf.config.barColor || '#ddd') : (cf.bgColor || '#ddd');
+        return `<div style="display:flex;align-items:center;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;margin-bottom:6px;background:var(--bg-primary)">
+          <div style="width:20px;height:20px;border-radius:4px;background:${color};margin-right:10px;flex-shrink:0;border:1px solid var(--border-color)"></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600">${type}</div>
+            <div style="font-size:11px;color:var(--text-secondary)">Range: ${range}</div>
+          </div>
+          <button class="toolbar-btn cf-rule-del" data-idx="${i}" style="color:#e53e3e;font-size:16px;padding:2px 6px" title="Delete rule">&times;</button>
+        </div>`;
+      }).join('');
+
+    return `<div class="modal-content" style="width:420px;max-height:80vh;overflow:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0">Conditional Formatting Rules</h3>
+        <button class="toolbar-btn cf-mgr-close" style="font-size:18px">&times;</button>
+      </div>
+      <div id="cf-rules-list">${rulesHtml}</div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+        <button class="toolbar-btn" id="cf-mgr-clear-all" style="padding:6px 14px;color:#e53e3e">Clear All</button>
+        <button class="toolbar-btn" id="cf-mgr-add" style="padding:6px 14px;background:var(--accent-color);color:white;border-radius:4px">+ Add Rule</button>
+      </div>
+    </div>`;
+  }
+
+  dlg.innerHTML = renderRules();
+  document.body.appendChild(dlg);
+
+  function rebind() {
+    dlg.innerHTML = renderRules();
+    dlg.querySelectorAll('.cf-rule-del').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx);
+        condFormats.splice(idx, 1);
+        renderGrid(); updateSelection();
+        rebind();
+      });
+    });
+    dlg.querySelector('.cf-mgr-close')?.addEventListener('click', () => dlg.remove());
+    dlg.querySelector('#cf-mgr-clear-all')?.addEventListener('click', () => {
+      condFormats.length = 0;
+      renderGrid(); updateSelection();
+      rebind();
+    });
+    dlg.querySelector('#cf-mgr-add')?.addEventListener('click', () => {
+      dlg.remove();
+      showConditionalFormatDialog();
+    });
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.remove(); });
+  }
+  rebind();
+}
+
+/* ==================== Sheet Find & Replace ==================== */
+
+let sheetFindVisible = false;
+
+function toggleSheetFindReplace() {
+  const bar = document.getElementById('sheet-find-bar');
+  if (!bar) return;
+  sheetFindVisible = !sheetFindVisible;
+  bar.classList.toggle('hidden', !sheetFindVisible);
+  if (sheetFindVisible) {
+    document.getElementById('sheet-find-input')?.focus();
+  }
+}
+
+function sheetFindAll(query, matchCase, useRegex) {
+  if (!query) return [];
+  const sheet = getSheet();
+  const results = [];
+  const flags = matchCase ? 'g' : 'gi';
+  const re = useRegex ? new RegExp(query, flags) : null;
+
+  for (let r = 0; r < sheet.rows; r++) {
+    for (let c = 0; c < sheet.cols; c++) {
+      const val = getDisplayValue(sheet, r, c);
+      if (!val) continue;
+      let match = false;
+      if (re) {
+        match = re.test(val);
+        re.lastIndex = 0;
+      } else {
+        match = matchCase ? val.includes(query) : val.toLowerCase().includes(query.toLowerCase());
+      }
+      if (match) results.push({ r, c });
+    }
+  }
+  return results;
+}
+
+function initSheetFindReplace() {
+  const findInput = document.getElementById('sheet-find-input');
+  const replaceInput = document.getElementById('sheet-replace-input');
+  const countEl = document.getElementById('sheet-find-count');
+  if (!findInput) return;
+
+  let results = [];
+  let currentIdx = -1;
+  let matchCase = false;
+  let useRegex = false;
+
+  document.getElementById('sheet-find-case')?.addEventListener('click', (e) => {
+    matchCase = !matchCase;
+    e.target.style.opacity = matchCase ? '1' : '0.6';
+    doSearch();
+  });
+  document.getElementById('sheet-find-regex')?.addEventListener('click', (e) => {
+    useRegex = !useRegex;
+    e.target.style.opacity = useRegex ? '1' : '0.6';
+    doSearch();
+  });
+
+  function doSearch() {
+    results = sheetFindAll(findInput.value, matchCase, useRegex);
+    currentIdx = results.length > 0 ? 0 : -1;
+    updateCount();
+    if (results.length > 0) goTo(0);
+  }
+
+  function updateCount() {
+    if (countEl) countEl.textContent = results.length > 0 ? `${currentIdx + 1}/${results.length}` : '0';
+  }
+
+  function goTo(idx) {
+    if (idx < 0 || idx >= results.length) return;
+    currentIdx = idx;
+    const { r, c } = results[idx];
+    selectedRow = r; selectedCol = c;
+    selAnchorRow = r; selAnchorCol = c;
+    updateSelection();
+    updateCount();
+    // Scroll into view
+    const td = gridEl.querySelector(`td[data-row="${r}"][data-col="${c}"]`);
+    td?.scrollIntoView({ block: 'center', inline: 'center' });
+  }
+
+  findInput.addEventListener('input', doSearch);
+  document.getElementById('sheet-find-next')?.addEventListener('click', () => {
+    if (results.length > 0) goTo((currentIdx + 1) % results.length);
+  });
+  document.getElementById('sheet-find-prev')?.addEventListener('click', () => {
+    if (results.length > 0) goTo((currentIdx - 1 + results.length) % results.length);
+  });
+
+  document.getElementById('sheet-replace-btn')?.addEventListener('click', () => {
+    if (currentIdx < 0) return;
+    const { r, c } = results[currentIdx];
+    const sheet = getSheet();
+    const raw = getRawValue(sheet, r, c);
+    const query = findInput.value;
+    const replacement = replaceInput?.value || '';
+    const flags = matchCase ? 'g' : 'gi';
+    const newVal = useRegex ? raw.replace(new RegExp(query, flags), replacement) : raw.split(matchCase ? query : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')).join(replacement);
+    setCell(sheet, r, c, newVal);
+    recalcAll(sheet);
+    renderGrid();
+    doSearch();
+  });
+
+  document.getElementById('sheet-replace-all')?.addEventListener('click', () => {
+    const sheet = getSheet();
+    const query = findInput.value;
+    const replacement = replaceInput?.value || '';
+    if (!query) return;
+    const flags = matchCase ? 'g' : 'gi';
+    let count = 0;
+    for (const { r, c } of results) {
+      const raw = getRawValue(sheet, r, c);
+      const newVal = useRegex ? raw.replace(new RegExp(query, flags), replacement) : raw.split(matchCase ? query : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')).join(replacement);
+      if (newVal !== raw) { setCell(sheet, r, c, newVal); count++; }
+    }
+    if (count > 0) { recalcAll(sheet); renderGrid(); }
+    doSearch();
+    alert(`Replaced ${count} occurrence(s).`);
+  });
+
+  document.getElementById('sheet-find-close')?.addEventListener('click', () => {
+    toggleSheetFindReplace();
+  });
 }
 
 /* ==================== Export ==================== */

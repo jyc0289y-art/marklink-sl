@@ -244,6 +244,7 @@
         <button class="toolbar-btn" id="doc-page-setup" title="Page Layout" style="font-size:11px">📄</button>
         <button class="toolbar-btn" id="doc-insert-columns" title="Columns Layout" style="font-size:11px">❙❙</button>
         <button class="toolbar-btn" id="doc-insert-footnote" title="Insert Footnote" style="font-size:11px">fn</button>
+        <button class="toolbar-btn" id="doc-insert-endnote" title="Insert Endnote" style="font-size:11px">en</button>
         <button class="toolbar-btn" id="doc-watermark" title="Watermark" style="font-size:11px">💧</button>
         <button class="toolbar-btn" id="doc-mail-merge" title="Mail Merge" style="font-size:11px">📧 Merge</button>
         <button class="toolbar-btn" id="doc-print" title="Print (⌘P)" style="font-size:11px">🖨</button>
@@ -408,6 +409,24 @@
         <button class="toolbar-btn" id="sheet-flash-fill" title="Flash Fill (Ctrl+E)" style="font-size:11px">⚡ Fill</button>
         <button class="toolbar-btn" id="sheet-print" title="Print Sheet" style="font-size:11px">🖨</button>
         <button class="toolbar-btn" id="sheet-protect" title="Protect Sheet" style="font-size:11px">🔒 Protect</button>
+        <button class="toolbar-btn" id="sheet-data-valid" title="Data Validation" style="font-size:11px">✓ Valid</button>
+        <button class="toolbar-btn" id="sheet-cf-manager" title="Manage CF Rules" style="font-size:11px">📋 Rules</button>
+        <button class="toolbar-btn" id="sheet-find-replace" title="Find & Replace (⌘H)" style="font-size:11px">🔍</button>
+      </div>
+      <!-- Sheet Find/Replace Bar -->
+      <div id="sheet-find-bar" class="doc-find-bar hidden" style="padding:6px 12px;background:var(--pane-header-bg);border-bottom:1px solid var(--border-color)">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <input type="text" id="sheet-find-input" placeholder="Find in sheet..." style="padding:4px 8px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;width:160px;background:var(--bg-primary);color:var(--text-primary)">
+          <button class="toolbar-btn" id="sheet-find-regex" title="Regex" style="font-size:10px;opacity:0.6">.*</button>
+          <button class="toolbar-btn" id="sheet-find-case" title="Match Case" style="font-size:10px;opacity:0.6">Aa</button>
+          <button class="toolbar-btn" id="sheet-find-prev" title="Previous">&#9650;</button>
+          <button class="toolbar-btn" id="sheet-find-next" title="Next">&#9660;</button>
+          <span id="sheet-find-count" style="font-size:11px;color:var(--text-secondary);min-width:30px">0</span>
+          <input type="text" id="sheet-replace-input" placeholder="Replace with..." style="padding:4px 8px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;width:140px;background:var(--bg-primary);color:var(--text-primary)">
+          <button class="toolbar-btn" id="sheet-replace-btn" style="font-size:11px">Replace</button>
+          <button class="toolbar-btn" id="sheet-replace-all" style="font-size:11px">All</button>
+          <button class="toolbar-btn" id="sheet-find-close" style="font-size:14px">&times;</button>
+        </div>
       </div>
       <div class="sheet-container" id="sheet-container">
         <table class="sheet-grid" id="sheet-grid"></table>
