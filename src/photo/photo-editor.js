@@ -46,11 +46,16 @@ export function getPhotoFileName() {
   return imageInfo ? imageInfo.name : 'Photo Editor';
 }
 
-export async function openPhotoFile() {
+export function openPhotoFile() {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
-  input.onchange = (e) => { if (e.target.files[0]) loadImageFile(e.target.files[0]); };
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  input.onchange = (e) => {
+    if (e.target.files[0]) loadImageFile(e.target.files[0]);
+    input.remove();
+  };
   input.click();
 }
 
