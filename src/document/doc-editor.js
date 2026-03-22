@@ -181,6 +181,16 @@ export function initDocEditor() {
     showMailMergeDialog();
   });
 
+  // Quick Styles
+  document.getElementById('doc-styles')?.addEventListener('click', () => {
+    showStyleGallery();
+  });
+
+  // Section Break
+  document.getElementById('doc-section-break')?.addEventListener('click', () => {
+    insertSectionBreak();
+  });
+
   // Print
   document.getElementById('doc-print')?.addEventListener('click', () => {
     printDocument();
@@ -950,6 +960,78 @@ function showWatermarkDialog() {
     }
     dialog.remove();
   });
+}
+
+// ─── Quick Style Gallery ────────────────────────────────────
+function showStyleGallery() {
+  const existing = document.querySelector('.doc-style-gallery');
+  if (existing) { existing.remove(); return; }
+
+  const btn = document.getElementById('doc-styles');
+  const rect = btn.getBoundingClientRect();
+
+  const styles = [
+    { name: 'Title', css: 'font-size:28px;font-weight:800;color:var(--text-primary);margin:0 0 8px;line-height:1.2', tag: 'h1' },
+    { name: 'Subtitle', css: 'font-size:18px;font-weight:400;color:var(--text-secondary);margin:0 0 16px;line-height:1.4', tag: 'p' },
+    { name: 'Heading 1', css: 'font-size:24px;font-weight:700;color:#1a73e8;border-bottom:2px solid #1a73e8;padding-bottom:4px;margin:24px 0 8px', tag: 'h1' },
+    { name: 'Heading 2', css: 'font-size:20px;font-weight:600;color:#333;margin:20px 0 6px', tag: 'h2' },
+    { name: 'Quote', css: 'font-size:16px;font-style:italic;color:#555;border-left:4px solid #1a73e8;padding:8px 16px;margin:12px 0;background:rgba(26,115,232,0.05)', tag: 'blockquote' },
+    { name: 'Code Block', css: 'font-family:monospace;font-size:13px;background:#f5f5f5;padding:12px 16px;border-radius:6px;border:1px solid #e0e0e0;white-space:pre-wrap;margin:12px 0', tag: 'pre' },
+    { name: 'Lead Paragraph', css: 'font-size:18px;font-weight:300;color:#444;line-height:1.7;margin:12px 0', tag: 'p' },
+    { name: 'Highlight Box', css: 'background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:12px 16px;margin:12px 0;font-size:14px', tag: 'div' },
+    { name: 'Info Box', css: 'background:#e3f2fd;border:1px solid #2196f3;border-radius:6px;padding:12px 16px;margin:12px 0;font-size:14px', tag: 'div' },
+    { name: 'Success Box', css: 'background:#e8f5e9;border:1px solid #4caf50;border-radius:6px;padding:12px 16px;margin:12px 0;font-size:14px', tag: 'div' },
+    { name: 'Danger Box', css: 'background:#ffebee;border:1px solid #f44336;border-radius:6px;padding:12px 16px;margin:12px 0;font-size:14px', tag: 'div' },
+    { name: 'Caption', css: 'font-size:12px;color:#888;text-align:center;font-style:italic;margin:4px 0 16px', tag: 'p' },
+  ];
+
+  const gallery = document.createElement('div');
+  gallery.className = 'doc-style-gallery';
+  gallery.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${rect.left}px;width:320px;max-height:400px;overflow:auto;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:8px;z-index:2000`;
+
+  styles.forEach(s => {
+    const item = document.createElement('div');
+    item.style.cssText = 'padding:8px;cursor:pointer;border-radius:4px;margin-bottom:2px;transition:background 0.15s';
+    item.innerHTML = `<div style="${s.css};pointer-events:none;font-size:${Math.min(parseInt(s.css.match(/font-size:(\d+)/)?.[1] || 14), 16)}px;line-height:1.3;max-height:28px;overflow:hidden">${s.name}</div>`;
+    item.onmouseenter = () => item.style.background = 'var(--hover-bg)';
+    item.onmouseleave = () => item.style.background = '';
+    item.onclick = () => {
+      editorEl.focus();
+      const html = `<${s.tag} style="${s.css}">${s.name === 'Code Block' ? 'code here...' : 'Type here...'}</${s.tag}>`;
+      document.execCommand('insertHTML', false, html);
+      dirty = true;
+      gallery.remove();
+    };
+    gallery.appendChild(item);
+  });
+
+  document.body.appendChild(gallery);
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!gallery.contains(e.target) && e.target !== btn) {
+        gallery.remove();
+        document.removeEventListener('click', close);
+      }
+    });
+  }, 50);
+}
+
+// ─── Section Break ──────────────────────────────────────────
+function insertSectionBreak() {
+  if (!editorEl) return;
+  const html = `<div class="doc-section-break" contenteditable="false" style="
+    border-top: 2px dashed var(--border-color);
+    margin: 24px 0;
+    padding: 8px 0;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-secondary);
+    user-select: none;
+    page-break-before: always;
+  ">— Section Break —</div>`;
+  editorEl.focus();
+  document.execCommand('insertHTML', false, html);
+  dirty = true;
 }
 
 // ─── Mail Merge ─────────────────────────────────────────────

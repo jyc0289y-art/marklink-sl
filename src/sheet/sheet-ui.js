@@ -104,6 +104,17 @@ function renderGrid() {
       html += `<tr style="display:none" data-hidden-row="${r}"><th class="sheet-row-header" data-row="${r}">${r + 1}</th></tr>`;
       continue;
     }
+    // Filter: skip rows that don't match active filters
+    if (filterRow >= 0 && r > filterRow) {
+      const hasActiveFilter = Object.keys(filterValues).length > 0;
+      if (hasActiveFilter) {
+        const shouldHide = Object.entries(filterValues).some(([fc, allowed]) => {
+          const cellVal = getDisplayValue(sheet, r, parseInt(fc));
+          return allowed.size > 0 && !allowed.has(cellVal);
+        });
+        if (shouldHide) continue;
+      }
+    }
     // Check if this row starts a group
     const groupIdx = rowGroups.findIndex(g => g.r1 === r);
     const groupIndicator = groupIdx >= 0
@@ -135,7 +146,11 @@ function renderGrid() {
       const cellContent = sparkline
         ? `<img src="${sparkline}" style="width:100%;height:100%;object-fit:contain" alt="sparkline">`
         : escapeHTML(String(val));
-      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="width:${w}px;min-width:${w}px;height:${rh}px;${style}"${spanAttrs}>${cellContent}${noteIndicator}</td>`;
+      // Filter dropdown on filter header row
+      const filterBtn = (filterRow === r)
+        ? `<span class="sheet-filter-btn" data-filter-col="${c}" style="cursor:pointer;font-size:9px;float:right;color:${filterValues[c] ? 'var(--accent-color)' : 'var(--text-secondary)'};margin-left:2px" title="Filter">▼</span>`
+        : '';
+      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="width:${w}px;min-width:${w}px;height:${rh}px;${style}"${spanAttrs}>${filterBtn}${cellContent}${noteIndicator}</td>`;
     }
     html += '</tr>';
   }
@@ -180,12 +195,18 @@ function escapeHTML(s) {
 /* ==================== Events ==================== */
 
 function bindEvents() {
-  // Group toggle click
+  // Group toggle click + filter dropdown
   gridEl.addEventListener('click', (e) => {
     const toggle = e.target.closest('.sheet-group-toggle');
     if (toggle) {
       const idx = parseInt(toggle.dataset.group);
       toggleGroupCollapse(idx);
+      e.stopPropagation();
+      return;
+    }
+    const filterBtn = e.target.closest('.sheet-filter-btn');
+    if (filterBtn) {
+      showFilterDropdown(parseInt(filterBtn.dataset.filterCol), filterBtn);
       e.stopPropagation();
     }
   });
@@ -571,6 +592,8 @@ function bindEvents() {
   document.getElementById('sheet-merge-cells')?.addEventListener('click', () => toggleMergeCells());
   // Conditional Formatting
   document.getElementById('sheet-cond-format')?.addEventListener('click', () => showConditionalFormatDialog());
+  // Goal Seek
+  document.getElementById('sheet-goal-seek')?.addEventListener('click', () => showGoalSeekDialog());
   // Remove Duplicates
   document.getElementById('sheet-remove-dups')?.addEventListener('click', () => removeDuplicates());
   // Text to Columns
@@ -1634,6 +1657,86 @@ function toggleFilter() {
   filterRow = selectedRow;
   document.getElementById('sheet-filter')?.classList.add('active');
   renderGrid(); updateSelection();
+}
+
+function showFilterDropdown(colIdx, anchorEl) {
+  document.querySelector('.sheet-filter-dropdown')?.remove();
+  const sheet = getSheet();
+
+  // Get unique values in this column (below filter row)
+  const uniqueVals = new Set();
+  for (let r = filterRow + 1; r < sheet.rows; r++) {
+    uniqueVals.add(getDisplayValue(sheet, r, colIdx));
+  }
+  const sorted = [...uniqueVals].sort();
+  const currentFilter = filterValues[colIdx] || new Set();
+  const allSelected = currentFilter.size === 0;
+
+  const rect = anchorEl.getBoundingClientRect();
+  const dd = document.createElement('div');
+  dd.className = 'sheet-filter-dropdown';
+  dd.style.cssText = `position:fixed;top:${rect.bottom + 2}px;left:${rect.left - 100}px;width:200px;max-height:300px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);z-index:2000;padding:8px;overflow:auto;font-size:12px`;
+
+  let html = `<div style="margin-bottom:6px">
+    <input type="text" placeholder="Search..." style="width:100%;padding:4px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:11px" id="filter-search">
+  </div>
+  <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-weight:600;border-bottom:1px solid var(--border-color);margin-bottom:4px">
+    <input type="checkbox" class="filter-all" ${allSelected ? 'checked' : ''}> Select All
+  </label>`;
+  sorted.forEach(v => {
+    const checked = allSelected || currentFilter.has(v);
+    const displayVal = v || '(Blank)';
+    html += `<label style="display:flex;align-items:center;gap:6px;padding:2px 4px;cursor:pointer" data-val="${escapeHTML(v)}">
+      <input type="checkbox" class="filter-item" value="${escapeHTML(v)}" ${checked ? 'checked' : ''}> ${escapeHTML(displayVal)}
+    </label>`;
+  });
+  html += `<div style="display:flex;gap:4px;margin-top:8px;justify-content:flex-end">
+    <button class="toolbar-btn filter-clear" style="padding:2px 8px;font-size:11px">Clear</button>
+    <button class="toolbar-btn filter-ok" style="padding:2px 8px;font-size:11px;background:var(--accent-color);color:white;border-radius:4px">OK</button>
+  </div>`;
+  dd.innerHTML = html;
+  document.body.appendChild(dd);
+
+  // Search filter
+  dd.querySelector('#filter-search').oninput = (e) => {
+    const q = e.target.value.toLowerCase();
+    dd.querySelectorAll('label[data-val]').forEach(label => {
+      const val = label.dataset.val.toLowerCase();
+      label.style.display = val.includes(q) ? '' : 'none';
+    });
+  };
+
+  // Select All
+  dd.querySelector('.filter-all').onchange = (e) => {
+    dd.querySelectorAll('.filter-item').forEach(cb => { cb.checked = e.target.checked; });
+  };
+
+  // Clear
+  dd.querySelector('.filter-clear').onclick = () => {
+    delete filterValues[colIdx];
+    renderGrid(); updateSelection();
+    dd.remove();
+  };
+
+  // OK
+  dd.querySelector('.filter-ok').onclick = () => {
+    const selected = new Set();
+    dd.querySelectorAll('.filter-item:checked').forEach(cb => selected.add(cb.value));
+    if (selected.size === sorted.length || selected.size === 0) {
+      delete filterValues[colIdx]; // No filter = show all
+    } else {
+      filterValues[colIdx] = selected;
+    }
+    renderGrid(); updateSelection();
+    dd.remove();
+  };
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!dd.contains(e.target)) { dd.remove(); document.removeEventListener('click', close); }
+    });
+  }, 100);
 }
 
 /* ==================== Find & Replace ==================== */
@@ -3158,6 +3261,116 @@ function interpolateColor(c1, c2, c3, ratio) {
     b = Math.round(b2 + (b3 - b2) * t);
   }
   return `rgb(${r},${g},${b})`;
+}
+
+/* ==================== Goal Seek ==================== */
+
+function showGoalSeekDialog() {
+  const sheet = getSheet();
+  const currentRef = `${colToLetter(selectedCol)}${selectedRow + 1}`;
+
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay';
+  dlg.innerHTML = `<div class="modal-content" style="width:380px">
+    <h3 style="margin:0 0 12px">Goal Seek</h3>
+    <p style="font-size:12px;color:var(--text-secondary);margin:0 0 12px">Find the input value needed to achieve a target result.</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div>
+        <label style="font-size:12px;font-weight:600">Set cell (formula cell):</label>
+        <input type="text" id="gs-set-cell" value="${currentRef}" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);margin-top:2px">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600">To value:</label>
+        <input type="number" id="gs-target" value="100" step="any" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);margin-top:2px">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600">By changing cell:</label>
+        <input type="text" id="gs-change-cell" placeholder="e.g. B1" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);margin-top:2px">
+      </div>
+    </div>
+    <div id="gs-result" style="margin-top:12px;padding:8px;border-radius:4px;font-size:12px;display:none"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="toolbar-btn" id="gs-cancel" style="padding:6px 16px">Cancel</button>
+      <button class="toolbar-btn" id="gs-run" style="padding:6px 16px;background:var(--accent-color);color:white;border-radius:4px">Seek</button>
+    </div>
+  </div>`;
+  document.body.appendChild(dlg);
+
+  dlg.querySelector('#gs-cancel').onclick = () => dlg.remove();
+  dlg.querySelector('#gs-run').onclick = () => {
+    const setRef = dlg.querySelector('#gs-set-cell').value.trim().toUpperCase();
+    const target = parseFloat(dlg.querySelector('#gs-target').value);
+    const changeRef = dlg.querySelector('#gs-change-cell').value.trim().toUpperCase();
+    const resultEl = dlg.querySelector('#gs-result');
+
+    if (!setRef || isNaN(target) || !changeRef) {
+      resultEl.style.display = 'block';
+      resultEl.style.background = '#ffebee';
+      resultEl.textContent = 'Please fill in all fields.';
+      return;
+    }
+
+    const setRC = refToRC(setRef);
+    const changeRC = refToRC(changeRef);
+    if (!setRC || !changeRC) {
+      resultEl.style.display = 'block';
+      resultEl.style.background = '#ffebee';
+      resultEl.textContent = 'Invalid cell reference.';
+      return;
+    }
+
+    // Save original value
+    const origVal = getRawValue(sheet, changeRC.r, changeRC.c);
+
+    // Binary search / Newton's method to find the right value
+    let lo = -1e6, hi = 1e6, mid, bestVal = 0, bestDiff = Infinity;
+    const maxIter = 100;
+    const tolerance = 0.0001;
+
+    for (let i = 0; i < maxIter; i++) {
+      mid = (lo + hi) / 2;
+      setCell(sheet, changeRC.r, changeRC.c, String(mid));
+      recalcAll(sheet);
+      const result = parseFloat(getDisplayValue(sheet, setRC.r, setRC.c)) || 0;
+      const diff = result - target;
+
+      if (Math.abs(diff) < Math.abs(bestDiff)) {
+        bestDiff = diff;
+        bestVal = mid;
+      }
+
+      if (Math.abs(diff) < tolerance) break;
+
+      // Try to determine direction
+      setCell(sheet, changeRC.r, changeRC.c, String(mid + 1));
+      recalcAll(sheet);
+      const resultPlus = parseFloat(getDisplayValue(sheet, setRC.r, setRC.c)) || 0;
+      const slope = resultPlus - result;
+
+      if (slope > 0) {
+        if (diff > 0) hi = mid; else lo = mid;
+      } else if (slope < 0) {
+        if (diff > 0) lo = mid; else hi = mid;
+      } else {
+        break;
+      }
+    }
+
+    // Apply best value
+    setCell(sheet, changeRC.r, changeRC.c, String(parseFloat(bestVal.toFixed(6))));
+    recalcAll(sheet);
+    renderGrid();
+    updateSelection();
+
+    resultEl.style.display = 'block';
+    if (Math.abs(bestDiff) < 0.01) {
+      resultEl.style.background = '#e8f5e9';
+      resultEl.innerHTML = `<strong>Solution found!</strong><br>${changeRef} = ${bestVal.toFixed(4)}<br>Result: ${getDisplayValue(sheet, setRC.r, setRC.c)}`;
+    } else {
+      resultEl.style.background = '#fff3e0';
+      resultEl.innerHTML = `<strong>Approximate solution:</strong><br>${changeRef} = ${bestVal.toFixed(4)}<br>Result: ${getDisplayValue(sheet, setRC.r, setRC.c)} (target: ${target})`;
+    }
+  };
 }
 
 /* ==================== Multi-Level Sort ==================== */
