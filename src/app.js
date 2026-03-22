@@ -28,6 +28,7 @@ import { initAiChat, setContextProviders, enterAiFullscreen, exitAiFullscreen } 
 import { initI18n, setLang, getLang, showLanguagePicker, onLangChange } from './ui/i18n.js';
 import { initPhotoEditor, getPhotoFileName, openPhotoFile } from './photo/photo-editor.js';
 import { initAdBanners } from './ui/ad-banner.js';
+import { initCalculator } from './calculator/calculator.js';
 
 // Default welcome content
 const WELCOME_MD = `# Welcome to OfficeLink SL ✦
@@ -328,6 +329,7 @@ export async function initApp() {
   initSlideEditor();
   initPdfViewer();
   initPhotoEditor();
+  initCalculator();
 
   // Update filename display on tab switch + AI fullscreen mode
   onTabChange((tab, prevTab) => {
