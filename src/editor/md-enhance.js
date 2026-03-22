@@ -740,6 +740,18 @@ function applyAutocomplete(idx) {
   const { head } = view.state.selection.main;
   const from = autocompleteTrigger.from;
 
+  // Handle AI slash commands — remove the /ai... trigger text and run AI action
+  if (item.value && item.value.startsWith('__AI_')) {
+    view.dispatch({
+      changes: { from, to: head, insert: '' },
+      selection: { anchor: from },
+    });
+    view.focus();
+    hideAutocomplete();
+    handleAiSlashCommand(item.value);
+    return;
+  }
+
   view.dispatch({
     changes: { from, to: head, insert: item.value },
     selection: { anchor: from + item.value.length },
