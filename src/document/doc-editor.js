@@ -485,6 +485,8 @@ function doReplaceAll() {
 }
 
 // ─── Word Count ────────────────────────────────────────────
+let wordGoal = 0; // 0 = no goal
+
 function updateWordCount() {
   const statusEl = document.getElementById('doc-status-bar');
   if (!statusEl || !editorEl) return;
@@ -493,10 +495,9 @@ function updateWordCount() {
   const chars = text.length;
   const charsNoSpace = text.replace(/\s/g, '').length;
   const paras = editorEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li').length || 1;
-  const readingTime = Math.max(1, Math.ceil(words / 200)); // ~200 WPM average
-  const pages = Math.max(1, Math.ceil(words / 250)); // ~250 words per page
+  const readingTime = Math.max(1, Math.ceil(words / 200));
+  const pages = Math.max(1, Math.ceil(words / 250));
 
-  // Readability estimate (simplified Flesch-Kincaid grade level)
   const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0).length || 1;
   const syllables = text.split(/\s+/).reduce((acc, word) => {
     const w = word.toLowerCase().replace(/[^a-z]/g, '');
@@ -507,7 +508,36 @@ function updateWordCount() {
   const fkGrade = words > 30 ? Math.round((0.39 * (words / sentences) + 11.8 * (syllables / words) - 15.59) * 10) / 10 : 0;
   const readLevel = fkGrade <= 0 ? '' : fkGrade <= 5 ? '(Easy)' : fkGrade <= 8 ? '(Medium)' : fkGrade <= 12 ? '(Advanced)' : '(Expert)';
 
-  statusEl.textContent = `Words: ${words.toLocaleString()}  |  Chars: ${chars.toLocaleString()} (${charsNoSpace.toLocaleString()})  |  ¶${paras}  |  ~${readingTime} min read  |  ~${pages} pg${fkGrade > 0 ? `  |  Grade ${fkGrade} ${readLevel}` : ''}`;
+  let goalStr = '';
+  if (wordGoal > 0) {
+    const pct = Math.min(100, Math.round((words / wordGoal) * 100));
+    goalStr = `  |  Goal: ${pct}% (${words}/${wordGoal})`;
+  }
+
+  statusEl.innerHTML = `Words: ${words.toLocaleString()}  |  Chars: ${chars.toLocaleString()} (${charsNoSpace.toLocaleString()})  |  ¶${paras}  |  ~${readingTime} min read  |  ~${pages} pg${fkGrade > 0 ? `  |  Grade ${fkGrade} ${readLevel}` : ''}${goalStr}  <button id="doc-word-goal-btn" style="border:none;background:none;cursor:pointer;font-size:11px;color:var(--text-tertiary);text-decoration:underline">${wordGoal > 0 ? 'Edit Goal' : 'Set Goal'}</button>`;
+
+  // Update progress bar if goal is set
+  let bar = document.getElementById('doc-goal-progress');
+  if (wordGoal > 0) {
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'doc-goal-progress';
+      bar.style.cssText = 'height:3px;background:var(--border-color);position:relative';
+      statusEl.parentElement?.insertBefore(bar, statusEl);
+    }
+    const pct = Math.min(100, (words / wordGoal) * 100);
+    bar.innerHTML = `<div style="height:100%;width:${pct}%;background:${pct >= 100 ? '#34a853' : '#4285f4'};transition:width 0.3s;border-radius:2px"></div>`;
+  } else if (bar) {
+    bar.remove();
+  }
+
+  document.getElementById('doc-word-goal-btn')?.addEventListener('click', () => {
+    const val = prompt('Set word count goal (0 to clear):', wordGoal || '');
+    if (val !== null) {
+      wordGoal = parseInt(val, 10) || 0;
+      updateWordCount();
+    }
+  });
 }
 
 // ─── Helpers ────────────────────────────────────────────────
