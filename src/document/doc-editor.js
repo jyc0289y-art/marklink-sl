@@ -49,6 +49,12 @@ export function initDocEditor() {
   // Document Compare
   document.getElementById('doc-compare')?.addEventListener('click', () => showDocCompare());
 
+  // Focus Mode
+  document.getElementById('doc-focus-mode')?.addEventListener('click', () => toggleFocusMode());
+
+  // Reading Mode
+  document.getElementById('doc-reading-mode')?.addEventListener('click', () => toggleReadingMode());
+
   // Undo / Redo buttons
   const undoBtn = document.getElementById('doc-undo');
   if (undoBtn) {
@@ -2661,5 +2667,184 @@ function showDateTimePicker() {
     } else {
       document.execCommand('insertText', false, text);
     }
+  }
+}
+
+/* ── Focus Mode (Zen) ── */
+let focusModeActive = false;
+let focusModeOverlay = null;
+
+function toggleFocusMode() {
+  const editorEl = document.getElementById('doc-editor');
+  if (!editorEl) return;
+
+  focusModeActive = !focusModeActive;
+  const btn = document.getElementById('doc-focus-mode');
+
+  if (focusModeActive) {
+    // Create overlay
+    focusModeOverlay = document.createElement('div');
+    focusModeOverlay.className = 'doc-focus-overlay';
+    focusModeOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg-primary);z-index:9999;display:flex;justify-content:center;overflow-y:auto';
+
+    const container = document.createElement('div');
+    container.style.cssText = 'width:700px;max-width:90vw;padding:80px 40px;min-height:100vh';
+
+    // Clone editor content
+    const editArea = document.createElement('div');
+    editArea.contentEditable = 'true';
+    editArea.id = 'doc-focus-editor';
+    editArea.style.cssText = 'font-size:18px;line-height:1.8;color:var(--text-primary);outline:none;font-family:Georgia,serif;letter-spacing:0.01em';
+    editArea.innerHTML = editorEl.innerHTML;
+    container.appendChild(editArea);
+
+    // ESC to exit hint
+    const hint = document.createElement('div');
+    hint.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);color:white;padding:8px 20px;border-radius:20px;font-size:12px;opacity:0.6;z-index:10000';
+    hint.textContent = 'Press ESC to exit focus mode';
+    focusModeOverlay.appendChild(hint);
+
+    // Word count in corner
+    const wc = document.createElement('div');
+    wc.style.cssText = 'position:fixed;top:20px;right:30px;font-size:12px;color:var(--text-tertiary);z-index:10000';
+    focusModeOverlay.appendChild(wc);
+
+    const updateWC = () => {
+      const text = editArea.innerText || '';
+      const words = text.trim().split(/\s+/).filter(w => w).length;
+      wc.textContent = `${words} words`;
+    };
+    editArea.addEventListener('input', updateWC);
+    updateWC();
+
+    focusModeOverlay.appendChild(container);
+    document.body.appendChild(focusModeOverlay);
+    editArea.focus();
+
+    // Fade out hint after 3s
+    setTimeout(() => { hint.style.transition = 'opacity 1s'; hint.style.opacity = '0'; }, 3000);
+
+    // ESC handler
+    const escHandler = (e) => {
+      if (e.key === 'Escape') {
+        // Sync content back
+        editorEl.innerHTML = editArea.innerHTML;
+        toggleFocusMode();
+        document.removeEventListener('keydown', escHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
+
+    if (btn) btn.style.background = 'var(--accent-color)';
+  } else {
+    if (focusModeOverlay) {
+      // Sync content from focus editor back
+      const focusEditor = focusModeOverlay.querySelector('#doc-focus-editor');
+      if (focusEditor) {
+        editorEl.innerHTML = focusEditor.innerHTML;
+      }
+      focusModeOverlay.remove();
+      focusModeOverlay = null;
+    }
+    if (btn) btn.style.background = '';
+  }
+}
+
+/* ── Reading Mode ── */
+let readingModeActive = false;
+let readingModeOverlay = null;
+
+function toggleReadingMode() {
+  const editorEl = document.getElementById('doc-editor');
+  if (!editorEl) return;
+
+  readingModeActive = !readingModeActive;
+  const btn = document.getElementById('doc-reading-mode');
+
+  if (readingModeActive) {
+    readingModeOverlay = document.createElement('div');
+    readingModeOverlay.className = 'doc-reading-overlay';
+    readingModeOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg-primary);z-index:9999;display:flex;justify-content:center;overflow-y:auto';
+
+    const container = document.createElement('div');
+    container.style.cssText = 'width:680px;max-width:90vw;padding:60px 40px;min-height:100vh';
+
+    // Toolbar
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = 'position:fixed;top:0;left:0;right:0;display:flex;justify-content:center;gap:12px;padding:12px;background:var(--bg-secondary);border-bottom:1px solid var(--border-color);z-index:10000';
+    toolbar.innerHTML = `
+      <button id="read-font-up" style="border:1px solid var(--border-color);background:var(--bg-primary);color:var(--text-primary);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px">A+</button>
+      <button id="read-font-down" style="border:1px solid var(--border-color);background:var(--bg-primary);color:var(--text-primary);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px">A-</button>
+      <button id="read-serif-toggle" style="border:1px solid var(--border-color);background:var(--bg-primary);color:var(--text-primary);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px">Serif</button>
+      <button id="read-sepia" style="border:1px solid var(--border-color);background:var(--bg-primary);color:var(--text-primary);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px">Sepia</button>
+      <button id="read-close" style="border:1px solid var(--border-color);background:var(--bg-primary);color:var(--text-primary);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px">Close</button>
+    `;
+    readingModeOverlay.appendChild(toolbar);
+
+    // Content (read-only)
+    const content = document.createElement('div');
+    content.style.cssText = 'font-size:18px;line-height:2;color:var(--text-primary);font-family:Georgia,serif;margin-top:60px';
+    content.innerHTML = editorEl.innerHTML;
+    // Make images max-width
+    content.querySelectorAll('img').forEach(img => {
+      img.style.maxWidth = '100%';
+      img.style.height = 'auto';
+    });
+    container.appendChild(content);
+
+    // Reading progress bar
+    const progressBar = document.createElement('div');
+    progressBar.style.cssText = 'position:fixed;top:0;left:0;height:3px;background:var(--accent-color);z-index:10001;transition:width 0.1s';
+    readingModeOverlay.appendChild(progressBar);
+
+    readingModeOverlay.addEventListener('scroll', () => {
+      const scrollTop = readingModeOverlay.scrollTop;
+      const scrollHeight = readingModeOverlay.scrollHeight - readingModeOverlay.clientHeight;
+      const pct = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0;
+      progressBar.style.width = pct + '%';
+    });
+
+    readingModeOverlay.appendChild(container);
+    document.body.appendChild(readingModeOverlay);
+
+    let fontSize = 18;
+    let isSerif = true;
+    let isSepia = false;
+
+    toolbar.querySelector('#read-font-up').onclick = () => {
+      fontSize = Math.min(fontSize + 2, 32);
+      content.style.fontSize = fontSize + 'px';
+    };
+    toolbar.querySelector('#read-font-down').onclick = () => {
+      fontSize = Math.max(fontSize - 2, 12);
+      content.style.fontSize = fontSize + 'px';
+    };
+    toolbar.querySelector('#read-serif-toggle').onclick = () => {
+      isSerif = !isSerif;
+      content.style.fontFamily = isSerif ? 'Georgia, serif' : '-apple-system, sans-serif';
+    };
+    toolbar.querySelector('#read-sepia').onclick = () => {
+      isSepia = !isSepia;
+      readingModeOverlay.style.background = isSepia ? '#f5f0e8' : 'var(--bg-primary)';
+      content.style.color = isSepia ? '#3e2c1c' : 'var(--text-primary)';
+    };
+    toolbar.querySelector('#read-close').onclick = () => toggleReadingMode();
+
+    // ESC handler
+    const escHandler = (e) => {
+      if (e.key === 'Escape') {
+        toggleReadingMode();
+        document.removeEventListener('keydown', escHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
+
+    if (btn) btn.style.background = 'var(--accent-color)';
+  } else {
+    if (readingModeOverlay) {
+      readingModeOverlay.remove();
+      readingModeOverlay = null;
+    }
+    if (btn) btn.style.background = '';
   }
 }

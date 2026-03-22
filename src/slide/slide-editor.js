@@ -219,6 +219,9 @@ function bindEvents() {
   // Presentation timer
   document.getElementById('slide-pres-timer')?.addEventListener('click', showPresentationTimer);
 
+  // Grid toggle
+  document.getElementById('slide-toggle-grid')?.addEventListener('click', toggleSlideGrid);
+
   // Thumbnail click
   panelEl?.addEventListener('click', (e) => {
     const thumb = e.target.closest('.slide-thumb');
@@ -2186,6 +2189,64 @@ function startRehearsal() {
 
   // Click to advance
   slideEl.addEventListener('click', nextSlide);
+}
+
+/* ── Slide Grid Overlay ── */
+let slideGridVisible = false;
+
+function toggleSlideGrid() {
+  slideGridVisible = !slideGridVisible;
+  const btn = document.getElementById('slide-toggle-grid');
+  let gridOverlay = canvasEl?.querySelector('.slide-grid-overlay');
+
+  if (slideGridVisible) {
+    if (!gridOverlay) {
+      gridOverlay = document.createElement('div');
+      gridOverlay.className = 'slide-grid-overlay';
+      gridOverlay.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:1;opacity:0.3';
+
+      // Draw grid lines
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', '100%');
+      svg.setAttribute('height', '100%');
+      svg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
+
+      // Vertical lines every 10%
+      for (let i = 10; i < 100; i += 10) {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', `${i}%`);
+        line.setAttribute('y1', '0');
+        line.setAttribute('x2', `${i}%`);
+        line.setAttribute('y2', '100%');
+        line.setAttribute('stroke', i === 50 ? '#ea4335' : '#999');
+        line.setAttribute('stroke-width', i === 50 ? '1' : '0.5');
+        line.setAttribute('stroke-dasharray', i === 50 ? '' : '4,4');
+        svg.appendChild(line);
+      }
+
+      // Horizontal lines every 10%
+      for (let i = 10; i < 100; i += 10) {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', '0');
+        line.setAttribute('y1', `${i}%`);
+        line.setAttribute('x2', '100%');
+        line.setAttribute('y2', `${i}%`);
+        line.setAttribute('stroke', i === 50 ? '#ea4335' : '#999');
+        line.setAttribute('stroke-width', i === 50 ? '1' : '0.5');
+        line.setAttribute('stroke-dasharray', i === 50 ? '' : '4,4');
+        svg.appendChild(line);
+      }
+
+      gridOverlay.appendChild(svg);
+      canvasEl.style.position = 'relative';
+      canvasEl.appendChild(gridOverlay);
+    }
+    gridOverlay.style.display = '';
+    if (btn) btn.style.background = 'var(--accent-color)';
+  } else {
+    if (gridOverlay) gridOverlay.style.display = 'none';
+    if (btn) btn.style.background = '';
+  }
 }
 
 /* ── Presentation Timer ── */
