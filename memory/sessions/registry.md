@@ -18,3 +18,6 @@
 | P11.14wc | PDF Advanced Features (Forms/Signature/Redact/Stamp/Reorder) | 2026-03-22 | P11.13wc | 진행중 |
 | P11.14wc | PhotoLink Pro Features 2 (Perspective/Lens/Watermark) | 2026-03-22 | P11.13wc | 진행중 |
 | P11.15wc | Doc Editor Enhancement (Track Changes/Spell Check/Comments/Find) | 2026-03-22 | P11.14wc | 진행중 |
+| P11.16wc | Sheet Enhancement (CF/Validation/Chart/Freeze Panes) | 2026-03-22 | P11.15wc | 진행중 |
+| P11.17wc | Calculator Enhancement (Date/Equation/Constants) | 2026-03-22 | P11.16wc | 진행중 |
+| P11.18wc | Slide Editor Enhancement (Transitions/Timeline/Layouts/Presenter) | 2026-03-22 | P11.17wc | 진행중 |

@@ -7,7 +7,10 @@ const LAYOUTS = {
   section: '<div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%"><h1 style="font-size:52px;margin:0">Section Title</h1><p style="font-size:24px;opacity:0.6;margin:12px 0 0">Section subtitle</p></div>',
   comparison: '<h2>Comparison</h2><div style="display:flex;gap:24px"><div style="flex:1;border:1px solid rgba(128,128,128,0.3);border-radius:8px;padding:16px"><h3>Option A</h3><ul><li>Feature 1</li><li>Feature 2</li></ul></div><div style="flex:1;border:1px solid rgba(128,128,128,0.3);border-radius:8px;padding:16px"><h3>Option B</h3><ul><li>Feature 1</li><li>Feature 2</li></ul></div></div>',
   blank: '<p>&nbsp;</p>',
-  image: '<h2>Image Slide</h2><p style="text-align:center;color:#999">Click 🖼 to insert an image</p>',
+  image: '<h2>Image Slide</h2><p style="text-align:center;color:#999">Click to insert an image</p>',
+  'title-image': '<div style="display:flex;gap:32px;align-items:center;height:100%"><div style="flex:1"><h2 style="font-size:36px;margin:0 0 16px">Title Here</h2><p style="font-size:20px;margin:0;opacity:0.8">Description text goes here.</p></div><div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="width:100%;aspect-ratio:4/3;background:rgba(128,128,128,0.1);border:2px dashed rgba(128,128,128,0.3);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:48px;opacity:0.3">IMG</div></div></div>',
+  'big-number': '<div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center"><div style="font-size:120px;font-weight:900;line-height:1;opacity:0.9">42%</div><p style="font-size:28px;margin:20px 0 0;opacity:0.6">Key statistic or metric</p></div>',
+  quote: '<div style="display:flex;flex-direction:column;justify-content:center;height:100%;padding:0 40px"><div style="font-size:72px;line-height:0.8;opacity:0.15;font-family:Georgia,serif">&ldquo;</div><blockquote style="font-size:32px;font-style:italic;margin:0;line-height:1.5;padding:0 20px">Insert your quote here.</blockquote><p style="font-size:18px;margin:24px 0 0 20px;opacity:0.6">&mdash; Author Name</p></div>',
 };
 
 let slides = [
@@ -174,6 +177,11 @@ function bindEvents() {
   // Master slides
   document.getElementById('slide-master')?.addEventListener('click', () => {
     showMasterSlideDialog();
+  });
+
+  // Layout Gallery picker
+  document.getElementById('slide-layout-picker')?.addEventListener('click', () => {
+    showLayoutPicker();
   });
 
   // Gradient background picker
@@ -3453,6 +3461,70 @@ const MASTER_LAYOUTS = {
     preview: '<div style="display:flex;flex-direction:column;justify-content:center;height:100%;padding:0 4px"><div style="font-size:14px;line-height:0.8;opacity:0.15">&ldquo;</div><div style="font-size:5px;font-style:italic;padding:0 3px">Quote text...</div><div style="font-size:4px;opacity:0.5;margin-top:2px;padding-left:3px">-- Author</div></div>',
   },
 };
+
+function showLayoutPicker() {
+  const existing = document.querySelector('.slide-layout-picker');
+  if (existing) { existing.remove(); return; }
+
+  const btn = document.getElementById('slide-layout-picker');
+  const rect = btn.getBoundingClientRect();
+
+  const picker = document.createElement('div');
+  picker.className = 'slide-layout-picker';
+  picker.style.top = (rect.bottom + 4) + 'px';
+  picker.style.left = Math.min(rect.left, window.innerWidth - 460) + 'px';
+
+  let gridHTML = '';
+  for (const [key, layout] of Object.entries(MASTER_LAYOUTS)) {
+    gridHTML += `<div class="slide-layout-card" data-layout="${key}">
+      <div class="layout-preview">${layout.preview}</div>
+      <div class="layout-name">${layout.name}</div>
+    </div>`;
+  }
+
+  picker.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3>Choose Layout</h3>
+      <button class="layout-picker-close" style="border:none;background:transparent;font-size:18px;cursor:pointer;color:var(--text-primary)">&times;</button>
+    </div>
+    <div class="slide-layout-grid">${gridHTML}</div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+      <label style="font-size:11px;display:flex;align-items:center;gap:4px">
+        <input type="checkbox" id="layout-replace"> Replace current slide content
+      </label>
+    </div>
+  `;
+
+  document.body.appendChild(picker);
+
+  picker.querySelector('.layout-picker-close').onclick = () => picker.remove();
+
+  picker.querySelectorAll('.slide-layout-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const key = card.dataset.layout;
+      const layout = MASTER_LAYOUTS[key];
+      if (!layout) return;
+
+      const replace = picker.querySelector('#layout-replace')?.checked;
+      if (replace || confirm('Apply this layout to current slide?')) {
+        slides[activeSlideIdx].content = layout.content;
+        loadSlide(activeSlideIdx);
+        updateThumb(activeSlideIdx);
+      }
+      picker.remove();
+    });
+  });
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!picker.contains(e.target) && e.target !== btn) {
+        picker.remove();
+        document.removeEventListener('click', close);
+      }
+    });
+  }, 100);
+}
 
 /* ═══════════════════════════════════════════════════════════════
    FEATURE: Enhanced Presenter View (separate window)
