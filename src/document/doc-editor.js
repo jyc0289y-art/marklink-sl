@@ -350,9 +350,34 @@ export function initDocEditor() {
       e.preventDefault();
       document.execCommand('redo');
     }
+    // Paste as plain text (Ctrl+Shift+V)
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'v') {
+      e.preventDefault();
+      navigator.clipboard.readText().then(text => {
+        document.execCommand('insertText', false, text);
+      }).catch(() => {});
+    }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'h') {
       e.preventDefault();
       toggleFindBar(true);
+    }
+  });
+
+  // Smart paste: clean up external HTML
+  editorEl.addEventListener('paste', (e) => {
+    const html = e.clipboardData.getData('text/html');
+    if (html && html.includes('data-meta') || html.includes('MsoNormal') || html.includes('docs-internal')) {
+      // Pasting from MS Office or Google Docs — clean it
+      e.preventDefault();
+      const cleaned = html
+        .replace(/<meta[^>]*>/gi, '')
+        .replace(/class="[^"]*"/gi, '')
+        .replace(/style="[^"]*mso[^"]*"/gi, '')
+        .replace(/<o:p>.*?<\/o:p>/gi, '')
+        .replace(/<!--.*?-->/gs, '')
+        .replace(/<\/?span[^>]*>/gi, '')
+        .replace(/<\/?font[^>]*>/gi, '');
+      document.execCommand('insertHTML', false, cleaned);
     }
   });
 

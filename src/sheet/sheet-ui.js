@@ -2,7 +2,7 @@
 
 import {
   createSheetData, getCell, setCell as _setCell, setCellFormat,
-  getDisplayValue, getRawValue, colToLetter, rcToRef, refToRC,
+  getDisplayValue, getRawValue, colToLetter, letterToCol as engineLetterToCol, rcToRef, refToRC,
   addRows, addCols, deleteRow, deleteCol, recalcAll as _recalcAll,
 } from './sheet-engine.js';
 
@@ -1204,7 +1204,10 @@ function startEdit(initialChar) {
     isFormulaMode = input.value.startsWith('=');
     formulaBarEl.value = input.value;
     showAutocomplete(input);
+    if (isFormulaMode) highlightFormulaRefs(input.value);
+    else clearFormulaRefHighlights();
   });
+  if (isFormulaMode) highlightFormulaRefs(raw);
 
   input.addEventListener('keydown', (e) => {
     if (handleAcKeydown(e, input)) return;
@@ -1288,6 +1291,7 @@ function commitEdit() {
   isFormulaMode = false;
   formulaEditTarget = null;
   td.classList.remove('editing');
+  clearFormulaRefHighlights();
   renderGrid();
   updateSelection();
   hideAutocomplete();
@@ -1297,6 +1301,7 @@ function cancelEdit() {
   isEditing = false;
   isFormulaMode = false;
   formulaEditTarget = null;
+  clearFormulaRefHighlights();
   renderCell(editingRow, editingCol);
   const td = gridEl.querySelector(`td[data-row="${editingRow}"][data-col="${editingCol}"]`);
   if (td) td.classList.remove('editing');
@@ -1700,6 +1705,72 @@ function getFormulaToken(inputEl) {
   const before = val.substring(0, cursor);
   const match = before.match(/(?:^=|[,(+\-*/])([A-Z]+)$/i);
   return match ? match[1].toUpperCase() : null;
+}
+
+/* ==================== Formula Reference Highlighting ==================== */
+
+const REF_COLORS = ['#4285f4', '#ea4335', '#34a853', '#fbbc04', '#ff6d01', '#46bdc6', '#9334e6', '#e91e63'];
+
+function highlightFormulaRefs(formula) {
+  clearFormulaRefHighlights();
+  if (!formula.startsWith('=')) return;
+
+  // Parse cell references (A1, B2:C5, Sheet1!A1, etc.)
+  const refPattern = /(?:'[^']*'|[A-Z]+\d+)(?::(?:[A-Z]+\d+))?/gi;
+  const expr = formula.substring(1);
+  let match;
+  let colorIdx = 0;
+
+  while ((match = refPattern.exec(expr)) !== null) {
+    const ref = match[0];
+    // Skip sheet prefixes
+    if (ref.startsWith("'")) continue;
+
+    const color = REF_COLORS[colorIdx % REF_COLORS.length];
+    colorIdx++;
+
+    // Parse range (A1:B2) or single cell (A1)
+    const parts = ref.split(':');
+    const cellPattern = /^([A-Z]+)(\d+)$/i;
+    const startMatch = parts[0].match(cellPattern);
+    if (!startMatch) continue;
+
+    const startCol = letterToCol(startMatch[1].toUpperCase());
+    const startRow = parseInt(startMatch[2]) - 1;
+    let endRow = startRow, endCol = startCol;
+
+    if (parts[1]) {
+      const endMatch = parts[1].match(cellPattern);
+      if (endMatch) {
+        endCol = letterToCol(endMatch[1].toUpperCase());
+        endRow = parseInt(endMatch[2]) - 1;
+      }
+    }
+
+    // Highlight cells
+    for (let r = startRow; r <= endRow; r++) {
+      for (let c = startCol; c <= endCol; c++) {
+        const td = gridEl?.querySelector(`td[data-row="${r}"][data-col="${c}"]`);
+        if (td) {
+          td.style.outline = `2px solid ${color}`;
+          td.style.outlineOffset = '-1px';
+          td.classList.add('formula-ref-highlight');
+        }
+      }
+    }
+  }
+}
+
+function letterToCol(letter) {
+  return engineLetterToCol(letter);
+}
+
+function clearFormulaRefHighlights() {
+  gridEl?.querySelectorAll('.formula-ref-highlight').forEach(td => {
+    td.style.outline = '';
+    td.style.outlineOffset = '';
+    td.classList.remove('formula-ref-highlight');
+  });
 }
 
 function showAutocomplete(inputEl) {
