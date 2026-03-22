@@ -143,9 +143,16 @@ function renderGrid() {
       const hasNote = cellNotes[noteKey];
       const noteIndicator = hasNote ? '<span class="cell-note-indicator" title="' + escapeHTML(hasNote) + '"></span>' : '';
       const sparkline = cell?.format?.sparkline;
-      const cellContent = sparkline
-        ? `<img src="${sparkline}" style="width:100%;height:100%;object-fit:contain" alt="sparkline">`
-        : escapeHTML(String(val));
+      const hyperlink = cell?.format?.hyperlink;
+      let cellContent;
+      if (sparkline) {
+        cellContent = `<img src="${sparkline}" style="width:100%;height:100%;object-fit:contain" alt="sparkline">`;
+      } else if (hyperlink) {
+        const linkLabel = cellHyperlinks[`${r},${c}`]?.label || val;
+        cellContent = `<a href="${escapeHTML(hyperlink)}" target="_blank" rel="noopener" style="color:#1a73e8;text-decoration:underline;cursor:pointer" onclick="event.stopPropagation()">${escapeHTML(String(linkLabel))}</a>`;
+      } else {
+        cellContent = escapeHTML(String(val));
+      }
       // Filter dropdown on filter header row
       const filterBtn = (filterRow === r)
         ? `<span class="sheet-filter-btn" data-filter-col="${c}" style="cursor:pointer;font-size:9px;float:right;color:${filterValues[c] ? 'var(--accent-color)' : 'var(--text-secondary)'};margin-left:2px" title="Filter">▼</span>`
@@ -191,6 +198,7 @@ function cellStyle(cell, r, c) {
     if (f.color) parts.push(`color:${f.color}`);
     if (f.fontSize) parts.push(`font-size:${f.fontSize}px`);
     if (f.fontFamily) parts.push(`font-family:${f.fontFamily}`);
+    if (f.indent) parts.push(`padding-left:${f.indent * 12}px`);
     if (f.wrap) parts.push('white-space:pre-wrap;word-wrap:break-word');
     if (f.merged) parts.push('display:none');
     if (f.mergeSpan) {
@@ -668,6 +676,30 @@ function bindEvents() {
       }
       renderGrid(); updateSelection();
     });
+  });
+
+  // Indent
+  document.getElementById('sheet-indent-inc')?.addEventListener('click', () => {
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        const cell = getCell(getSheet(), r, c);
+        const cur = cell?.format?.indent || 0;
+        setCellFormat(getSheet(), r, c, 'indent', cur + 1);
+      }
+    }
+    renderGrid(); updateSelection();
+  });
+  document.getElementById('sheet-indent-dec')?.addEventListener('click', () => {
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        const cell = getCell(getSheet(), r, c);
+        const cur = cell?.format?.indent || 0;
+        setCellFormat(getSheet(), r, c, 'indent', Math.max(0, cur - 1));
+      }
+    }
+    renderGrid(); updateSelection();
   });
 
   // Background color
@@ -2045,6 +2077,8 @@ function showCellContextMenu(x, y, r, c) {
     { divider: true },
     { label: '📋 Set Data Validation', action: () => showDataValidationDialog(r, c) },
     { label: '📝 Add/Edit Note', action: () => addCellNote(r, c) },
+    { label: '🔗 Insert Hyperlink', action: () => insertCellHyperlink(r, c) },
+    { label: sheetProtected ? '🔓 Unlock Cells' : '🔒 Lock Cells', action: () => toggleCellLock(r, c) },
     { divider: true },
     { label: '+R Insert Row', action: () => { addRows(getSheet()); renderGrid(); updateSelection(); } },
     { label: '+C Insert Column', action: () => { addCols(getSheet()); renderGrid(); updateSelection(); } },
@@ -4186,6 +4220,38 @@ function toggleGroupCollapse(groupIdx) {
   group.collapsed = !group.collapsed;
   renderGrid();
   updateSelection();
+}
+
+/* ==================== Cell Hyperlinks ==================== */
+
+let cellHyperlinks = {}; // "r,c" → { url, label }
+
+function insertCellHyperlink(r, c) {
+  const key = `${r},${c}`;
+  const existing = cellHyperlinks[key];
+  const url = prompt('Enter URL:', existing?.url || 'https://');
+  if (!url) return;
+  const label = prompt('Display text:', existing?.label || getDisplayValue(getSheet(), r, c) || url);
+  cellHyperlinks[key] = { url, label: label || url };
+  if (!getCell(getSheet(), r, c)?.raw) {
+    setCell(getSheet(), r, c, label || url);
+  }
+  setCellFormat(getSheet(), r, c, 'hyperlink', url);
+  renderGrid();
+  updateSelection();
+}
+
+function toggleCellLock() {
+  const { r1, r2, c1, c2 } = getSelectionRange();
+  const sheet = getSheet();
+  const first = getCell(sheet, r1, c1);
+  const isLocked = first?.format?.locked !== false;
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      setCellFormat(sheet, r, c, 'locked', !isLocked);
+    }
+  }
+  alert(isLocked ? 'Selected cells are now unlocked (editable when sheet is protected).' : 'Selected cells are now locked.');
 }
 
 /* ==================== Sheet Protection ==================== */
