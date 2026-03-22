@@ -26,6 +26,11 @@ export function initCalculator() {
   initStatsCalc();
   initFinanceCalc();
   initProgrammerCalc();
+  setTimeout(() => {
+    if (typeof initDateCalc === 'function') initDateCalc();
+    if (typeof initEquationSolver === 'function') initEquationSolver();
+    if (typeof initConstantsLibrary === 'function') initConstantsLibrary();
+  }, 0);
 }
 
 /* ==================== Tab Switching ==================== */
@@ -1702,4 +1707,467 @@ function initProgrammerCalc() {
   }
 
   updateProgDisplay();
+}
+
+/* ==================== Date Calculator ==================== */
+
+function initDateCalc() {
+  // Tab switching
+  document.querySelectorAll('.calc-date-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.dateTab;
+      document.querySelectorAll('.calc-date-tab').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.calc-date-panel').forEach(p => {
+        p.classList.toggle('active', p.id === `calc-date-${tab}`);
+      });
+    });
+  });
+
+  // Set default dates to today
+  const today = new Date().toISOString().split('T')[0];
+  ['calc-date-start', 'calc-date-add-start', 'calc-date-weekday-input', 'calc-date-biz-start'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = today;
+  });
+  const future = new Date(Date.now() + 86400000 * 30).toISOString().split('T')[0];
+  ['calc-date-end', 'calc-date-biz-end'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = future;
+  });
+
+  // Date Difference
+  document.getElementById('calc-date-diff-btn')?.addEventListener('click', () => {
+    const start = new Date(document.getElementById('calc-date-start')?.value);
+    const end = new Date(document.getElementById('calc-date-end')?.value);
+    if (isNaN(start) || isNaN(end)) return;
+
+    const diffMs = Math.abs(end - start);
+    const totalDays = Math.round(diffMs / 86400000);
+
+    let s = new Date(Math.min(start, end));
+    let e = new Date(Math.max(start, end));
+    let years = e.getFullYear() - s.getFullYear();
+    let months = e.getMonth() - s.getMonth();
+    let days = e.getDate() - s.getDate();
+    if (days < 0) {
+      months--;
+      const prevMonth = new Date(e.getFullYear(), e.getMonth(), 0);
+      days += prevMonth.getDate();
+    }
+    if (months < 0) { years--; months += 12; }
+
+    const totalWeeks = Math.floor(totalDays / 7);
+    const remainDays = totalDays % 7;
+    const totalHours = Math.round(diffMs / 3600000);
+
+    document.getElementById('calc-date-diff-result').innerHTML = `
+      <div class="calc-fin-result-grid">
+        <div class="calc-fin-result-item"><span>Years, Months, Days</span><strong>${years}y ${months}m ${days}d</strong></div>
+        <div class="calc-fin-result-item"><span>Total Days</span><strong>${totalDays.toLocaleString()}</strong></div>
+        <div class="calc-fin-result-item"><span>Weeks + Days</span><strong>${totalWeeks}w ${remainDays}d</strong></div>
+        <div class="calc-fin-result-item"><span>Total Hours</span><strong>${totalHours.toLocaleString()}</strong></div>
+      </div>`;
+  });
+
+  // Add/Subtract Days
+  function dateAddSub(sign) {
+    const start = new Date(document.getElementById('calc-date-add-start')?.value);
+    const daysVal = parseInt(document.getElementById('calc-date-add-days')?.value) || 0;
+    if (isNaN(start)) return;
+    const res = new Date(start);
+    res.setDate(res.getDate() + sign * daysVal);
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    document.getElementById('calc-date-add-result').innerHTML = `
+      <div class="calc-fin-result-grid">
+        <div class="calc-fin-result-item"><span>Result Date</span><strong>${res.toISOString().split('T')[0]}</strong></div>
+        <div class="calc-fin-result-item"><span>Day of Week</span><strong>${dayNames[res.getDay()]}</strong></div>
+      </div>`;
+  }
+  document.getElementById('calc-date-add-btn')?.addEventListener('click', () => dateAddSub(1));
+  document.getElementById('calc-date-sub-btn')?.addEventListener('click', () => dateAddSub(-1));
+
+  // Day of Week
+  document.getElementById('calc-date-weekday-btn')?.addEventListener('click', () => {
+    const d = new Date(document.getElementById('calc-date-weekday-input')?.value);
+    if (isNaN(d)) return;
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
+    const weekNum = Math.ceil(dayOfYear / 7);
+    const isLeap = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+    document.getElementById('calc-date-weekday-result').innerHTML = `
+      <div class="calc-fin-result-grid">
+        <div class="calc-fin-result-item"><span>Day of Week</span><strong>${dayNames[d.getDay()]}</strong></div>
+        <div class="calc-fin-result-item"><span>Full Date</span><strong>${monthNames[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}</strong></div>
+        <div class="calc-fin-result-item"><span>Day of Year</span><strong>${dayOfYear} / ${isLeap(d.getFullYear()) ? 366 : 365}</strong></div>
+        <div class="calc-fin-result-item"><span>Week Number</span><strong>Week ${weekNum}</strong></div>
+      </div>`;
+  });
+
+  // Business Days
+  document.getElementById('calc-date-biz-btn')?.addEventListener('click', () => {
+    const start = new Date(document.getElementById('calc-date-biz-start')?.value);
+    const end = new Date(document.getElementById('calc-date-biz-end')?.value);
+    if (isNaN(start) || isNaN(end)) return;
+
+    const s = new Date(Math.min(start, end));
+    const e = new Date(Math.max(start, end));
+    let totalDays = 0, bizDays = 0, weekendDays = 0;
+    const cur = new Date(s);
+    while (cur <= e) {
+      totalDays++;
+      const dow = cur.getDay();
+      if (dow !== 0 && dow !== 6) bizDays++;
+      else weekendDays++;
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    document.getElementById('calc-date-biz-result').innerHTML = `
+      <div class="calc-fin-result-grid">
+        <div class="calc-fin-result-item"><span>Business Days</span><strong>${bizDays}</strong></div>
+        <div class="calc-fin-result-item"><span>Weekend Days</span><strong>${weekendDays}</strong></div>
+        <div class="calc-fin-result-item"><span>Total Calendar Days</span><strong>${totalDays}</strong></div>
+        <div class="calc-fin-result-item"><span>Full Work Weeks</span><strong>${Math.floor(bizDays / 5)}</strong></div>
+      </div>`;
+  });
+}
+
+/* ==================== Equation Solver ==================== */
+
+function initEquationSolver() {
+  // Tab switching
+  document.querySelectorAll('.calc-eq-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.eqTab;
+      document.querySelectorAll('.calc-eq-tab').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.calc-eq-panel').forEach(p => {
+        p.classList.toggle('active', p.id === `calc-eq-${tab}`);
+      });
+    });
+  });
+
+  function fmtNum(n) {
+    if (Number.isInteger(n)) return String(n);
+    return n.toFixed(6).replace(/\.?0+$/, '');
+  }
+
+  // Linear: ax + b = c
+  document.getElementById('calc-eq-lin-solve')?.addEventListener('click', () => {
+    const a = parseFloat(document.getElementById('calc-eq-lin-a')?.value) || 0;
+    const b = parseFloat(document.getElementById('calc-eq-lin-b')?.value) || 0;
+    const c = parseFloat(document.getElementById('calc-eq-lin-c')?.value) || 0;
+    const el = document.getElementById('calc-eq-lin-result');
+    if (!el) return;
+
+    if (a === 0) {
+      el.innerHTML = b === c
+        ? '<div class="calc-eq-step">Any value of x is a solution (identity).</div>'
+        : '<div class="calc-eq-step" style="color:#e74c3c">No solution (contradiction: ' + b + ' \u2260 ' + c + ').</div>';
+      return;
+    }
+
+    const x = (c - b) / a;
+    el.innerHTML = `
+      <div class="calc-eq-step"><strong>Equation:</strong> ${fmtNum(a)}x + ${fmtNum(b)} = ${fmtNum(c)}</div>
+      <div class="calc-eq-step"><strong>Step 1:</strong> Subtract ${fmtNum(b)} from both sides: ${fmtNum(a)}x = ${fmtNum(c - b)}</div>
+      <div class="calc-eq-step"><strong>Step 2:</strong> Divide both sides by ${fmtNum(a)}: x = ${fmtNum(c - b)} / ${fmtNum(a)}</div>
+      <div class="calc-eq-answer"><strong>x = ${fmtNum(x)}</strong></div>`;
+  });
+
+  // Quadratic: ax^2 + bx + c = 0
+  document.getElementById('calc-eq-quad-solve')?.addEventListener('click', () => {
+    const a = parseFloat(document.getElementById('calc-eq-quad-a')?.value) || 0;
+    const b = parseFloat(document.getElementById('calc-eq-quad-b')?.value) || 0;
+    const c = parseFloat(document.getElementById('calc-eq-quad-c')?.value) || 0;
+    const el = document.getElementById('calc-eq-quad-result');
+    if (!el) return;
+
+    if (a === 0) {
+      if (b === 0) {
+        el.innerHTML = c === 0
+          ? '<div class="calc-eq-step">Any value is a solution (0 = 0).</div>'
+          : '<div class="calc-eq-step" style="color:#e74c3c">No solution.</div>';
+      } else {
+        const x = -c / b;
+        el.innerHTML = `<div class="calc-eq-step">Linear equation: ${fmtNum(b)}x + ${fmtNum(c)} = 0</div>
+          <div class="calc-eq-answer"><strong>x = ${fmtNum(x)}</strong></div>`;
+      }
+      return;
+    }
+
+    const disc = b * b - 4 * a * c;
+    let html = `<div class="calc-eq-step"><strong>Equation:</strong> ${fmtNum(a)}x\u00B2 + ${fmtNum(b)}x + ${fmtNum(c)} = 0</div>`;
+    html += `<div class="calc-eq-step"><strong>Step 1:</strong> Discriminant D = b\u00B2 - 4ac = ${fmtNum(b)}\u00B2 - 4(${fmtNum(a)})(${fmtNum(c)}) = ${fmtNum(disc)}</div>`;
+
+    if (disc > 0) {
+      const sqrtD = Math.sqrt(disc);
+      const x1 = (-b + sqrtD) / (2 * a);
+      const x2 = (-b - sqrtD) / (2 * a);
+      html += `<div class="calc-eq-step"><strong>Step 2:</strong> D > 0: Two real roots</div>`;
+      html += `<div class="calc-eq-step">x = (-b \u00B1 \u221AD) / (2a) = (${fmtNum(-b)} \u00B1 ${fmtNum(sqrtD)}) / ${fmtNum(2 * a)}</div>`;
+      html += `<div class="calc-eq-answer"><strong>x\u2081 = ${fmtNum(x1)}</strong></div>`;
+      html += `<div class="calc-eq-answer"><strong>x\u2082 = ${fmtNum(x2)}</strong></div>`;
+    } else if (disc === 0) {
+      const x = -b / (2 * a);
+      html += `<div class="calc-eq-step"><strong>Step 2:</strong> D = 0: One repeated root</div>`;
+      html += `<div class="calc-eq-answer"><strong>x = ${fmtNum(x)}</strong></div>`;
+    } else {
+      const realPart = -b / (2 * a);
+      const imagPart = Math.sqrt(-disc) / (2 * a);
+      html += `<div class="calc-eq-step"><strong>Step 2:</strong> D < 0: Two complex roots</div>`;
+      html += `<div class="calc-eq-answer"><strong>x\u2081 = ${fmtNum(realPart)} + ${fmtNum(Math.abs(imagPart))}i</strong></div>`;
+      html += `<div class="calc-eq-answer"><strong>x\u2082 = ${fmtNum(realPart)} - ${fmtNum(Math.abs(imagPart))}i</strong></div>`;
+    }
+
+    const vx = -b / (2 * a);
+    const vy = a * vx * vx + b * vx + c;
+    html += `<div class="calc-eq-step" style="margin-top:8px;"><strong>Vertex:</strong> (${fmtNum(vx)}, ${fmtNum(vy)})</div>`;
+    el.innerHTML = html;
+  });
+
+  // System of 2 equations (Cramer's rule)
+  document.getElementById('calc-eq-sys-solve')?.addEventListener('click', () => {
+    const a1 = parseFloat(document.getElementById('calc-eq-sys-a1')?.value) || 0;
+    const b1 = parseFloat(document.getElementById('calc-eq-sys-b1')?.value) || 0;
+    const c1 = parseFloat(document.getElementById('calc-eq-sys-c1')?.value) || 0;
+    const a2 = parseFloat(document.getElementById('calc-eq-sys-a2')?.value) || 0;
+    const b2 = parseFloat(document.getElementById('calc-eq-sys-b2')?.value) || 0;
+    const c2 = parseFloat(document.getElementById('calc-eq-sys-c2')?.value) || 0;
+    const el = document.getElementById('calc-eq-sys-result');
+    if (!el) return;
+
+    const D = a1 * b2 - a2 * b1;
+    let html = `<div class="calc-eq-step"><strong>System:</strong></div>`;
+    html += `<div class="calc-eq-step">${fmtNum(a1)}x + ${fmtNum(b1)}y = ${fmtNum(c1)}</div>`;
+    html += `<div class="calc-eq-step">${fmtNum(a2)}x + ${fmtNum(b2)}y = ${fmtNum(c2)}</div>`;
+    html += `<div class="calc-eq-step"><strong>Step 1:</strong> D = a\u2081b\u2082 - a\u2082b\u2081 = ${fmtNum(a1)}(${fmtNum(b2)}) - ${fmtNum(a2)}(${fmtNum(b1)}) = ${fmtNum(D)}</div>`;
+
+    if (Math.abs(D) < 1e-12) {
+      html += `<div class="calc-eq-step" style="color:#e74c3c">D = 0: System has no unique solution (parallel or coincident lines).</div>`;
+    } else {
+      const Dx = c1 * b2 - c2 * b1;
+      const Dy = a1 * c2 - a2 * c1;
+      const x = Dx / D;
+      const y = Dy / D;
+      html += `<div class="calc-eq-step"><strong>Step 2:</strong> Dx = c\u2081b\u2082 - c\u2082b\u2081 = ${fmtNum(Dx)}, Dy = a\u2081c\u2082 - a\u2082c\u2081 = ${fmtNum(Dy)}</div>`;
+      html += `<div class="calc-eq-step"><strong>Step 3:</strong> x = Dx/D = ${fmtNum(Dx)}/${fmtNum(D)}, y = Dy/D = ${fmtNum(Dy)}/${fmtNum(D)}</div>`;
+      html += `<div class="calc-eq-answer"><strong>x = ${fmtNum(x)}, y = ${fmtNum(y)}</strong></div>`;
+    }
+    el.innerHTML = html;
+  });
+
+  // Parse equation from text
+  document.getElementById('calc-eq-parse-solve')?.addEventListener('click', () => {
+    const input = document.getElementById('calc-eq-parse-input')?.value?.trim() || '';
+    const el = document.getElementById('calc-eq-parse-result');
+    if (!el || !input) return;
+
+    const isQuadratic = /x\^2|x\u00B2|x\*\*2/i.test(input);
+
+    if (isQuadratic) {
+      const parsed = parseQuadraticEq(input);
+      if (parsed) {
+        document.getElementById('calc-eq-quad-a').value = parsed.a;
+        document.getElementById('calc-eq-quad-b').value = parsed.b;
+        document.getElementById('calc-eq-quad-c').value = parsed.c;
+        document.querySelector('[data-eq-tab="quadratic"]')?.click();
+        document.getElementById('calc-eq-quad-solve')?.click();
+        return;
+      }
+    }
+
+    const parsed = parseLinearEq(input);
+    if (parsed) {
+      document.getElementById('calc-eq-lin-a').value = parsed.a;
+      document.getElementById('calc-eq-lin-b').value = parsed.b;
+      document.getElementById('calc-eq-lin-c').value = parsed.c;
+      document.querySelector('[data-eq-tab="linear"]')?.click();
+      document.getElementById('calc-eq-lin-solve')?.click();
+      return;
+    }
+
+    el.innerHTML = '<div class="calc-eq-step" style="color:#e74c3c">Could not parse equation. Try formats like:<br>"2x + 3 = 7"<br>"x^2 - 5x + 6 = 0"</div>';
+  });
+
+  document.getElementById('calc-eq-parse-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('calc-eq-parse-solve')?.click(); }
+  });
+}
+
+function parseLinearEq(str) {
+  str = str.replace(/\s+/g, '').replace(/\u2212/g, '-').replace(/\u00D7/g, '*');
+  const parts = str.split('=');
+  if (parts.length !== 2) return null;
+
+  function extractTerms(expr) {
+    let xCoeff = 0, constant = 0;
+    if (expr[0] !== '+' && expr[0] !== '-') expr = '+' + expr;
+    const re = /([+-]?\d*\.?\d*)(x?)/g;
+    let m;
+    while ((m = re.exec(expr)) !== null) {
+      if (m[0] === '' || m[0] === '+' || m[0] === '-') continue;
+      const coeff = m[1] === '' || m[1] === '+' ? 1 : m[1] === '-' ? -1 : parseFloat(m[1]);
+      if (isNaN(coeff)) continue;
+      if (m[2] === 'x') xCoeff += coeff;
+      else if (m[1] !== '') constant += parseFloat(m[1]);
+    }
+    return { xCoeff, constant };
+  }
+
+  const left = extractTerms(parts[0]);
+  const right = extractTerms(parts[1]);
+  const a = left.xCoeff - right.xCoeff;
+  const c = right.constant - left.constant;
+  if (a === 0 && isNaN(c)) return null;
+  return { a, b: 0, c };
+}
+
+function parseQuadraticEq(str) {
+  str = str.replace(/\s+/g, '').replace(/\u2212/g, '-').replace(/\u00D7/g, '*').replace(/x\u00B2/g, 'x^2').replace(/x\*\*2/g, 'x^2');
+  const parts = str.split('=');
+  if (parts.length !== 2) return null;
+
+  function extractQTerms(expr) {
+    let a = 0, b = 0, c = 0;
+    if (expr[0] !== '+' && expr[0] !== '-') expr = '+' + expr;
+
+    const x2Re = /([+-]?\d*\.?\d*)x\^2/g;
+    let m;
+    while ((m = x2Re.exec(expr)) !== null) {
+      const coeff = m[1] === '' || m[1] === '+' ? 1 : m[1] === '-' ? -1 : parseFloat(m[1]);
+      a += coeff;
+    }
+    let remaining = expr.replace(/([+-]?\d*\.?\d*)x\^2/g, '');
+
+    const xRe = /([+-]?\d*\.?\d*)x/g;
+    while ((m = xRe.exec(remaining)) !== null) {
+      const coeff = m[1] === '' || m[1] === '+' ? 1 : m[1] === '-' ? -1 : parseFloat(m[1]);
+      b += coeff;
+    }
+    remaining = remaining.replace(/([+-]?\d*\.?\d*)x/g, '');
+
+    const constRe = /([+-]?\d+\.?\d*)/g;
+    while ((m = constRe.exec(remaining)) !== null) {
+      c += parseFloat(m[1]);
+    }
+    return { a, b, c };
+  }
+
+  const left = extractQTerms(parts[0]);
+  const right = extractQTerms(parts[1]);
+  return { a: left.a - right.a, b: left.b - right.b, c: left.c - right.c };
+}
+
+/* ==================== Constants Library ==================== */
+
+const CONSTANTS_DATA = [
+  // Mathematical
+  { name: 'Pi', symbol: '\u03C0', value: '3.14159265358979', num: Math.PI, category: 'Mathematical', tags: 'pi circle ratio circumference' },
+  { name: "Euler's number", symbol: 'e', value: '2.71828182845905', num: Math.E, category: 'Mathematical', tags: 'euler natural logarithm exponential' },
+  { name: 'Golden Ratio', symbol: '\u03C6', value: '1.61803398874989', num: (1 + Math.sqrt(5)) / 2, category: 'Mathematical', tags: 'golden ratio phi fibonacci' },
+  { name: 'Square Root of 2', symbol: '\u221A2', value: '1.41421356237310', num: Math.SQRT2, category: 'Mathematical', tags: 'sqrt root diagonal' },
+  { name: 'Square Root of 3', symbol: '\u221A3', value: '1.73205080756888', num: Math.sqrt(3), category: 'Mathematical', tags: 'sqrt root' },
+  { name: 'Natural Log of 2', symbol: 'ln(2)', value: '0.693147180559945', num: Math.LN2, category: 'Mathematical', tags: 'log natural' },
+  { name: 'Natural Log of 10', symbol: 'ln(10)', value: '2.30258509299405', num: Math.LN10, category: 'Mathematical', tags: 'log natural' },
+  { name: 'Euler-Mascheroni', symbol: '\u03B3', value: '0.577215664901532', num: 0.5772156649015329, category: 'Mathematical', tags: 'euler mascheroni gamma' },
+  { name: 'Tau (2\u03C0)', symbol: '\u03C4', value: '6.28318530717959', num: 2 * Math.PI, category: 'Mathematical', tags: 'tau circle full turn' },
+
+  // Physics
+  { name: 'Speed of Light', symbol: 'c', value: '2.998 \u00D7 10\u2078 m/s', num: 299792458, category: 'Physics', tags: 'speed light vacuum electromagnetic' },
+  { name: 'Gravitational Constant', symbol: 'G', value: '6.674 \u00D7 10\u207B\u00B9\u00B9 m\u00B3/(kg\u00B7s\u00B2)', num: 6.6743e-11, category: 'Physics', tags: 'gravity gravitational newton' },
+  { name: 'Planck Constant', symbol: 'h', value: '6.626 \u00D7 10\u207B\u00B3\u2074 J\u00B7s', num: 6.62607e-34, category: 'Physics', tags: 'planck quantum energy' },
+  { name: 'Reduced Planck', symbol: '\u0127', value: '1.055 \u00D7 10\u207B\u00B3\u2074 J\u00B7s', num: 1.05457e-34, category: 'Physics', tags: 'planck reduced hbar quantum' },
+  { name: 'Boltzmann Constant', symbol: 'k_B', value: '1.381 \u00D7 10\u207B\u00B2\u00B3 J/K', num: 1.38065e-23, category: 'Physics', tags: 'boltzmann temperature thermodynamics entropy' },
+  { name: 'Avogadro Number', symbol: 'N_A', value: '6.022 \u00D7 10\u00B2\u00B3 mol\u207B\u00B9', num: 6.02214e23, category: 'Physics', tags: 'avogadro mole number atoms molecules' },
+  { name: 'Gas Constant', symbol: 'R', value: '8.314 J/(mol\u00B7K)', num: 8.31446, category: 'Physics', tags: 'gas ideal universal molar' },
+  { name: 'Stefan-Boltzmann', symbol: '\u03C3', value: '5.670 \u00D7 10\u207B\u2078 W/(m\u00B2\u00B7K\u2074)', num: 5.67037e-8, category: 'Physics', tags: 'stefan boltzmann radiation blackbody' },
+  { name: 'Vacuum Permittivity', symbol: '\u03B5\u2080', value: '8.854 \u00D7 10\u207B\u00B9\u00B2 F/m', num: 8.85419e-12, category: 'Physics', tags: 'permittivity vacuum electric' },
+  { name: 'Vacuum Permeability', symbol: '\u03BC\u2080', value: '1.257 \u00D7 10\u207B\u2076 H/m', num: 1.25664e-6, category: 'Physics', tags: 'permeability vacuum magnetic' },
+  { name: 'Coulomb Constant', symbol: 'k_e', value: '8.988 \u00D7 10\u2079 N\u00B7m\u00B2/C\u00B2', num: 8.98755e9, category: 'Physics', tags: 'coulomb electric force charge' },
+  { name: 'Standard Gravity', symbol: 'g', value: '9.80665 m/s\u00B2', num: 9.80665, category: 'Physics', tags: 'gravity acceleration earth standard' },
+  { name: 'Standard Atmosphere', symbol: 'atm', value: '101325 Pa', num: 101325, category: 'Physics', tags: 'atmosphere pressure standard' },
+
+  // Atomic
+  { name: 'Elementary Charge', symbol: 'e', value: '1.602 \u00D7 10\u207B\u00B9\u2079 C', num: 1.60218e-19, category: 'Atomic', tags: 'electron charge elementary proton' },
+  { name: 'Electron Mass', symbol: 'm_e', value: '9.109 \u00D7 10\u207B\u00B3\u00B9 kg', num: 9.10938e-31, category: 'Atomic', tags: 'electron mass particle' },
+  { name: 'Proton Mass', symbol: 'm_p', value: '1.673 \u00D7 10\u207B\u00B2\u2077 kg', num: 1.67262e-27, category: 'Atomic', tags: 'proton mass particle nucleon' },
+  { name: 'Neutron Mass', symbol: 'm_n', value: '1.675 \u00D7 10\u207B\u00B2\u2077 kg', num: 1.67493e-27, category: 'Atomic', tags: 'neutron mass particle nucleon' },
+  { name: 'Atomic Mass Unit', symbol: 'u', value: '1.661 \u00D7 10\u207B\u00B2\u2077 kg', num: 1.66054e-27, category: 'Atomic', tags: 'atomic mass unit dalton amu' },
+  { name: 'Bohr Radius', symbol: 'a\u2080', value: '5.292 \u00D7 10\u207B\u00B9\u00B9 m', num: 5.29177e-11, category: 'Atomic', tags: 'bohr radius hydrogen atom orbital' },
+  { name: 'Fine Structure Constant', symbol: '\u03B1', value: '7.297 \u00D7 10\u207B\u00B3', num: 7.29735e-3, category: 'Atomic', tags: 'fine structure alpha electromagnetic coupling' },
+  { name: 'Rydberg Constant', symbol: 'R\u221E', value: '1.097 \u00D7 10\u2077 m\u207B\u00B9', num: 1.09737e7, category: 'Atomic', tags: 'rydberg spectral lines hydrogen' },
+  { name: 'Faraday Constant', symbol: 'F', value: '96485.3 C/mol', num: 96485.3, category: 'Atomic', tags: 'faraday electrochemistry charge mole' },
+
+  // Astronomical
+  { name: 'Astronomical Unit', symbol: 'AU', value: '1.496 \u00D7 10\u00B9\u00B9 m', num: 1.49598e11, category: 'Astronomical', tags: 'astronomical unit earth sun distance' },
+  { name: 'Light Year', symbol: 'ly', value: '9.461 \u00D7 10\u00B9\u2075 m', num: 9.46073e15, category: 'Astronomical', tags: 'light year distance star' },
+  { name: 'Parsec', symbol: 'pc', value: '3.086 \u00D7 10\u00B9\u2076 m', num: 3.08568e16, category: 'Astronomical', tags: 'parsec distance parallax' },
+  { name: 'Solar Mass', symbol: 'M\u2609', value: '1.989 \u00D7 10\u00B3\u2070 kg', num: 1.98892e30, category: 'Astronomical', tags: 'solar mass sun star' },
+  { name: 'Earth Mass', symbol: 'M\u2295', value: '5.972 \u00D7 10\u00B2\u2074 kg', num: 5.97237e24, category: 'Astronomical', tags: 'earth mass planet' },
+  { name: 'Earth Radius (mean)', symbol: 'R\u2295', value: '6.371 \u00D7 10\u2076 m', num: 6.37101e6, category: 'Astronomical', tags: 'earth radius planet' },
+  { name: 'Solar Luminosity', symbol: 'L\u2609', value: '3.828 \u00D7 10\u00B2\u2076 W', num: 3.828e26, category: 'Astronomical', tags: 'solar luminosity sun brightness power' },
+];
+
+function initConstantsLibrary() {
+  const searchEl = document.getElementById('calc-const-search');
+  const listEl = document.getElementById('calc-const-list');
+  const catEl = document.getElementById('calc-const-categories');
+  if (!listEl) return;
+
+  const categories = [...new Set(CONSTANTS_DATA.map(c => c.category))];
+  let activeCat = 'all';
+  if (catEl) {
+    catEl.innerHTML = `<button class="calc-const-cat-btn active" data-cat="all">All</button>` +
+      categories.map(c => `<button class="calc-const-cat-btn" data-cat="${c}">${c}</button>`).join('');
+    catEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-cat]');
+      if (!btn) return;
+      activeCat = btn.dataset.cat;
+      catEl.querySelectorAll('.calc-const-cat-btn').forEach(b => b.classList.toggle('active', b === btn));
+      renderConstants();
+    });
+  }
+
+  function renderConstants() {
+    const query = (searchEl?.value || '').toLowerCase();
+    const filtered = CONSTANTS_DATA.filter(c => {
+      if (activeCat !== 'all' && c.category !== activeCat) return false;
+      if (query) {
+        return c.name.toLowerCase().includes(query) ||
+               c.symbol.toLowerCase().includes(query) ||
+               c.tags.includes(query) ||
+               c.category.toLowerCase().includes(query);
+      }
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      listEl.innerHTML = '<div class="calc-saved-empty">No constants found.</div>';
+      return;
+    }
+
+    listEl.innerHTML = filtered.map((c, i) =>
+      `<div class="calc-const-item" data-idx="${i}" data-num="${c.num}" title="Click to insert ${c.num} into calculator">
+        <div class="calc-const-symbol">${esc(c.symbol)}</div>
+        <div class="calc-const-body">
+          <div class="calc-const-name">${esc(c.name)}</div>
+          <div class="calc-const-value">${esc(c.value)}</div>
+        </div>
+        <div class="calc-const-cat-label">${esc(c.category)}</div>
+      </div>`
+    ).join('');
+
+    listEl.querySelectorAll('.calc-const-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const num = el.dataset.num;
+        expression = String(num);
+        result = formatNumber(parseFloat(num));
+        updateDisplay();
+        document.querySelector('[data-calc-tab="calc"]')?.click();
+      });
+    });
+  }
+
+  searchEl?.addEventListener('input', renderConstants);
+  renderConstants();
 }

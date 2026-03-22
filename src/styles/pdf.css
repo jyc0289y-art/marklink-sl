@@ -268,3 +268,297 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   background: #fff;
 }
+
+/* ─── Form Filling ─────────────────────────────────────────── */
+.pdf-form-field {
+  position: absolute;
+  z-index: 15;
+}
+
+.pdf-form-field input[type="text"],
+.pdf-form-field textarea {
+  border: 2px solid #42a5f5;
+  background: rgba(227, 242, 253, 0.7);
+  padding: 2px 4px;
+  font-size: 12px;
+  border-radius: 3px;
+  outline: none;
+  color: #000;
+}
+
+.pdf-form-field input[type="text"]:focus,
+.pdf-form-field textarea:focus {
+  border-color: #1565c0;
+  background: rgba(227, 242, 253, 0.9);
+}
+
+.pdf-form-field input[type="checkbox"],
+.pdf-form-field input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--brand-color);
+}
+
+.pdf-form-field select {
+  border: 2px solid #42a5f5;
+  background: rgba(227, 242, 253, 0.7);
+  padding: 2px 4px;
+  font-size: 12px;
+  border-radius: 3px;
+  outline: none;
+  color: #000;
+}
+
+.pdf-form-highlight {
+  position: absolute;
+  border: 2px dashed #42a5f5;
+  background: rgba(66, 165, 245, 0.08);
+  pointer-events: none;
+  z-index: 14;
+  border-radius: 3px;
+  animation: pdf-form-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pdf-form-pulse {
+  0%, 100% { border-color: #42a5f5; }
+  50% { border-color: #1565c0; }
+}
+
+/* ─── Signature ────────────────────────────────────────────── */
+.pdf-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pdf-modal {
+  background: var(--editor-bg, #fff);
+  border-radius: 10px;
+  width: 460px;
+  max-width: 95vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+
+.pdf-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--pane-header-bg);
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.pdf-modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 0 4px;
+}
+
+.pdf-sig-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.pdf-sig-tab {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+}
+
+.pdf-sig-tab.active {
+  color: var(--brand-color);
+  border-bottom-color: var(--brand-color);
+}
+
+.pdf-sig-body {
+  padding: 16px;
+}
+
+.pdf-sig-panel canvas {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: crosshair;
+  display: block;
+  width: 100%;
+  background: #fff;
+}
+
+.pdf-modal-footer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color);
+  justify-content: flex-end;
+}
+
+.pdf-modal-footer .toolbar-btn {
+  padding: 6px 16px;
+  font-weight: 700;
+}
+
+.pdf-sig-saved-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.pdf-sig-saved-item {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 4px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  position: relative;
+}
+
+.pdf-sig-saved-item:hover {
+  border-color: var(--brand-color);
+}
+
+.pdf-sig-saved-item.selected {
+  border-color: var(--brand-color);
+  box-shadow: 0 0 0 2px rgba(0,120,255,0.2);
+}
+
+.pdf-sig-saved-item img {
+  max-width: 120px;
+  max-height: 50px;
+  display: block;
+}
+
+.pdf-sig-saved-delete {
+  position: absolute;
+  top: -6px; right: -6px;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #c62828;
+  color: #fff;
+  font-size: 11px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.pdf-signature-placed {
+  position: absolute;
+  z-index: 16;
+  cursor: move;
+  user-select: none;
+}
+
+.pdf-signature-placed img {
+  max-height: 60px;
+  pointer-events: none;
+}
+
+/* ─── Redaction ─────────────────────────────────────────────── */
+.pdf-redact-rect {
+  position: absolute;
+  z-index: 17;
+  pointer-events: none;
+}
+
+.pdf-redact-rect.preview {
+  background: rgba(255, 0, 0, 0.3);
+  border: 2px solid #c62828;
+}
+
+.pdf-redact-rect.applied {
+  background: #000;
+}
+
+/* ─── Stamp ────────────────────────────────────────────────── */
+.pdf-stamp-dropdown {
+  position: absolute;
+  background: var(--editor-bg, #fff);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  padding: 6px 0;
+  z-index: 500;
+  min-width: 180px;
+}
+
+.pdf-stamp-option {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  transition: background 0.1s;
+}
+
+.pdf-stamp-option:hover {
+  background: rgba(0,0,0,0.05);
+}
+
+.pdf-stamp-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 0;
+}
+
+.pdf-stamp-custom {
+  padding: 6px 12px;
+}
+
+.pdf-stamp-placed {
+  position: absolute;
+  z-index: 16;
+  cursor: move;
+  user-select: none;
+  font-weight: 900;
+  font-size: 28px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  border: 3px solid;
+  padding: 6px 18px;
+  border-radius: 6px;
+  opacity: 0.7;
+  transform: rotate(-15deg);
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.pdf-stamp-placed:hover {
+  opacity: 1;
+}
+
+/* ─── Page reorder drag indicator ──────────────────────────── */
+.pdf-thumb-item.dragging {
+  opacity: 0.4;
+}
+
+.pdf-thumb-item .pdf-thumb-drag-handle {
+  position: absolute;
+  top: 2px; left: 2px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  cursor: grab;
+  z-index: 2;
+  padding: 2px;
+}

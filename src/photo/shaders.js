@@ -314,3 +314,45 @@ void main() {
   b = texture2D(uCurveLUT, vec2(b, 0.5)).r;
   gl_FragColor = vec4(r, g, b, texColor.a);
 }`;
+
+export const LENS_CORRECTION_FRAG = `
+precision highp float;
+uniform sampler2D uTexture;
+uniform float uDistortion;
+uniform float uCaRed;
+uniform float uCaBlue;
+varying vec2 vUv;
+
+vec2 barrelDistort(vec2 uv, float k) {
+  vec2 centered = uv - 0.5;
+  float r2 = dot(centered, centered);
+  float distort = 1.0 + k * r2;
+  return centered * distort + 0.5;
+}
+
+void main() {
+  // Barrel/pincushion distortion
+  float k = uDistortion * 0.005;
+  vec2 uvDist = barrelDistort(vUv, k);
+
+  // Chromatic aberration: offset R and B channels
+  float caR = uCaRed * 0.001;
+  float caB = uCaBlue * 0.001;
+  vec2 uvR = barrelDistort(vUv, k + caR);
+  vec2 uvB = barrelDistort(vUv, k + caB);
+
+  // Clamp to valid range
+  float r = (uvR.x >= 0.0 && uvR.x <= 1.0 && uvR.y >= 0.0 && uvR.y <= 1.0)
+    ? texture2D(uTexture, uvR).r : 0.0;
+  float g = texture2D(uTexture, uvDist).g;
+  float b = (uvB.x >= 0.0 && uvB.x <= 1.0 && uvB.y >= 0.0 && uvB.y <= 1.0)
+    ? texture2D(uTexture, uvB).b : 0.0;
+  float a = texture2D(uTexture, uvDist).a;
+
+  // Check if main UV is out of bounds
+  if (uvDist.x < 0.0 || uvDist.x > 1.0 || uvDist.y < 0.0 || uvDist.y > 1.0) {
+    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+  } else {
+    gl_FragColor = vec4(r, g, b, a);
+  }
+}`;

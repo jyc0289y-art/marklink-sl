@@ -436,3 +436,295 @@
   background: var(--hover-bg);
   border-color: var(--accent-color);
 }
+
+/* ═══ Animation Timeline Panel ═══ */
+.slide-anim-timeline-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 220px;
+  background: var(--bg-primary);
+  border-top: 2px solid var(--border-color);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  color: var(--text-primary);
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.15);
+}
+
+.anim-timeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--pane-header-bg);
+  border-bottom: 1px solid var(--border-color);
+  min-height: 32px;
+}
+
+.anim-timeline-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.anim-timeline-controls {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.anim-timeline-controls button {
+  padding: 3px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.anim-timeline-controls button:hover {
+  background: var(--hover-bg);
+}
+
+.anim-timeline-controls button.active {
+  background: var(--accent-color);
+  color: #fff;
+  border-color: var(--accent-color);
+}
+
+.anim-timeline-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.anim-timeline-list {
+  width: 200px;
+  min-width: 180px;
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.anim-timeline-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+  transition: background 0.15s;
+}
+
+.anim-timeline-item:hover {
+  background: var(--hover-bg);
+}
+
+.anim-timeline-item.selected {
+  background: rgba(66, 133, 244, 0.15);
+  border-left: 3px solid var(--accent-color);
+}
+
+.anim-timeline-item .anim-order {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.anim-timeline-item .anim-order.entrance { background: #34a853; }
+.anim-timeline-item .anim-order.emphasis { background: #fbbc04; color: #333; }
+.anim-timeline-item .anim-order.exit { background: #ea4335; }
+
+.anim-timeline-item .anim-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.anim-timeline-item .anim-info .anim-name {
+  font-weight: 600;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.anim-timeline-item .anim-info .anim-target-name {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.anim-timeline-item .anim-del-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  padding: 0 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.anim-timeline-item:hover .anim-del-btn {
+  opacity: 1;
+}
+
+.anim-timeline-tracks {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  position: relative;
+  background: var(--bg-secondary, #f9f9f9);
+}
+
+.anim-timeline-ruler {
+  position: sticky;
+  top: 0;
+  height: 20px;
+  background: var(--pane-header-bg);
+  border-bottom: 1px solid var(--border-color);
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+}
+
+.anim-timeline-ruler-mark {
+  position: absolute;
+  bottom: 0;
+  font-size: 9px;
+  color: var(--text-tertiary);
+  transform: translateX(-50%);
+}
+
+.anim-timeline-track {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  position: relative;
+}
+
+.anim-timeline-bar {
+  position: absolute;
+  height: 18px;
+  border-radius: 4px;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  color: #fff;
+  min-width: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+}
+
+.anim-timeline-bar.entrance { background: rgba(52, 168, 83, 0.8); }
+.anim-timeline-bar.emphasis { background: rgba(251, 188, 4, 0.8); color: #333; }
+.anim-timeline-bar.exit { background: rgba(234, 67, 53, 0.8); }
+
+/* ═══ Master Slide Layout Picker ═══ */
+.slide-layout-picker {
+  position: fixed;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  padding: 16px;
+  z-index: 2000;
+  width: 440px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.slide-layout-picker h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.slide-layout-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.slide-layout-card {
+  cursor: pointer;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+
+.slide-layout-card:hover {
+  border-color: var(--accent-color);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.slide-layout-card .layout-preview {
+  aspect-ratio: 16/9;
+  background: #fff;
+  padding: 8px;
+  font-size: 6px;
+  line-height: 1.2;
+  overflow: hidden;
+  color: #333;
+}
+
+.slide-layout-card .layout-name {
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+  background: var(--hover-bg);
+}
+
+/* ═══ Transition Preview Indicator ═══ */
+.slide-thumb-transition-badge {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent-color);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+/* ═══ Presenter View Styles (within popup) ═══ */
+.presenter-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: #111;
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  grid-template-rows: auto 1fr auto;
+  gap: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #eee;
+}

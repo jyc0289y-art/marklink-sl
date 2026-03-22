@@ -12,6 +12,11 @@ export function createSheetData(rows = DEFAULT_ROWS, cols = DEFAULT_COLS, name) 
     cols,
     cells: {}, // key: "R,C" → { raw, value, format }
     name: name || null, // Sheet name for cross-sheet references
+    condFormats: [],    // Conditional formatting rules per sheet
+    validations: {},    // Data validation rules per sheet: "r,c" → rule
+    charts: [],         // Chart configs per sheet
+    freezeRows: 0,      // Frozen row count
+    freezeCols: 0,      // Frozen column count
   };
 }
 

@@ -379,3 +379,68 @@
 .comment-thread-item:hover {
   background: var(--hover-bg);
 }
+
+/* Freeze pane indicator styles */
+.sheet-frozen-row td,
+.sheet-frozen-row th {
+  background: var(--bg-primary);
+}
+.sheet-frozen-col {
+  background: var(--bg-primary);
+}
+
+/* Conditional formatting data bar */
+.cf-data-bar {
+  transition: width 0.3s ease;
+  border-radius: 0 2px 2px 0;
+}
+
+/* CF icon */
+.cf-icon {
+  pointer-events: none;
+}
+
+/* Data validation notification */
+.dv-notification {
+  animation: dv-slide-in 0.3s ease;
+}
+@keyframes dv-slide-in {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Chart container styles */
+.sheet-chart-container {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  transition: box-shadow 0.2s;
+}
+.sheet-chart-container:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+.sheet-chart-container .chart-edit-btn:hover,
+.sheet-chart-container .chart-close-btn:hover {
+  color: var(--text-primary);
+}
+
+/* Freeze dialog preset buttons */
+.freeze-preset {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.freeze-preset:hover {
+  background: var(--hover-bg);
+  border-color: var(--accent-color);
+}
+
+/* Active state for freeze buttons */
+#sheet-freeze.active,
+#sheet-freeze-row.active,
+#sheet-freeze-col.active {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent-color);
+  border-color: var(--accent-color);
+}

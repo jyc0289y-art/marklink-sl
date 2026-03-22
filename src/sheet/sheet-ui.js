@@ -901,8 +901,12 @@ function bindEvents() {
     renderGrid(); updateSelection();
   });
 
-  // Freeze toggle
-  document.getElementById('sheet-freeze')?.addEventListener('click', () => {
+  // Freeze toggle — click to quick toggle, long press / right-click for dialog
+  document.getElementById('sheet-freeze')?.addEventListener('click', (e) => {
+    if (e.shiftKey || e.altKey) {
+      showFreezeDialog();
+      return;
+    }
     if (freezeRows > 0 || freezeCols > 0) {
       freezeRows = 0; freezeCols = 0;
     } else {
@@ -910,8 +914,21 @@ function bindEvents() {
       freezeCols = selectedCol > 0 ? selectedCol : 0;
     }
     renderGrid(); updateSelection();
-    const btn = document.getElementById('sheet-freeze');
-    if (btn) btn.classList.toggle('active', freezeRows > 0 || freezeCols > 0);
+    updateFreezeButtonState();
+  });
+  document.getElementById('sheet-freeze')?.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    showFreezeDialog();
+  });
+
+  // Quick freeze presets
+  document.getElementById('sheet-freeze-row')?.addEventListener('click', () => {
+    if (freezeRows === 1 && freezeCols === 0) { freezeRows = 0; } else { freezeRows = 1; freezeCols = 0; }
+    renderGrid(); updateSelection(); updateFreezeButtonState();
+  });
+  document.getElementById('sheet-freeze-col')?.addEventListener('click', () => {
+    if (freezeCols === 1 && freezeRows === 0) { freezeCols = 0; } else { freezeRows = 0; freezeCols = 1; }
+    renderGrid(); updateSelection(); updateFreezeButtonState();
   });
 
   // Sort
@@ -1302,8 +1319,17 @@ function commitEdit() {
     if (dvRule && !val.startsWith('=') && val !== '') {
       const dvError = checkDataValidation(dvRule, val);
       if (dvError) {
-        alert(dvRule.errorMessage || dvError);
-        return;
+        const msg = dvRule.errorMessage || dvError;
+        const severity = dvRule.severity || 'error';
+        if (severity === 'error') {
+          alert(msg);
+          return; // Reject input
+        } else if (severity === 'warning') {
+          if (!confirm(`Warning: ${msg}\n\nDo you want to continue?`)) return;
+        } else {
+          // info — just show a non-blocking notification
+          showDvNotification(msg, 'info');
+        }
       }
     }
     saveUndoState();
@@ -1567,6 +1593,76 @@ function clearSelection() {
 }
 
 /* ==================== Freeze Rows/Columns ==================== */
+
+function updateFreezeButtonState() {
+  const btn = document.getElementById('sheet-freeze');
+  if (btn) {
+    btn.classList.toggle('active', freezeRows > 0 || freezeCols > 0);
+    btn.title = freezeRows > 0 || freezeCols > 0
+      ? `Freeze: ${freezeRows} rows, ${freezeCols} cols (click to unfreeze, Shift+click for options)`
+      : 'Freeze Rows/Columns (click or Shift+click for options)';
+  }
+}
+
+function showFreezeDialog() {
+  const existing = document.querySelector('.sheet-freeze-dialog');
+  if (existing) { existing.remove(); return; }
+
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay sheet-freeze-dialog';
+  const inputStyle = 'width:80px;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:13px';
+  dlg.innerHTML = `<div class="modal-content" style="width:340px">
+    <h3 style="margin:0 0 12px">Freeze Panes</h3>
+    <p style="font-size:12px;color:var(--text-secondary);margin:0 0 12px">Freeze rows and columns to keep them visible while scrolling.</p>
+    <div style="display:flex;gap:16px;margin-bottom:16px">
+      <div>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Freeze Rows</label>
+        <input type="number" id="freeze-rows-input" value="${freezeRows}" min="0" max="20" style="${inputStyle}">
+        <span style="font-size:11px;color:var(--text-tertiary);display:block;margin-top:2px">Top N rows stay fixed</span>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Freeze Columns</label>
+        <input type="number" id="freeze-cols-input" value="${freezeCols}" min="0" max="10" style="${inputStyle}">
+        <span style="font-size:11px;color:var(--text-tertiary);display:block;margin-top:2px">Left N cols stay fixed</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+      <button class="toolbar-btn freeze-preset" data-fr="1" data-fc="0" style="padding:4px 10px;font-size:11px">Freeze Top Row</button>
+      <button class="toolbar-btn freeze-preset" data-fr="0" data-fc="1" style="padding:4px 10px;font-size:11px">Freeze First Column</button>
+      <button class="toolbar-btn freeze-preset" data-fr="1" data-fc="1" style="padding:4px 10px;font-size:11px">Freeze Row + Column</button>
+      <button class="toolbar-btn freeze-preset" data-fr="${selectedRow > 0 ? selectedRow : 1}" data-fc="${selectedCol > 0 ? selectedCol : 0}" style="padding:4px 10px;font-size:11px">Freeze at Selection (${rcToRef(selectedRow, selectedCol)})</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="toolbar-btn" id="freeze-unfreeze" style="padding:6px 16px">Unfreeze All</button>
+      <button class="toolbar-btn" id="freeze-cancel" style="padding:6px 16px">Cancel</button>
+      <button class="toolbar-btn" id="freeze-apply" style="padding:6px 16px;background:var(--accent-color);color:white;border-radius:4px">Apply</button>
+    </div>
+  </div>`;
+  document.body.appendChild(dlg);
+
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.remove(); });
+
+  // Preset buttons
+  dlg.querySelectorAll('.freeze-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      dlg.querySelector('#freeze-rows-input').value = btn.dataset.fr;
+      dlg.querySelector('#freeze-cols-input').value = btn.dataset.fc;
+    });
+  });
+
+  dlg.querySelector('#freeze-cancel').onclick = () => dlg.remove();
+  dlg.querySelector('#freeze-unfreeze').onclick = () => {
+    freezeRows = 0; freezeCols = 0;
+    renderGrid(); updateSelection(); updateFreezeButtonState();
+    dlg.remove();
+  };
+  dlg.querySelector('#freeze-apply').onclick = () => {
+    freezeRows = parseInt(dlg.querySelector('#freeze-rows-input').value) || 0;
+    freezeCols = parseInt(dlg.querySelector('#freeze-cols-input').value) || 0;
+    renderGrid(); updateSelection(); updateFreezeButtonState();
+    dlg.remove();
+  };
+}
 
 function applyFreezeStyles() {
   if (freezeRows <= 0 && freezeCols <= 0) return;
@@ -2503,6 +2599,20 @@ function showCellContextMenu(x, y, r, c) {
 
 let validations = {}; // "r,c" → { type, values, operator, min, max, errorMessage }
 
+/** Show a temporary notification for data validation info messages */
+function showDvNotification(msg, type = 'info') {
+  const existing = document.querySelector('.dv-notification');
+  if (existing) existing.remove();
+  const el = document.createElement('div');
+  el.className = 'dv-notification';
+  const bgColor = type === 'warning' ? '#fff3cd' : '#d1ecf1';
+  const textColor = type === 'warning' ? '#856404' : '#0c5460';
+  el.style.cssText = `position:fixed;top:60px;right:20px;padding:10px 16px;background:${bgColor};color:${textColor};border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:9999;font-size:13px;max-width:300px;transition:opacity 0.3s`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 3000);
+}
+
 /** Check data validation rule, returns error message string or null if valid */
 function checkDataValidation(rule, val) {
   if (!rule || val === '') return null;
@@ -2578,6 +2688,20 @@ function checkDataValidation(rule, val) {
       if (!/^https?:\/\/.+/.test(val)) return 'A valid URL is required (http:// or https://)';
       break;
     }
+    case 'custom': {
+      // Custom formula validation — attempt to evaluate formula
+      // The formula should return true/false
+      if (rule.formula) {
+        try {
+          // Simple custom validation: check if formula references produce a truthy result
+          // For now we just validate that a formula was provided; real evaluation is done in the engine
+          return null; // Allow value, formula validation happens on recalc
+        } catch (e) {
+          return 'Custom formula error';
+        }
+      }
+      break;
+    }
   }
   return null;
 }
@@ -2645,11 +2769,25 @@ function showDataValidationDialog(r, c) {
             <option value="date" ${current.type === 'date' ? 'selected' : ''}>Date</option>
             <option value="email" ${current.type === 'email' ? 'selected' : ''}>Email</option>
             <option value="url" ${current.type === 'url' ? 'selected' : ''}>URL</option>
+            <option value="custom" ${current.type === 'custom' ? 'selected' : ''}>Custom Formula</option>
+          </select>
+        </div>
+        <div id="dv-severity-row" style="margin-bottom:12px">
+          <label style="font-size:12px;color:var(--text-secondary)">On invalid input</label>
+          <select id="dv-severity" style="${inputStyle}">
+            <option value="error" ${(current.severity || 'error') === 'error' ? 'selected' : ''}>Reject (Error)</option>
+            <option value="warning" ${current.severity === 'warning' ? 'selected' : ''}>Show Warning (allow input)</option>
+            <option value="info" ${current.severity === 'info' ? 'selected' : ''}>Show Info (allow input)</option>
           </select>
         </div>
         <div id="dv-list-row" style="margin-bottom:12px;display:${current.type === 'list' || !current.type ? 'block' : 'none'}">
           <label style="font-size:12px;color:var(--text-secondary)">List items (comma-separated)</label>
           <input type="text" id="dv-list" style="${inputStyle}" placeholder="Yes, No, Maybe" value="${current.type === 'list' ? (current.values || []).join(', ') : ''}">
+        </div>
+        <div id="dv-custom-row" style="margin-bottom:12px;display:${current.type === 'custom' ? 'block' : 'none'}">
+          <label style="font-size:12px;color:var(--text-secondary)">Custom formula (must return TRUE/FALSE)</label>
+          <input type="text" id="dv-formula" style="${inputStyle}" placeholder="=AND(A1>0, A1<100)" value="${current.formula || ''}">
+          <span style="font-size:11px;color:var(--text-tertiary)">Use cell references relative to the validation cell</span>
         </div>
         <div id="dv-operator-row" style="margin-bottom:12px;display:${['number','integer','text_length','date'].includes(current.type) ? 'block' : 'none'}">
           <label style="font-size:12px;color:var(--text-secondary)">Condition</label>
@@ -2695,10 +2833,13 @@ function showDataValidationDialog(r, c) {
   const minLabel = dialog.querySelector('#dv-min-label');
   const opEl = dialog.querySelector('#dv-operator');
 
+  const customRow = dialog.querySelector('#dv-custom-row');
+
   function updateDvUI() {
     const type = typeEl.value;
     const hasOp = ['number','integer','text_length','date'].includes(type);
     listRow.style.display = type === 'list' ? 'block' : 'none';
+    customRow.style.display = type === 'custom' ? 'block' : 'none';
     opRow.style.display = hasOp ? 'block' : 'none';
     if (!hasOp) { minRow.style.display = 'none'; maxRow.style.display = 'none'; return; }
     const op = opEl.value;
@@ -2726,9 +2867,14 @@ function showDataValidationDialog(r, c) {
     const type = typeEl.value;
     const { r1, r2, c1, c2 } = getSelectionRange();
     const errorMessage = dialog.querySelector('#dv-error').value.trim() || undefined;
-    let rule = { type, errorMessage };
+    const severity = dialog.querySelector('#dv-severity').value || 'error';
+    let rule = { type, errorMessage, severity };
 
-    if (type === 'list') {
+    if (type === 'custom') {
+      const formula = dialog.querySelector('#dv-formula').value.trim();
+      if (!formula) return;
+      rule.formula = formula;
+    } else if (type === 'list') {
       const vals = dialog.querySelector('#dv-list').value.split(',').map(s => s.trim()).filter(Boolean);
       if (vals.length === 0) return;
       rule.values = vals;
@@ -3474,10 +3620,15 @@ function showChartDialog() {
         </select>
         <label style="font-size:12px;font-weight:600">Title</label>
         <input id="chart-title" value="Chart" style="width:100%;padding:6px;margin:4px 0 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+        <label style="font-size:12px;font-weight:600">X-Axis Label</label>
+        <input id="chart-x-label" value="" placeholder="X-Axis" style="width:100%;padding:4px;margin:2px 0 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:11px">
+        <label style="font-size:12px;font-weight:600">Y-Axis Label</label>
+        <input id="chart-y-label" value="" placeholder="Y-Axis" style="width:100%;padding:4px;margin:2px 0 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:11px">
         <label style="font-size:12px"><input type="checkbox" id="chart-legend" checked> Show Legend</label><br>
         <label style="font-size:12px"><input type="checkbox" id="chart-first-row-labels" checked> First row as labels</label><br>
         <label style="font-size:12px"><input type="checkbox" id="chart-first-col-labels" checked> First column as labels</label><br>
-        <label style="font-size:12px"><input type="checkbox" id="chart-trendline"> Show Trendline</label>
+        <label style="font-size:12px"><input type="checkbox" id="chart-trendline"> Show Trendline</label><br>
+        <label style="font-size:12px"><input type="checkbox" id="chart-gridlines" checked> Show Gridlines</label>
       </div>
       <div style="flex:1;border:1px solid var(--border-color);border-radius:4px;padding:8px;min-height:300px;display:flex;align-items:center;justify-content:center" id="chart-preview-area">
         <canvas id="chart-preview-canvas" width="400" height="280"></canvas>
@@ -3492,22 +3643,28 @@ function showChartDialog() {
 
   const typeEl = dlg.querySelector('#chart-type');
   const titleEl = dlg.querySelector('#chart-title');
+  const xLabelEl = dlg.querySelector('#chart-x-label');
+  const yLabelEl = dlg.querySelector('#chart-y-label');
   const legendEl = dlg.querySelector('#chart-legend');
   const firstRowEl = dlg.querySelector('#chart-first-row-labels');
   const firstColEl = dlg.querySelector('#chart-first-col-labels');
   const trendlineEl = dlg.querySelector('#chart-trendline');
+  const gridlinesEl = dlg.querySelector('#chart-gridlines');
   const canvas = dlg.querySelector('#chart-preview-canvas');
 
   function updatePreview() {
-    renderChartToCanvas(canvas, dataRows, typeEl.value, titleEl.value, legendEl.checked, firstRowEl.checked, firstColEl.checked, trendlineEl.checked);
+    renderChartToCanvas(canvas, dataRows, typeEl.value, titleEl.value, legendEl.checked, firstRowEl.checked, firstColEl.checked, trendlineEl.checked, xLabelEl.value, yLabelEl.value, gridlinesEl.checked);
   }
   updatePreview();
   typeEl.onchange = updatePreview;
   titleEl.oninput = updatePreview;
+  xLabelEl.oninput = updatePreview;
+  yLabelEl.oninput = updatePreview;
   legendEl.onchange = updatePreview;
   firstRowEl.onchange = updatePreview;
   firstColEl.onchange = updatePreview;
   trendlineEl.onchange = updatePreview;
+  gridlinesEl.onchange = updatePreview;
 
   dlg.querySelector('#chart-cancel').onclick = () => dlg.remove();
   dlg.querySelector('#chart-insert').onclick = () => {
@@ -3516,10 +3673,13 @@ function showChartDialog() {
       dataRows: JSON.parse(JSON.stringify(dataRows)),
       type: typeEl.value,
       title: titleEl.value,
+      xLabel: xLabelEl.value,
+      yLabel: yLabelEl.value,
       showLegend: legendEl.checked,
       firstRowLabels: firstRowEl.checked,
       firstColLabels: firstColEl.checked,
       trendline: trendlineEl.checked,
+      showGridlines: gridlinesEl.checked,
     };
     insertChartWidget(chartConfig);
     dlg.remove();
@@ -3548,7 +3708,7 @@ function insertChartWidget(config, left = 40, top = 40, width = 480, height = 34
   chartDiv._chartConfig = config;
 
   const canvasEl = chartDiv.querySelector('canvas');
-  renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline);
+  renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines);
   makeDraggable(chartDiv);
 
   // Close button
@@ -3564,7 +3724,7 @@ function insertChartWidget(config, left = 40, top = 40, width = 480, height = 34
     if (cw > 0 && ch > 0) {
       canvasEl.width = cw;
       canvasEl.height = ch;
-      renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline);
+      renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines);
     }
   });
   ro.observe(chartDiv);
@@ -3599,8 +3759,17 @@ function editChart(chartDiv) {
       <label style="font-size:12px;font-weight:600">Title</label>
       <input id="edit-chart-title" value="${config.title}" style="${inputStyle}">
     </div>
+    <div style="margin-bottom:8px">
+      <label style="font-size:12px;font-weight:600">X-Axis Label</label>
+      <input id="edit-chart-x-label" value="${config.xLabel || ''}" placeholder="X-Axis" style="${inputStyle}">
+    </div>
+    <div style="margin-bottom:8px">
+      <label style="font-size:12px;font-weight:600">Y-Axis Label</label>
+      <input id="edit-chart-y-label" value="${config.yLabel || ''}" placeholder="Y-Axis" style="${inputStyle}">
+    </div>
     <label style="font-size:12px"><input type="checkbox" id="edit-chart-legend" ${config.showLegend?'checked':''}> Show Legend</label><br>
-    <label style="font-size:12px"><input type="checkbox" id="edit-chart-trendline" ${config.trendline?'checked':''}> Show Trendline</label>
+    <label style="font-size:12px"><input type="checkbox" id="edit-chart-trendline" ${config.trendline?'checked':''}> Show Trendline</label><br>
+    <label style="font-size:12px"><input type="checkbox" id="edit-chart-gridlines" ${config.showGridlines!==false?'checked':''}> Show Gridlines</label>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
       <button class="toolbar-btn" id="edit-chart-cancel" style="padding:6px 16px">Cancel</button>
       <button class="toolbar-btn" id="edit-chart-apply" style="padding:6px 16px;background:var(--accent-color);color:white;border-radius:4px">Apply</button>
@@ -3612,12 +3781,15 @@ function editChart(chartDiv) {
   dlg.querySelector('#edit-chart-apply').onclick = () => {
     config.type = dlg.querySelector('#edit-chart-type').value;
     config.title = dlg.querySelector('#edit-chart-title').value;
+    config.xLabel = dlg.querySelector('#edit-chart-x-label').value;
+    config.yLabel = dlg.querySelector('#edit-chart-y-label').value;
     config.showLegend = dlg.querySelector('#edit-chart-legend').checked;
     config.trendline = dlg.querySelector('#edit-chart-trendline').checked;
+    config.showGridlines = dlg.querySelector('#edit-chart-gridlines').checked;
     chartDiv._chartConfig = config;
     chartDiv.querySelector('span').textContent = config.title;
     const canvasEl = chartDiv.querySelector('canvas');
-    renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline);
+    renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines);
     dlg.remove();
   };
 }
@@ -3637,7 +3809,7 @@ function makeDraggable(el) {
 
 const CHART_COLORS = ['#4285f4','#ea4335','#fbbc05','#34a853','#ff6d01','#46bdc6','#7baaf7','#f07b72','#fdd663','#57bb8a','#ff9e40','#78d5dd'];
 
-function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRowLabels, firstColLabels, showTrendline) {
+function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRowLabels, firstColLabels, showTrendline, xAxisLabel, yAxisLabel, showGridlines) {
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
@@ -3683,8 +3855,10 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
   }
 
   // Axis charts (bar, column, line, area, scatter)
-  const pad = { top: 30, right: 20, bottom: 50, left: 50 };
+  const pad = { top: 30, right: 20, bottom: 50, left: 55 };
   if (showLegend) pad.bottom += 20;
+  if (xAxisLabel) pad.bottom += 16;
+  if (yAxisLabel) pad.left += 16;
   const cW = W - pad.left - pad.right;
   const cH = H - pad.top - pad.bottom;
 
@@ -3695,6 +3869,7 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
   const range = maxVal - minVal || 1;
 
   // Grid lines
+  const shouldDrawGridlines = showGridlines !== false;
   ctx.strokeStyle = gridColor;
   ctx.lineWidth = 0.5;
   ctx.font = '10px system-ui, sans-serif';
@@ -3703,9 +3878,23 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
   const gridSteps = 5;
   for (let i = 0; i <= gridSteps; i++) {
     const y = pad.top + cH - (i / gridSteps) * cH;
-    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cW, y); ctx.stroke();
+    if (shouldDrawGridlines) {
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cW, y); ctx.stroke();
+    }
     const val = minVal + (i / gridSteps) * range;
     ctx.fillText(val % 1 === 0 ? val.toString() : val.toFixed(1), pad.left - 4, y + 3);
+  }
+
+  // Y-axis label (rotated)
+  if (yAxisLabel) {
+    ctx.save();
+    ctx.fillStyle = textColor;
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.translate(14, pad.top + cH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(yAxisLabel, 0, 0);
+    ctx.restore();
   }
 
   // X labels
@@ -3867,9 +4056,19 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
     }
   }
 
+  // X-axis label
+  if (xAxisLabel) {
+    ctx.fillStyle = textColor;
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    const xLabelY = pad.top + cH + 32 + (xAxisLabel ? 0 : 0);
+    ctx.fillText(xAxisLabel, pad.left + cW / 2, xLabelY);
+  }
+
   // Legend
   if (showLegend && series.length > 0) {
-    const ly = H - 14;
+    const legendOffset = xAxisLabel ? 14 : 0;
+    const ly = H - 14 + (legendOffset > 0 ? 0 : 0);
     let lx = W / 2 - (seriesNames.length * 70) / 2;
     ctx.font = '10px system-ui, sans-serif';
     for (let s = 0; s < seriesNames.length; s++) {
@@ -4059,15 +4258,20 @@ function showConditionalFormatDialog() {
     <div style="margin-bottom:8px;font-size:12px">Range: <strong>${rangeStr}</strong></div>
     <label style="font-size:12px;font-weight:600">Format Type</label>
     <select id="cf-type" style="width:100%;padding:6px;margin:4px 0 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
-      <option value="colorScale">Color Scale (min→max)</option>
+      <option value="colorScale">Color Scale 3-Color (min→mid→max)</option>
+      <option value="colorScale2">Color Scale 2-Color (min→max)</option>
       <option value="dataBar">Data Bars</option>
       <option value="iconSet">Icon Set</option>
       <option value="greaterThan">Greater Than</option>
       <option value="lessThan">Less Than</option>
+      <option value="equalTo">Equal To</option>
       <option value="between">Between</option>
       <option value="text">Text Contains</option>
       <option value="duplicate">Duplicate Values</option>
       <option value="top10">Top 10</option>
+      <option value="uniqueValues">Unique Values</option>
+      <option value="aboveAvg">Above Average</option>
+      <option value="belowAvg">Below Average</option>
     </select>
     <div id="cf-options"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
@@ -4089,17 +4293,25 @@ function showConditionalFormatDialog() {
         <label style="font-size:12px">Mid color: <input type="color" id="cf-mid-color" value="#ffeb84"></label>
         <label style="font-size:12px">Max color: <input type="color" id="cf-max-color" value="#63be7b"></label>
       </div>`;
+    } else if (t === 'colorScale2') {
+      html = `<div style="display:flex;gap:8px;margin-top:4px">
+        <label style="font-size:12px">Min color: <input type="color" id="cf-min-color" value="#f8696b"></label>
+        <label style="font-size:12px">Max color: <input type="color" id="cf-max-color" value="#63be7b"></label>
+      </div>`;
     } else if (t === 'dataBar') {
-      html = `<label style="font-size:12px">Bar color: <input type="color" id="cf-bar-color" value="#4285f4"></label>`;
+      html = `<label style="font-size:12px">Bar color: <input type="color" id="cf-bar-color" value="#4285f4"></label>
+        <label style="font-size:12px;margin-left:12px">Show value: <input type="checkbox" id="cf-bar-show-val" checked></label>`;
     } else if (t === 'iconSet') {
       html = `<select id="cf-icon-set" style="width:100%;padding:4px;margin-top:4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
         <option value="arrows">Arrows (↑ → ↓)</option>
         <option value="circles">Circles (🟢 🟡 🔴)</option>
         <option value="stars">Stars (★ ☆)</option>
         <option value="flags">Flags (🟩 🟨 🟥)</option>
-      </select>`;
-    } else if (t === 'greaterThan' || t === 'lessThan') {
-      html = `<input type="number" id="cf-value" placeholder="Value" style="width:100%;padding:6px;margin-top:4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+        <option value="bars">Bars (▁ ▃ ▅ ▇)</option>
+      </select>
+      <label style="font-size:12px;margin-top:4px;display:block"><input type="checkbox" id="cf-icon-only"> Show icon only (hide value)</label>`;
+    } else if (t === 'greaterThan' || t === 'lessThan' || t === 'equalTo') {
+      html = `<input type="text" id="cf-value" placeholder="Value" style="width:100%;padding:6px;margin-top:4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
         <label style="font-size:12px;margin-top:4px;display:block">Highlight: <input type="color" id="cf-highlight" value="#fce4ec"></label>`;
     } else if (t === 'between') {
       html = `<div style="display:flex;gap:8px;margin-top:4px">
@@ -4112,6 +4324,10 @@ function showConditionalFormatDialog() {
         <label style="font-size:12px;margin-top:4px;display:block">Highlight: <input type="color" id="cf-highlight" value="#fff3e0"></label>`;
     } else if (t === 'duplicate') {
       html = `<label style="font-size:12px;margin-top:4px;display:block">Highlight: <input type="color" id="cf-highlight" value="#fce4ec"></label>`;
+    } else if (t === 'uniqueValues') {
+      html = `<label style="font-size:12px;margin-top:4px;display:block">Highlight: <input type="color" id="cf-highlight" value="#e8f5e9"></label>`;
+    } else if (t === 'aboveAvg' || t === 'belowAvg') {
+      html = `<label style="font-size:12px;margin-top:4px;display:block">Highlight: <input type="color" id="cf-highlight" value="${t === 'aboveAvg' ? '#e3f2fd' : '#fff3e0'}"></label>`;
     } else if (t === 'top10') {
       html = `<input type="number" id="cf-top-n" value="10" min="1" style="width:80px;padding:6px;margin-top:4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
         <label style="font-size:12px;margin-top:4px;display:block">Highlight: <input type="color" id="cf-highlight" value="#e3f2fd"></label>`;
@@ -4129,12 +4345,17 @@ function showConditionalFormatDialog() {
       config.minColor = dlg.querySelector('#cf-min-color').value;
       config.midColor = dlg.querySelector('#cf-mid-color').value;
       config.maxColor = dlg.querySelector('#cf-max-color').value;
+    } else if (t === 'colorScale2') {
+      config.minColor = dlg.querySelector('#cf-min-color').value;
+      config.maxColor = dlg.querySelector('#cf-max-color').value;
     } else if (t === 'dataBar') {
       config.barColor = dlg.querySelector('#cf-bar-color').value;
+      config.showValue = dlg.querySelector('#cf-bar-show-val')?.checked !== false;
     } else if (t === 'iconSet') {
       config.iconSet = dlg.querySelector('#cf-icon-set').value;
-    } else if (t === 'greaterThan' || t === 'lessThan') {
-      config.value = parseFloat(dlg.querySelector('#cf-value').value) || 0;
+      config.iconOnly = dlg.querySelector('#cf-icon-only')?.checked || false;
+    } else if (t === 'greaterThan' || t === 'lessThan' || t === 'equalTo') {
+      config.value = isNaN(parseFloat(dlg.querySelector('#cf-value').value)) ? dlg.querySelector('#cf-value').value : parseFloat(dlg.querySelector('#cf-value').value);
       config.highlight = dlg.querySelector('#cf-highlight').value;
     } else if (t === 'between') {
       config.min = parseFloat(dlg.querySelector('#cf-val-min').value) || 0;
@@ -4143,7 +4364,7 @@ function showConditionalFormatDialog() {
     } else if (t === 'text') {
       config.text = dlg.querySelector('#cf-text').value;
       config.highlight = dlg.querySelector('#cf-highlight').value;
-    } else if (t === 'duplicate') {
+    } else if (t === 'duplicate' || t === 'uniqueValues' || t === 'aboveAvg' || t === 'belowAvg') {
       config.highlight = dlg.querySelector('#cf-highlight').value;
     } else if (t === 'top10') {
       config.n = parseInt(dlg.querySelector('#cf-top-n').value) || 10;
@@ -4194,30 +4415,56 @@ function applyConditionalFormatting() {
           const ratio = (v - minV) / rangeV;
           td.style.background = interpolateColor(cfg.minColor, cfg.midColor, cfg.maxColor, ratio);
           td.setAttribute('data-cf-style', '1');
+        } else if (cfg.type === 'colorScale2' && !isNaN(v)) {
+          // 2-color gradient: linear interpolation between min and max
+          const ratio = (v - minV) / rangeV;
+          td.style.background = interpolate2Color(cfg.minColor, cfg.maxColor, ratio);
+          td.setAttribute('data-cf-style', '1');
         } else if (cfg.type === 'dataBar' && !isNaN(v)) {
           const pct = Math.max(0, ((v - minV) / rangeV) * 100);
           td.style.position = 'relative';
           const bar = document.createElement('div');
           bar.className = 'cf-data-bar';
-          bar.style.cssText = `position:absolute;left:0;bottom:0;height:3px;width:${pct}%;background:${cfg.barColor};opacity:0.6;pointer-events:none`;
+          bar.style.cssText = `position:absolute;left:0;bottom:0;height:4px;width:${pct}%;background:${cfg.barColor};opacity:0.7;pointer-events:none;border-radius:0 2px 2px 0;transition:width 0.3s ease`;
           td.appendChild(bar);
           td.setAttribute('data-cf-style', '1');
+          if (cfg.showValue === false) {
+            td.style.color = 'transparent';
+          }
         } else if (cfg.type === 'iconSet' && !isNaN(v)) {
           const ratio = (v - minV) / rangeV;
-          const icons = { arrows: ['↓','→','↑'], circles: ['🔴','🟡','🟢'], stars: ['☆','★','★'], flags: ['🟥','🟨','🟩'] };
+          const icons = { arrows: ['↓','→','↑'], circles: ['🔴','🟡','🟢'], stars: ['☆','★','★'], flags: ['🟥','🟨','🟩'], bars: ['▁','▃','▅','▇'] };
           const set = icons[cfg.iconSet] || icons.arrows;
           const icon = document.createElement('span');
           icon.className = 'cf-icon';
           icon.style.cssText = 'margin-right:4px;font-size:10px';
-          icon.textContent = ratio < 0.33 ? set[0] : ratio < 0.67 ? set[1] : set[2];
+          if (set.length === 4) {
+            icon.textContent = ratio < 0.25 ? set[0] : ratio < 0.5 ? set[1] : ratio < 0.75 ? set[2] : set[3];
+          } else {
+            icon.textContent = ratio < 0.33 ? set[0] : ratio < 0.67 ? set[1] : set[2];
+          }
           td.insertBefore(icon, td.firstChild);
           td.setAttribute('data-cf-style', '1');
+          if (cfg.iconOnly) {
+            // Hide the text, show only icon
+            Array.from(td.childNodes).forEach(n => {
+              if (n !== icon && n.nodeType === 3) n.textContent = '';
+            });
+          }
         } else if (cfg.type === 'greaterThan' && !isNaN(v) && v > cfg.value) {
           td.style.background = cfg.highlight;
           td.setAttribute('data-cf-style', '1');
         } else if (cfg.type === 'lessThan' && !isNaN(v) && v < cfg.value) {
           td.style.background = cfg.highlight;
           td.setAttribute('data-cf-style', '1');
+        } else if (cfg.type === 'equalTo') {
+          const matches = !isNaN(v) && !isNaN(parseFloat(cfg.value))
+            ? v === parseFloat(cfg.value)
+            : raw.toString() === String(cfg.value);
+          if (matches) {
+            td.style.background = cfg.highlight;
+            td.setAttribute('data-cf-style', '1');
+          }
         } else if (cfg.type === 'between' && !isNaN(v) && v >= cfg.min && v <= cfg.max) {
           td.style.background = cfg.highlight;
           td.setAttribute('data-cf-style', '1');
@@ -4233,6 +4480,29 @@ function applyConditionalFormatting() {
             }
           }
           if (count > 1 && raw !== '') {
+            td.style.background = cfg.highlight;
+            td.setAttribute('data-cf-style', '1');
+          }
+        } else if (cfg.type === 'uniqueValues') {
+          let count = 0;
+          for (let rr = r1; rr <= r2; rr++) {
+            for (let cc = c1; cc <= c2; cc++) {
+              if (getDisplayValue(sheet, rr, cc) === raw) count++;
+            }
+          }
+          if (count === 1 && raw !== '') {
+            td.style.background = cfg.highlight;
+            td.setAttribute('data-cf-style', '1');
+          }
+        } else if (cfg.type === 'aboveAvg' && !isNaN(v)) {
+          const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+          if (v > avg) {
+            td.style.background = cfg.highlight;
+            td.setAttribute('data-cf-style', '1');
+          }
+        } else if (cfg.type === 'belowAvg' && !isNaN(v)) {
+          const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+          if (v < avg) {
             td.style.background = cfg.highlight;
             td.setAttribute('data-cf-style', '1');
           }
@@ -4266,6 +4536,16 @@ function interpolateColor(c1, c2, c3, ratio) {
     g = Math.round(g2 + (g3 - g2) * t);
     b = Math.round(b2 + (b3 - b2) * t);
   }
+  return `rgb(${r},${g},${b})`;
+}
+
+function interpolate2Color(c1, c2, ratio) {
+  const hex = (c) => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
+  const [r1, g1, b1] = hex(c1);
+  const [r2, g2, b2] = hex(c2);
+  const r = Math.round(r1 + (r2 - r1) * ratio);
+  const g = Math.round(g1 + (g2 - g1) * ratio);
+  const b = Math.round(b1 + (b2 - b1) * ratio);
   return `rgb(${r},${g},${b})`;
 }
 

@@ -31,6 +31,20 @@ function createRenderer() {
   // Enable tables (built-in)
   md.enable('table');
 
+  // Add heading anchors for TOC navigation
+  const originalHeadingOpen = md.renderer.rules.heading_open;
+  md.renderer.rules.heading_open = function(tokens, idx, options, env, self) {
+    const token = tokens[idx];
+    const contentToken = tokens[idx + 1];
+    const text = contentToken?.children?.reduce((acc, t) => acc + (t.content || ''), '') || '';
+    const id = 'heading-' + text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+    token.attrSet('id', id);
+    if (originalHeadingOpen) {
+      return originalHeadingOpen(tokens, idx, options, env, self);
+    }
+    return self.renderToken(tokens, idx, options);
+  };
+
   return md;
 }
 

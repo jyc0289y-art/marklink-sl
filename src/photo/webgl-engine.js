@@ -7,6 +7,7 @@ import {
   VERT_SRC, BASIC_FRAG, HSL_FRAG, SPLIT_TONE_FRAG,
   CLARITY_BLUR_H_FRAG, CLARITY_BLUR_V_FRAG, CLARITY_APPLY_FRAG,
   GRAIN_FRAG, SELECTIVE_COLOR_FRAG, VIGNETTE_FRAG, TONE_CURVE_FRAG,
+  LENS_CORRECTION_FRAG,
 } from './shaders.js';
 
 /* ---------- Color Temperature Helper ---------- */
@@ -77,6 +78,7 @@ export const DEFAULT_PARAMS = {
   grain: { amount: 0, size: 50 },
   selectiveColor: { enabled: false, preserveHueRanges: [], desaturateStrength: 0 },
   vignette: { amount: 0, midpoint: 50, roundness: 0, feather: 60 },
+  lens: { distortion: 0, caRed: 0, caBlue: 0 },
   toneCurve: {
     rgb: [{ x: 0, y: 0 }, { x: 255, y: 255 }],
     red: [{ x: 0, y: 0 }, { x: 255, y: 255 }],
@@ -189,6 +191,9 @@ export class WebGLEngine {
     ]);
     this.programs.toneCurve = this._createProgram(TONE_CURVE_FRAG, [
       'uTexture', 'uCurveLUT',
+    ]);
+    this.programs.lensCorrection = this._createProgram(LENS_CORRECTION_FRAG, [
+      'uTexture', 'uDistortion', 'uCaRed', 'uCaBlue',
     ]);
   }
 
@@ -401,7 +406,18 @@ export class WebGLEngine {
       fboIndex = (fboIndex + 1) % 2;
     }
 
-    // Pass 7: Vignette
+    // Pass 7: Lens Correction
+    const hasLens = params.lens && (params.lens.distortion !== 0 || params.lens.caRed !== 0 || params.lens.caBlue !== 0);
+    if (hasLens) {
+      const lensProg = this.programs.lensCorrection;
+      renderPass(lensProg, () => {
+        gl.uniform1f(lensProg.uniforms['uDistortion'], params.lens.distortion);
+        gl.uniform1f(lensProg.uniforms['uCaRed'], params.lens.caRed);
+        gl.uniform1f(lensProg.uniforms['uCaBlue'], params.lens.caBlue);
+      });
+    }
+
+    // Pass 8: Vignette
     if (params.vignette.amount > 0) {
       const vigProg = this.programs.vignette;
       renderPass(vigProg, () => {
@@ -412,7 +428,7 @@ export class WebGLEngine {
       });
     }
 
-    // Pass 8: Grain
+    // Pass 9: Grain
     if (params.grain.amount > 0) {
       const grainProg = this.programs.grain;
       renderPass(grainProg, () => {

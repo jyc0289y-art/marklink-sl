@@ -96,6 +96,30 @@ function bindEvents() {
   // Transition change
   transitionSelect?.addEventListener('change', (e) => {
     slides[activeSlideIdx].transition = e.target.value;
+    updateThumb(activeSlideIdx);
+  });
+
+  // Transition duration
+  document.getElementById('slide-transition-duration')?.addEventListener('change', (e) => {
+    slides[activeSlideIdx].transitionDuration = parseFloat(e.target.value) || 0.5;
+  });
+
+  // Transition easing
+  document.getElementById('slide-transition-easing')?.addEventListener('change', (e) => {
+    slides[activeSlideIdx].transitionEasing = e.target.value;
+  });
+
+  // Apply transition to all slides
+  document.getElementById('slide-transition-apply-all')?.addEventListener('click', () => {
+    const t = transitionSelect?.value || 'none';
+    const dur = parseFloat(document.getElementById('slide-transition-duration')?.value) || 0.5;
+    const easing = document.getElementById('slide-transition-easing')?.value || 'ease';
+    slides.forEach(s => {
+      s.transition = t;
+      s.transitionDuration = dur;
+      s.transitionEasing = easing;
+    });
+    renderPanel();
   });
 
   // Text formatting buttons
@@ -191,6 +215,12 @@ function bindEvents() {
 
   // Animations
   document.getElementById('slide-anim')?.addEventListener('click', showAnimationPanel);
+
+  // Animation Timeline
+  document.getElementById('slide-anim-timeline')?.addEventListener('click', () => { if (typeof toggleAnimationTimeline === 'function') toggleAnimationTimeline(); });
+
+  // Presenter View
+  document.getElementById('slide-presenter-view')?.addEventListener('click', () => { if (typeof openPresenterView === 'function') openPresenterView(); });
 
   // Slide size
   document.getElementById('slide-size')?.addEventListener('change', (e) => {
@@ -304,6 +334,10 @@ function loadSlide(idx) {
   applyTheme(slide.theme);
   if (themeSelect) themeSelect.value = slide.theme;
   if (transitionSelect) transitionSelect.value = slide.transition || 'none';
+  const transDurInput = document.getElementById('slide-transition-duration');
+  if (transDurInput) transDurInput.value = slide.transitionDuration || 0.5;
+  const transEasingSelect = document.getElementById('slide-transition-easing');
+  if (transEasingSelect) transEasingSelect.value = slide.transitionEasing || 'ease';
   const autoAdvInput = document.getElementById('slide-auto-advance');
   if (autoAdvInput) autoAdvInput.value = slide.autoAdvance || 0;
 
@@ -474,7 +508,7 @@ function startPresentation() {
 
   const slideEl = document.createElement('div');
   slideEl.className = 'slide-canvas';
-  slideEl.style.cssText = 'width:100vw;height:100vh;display:flex;flex-direction:column;justify-content:center;padding:64px 96px;font-size:32px;cursor:none;transition:all 0.5s ease';
+  slideEl.style.cssText = 'width:100vw;height:100vh;display:flex;flex-direction:column;justify-content:center;padding:64px 96px;font-size:32px;cursor:none';
   slideEl.contentEditable = 'false';
 
   // Slide counter
@@ -514,13 +548,19 @@ function startPresentation() {
     };
 
     const fx = transitionMap[transition];
+    const transDur = slide.transitionDuration || 0.5;
+    const transEasing = slide.transitionEasing || 'ease';
     if (fx) {
+      slideEl.style.transition = 'none';
       Object.assign(slideEl.style, fx.from);
+      void slideEl.offsetWidth; // force reflow
+      slideEl.style.transition = `all ${transDur}s ${transEasing}`;
       setTimeout(() => {
         applyContent();
         Object.assign(slideEl.style, fx.to);
-      }, 250);
+      }, 50);
     } else {
+      slideEl.style.transition = 'none';
       applyContent();
     }
 
@@ -3018,4 +3058,585 @@ export function initSlideEditorEnhanced() {
       }
     }
   });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE: Animation Timeline Panel
+   ═══════════════════════════════════════════════════════════════ */
+
+let animTimelineOpen = false;
+
+function toggleAnimationTimeline() {
+  const existing = document.querySelector('.slide-anim-timeline-panel');
+  if (existing) { existing.remove(); animTimelineOpen = false; return; }
+  animTimelineOpen = true;
+  renderAnimationTimeline();
+}
+
+function getAnimCategory(effect) {
+  const entranceEffects = ['fadeIn', 'slideInLeft', 'slideInRight', 'slideInUp', 'slideInDown', 'zoomIn', 'bounceIn', 'rotateIn', 'flipIn'];
+  const exitEffects = ['fadeOut', 'slideOutLeft', 'slideOutRight', 'zoomOut', 'shrinkOut'];
+  if (entranceEffects.includes(effect)) return 'entrance';
+  if (exitEffects.includes(effect)) return 'exit';
+  return 'emphasis';
+}
+
+function getAnimTargetName(target) {
+  if (!canvasEl) return target;
+  const el = canvasEl.querySelector(target);
+  if (!el) return target;
+  const tag = el.tagName.toLowerCase();
+  const text = el.textContent?.substring(0, 20) || '';
+  return `<${tag}> ${text}${text.length >= 20 ? '...' : ''}`;
+}
+
+function renderAnimationTimeline() {
+  const existing = document.querySelector('.slide-anim-timeline-panel');
+  if (existing) existing.remove();
+
+  const slide = slides[activeSlideIdx];
+  if (!slide.animations) slide.animations = [];
+  const anims = slide.animations;
+
+  const panel = document.createElement('div');
+  panel.className = 'slide-anim-timeline-panel';
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'anim-timeline-header';
+  header.innerHTML = `
+    <h3>Animation Timeline — Slide ${activeSlideIdx + 1}</h3>
+    <div class="anim-timeline-controls">
+      <button id="anim-tl-add" title="Add animation to selected element">+ Add</button>
+      <button id="anim-tl-preview" title="Preview all animations">&#9654; Preview</button>
+      <button id="anim-tl-reorder-up" title="Move selected up">&uarr;</button>
+      <button id="anim-tl-reorder-down" title="Move selected down">&darr;</button>
+      <button id="anim-tl-clear" title="Clear all animations">Clear All</button>
+      <button id="anim-tl-close" title="Close timeline">&times;</button>
+    </div>
+  `;
+  panel.appendChild(header);
+
+  // Body
+  const body = document.createElement('div');
+  body.className = 'anim-timeline-body';
+
+  // Left side — list of animations
+  const list = document.createElement('div');
+  list.className = 'anim-timeline-list';
+  list.id = 'anim-tl-list';
+
+  if (anims.length === 0) {
+    list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-tertiary);font-size:11px">No animations.<br>Select an element and click + Add.</div>';
+  } else {
+    anims.forEach((a, i) => {
+      const cat = getAnimCategory(a.effect);
+      const targetName = getAnimTargetName(a.target);
+      const item = document.createElement('div');
+      item.className = 'anim-timeline-item';
+      item.dataset.idx = i;
+      item.innerHTML = `
+        <span class="anim-order ${cat}">${i + 1}</span>
+        <div class="anim-info">
+          <div class="anim-name">${a.effect} <span style="font-weight:400;color:var(--text-tertiary)">(${a.trigger})</span></div>
+          <div class="anim-target-name">${targetName}</div>
+        </div>
+        <button class="anim-del-btn" data-del="${i}" title="Remove">&times;</button>
+      `;
+      list.appendChild(item);
+    });
+  }
+  body.appendChild(list);
+
+  // Right side — timeline tracks with ruler
+  const tracks = document.createElement('div');
+  tracks.className = 'anim-timeline-tracks';
+  tracks.id = 'anim-tl-tracks';
+
+  // Calculate total duration for ruler
+  let maxTime = 0;
+  let cumulTime = 0;
+  anims.forEach((a, i) => {
+    if (a.trigger === 'afterPrevious' && i > 0) {
+      cumulTime += (anims[i - 1]?.duration || 0.5);
+    }
+    const start = cumulTime + (a.delay || 0);
+    const end = start + (a.duration || 0.5);
+    if (end > maxTime) maxTime = end;
+    if (a.trigger !== 'withPrevious') cumulTime = start;
+  });
+  maxTime = Math.max(maxTime, 3); // Minimum 3s ruler
+  const rulerWidth = Math.max(400, maxTime * 80);
+
+  // Ruler
+  const ruler = document.createElement('div');
+  ruler.className = 'anim-timeline-ruler';
+  ruler.style.width = rulerWidth + 'px';
+  for (let t = 0; t <= maxTime; t += 0.5) {
+    const mark = document.createElement('span');
+    mark.className = 'anim-timeline-ruler-mark';
+    mark.style.left = (t / maxTime * rulerWidth) + 'px';
+    mark.textContent = t % 1 === 0 ? t + 's' : '';
+    if (t % 1 === 0) {
+      mark.style.borderLeft = '1px solid var(--text-tertiary)';
+      mark.style.height = '8px';
+    } else {
+      mark.style.borderLeft = '1px solid var(--border-color)';
+      mark.style.height = '4px';
+    }
+    ruler.appendChild(mark);
+  }
+  tracks.appendChild(ruler);
+
+  // Render bars
+  cumulTime = 0;
+  anims.forEach((a, i) => {
+    if (a.trigger === 'afterPrevious' && i > 0) {
+      cumulTime += (anims[i - 1]?.duration || 0.5);
+    }
+    const start = cumulTime + (a.delay || 0);
+    const dur = a.duration || 0.5;
+    if (a.trigger !== 'withPrevious') cumulTime = start;
+
+    const track = document.createElement('div');
+    track.className = 'anim-timeline-track';
+    track.style.width = rulerWidth + 'px';
+
+    const bar = document.createElement('div');
+    const cat = getAnimCategory(a.effect);
+    bar.className = `anim-timeline-bar ${cat}`;
+    bar.style.left = (start / maxTime * rulerWidth) + 'px';
+    bar.style.width = Math.max(20, dur / maxTime * rulerWidth) + 'px';
+    bar.textContent = a.effect;
+    bar.title = `${a.effect} | ${a.trigger} | ${dur}s delay:${a.delay || 0}s`;
+    track.appendChild(bar);
+
+    tracks.appendChild(track);
+  });
+
+  body.appendChild(tracks);
+  panel.appendChild(body);
+  document.body.appendChild(panel);
+
+  // Event handlers
+  panel.querySelector('#anim-tl-close').addEventListener('click', () => {
+    panel.remove();
+    animTimelineOpen = false;
+  });
+
+  panel.querySelector('#anim-tl-clear').addEventListener('click', () => {
+    if (confirm('Remove all animations from this slide?')) {
+      slide.animations = [];
+      renderAnimationTimeline();
+    }
+  });
+
+  panel.querySelector('#anim-tl-preview').addEventListener('click', () => {
+    previewAnimations(slide);
+  });
+
+  panel.querySelector('#anim-tl-add').addEventListener('click', () => {
+    showTimelineAddAnimation(slide);
+  });
+
+  // Reorder
+  let selectedAnimIdx = -1;
+  panel.querySelectorAll('.anim-timeline-item').forEach(item => {
+    item.addEventListener('click', () => {
+      selectedAnimIdx = parseInt(item.dataset.idx);
+      panel.querySelectorAll('.anim-timeline-item').forEach(it => it.classList.remove('selected'));
+      item.classList.add('selected');
+      // Highlight the element in canvas
+      const a = anims[selectedAnimIdx];
+      if (a) {
+        canvasEl.querySelectorAll('[data-anim-id]').forEach(el => el.style.outline = '');
+        const el = canvasEl.querySelector(a.target);
+        if (el) el.style.outline = '2px dashed #4285f4';
+      }
+    });
+  });
+
+  panel.querySelectorAll('.anim-del-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.del);
+      slide.animations.splice(idx, 1);
+      renderAnimationTimeline();
+    });
+  });
+
+  panel.querySelector('#anim-tl-reorder-up').addEventListener('click', () => {
+    if (selectedAnimIdx > 0) {
+      const tmp = anims[selectedAnimIdx];
+      anims[selectedAnimIdx] = anims[selectedAnimIdx - 1];
+      anims[selectedAnimIdx - 1] = tmp;
+      selectedAnimIdx--;
+      renderAnimationTimeline();
+    }
+  });
+
+  panel.querySelector('#anim-tl-reorder-down').addEventListener('click', () => {
+    if (selectedAnimIdx >= 0 && selectedAnimIdx < anims.length - 1) {
+      const tmp = anims[selectedAnimIdx];
+      anims[selectedAnimIdx] = anims[selectedAnimIdx + 1];
+      anims[selectedAnimIdx + 1] = tmp;
+      selectedAnimIdx++;
+      renderAnimationTimeline();
+    }
+  });
+}
+
+function showTimelineAddAnimation(slide) {
+  const existing = document.querySelector('.anim-tl-add-dialog');
+  if (existing) { existing.remove(); return; }
+
+  const dlg = document.createElement('div');
+  dlg.className = 'anim-tl-add-dialog';
+  dlg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-primary);border:1px solid var(--border-color);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.25);padding:20px;z-index:3000;width:340px;color:var(--text-primary);font-size:13px';
+
+  dlg.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="margin:0;font-size:15px;font-weight:700">Add Animation</h3>
+      <button class="tl-add-close" style="border:none;background:transparent;font-size:18px;cursor:pointer;color:var(--text-primary)">&times;</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <label style="font-size:11px;font-weight:600">Effect</label>
+      <select id="tl-add-effect" style="padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:12px">
+        <optgroup label="Entrance">
+          <option value="fadeIn">Fade In</option>
+          <option value="slideInLeft">Slide In Left</option>
+          <option value="slideInRight">Slide In Right</option>
+          <option value="slideInUp">Slide In Up</option>
+          <option value="slideInDown">Slide In Down</option>
+          <option value="zoomIn">Zoom In</option>
+          <option value="bounceIn">Bounce In</option>
+          <option value="rotateIn">Rotate In</option>
+          <option value="flipIn">Flip In</option>
+        </optgroup>
+        <optgroup label="Emphasis">
+          <option value="pulse">Pulse</option>
+          <option value="shake">Shake</option>
+          <option value="wobble">Wobble</option>
+          <option value="flash">Flash</option>
+          <option value="rubberBand">Rubber Band</option>
+          <option value="colorHighlight">Color Highlight</option>
+        </optgroup>
+        <optgroup label="Exit">
+          <option value="fadeOut">Fade Out</option>
+          <option value="slideOutLeft">Slide Out Left</option>
+          <option value="slideOutRight">Slide Out Right</option>
+          <option value="zoomOut">Zoom Out</option>
+          <option value="shrinkOut">Shrink Out</option>
+        </optgroup>
+      </select>
+      <label style="font-size:11px;font-weight:600">Trigger</label>
+      <select id="tl-add-trigger" style="padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:12px">
+        <option value="onClick">On Click</option>
+        <option value="withPrevious">With Previous</option>
+        <option value="afterPrevious" selected>After Previous</option>
+      </select>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1">
+          <label style="font-size:11px;font-weight:600">Duration (s)</label>
+          <input type="number" id="tl-add-duration" value="0.5" min="0.1" max="5" step="0.1" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:12px;margin-top:2px">
+        </div>
+        <div style="flex:1">
+          <label style="font-size:11px;font-weight:600">Delay (s)</label>
+          <input type="number" id="tl-add-delay" value="0" min="0" max="10" step="0.1" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:12px;margin-top:2px">
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+      <button class="tl-add-cancel" style="padding:8px 16px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);cursor:pointer;font-size:12px">Cancel</button>
+      <button class="tl-add-ok" style="padding:8px 16px;background:var(--accent-color, #4285f4);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px">Add</button>
+    </div>
+  `;
+
+  document.body.appendChild(dlg);
+
+  dlg.querySelector('.tl-add-close').onclick = () => dlg.remove();
+  dlg.querySelector('.tl-add-cancel').onclick = () => dlg.remove();
+
+  dlg.querySelector('.tl-add-ok').addEventListener('click', () => {
+    const effect = dlg.querySelector('#tl-add-effect').value;
+    const trigger = dlg.querySelector('#tl-add-trigger').value;
+    const duration = parseFloat(dlg.querySelector('#tl-add-duration').value) || 0.5;
+    const delay = parseFloat(dlg.querySelector('#tl-add-delay').value) || 0;
+
+    // Get selected element or auto-assign
+    const selection = window.getSelection();
+    let targetSelector = '';
+    if (selection.rangeCount > 0) {
+      const el = selection.anchorNode?.parentElement;
+      if (el && canvasEl.contains(el)) {
+        const animId = 'anim-' + Date.now();
+        const blockEl = el.closest('h1, h2, h3, p, ul, ol, div, li, table, span, img') || el;
+        blockEl.dataset.animId = animId;
+        targetSelector = `[data-anim-id="${animId}"]`;
+        slides[activeSlideIdx].content = canvasEl.innerHTML;
+      }
+    }
+
+    if (!targetSelector) {
+      const blocks = canvasEl.querySelectorAll('h1, h2, h3, p, ul, ol, div, li, table');
+      const existingTargets = slide.animations.map(a => a.target);
+      for (const block of blocks) {
+        if (!block.dataset.animId || !existingTargets.includes(`[data-anim-id="${block.dataset.animId}"]`)) {
+          const animId = 'anim-' + Date.now();
+          block.dataset.animId = animId;
+          targetSelector = `[data-anim-id="${animId}"]`;
+          slides[activeSlideIdx].content = canvasEl.innerHTML;
+          break;
+        }
+      }
+    }
+
+    if (!targetSelector) {
+      alert('No elements to animate. Add content to the slide first.');
+      return;
+    }
+
+    slide.animations.push({ effect, trigger, duration, delay, target: targetSelector });
+    dlg.remove();
+    renderAnimationTimeline();
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE: Enhanced Master Slides / Layouts
+   ═══════════════════════════════════════════════════════════════ */
+
+const MASTER_LAYOUTS = {
+  'title-slide': {
+    name: 'Title Slide',
+    content: '<div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center"><h1 class="slide-title" style="font-size:52px;margin:0 0 16px">Presentation Title</h1><p class="slide-subtitle" style="font-size:24px;opacity:0.7;margin:0">Subtitle or author name</p></div>',
+    preview: '<div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center"><div style="font-size:9px;font-weight:700">Title</div><div style="font-size:6px;opacity:0.6">Subtitle</div></div>',
+  },
+  'title-content': {
+    name: 'Title + Content',
+    content: '<h2 style="margin:0 0 20px;font-size:36px">Slide Title</h2><ul style="padding-left:1.5em;margin:0"><li style="font-size:22px;margin:8px 0">First point</li><li style="font-size:22px;margin:8px 0">Second point</li><li style="font-size:22px;margin:8px 0">Third point</li></ul>',
+    preview: '<div style="font-size:8px;font-weight:700;border-bottom:1px solid rgba(0,0,0,0.2);padding-bottom:3px;margin-bottom:3px">Title</div><div style="font-size:5px;line-height:1.6">&#8226; Point 1<br>&#8226; Point 2<br>&#8226; Point 3</div>',
+  },
+  'two-column': {
+    name: 'Two Columns',
+    content: '<h2 style="margin:0 0 20px;font-size:36px">Title</h2><div style="display:flex;gap:32px"><div style="flex:1"><h3 style="font-size:24px;margin:0 0 12px">Left Column</h3><p style="font-size:18px;margin:0">Content for the left column goes here.</p></div><div style="flex:1"><h3 style="font-size:24px;margin:0 0 12px">Right Column</h3><p style="font-size:18px;margin:0">Content for the right column goes here.</p></div></div>',
+    preview: '<div style="font-size:7px;font-weight:700;margin-bottom:3px">Title</div><div style="display:flex;gap:4px"><div style="flex:1;border:1px solid rgba(0,0,0,0.15);padding:2px;font-size:4px;border-radius:2px">Left</div><div style="flex:1;border:1px solid rgba(0,0,0,0.15);padding:2px;font-size:4px;border-radius:2px">Right</div></div>',
+  },
+  'blank': {
+    name: 'Blank',
+    content: '<p>&nbsp;</p>',
+    preview: '<div style="height:100%"></div>',
+  },
+  'section-header': {
+    name: 'Section Header',
+    content: '<div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center"><h1 style="font-size:52px;margin:0;font-weight:800">Section Title</h1><div style="width:60px;height:4px;background:currentColor;opacity:0.3;margin:20px auto 16px;border-radius:2px"></div><p style="font-size:20px;opacity:0.5;margin:0">Section description</p></div>',
+    preview: '<div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center"><div style="font-size:9px;font-weight:800">Section</div><div style="width:16px;height:1px;background:currentColor;opacity:0.3;margin:2px auto"></div><div style="font-size:5px;opacity:0.5">Description</div></div>',
+  },
+  'comparison': {
+    name: 'Comparison',
+    content: '<h2 style="margin:0 0 20px;font-size:36px">Comparison</h2><div style="display:flex;gap:24px"><div style="flex:1;border:1px solid rgba(128,128,128,0.3);border-radius:12px;padding:20px"><h3 style="font-size:24px;margin:0 0 12px;color:#34a853">Option A</h3><ul style="padding-left:1.2em;margin:0"><li style="font-size:18px;margin:6px 0">Feature 1</li><li style="font-size:18px;margin:6px 0">Feature 2</li><li style="font-size:18px;margin:6px 0">Feature 3</li></ul></div><div style="flex:1;border:1px solid rgba(128,128,128,0.3);border-radius:12px;padding:20px"><h3 style="font-size:24px;margin:0 0 12px;color:#4285f4">Option B</h3><ul style="padding-left:1.2em;margin:0"><li style="font-size:18px;margin:6px 0">Feature 1</li><li style="font-size:18px;margin:6px 0">Feature 2</li><li style="font-size:18px;margin:6px 0">Feature 3</li></ul></div></div>',
+    preview: '<div style="font-size:7px;font-weight:700;margin-bottom:3px">Comparison</div><div style="display:flex;gap:3px"><div style="flex:1;border:1px solid rgba(0,0,0,0.15);padding:2px;border-radius:3px"><div style="font-size:5px;font-weight:600;color:#34a853">A</div><div style="font-size:3px">&#8226;&#8226;&#8226;</div></div><div style="flex:1;border:1px solid rgba(0,0,0,0.15);padding:2px;border-radius:3px"><div style="font-size:5px;font-weight:600;color:#4285f4">B</div><div style="font-size:3px">&#8226;&#8226;&#8226;</div></div></div>',
+  },
+  'title-image': {
+    name: 'Title + Image',
+    content: '<div style="display:flex;gap:32px;align-items:center;height:100%"><div style="flex:1"><h2 style="font-size:36px;margin:0 0 16px">Title Here</h2><p style="font-size:20px;margin:0;opacity:0.8">Description text goes here. Click the image icon to insert your image.</p></div><div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="width:100%;aspect-ratio:4/3;background:rgba(128,128,128,0.1);border:2px dashed rgba(128,128,128,0.3);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:48px;opacity:0.3">IMG</div></div></div>',
+    preview: '<div style="display:flex;gap:3px;align-items:center;height:100%"><div style="flex:1"><div style="font-size:6px;font-weight:700">Title</div><div style="font-size:4px;opacity:0.6">Text...</div></div><div style="flex:1;background:rgba(0,0,0,0.05);border-radius:2px;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;font-size:8px;opacity:0.3">IMG</div></div>',
+  },
+  'big-number': {
+    name: 'Big Number',
+    content: '<div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center"><div style="font-size:120px;font-weight:900;line-height:1;opacity:0.9">42%</div><p style="font-size:28px;margin:20px 0 0;opacity:0.6">Key statistic or metric</p></div>',
+    preview: '<div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center"><div style="font-size:18px;font-weight:900;line-height:1">42%</div><div style="font-size:5px;opacity:0.5;margin-top:2px">Metric</div></div>',
+  },
+  'quote': {
+    name: 'Quote',
+    content: '<div style="display:flex;flex-direction:column;justify-content:center;height:100%;padding:0 40px"><div style="font-size:72px;line-height:0.8;opacity:0.15;font-family:Georgia,serif">&ldquo;</div><blockquote style="font-size:32px;font-style:italic;margin:0;line-height:1.5;padding:0 20px">Insert your quote here. Make it meaningful and impactful.</blockquote><p style="font-size:18px;margin:24px 0 0 20px;opacity:0.6">&mdash; Author Name</p></div>',
+    preview: '<div style="display:flex;flex-direction:column;justify-content:center;height:100%;padding:0 4px"><div style="font-size:14px;line-height:0.8;opacity:0.15">&ldquo;</div><div style="font-size:5px;font-style:italic;padding:0 3px">Quote text...</div><div style="font-size:4px;opacity:0.5;margin-top:2px;padding-left:3px">-- Author</div></div>',
+  },
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE: Enhanced Presenter View (separate window)
+   ═══════════════════════════════════════════════════════════════ */
+
+function openPresenterView() {
+  saveCurrentSlide();
+
+  const win = window.open('', 'presenter-view', 'width=1400,height=800');
+  if (!win) { alert('Please allow pop-ups for Presenter View'); return; }
+
+  let presIdx = activeSlideIdx;
+  const startTime = Date.now();
+
+  function getThemeStyles(theme) {
+    const themes = {
+      dark: 'background:#1a1a2e;color:#eee',
+      blue: 'background:linear-gradient(135deg,#0f3460,#16213e);color:#eee',
+      green: 'background:linear-gradient(135deg,#1a3c34,#2d6a4f);color:#eee',
+      red: 'background:linear-gradient(135deg,#4a1a1a,#7c2d2d);color:#eee',
+      purple: 'background:linear-gradient(135deg,#2d1b4e,#4a1a6b);color:#eee',
+      gradient: 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff',
+      minimal: 'background:#fafafa;color:#222',
+    };
+    return themes[theme] || 'background:#fff;color:#333';
+  }
+
+  function getSlideHTML(idx) {
+    const s = slides[idx];
+    const style = getThemeStyles(s.theme);
+    const bgStyle = s.customBg ? `background:${s.customBg}` : style;
+    return `<div style="width:100%;height:100%;padding:24px 32px;font-family:-apple-system,sans-serif;font-size:16px;line-height:1.4;overflow:hidden;${bgStyle}">${s.content}</div>`;
+  }
+
+  function renderPresenter() {
+    const s = slides[presIdx];
+    const nextSlide = presIdx < slides.length - 1 ? slides[presIdx + 1] : null;
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const secs = String(elapsed % 60).padStart(2, '0');
+
+    return `<!DOCTYPE html>
+    <html><head><title>Presenter View</title>
+    <style>
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#111; color:#e0e0e0; height:100vh; overflow:hidden; display:grid; grid-template-rows:auto 1fr auto; }
+      .pv-header { display:flex; justify-content:space-between; align-items:center; padding:8px 16px; background:#1a1a2e; border-bottom:1px solid #333; }
+      .pv-header h2 { font-size:14px; font-weight:600; color:#aaa; }
+      .pv-timer { font-size:28px; font-weight:700; font-variant-numeric:tabular-nums; color:#3b82f6; letter-spacing:1px; }
+      .pv-main { display:grid; grid-template-columns:3fr 1fr; gap:0; overflow:hidden; }
+      .pv-left { display:flex; flex-direction:column; border-right:1px solid #333; }
+      .pv-current-slide { flex:1; padding:12px; display:flex; align-items:center; justify-content:center; background:#000; }
+      .pv-current-slide-inner { width:100%; max-width:900px; aspect-ratio:16/9; border-radius:6px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,0.5); }
+      .pv-notes { height:200px; background:#1a1a2e; border-top:1px solid #333; padding:12px 16px; overflow-y:auto; }
+      .pv-notes h4 { font-size:11px; text-transform:uppercase; color:#666; margin-bottom:6px; letter-spacing:0.5px; }
+      .pv-notes-content { font-size:16px; line-height:1.7; color:#ccc; }
+      .pv-right { display:flex; flex-direction:column; padding:12px; gap:12px; overflow-y:auto; background:#161620; }
+      .pv-next-label { font-size:10px; text-transform:uppercase; color:#666; letter-spacing:0.5px; }
+      .pv-next-slide { border-radius:6px; overflow:hidden; border:1px solid #333; aspect-ratio:16/9; opacity:0.8; }
+      .pv-slide-nav { display:flex; flex-direction:column; gap:6px; }
+      .pv-slide-nav .pv-counter { font-size:16px; font-weight:600; text-align:center; color:#888; margin-bottom:4px; }
+      .pv-footer { display:flex; justify-content:center; gap:8px; padding:8px 16px; background:#1a1a2e; border-top:1px solid #333; }
+      .pv-footer button { padding:8px 24px; font-size:14px; font-weight:600; border:none; border-radius:6px; cursor:pointer; background:#333; color:#eee; transition:background 0.2s; }
+      .pv-footer button:hover { background:#444; }
+      .pv-footer button.primary { background:#3b82f6; }
+      .pv-footer button.primary:hover { background:#2563eb; }
+      .pv-footer button.danger { background:#ef4444; }
+      .pv-footer button.danger:hover { background:#dc2626; }
+      .pv-slide-thumbs { display:flex; flex-direction:column; gap:4px; max-height:200px; overflow-y:auto; margin-top:8px; }
+      .pv-thumb { aspect-ratio:16/9; border:1px solid #333; border-radius:4px; overflow:hidden; cursor:pointer; opacity:0.5; font-size:4px; padding:2px; transition:all 0.2s; }
+      .pv-thumb.active { border-color:#3b82f6; opacity:1; box-shadow:0 0 0 1px #3b82f6; }
+      .pv-thumb:hover { opacity:0.8; }
+    </style></head><body>
+    <div class="pv-header">
+      <h2>Presenter View</h2>
+      <div class="pv-timer" id="pv-timer">${mins}:${secs}</div>
+    </div>
+    <div class="pv-main">
+      <div class="pv-left">
+        <div class="pv-current-slide">
+          <div class="pv-current-slide-inner" id="pv-current">${getSlideHTML(presIdx)}</div>
+        </div>
+        <div class="pv-notes">
+          <h4>Speaker Notes</h4>
+          <div class="pv-notes-content" id="pv-notes">${s.notes || '<em style="color:#555">No notes for this slide</em>'}</div>
+        </div>
+      </div>
+      <div class="pv-right">
+        <span class="pv-next-label">Next Slide</span>
+        <div class="pv-next-slide" id="pv-next">${nextSlide ? getSlideHTML(presIdx + 1) : '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#555;font-size:13px">End of presentation</div>'}</div>
+        <div class="pv-slide-nav">
+          <div class="pv-counter" id="pv-counter">${presIdx + 1} / ${slides.length}</div>
+        </div>
+        <span class="pv-next-label" style="margin-top:8px">All Slides</span>
+        <div class="pv-slide-thumbs" id="pv-thumbs">
+          ${slides.map((sl, i) => `<div class="pv-thumb ${i === presIdx ? 'active' : ''}" data-idx="${i}" style="${getThemeStyles(sl.theme)}">${sl.content.replace(/<[^>]*>/g, '').substring(0, 30)}</div>`).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="pv-footer">
+      <button onclick="window.opener.postMessage({type:'pv-prev'},'*')">&#9664; Previous</button>
+      <button class="primary" onclick="window.opener.postMessage({type:'pv-next'},'*')">Next &#9654;</button>
+      <button class="primary" onclick="window.opener.postMessage({type:'pv-start-pres'},'*')">&#9654; Present</button>
+      <button onclick="window.opener.postMessage({type:'pv-reset-timer'},'*')">Reset Timer</button>
+      <button class="danger" onclick="window.close()">End</button>
+    </div>
+    <script>
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); window.opener.postMessage({type:'pv-next'},'*'); }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); window.opener.postMessage({type:'pv-prev'},'*'); }
+        if (e.key === 'Escape') { window.close(); }
+      });
+      document.querySelectorAll('.pv-thumb').forEach(function(t) {
+        t.addEventListener('click', function() {
+          window.opener.postMessage({type:'pv-goto', idx: parseInt(t.dataset.idx)},'*');
+        });
+      });
+    </script>
+    </body></html>`;
+  }
+
+  win.document.write(renderPresenter());
+  win.document.close();
+
+  // Timer update
+  let timerResetAt = startTime;
+  const timerInterval = setInterval(() => {
+    if (win.closed) { clearInterval(timerInterval); return; }
+    const elapsed = Math.floor((Date.now() - timerResetAt) / 1000);
+    const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const secs = String(elapsed % 60).padStart(2, '0');
+    try {
+      const timerEl = win.document.getElementById('pv-timer');
+      if (timerEl) timerEl.textContent = `${mins}:${secs}`;
+    } catch (e) { /* cross-origin */ }
+  }, 1000);
+
+  function refreshPresenter() {
+    if (win.closed) return;
+    try {
+      const s = slides[presIdx];
+      const nextSlide = presIdx < slides.length - 1 ? slides[presIdx + 1] : null;
+      const currentEl = win.document.getElementById('pv-current');
+      if (currentEl) currentEl.innerHTML = getSlideHTML(presIdx);
+      const notesEl = win.document.getElementById('pv-notes');
+      if (notesEl) notesEl.innerHTML = s.notes || '<em style="color:#555">No notes</em>';
+      const nextEl = win.document.getElementById('pv-next');
+      if (nextEl) nextEl.innerHTML = nextSlide ? getSlideHTML(presIdx + 1) : '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#555;font-size:13px">End</div>';
+      const counterEl = win.document.getElementById('pv-counter');
+      if (counterEl) counterEl.textContent = `${presIdx + 1} / ${slides.length}`;
+      // Update thumb active state
+      win.document.querySelectorAll('.pv-thumb').forEach((t, i) => {
+        t.classList.toggle('active', i === presIdx);
+      });
+    } catch (e) { /* cross-origin */ }
+  }
+
+  // Message handler
+  function handleMsg(e) {
+    if (win.closed) { window.removeEventListener('message', handleMsg); clearInterval(timerInterval); return; }
+    if (e.data.type === 'pv-next' && presIdx < slides.length - 1) {
+      presIdx++;
+      refreshPresenter();
+      activeSlideIdx = presIdx;
+      renderPanel();
+      loadSlide(presIdx);
+    } else if (e.data.type === 'pv-prev' && presIdx > 0) {
+      presIdx--;
+      refreshPresenter();
+      activeSlideIdx = presIdx;
+      renderPanel();
+      loadSlide(presIdx);
+    } else if (e.data.type === 'pv-goto' && typeof e.data.idx === 'number') {
+      presIdx = e.data.idx;
+      refreshPresenter();
+      activeSlideIdx = presIdx;
+      renderPanel();
+      loadSlide(presIdx);
+    } else if (e.data.type === 'pv-start-pres') {
+      activeSlideIdx = presIdx;
+      startPresentation();
+    } else if (e.data.type === 'pv-reset-timer') {
+      timerResetAt = Date.now();
+    }
+  }
+  window.addEventListener('message', handleMsg);
 }

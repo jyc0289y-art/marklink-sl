@@ -21,6 +21,11 @@ export function initToolbar() {
   bind('btn-emoji', handleEmojiPicker);
   bind('btn-md-export', handleExportMd);
   bind('btn-md-import', handleImportMd);
+
+  // ─── Math & Mermaid insertion ─────────────────────────
+  bind('btn-math-inline', () => wrapSelection('$', '$'));
+  bind('btn-math-block', () => insertAtCursor('\n$$\n\\sum_{i=1}^{n} x_i\n$$\n'));
+  bind('btn-mermaid', () => insertAtCursor('\n```mermaid\ngraph LR\n    A[Start] --> B[Process]\n    B --> C[End]\n```\n'));
 }
 
 function bind(id, action) {

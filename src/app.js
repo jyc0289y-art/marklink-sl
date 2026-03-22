@@ -138,16 +138,27 @@ export async function initApp() {
   initPreview(previewContent);
   updatePreviewImmediate(WELCOME_MD);
 
-  // 5. Connect editor changes to preview
+  // 5. Connect editor changes to preview + outline
   onChange((content) => {
     updatePreview(content);
+    updateOutline(content);
   });
+
+  // 5b. Initialize outline/TOC panel
+  if (typeof initOutlinePanel === 'function') initOutlinePanel();
+  if (typeof updateOutline === 'function') updateOutline(WELCOME_MD);
+
+  // 5c. Initialize preview toggle
+  if (typeof initPreviewToggle === 'function') initPreviewToggle();
+
+  // 5d. Initialize copy-as-rich-text
+  if (typeof initCopyRichText === 'function') initCopyRichText();
 
   // 6. Initialize split pane
   const divider = document.getElementById('divider');
   const editorPane = document.getElementById('editor-pane');
   const previewPane = document.getElementById('preview-pane');
-  initSplitPane(divider, editorPane, previewPane);
+  if (typeof initSplitPane === 'function') initSplitPane(divider, editorPane, previewPane);
 
   // 7. Initialize theme toggle (now editor exists)
   initTheme();
@@ -517,6 +528,7 @@ function showExportMenu(anchorBtn) {
     { label: '🖨️ Print', action: () => { trackExport('print'); printDocument(getContent(), getCurrentFileName()); } },
     { label: '📄 Export as PDF', action: () => { trackExport('pdf'); exportPDF(getContent(), getCurrentFileName()); } },
     { label: '🌐 Export as HTML', action: () => { trackExport('html'); exportHTML(getContent(), getCurrentFileName()); } },
+    { label: '📋 Copy as Rich Text', action: () => { trackExport('richtext'); copyAsRichText(getContent()); } },
   ];
 
   items.forEach(({ label, action }) => {
@@ -1580,4 +1592,159 @@ function initStatusBar() {
   setInterval(updateStatus, 2000);
   onTabChange(updateStatus);
   updateStatus();
+}
+
+/* ==================== Outline / TOC Panel ==================== */
+
+let outlineVisible = false;
+
+function initOutlinePanel() {
+  const toggleBtn = document.getElementById('btn-toggle-outline');
+  const closeBtn = document.getElementById('md-outline-close');
+  const panel = document.getElementById('md-outline-panel');
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      outlineVisible = !outlineVisible;
+      panel?.classList.toggle('hidden', !outlineVisible);
+      toggleBtn.classList.toggle('active', outlineVisible);
+      if (outlineVisible) updateOutline(getContent());
+    });
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      outlineVisible = false;
+      panel?.classList.add('hidden');
+      toggleBtn?.classList.remove('active');
+    });
+  }
+}
+
+let outlineTimer = null;
+
+function updateOutline(markdownText) {
+  if (!outlineVisible) return;
+  if (outlineTimer) clearTimeout(outlineTimer);
+  outlineTimer = setTimeout(() => {
+    buildOutline(markdownText);
+  }, 300);
+}
+
+function buildOutline(markdownText) {
+  const list = document.getElementById('md-outline-list');
+  if (!list) return;
+
+  const lines = markdownText.split('\n');
+  const headings = [];
+
+  let inCodeBlock = false;
+  for (const line of lines) {
+    if (line.trim().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock) continue;
+
+    const match = line.match(/^(#{1,6})\s+(.+)/);
+    if (match) {
+      const level = match[1].length;
+      const text = match[2].replace(/[#*_`\[\]]/g, '').trim();
+      if (text) {
+        const id = 'heading-' + text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+        headings.push({ level, text, id });
+      }
+    }
+  }
+
+  list.innerHTML = '';
+
+  if (headings.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'padding: 16px 12px; color: var(--text-tertiary); font-size: 12px; text-align: center;';
+    empty.textContent = 'No headings found';
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const h of headings) {
+    const btn = document.createElement('button');
+    btn.className = 'md-outline-item';
+    btn.setAttribute('data-level', h.level);
+    btn.textContent = h.text;
+    btn.title = h.text;
+    btn.addEventListener('click', () => {
+      // Jump to heading in preview
+      const previewContainer = document.getElementById('preview-container');
+      const target = previewContainer?.querySelector(`#${CSS.escape(h.id)}`);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      // Highlight active outline item
+      list.querySelectorAll('.md-outline-item').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+    list.appendChild(btn);
+  }
+}
+
+/* ==================== Preview Toggle ==================== */
+
+function initPreviewToggle() {
+  const toggleBtn = document.getElementById('btn-toggle-preview');
+  const splitPane = document.getElementById('split-pane');
+
+  if (toggleBtn && splitPane) {
+    toggleBtn.addEventListener('click', () => {
+      const isHidden = splitPane.classList.toggle('preview-hidden');
+      toggleBtn.classList.toggle('active', !isHidden);
+    });
+  }
+}
+
+/* ==================== Copy as Rich Text ==================== */
+
+function initCopyRichText() {
+  const btn = document.getElementById('btn-copy-richtext');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      copyAsRichText(getContent());
+    });
+  }
+}
+
+async function copyAsRichText(markdownText) {
+  const { render: renderMd } = await import('./preview/renderer.js');
+  const html = renderMd(markdownText);
+
+  const styledHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.7; color: #1d1d1f;">${html}</div>`;
+
+  try {
+    const blob = new Blob([styledHtml], { type: 'text/html' });
+    const textBlob = new Blob([markdownText], { type: 'text/plain' });
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html': blob,
+        'text/plain': textBlob,
+      }),
+    ]);
+    showToast('Copied as Rich Text');
+  } catch (e) {
+    try {
+      await navigator.clipboard.writeText(markdownText);
+      showToast('Copied as plain text (Rich Text not supported)');
+    } catch (_) {
+      showToast('Copy failed');
+    }
+  }
+}
+
+function showToast(message) {
+  document.querySelector('.md-toast')?.remove();
+  const toast = document.createElement('div');
+  toast.className = 'md-toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2200);
 }

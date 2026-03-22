@@ -368,6 +368,19 @@ export function initDocEditor() {
     showCitationDialog();
   });
 
+  // Track Changes Panel
+  document.getElementById('doc-track-panel')?.addEventListener('click', () => toggleChangesPanel());
+  document.getElementById('doc-changes-panel-close')?.addEventListener('click', () => toggleChangesPanel());
+  document.getElementById('doc-accept-all')?.addEventListener('click', () => acceptAllChanges());
+  document.getElementById('doc-reject-all')?.addEventListener('click', () => rejectAllChanges());
+
+  // Spell Check
+  document.getElementById('doc-spell-check')?.addEventListener('click', () => toggleSpellCheck());
+
+  // Comments Panel
+  document.getElementById('doc-comments-panel')?.addEventListener('click', () => toggleCommentsPanel());
+  document.getElementById('doc-comments-sidebar-close')?.addEventListener('click', () => toggleCommentsPanel());
+
   // Keyboard shortcuts within doc editor
   editorEl.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey) {
@@ -1981,7 +1994,7 @@ function updateDocOutline() {
   });
 }
 
-/* ==================== Comments ==================== */
+/* ==================== Comments (Enhanced with Threads & Panel) ==================== */
 
 let comments = [];
 let commentCounter = 0;
@@ -1997,6 +2010,7 @@ function addComment() {
   if (!text) return;
 
   const range = selection.getRangeAt(0);
+  const selectedText = selection.toString();
   const commentId = ++commentCounter;
 
   // Wrap selected text in a comment highlight span
@@ -2009,7 +2023,6 @@ function addComment() {
   try {
     range.surroundContents(wrapper);
   } catch {
-    // If selection crosses element boundaries, wrap text content
     const fragment = range.extractContents();
     wrapper.appendChild(fragment);
     range.insertNode(wrapper);
@@ -2021,6 +2034,9 @@ function addComment() {
     author: 'User',
     timestamp: new Date().toLocaleString(),
     resolved: false,
+    context: selectedText.substring(0, 60),
+    replies: [],
+    el: wrapper,
   });
 
   // Click to view/edit/resolve/delete
@@ -2030,6 +2046,7 @@ function addComment() {
   });
 
   dirty = true;
+  updateCommentsPanel();
 }
 
 function showCommentPopup(el, commentId) {
@@ -2041,49 +2058,150 @@ function showCommentPopup(el, commentId) {
   const rect = el.getBoundingClientRect();
   const popup = document.createElement('div');
   popup.className = 'doc-comment-popup';
-  popup.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${Math.min(rect.left, window.innerWidth - 280)}px;width:260px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.2);padding:12px;z-index:2000;font-size:13px`;
+  popup.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${Math.min(rect.left, window.innerWidth - 300)}px;width:280px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.2);padding:12px;z-index:2000;font-size:13px;max-height:400px;overflow-y:auto`;
+
+  let repliesHtml = '';
+  if (comment.replies.length > 0) {
+    repliesHtml = '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-color)">';
+    comment.replies.forEach(r => {
+      repliesHtml += `<div style="margin-bottom:6px;padding:4px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong style="font-size:11px;color:var(--text-primary)">${r.author}</strong>
+          <span style="font-size:9px;color:var(--text-tertiary)">${r.timestamp}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">${r.text}</div>
+      </div>`;
+    });
+    repliesHtml += '</div>';
+  }
 
   popup.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
       <strong style="font-size:12px;color:var(--text-primary)">${comment.author}</strong>
       <span style="font-size:10px;color:var(--text-tertiary)">${comment.timestamp}</span>
     </div>
-    <p style="margin:0 0 10px;color:var(--text-primary);line-height:1.5">${comment.text}</p>
-    <div style="display:flex;gap:6px">
-      <button class="cmt-resolve" style="flex:1;padding:5px;font-size:11px;border:1px solid var(--border-color);border-radius:6px;background:var(--hover-bg);cursor:pointer;color:var(--text-primary)">✓ Resolve</button>
+    ${comment.resolved ? '<span style="font-size:10px;color:#22c55e;font-weight:600">[Resolved]</span>' : ''}
+    <p style="margin:4px 0 8px;color:var(--text-primary);line-height:1.5">${comment.text}</p>
+    ${repliesHtml}
+    <div style="margin-top:8px;display:flex;gap:4px">
+      <input type="text" class="cmt-reply-input" placeholder="Reply..." style="flex:1;padding:5px 8px;font-size:11px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);outline:none">
+      <button class="cmt-reply-btn" style="padding:5px 10px;font-size:11px;border:none;border-radius:6px;background:var(--brand-color);color:#fff;cursor:pointer">Reply</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <button class="cmt-resolve" style="flex:1;padding:5px;font-size:11px;border:1px solid var(--border-color);border-radius:6px;background:var(--hover-bg);cursor:pointer;color:var(--text-primary)">${comment.resolved ? '↺ Unresolve' : '✓ Resolve'}</button>
       <button class="cmt-delete" style="flex:1;padding:5px;font-size:11px;border:1px solid var(--border-color);border-radius:6px;background:var(--hover-bg);cursor:pointer;color:#e74c3c">Delete</button>
     </div>
   `;
 
   document.body.appendChild(popup);
 
-  popup.querySelector('.cmt-resolve').addEventListener('click', () => {
-    comment.resolved = true;
-    el.style.background = 'rgba(34, 197, 94, 0.2)';
-    el.style.borderBottom = '2px solid #22c55e';
-    el.title = `[Resolved] ${comment.text}`;
+  // Reply
+  const replyInput = popup.querySelector('.cmt-reply-input');
+  const replyBtn = popup.querySelector('.cmt-reply-btn');
+  const submitReply = () => {
+    const replyText = replyInput.value.trim();
+    if (!replyText) return;
+    comment.replies.push({
+      author: 'User',
+      text: replyText,
+      timestamp: new Date().toLocaleString()
+    });
+    replyInput.value = '';
     popup.remove();
+    showCommentPopup(el, commentId); // Re-render
+    updateCommentsPanel();
+  };
+  replyBtn.addEventListener('click', submitReply);
+  replyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitReply(); });
+
+  popup.querySelector('.cmt-resolve').addEventListener('click', () => {
+    comment.resolved = !comment.resolved;
+    if (comment.resolved) {
+      el.style.background = 'rgba(34, 197, 94, 0.2)';
+      el.style.borderBottom = '2px solid #22c55e';
+      el.title = `[Resolved] ${comment.text}`;
+    } else {
+      el.style.background = 'rgba(255, 213, 79, 0.4)';
+      el.style.borderBottom = '2px solid #f59e0b';
+      el.title = `Comment: ${comment.text}`;
+    }
+    popup.remove();
+    updateCommentsPanel();
   });
 
   popup.querySelector('.cmt-delete').addEventListener('click', () => {
-    // Unwrap the span, keeping text
     const parent = el.parentNode;
     while (el.firstChild) parent.insertBefore(el.firstChild, el);
     parent.removeChild(el);
     comments = comments.filter(c => c.id !== commentId);
     popup.remove();
     dirty = true;
+    updateCommentsPanel();
   });
 
-  // Close on click outside
   setTimeout(() => {
     document.addEventListener('click', function close(e) {
-      if (!popup.contains(e.target)) {
+      if (!popup.contains(e.target) && e.target !== el) {
         popup.remove();
         document.removeEventListener('click', close);
       }
     });
   }, 50);
+}
+
+/* Comments Panel */
+let commentsPanelVisible = false;
+
+function toggleCommentsPanel() {
+  commentsPanelVisible = !commentsPanelVisible;
+  const panel = document.getElementById('doc-comments-sidebar');
+  if (panel) panel.classList.toggle('hidden', !commentsPanelVisible);
+  if (commentsPanelVisible) updateCommentsPanel();
+}
+
+function updateCommentsPanel() {
+  const list = document.getElementById('doc-comments-list');
+  if (!list) return;
+
+  if (comments.length === 0) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-tertiary);font-size:12px">No comments yet.<br>Select text and click "Add Comment".</div>';
+    return;
+  }
+
+  const resolved = comments.filter(c => c.resolved).length;
+  const open = comments.length - resolved;
+
+  let html = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;padding:4px 6px;background:var(--hover-bg);border-radius:4px">${open} open, ${resolved} resolved</div>`;
+
+  comments.forEach(c => {
+    html += `
+      <div class="doc-comment-item ${c.resolved ? 'resolved' : ''}" data-comment-id="${c.id}">
+        <div class="doc-comment-item-header">
+          <span class="doc-comment-item-author">${c.author}</span>
+          <span class="doc-comment-item-time">${c.timestamp}</span>
+        </div>
+        ${c.context ? `<div class="doc-comment-item-context">"${c.context}"</div>` : ''}
+        <div class="doc-comment-item-text">${c.text}</div>
+        ${c.replies.length > 0 ? `<div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">${c.replies.length} repl${c.replies.length === 1 ? 'y' : 'ies'}</div>` : ''}
+      </div>
+    `;
+  });
+
+  list.innerHTML = html;
+
+  // Click to scroll to comment in document
+  list.querySelectorAll('.doc-comment-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const id = parseInt(item.dataset.commentId);
+      const comment = comments.find(c => c.id === id);
+      if (comment?.el) {
+        comment.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        comment.el.style.outline = '2px solid var(--brand-color)';
+        setTimeout(() => { if (comment.el) comment.el.style.outline = ''; }, 2000);
+        showCommentPopup(comment.el, id);
+      }
+    });
+  });
 }
 
 /* ==================== Page Break ==================== */
@@ -2216,44 +2334,351 @@ function showEquationEditor() {
   });
 }
 
-/* ==================== Track Changes ==================== */
+/* ==================== Track Changes (Enhanced) ==================== */
 
 let trackChangesEnabled = false;
-let docSnapshots = [];
+let trackChangesList = []; // { id, type: 'insert'|'delete', text, el, timestamp }
+let trackChangeId = 0;
 
 function toggleTrackChanges() {
   trackChangesEnabled = !trackChangesEnabled;
   const btn = document.getElementById('doc-track-changes');
+  const panelBtn = document.getElementById('doc-track-panel');
+  const acceptBtn = document.getElementById('doc-accept-all');
+  const rejectBtn = document.getElementById('doc-reject-all');
+
   if (btn) {
     btn.style.background = trackChangesEnabled ? 'var(--brand-color)' : '';
     btn.style.color = trackChangesEnabled ? '#fff' : '';
-    btn.title = trackChangesEnabled ? 'Track Changes: ON' : 'Track Changes: OFF';
+    btn.title = trackChangesEnabled ? 'Track Changes: ON (click to disable)' : 'Track Changes: OFF';
   }
 
-  if (trackChangesEnabled) {
-    // Take snapshot
-    docSnapshots.push({
-      timestamp: new Date().toLocaleString(),
-      content: editorEl.innerHTML,
-    });
+  // Show/hide track changes toolbar buttons
+  [panelBtn, acceptBtn, rejectBtn].forEach(b => {
+    if (b) b.style.display = trackChangesEnabled ? '' : 'none';
+  });
 
-    // Watch for changes via MutationObserver
-    if (!editorEl._trackObserver) {
-      editorEl._trackObserver = new MutationObserver((mutations) => {
+  if (trackChangesEnabled && editorEl) {
+    // Intercept typing via keydown to wrap insertions
+    if (!editorEl._trackKeyHandler) {
+      editorEl._trackKeyHandler = (e) => {
         if (!trackChangesEnabled) return;
-        mutations.forEach(m => {
-          if (m.type === 'childList') {
-            m.addedNodes.forEach(node => {
-              if (node.nodeType === 1 && !node.classList?.contains('doc-track-insert')) {
-                node.classList?.add('doc-track-insert');
-              }
-            });
-          }
-        });
-      });
-      editorEl._trackObserver.observe(editorEl, { childList: true, subtree: true });
+        // Only handle printable characters + Enter, Backspace, Delete
+        if (e.key === 'Backspace' || e.key === 'Delete') {
+          e.preventDefault();
+          handleTrackDelete(e.key === 'Backspace' ? 'back' : 'forward');
+          return;
+        }
+      };
+      editorEl.addEventListener('keydown', editorEl._trackKeyHandler);
+    }
+
+    // Intercept input to mark inserted text
+    if (!editorEl._trackInputHandler) {
+      editorEl._trackInputHandler = (e) => {
+        if (!trackChangesEnabled) return;
+        if (e.inputType === 'insertText' || e.inputType === 'insertParagraph') {
+          wrapLastInsertionAsChange();
+        }
+      };
+      editorEl.addEventListener('input', editorEl._trackInputHandler);
     }
   }
+}
+
+function wrapLastInsertionAsChange() {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+  const node = sel.anchorNode;
+  if (!node || !editorEl.contains(node)) return;
+
+  // Check if already inside a track-insert span
+  if (node.parentElement?.closest('.doc-track-insert')) return;
+
+  // If the node is a text node and its parent is not already marked
+  if (node.nodeType === 3) {
+    const parent = node.parentElement;
+    if (parent && !parent.classList?.contains('doc-track-insert')) {
+      // Check if we can extend an adjacent track-insert span
+      const prevSibling = node.previousSibling;
+      if (prevSibling && prevSibling.nodeType === 1 && prevSibling.classList?.contains('doc-track-insert')) {
+        // Move the text into the previous sibling
+        prevSibling.textContent += node.textContent;
+        const range = document.createRange();
+        range.selectNodeContents(prevSibling);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        node.remove();
+        return;
+      }
+    }
+  }
+}
+
+function handleTrackDelete(direction) {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+
+  // If there's a selection, mark the entire selection as deleted
+  if (!sel.isCollapsed) {
+    const range = sel.getRangeAt(0);
+    const text = sel.toString();
+    if (!text) return;
+
+    const delSpan = document.createElement('span');
+    delSpan.className = 'doc-track-delete';
+    delSpan.dataset.changeId = ++trackChangeId;
+    delSpan.dataset.timestamp = new Date().toISOString();
+
+    try {
+      range.surroundContents(delSpan);
+    } catch {
+      const fragment = range.extractContents();
+      delSpan.appendChild(fragment);
+      range.insertNode(delSpan);
+    }
+
+    trackChangesList.push({
+      id: trackChangeId,
+      type: 'delete',
+      text: text,
+      el: delSpan,
+      timestamp: new Date().toLocaleString()
+    });
+
+    // Set up click handler for individual accept/reject
+    delSpan.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      showChangePopup(delSpan, trackChangeId);
+    });
+
+    sel.collapseToEnd();
+    updateChangesPanel();
+    dirty = true;
+    return;
+  }
+
+  // Single character delete
+  const range = sel.getRangeAt(0).cloneRange();
+  if (direction === 'back') {
+    range.setStart(range.startContainer, Math.max(0, range.startOffset - 1));
+  } else {
+    range.setEnd(range.endContainer, Math.min(range.endContainer.length || 0, range.endOffset + 1));
+  }
+
+  const text = range.toString();
+  if (!text) return;
+
+  // Check if already in a delete span
+  const existingDel = range.startContainer.parentElement?.closest('.doc-track-delete');
+  if (existingDel) {
+    // Actually remove from the doc
+    range.deleteContents();
+    editorEl.normalize();
+    dirty = true;
+    return;
+  }
+
+  const delSpan = document.createElement('span');
+  delSpan.className = 'doc-track-delete';
+  delSpan.dataset.changeId = ++trackChangeId;
+  delSpan.dataset.timestamp = new Date().toISOString();
+
+  try {
+    range.surroundContents(delSpan);
+  } catch {
+    const content = range.extractContents();
+    delSpan.appendChild(content);
+    range.insertNode(delSpan);
+  }
+
+  trackChangesList.push({
+    id: trackChangeId,
+    type: 'delete',
+    text: text,
+    el: delSpan,
+    timestamp: new Date().toLocaleString()
+  });
+
+  delSpan.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    showChangePopup(delSpan, trackChangeId);
+  });
+
+  // Move cursor past the deleted span
+  const afterRange = document.createRange();
+  afterRange.setStartAfter(delSpan);
+  afterRange.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(afterRange);
+
+  updateChangesPanel();
+  dirty = true;
+}
+
+function showChangePopup(el, changeId) {
+  document.querySelector('.doc-change-popup')?.remove();
+
+  const rect = el.getBoundingClientRect();
+  const popup = document.createElement('div');
+  popup.className = 'doc-change-popup';
+  popup.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${Math.min(rect.left, window.innerWidth - 200)}px;width:180px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.15);padding:8px;z-index:2000;font-size:12px`;
+
+  const type = el.classList.contains('doc-track-insert') ? 'Insertion' : 'Deletion';
+  popup.innerHTML = `
+    <div style="font-weight:700;margin-bottom:6px;color:var(--text-primary)">${type}</div>
+    <div style="color:var(--text-secondary);margin-bottom:8px;word-break:break-word">"${el.textContent.substring(0, 50)}${el.textContent.length > 50 ? '...' : ''}"</div>
+    <div style="display:flex;gap:4px">
+      <button class="ch-accept" style="flex:1;padding:5px;font-size:11px;border:1px solid #22c55e;border-radius:4px;background:var(--bg-primary);cursor:pointer;color:#16a34a">Accept</button>
+      <button class="ch-reject" style="flex:1;padding:5px;font-size:11px;border:1px solid #ef4444;border-radius:4px;background:var(--bg-primary);cursor:pointer;color:#ef4444">Reject</button>
+    </div>
+  `;
+
+  document.body.appendChild(popup);
+
+  popup.querySelector('.ch-accept').addEventListener('click', () => {
+    acceptChange(el, changeId);
+    popup.remove();
+  });
+  popup.querySelector('.ch-reject').addEventListener('click', () => {
+    rejectChange(el, changeId);
+    popup.remove();
+  });
+
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!popup.contains(e.target)) { popup.remove(); document.removeEventListener('click', close); }
+    });
+  }, 10);
+}
+
+function acceptChange(el, changeId) {
+  if (el.classList.contains('doc-track-insert')) {
+    // Accept insertion: keep the text, remove tracking markup
+    const parent = el.parentNode;
+    while (el.firstChild) parent.insertBefore(el.firstChild, el);
+    el.remove();
+    parent.normalize();
+  } else if (el.classList.contains('doc-track-delete')) {
+    // Accept deletion: remove the text entirely
+    el.remove();
+  }
+  trackChangesList = trackChangesList.filter(c => c.id !== changeId);
+  updateChangesPanel();
+  editorEl?.normalize();
+  dirty = true;
+}
+
+function rejectChange(el, changeId) {
+  if (el.classList.contains('doc-track-insert')) {
+    // Reject insertion: remove the inserted text
+    el.remove();
+  } else if (el.classList.contains('doc-track-delete')) {
+    // Reject deletion: keep the text, remove tracking markup
+    const parent = el.parentNode;
+    while (el.firstChild) parent.insertBefore(el.firstChild, el);
+    el.remove();
+    parent.normalize();
+  }
+  trackChangesList = trackChangesList.filter(c => c.id !== changeId);
+  updateChangesPanel();
+  editorEl?.normalize();
+  dirty = true;
+}
+
+function acceptAllChanges() {
+  if (trackChangesList.length === 0) return;
+  if (!confirm(`Accept all ${trackChangesList.length} changes?`)) return;
+  // Process in reverse to avoid DOM mutation issues
+  [...trackChangesList].reverse().forEach(c => {
+    if (c.el && c.el.parentNode) acceptChange(c.el, c.id);
+  });
+  trackChangesList = [];
+  updateChangesPanel();
+}
+
+function rejectAllChanges() {
+  if (trackChangesList.length === 0) return;
+  if (!confirm(`Reject all ${trackChangesList.length} changes?`)) return;
+  [...trackChangesList].reverse().forEach(c => {
+    if (c.el && c.el.parentNode) rejectChange(c.el, c.id);
+  });
+  trackChangesList = [];
+  updateChangesPanel();
+}
+
+/* Changes Panel */
+let changesPanelVisible = false;
+
+function toggleChangesPanel() {
+  changesPanelVisible = !changesPanelVisible;
+  const panel = document.getElementById('doc-changes-panel');
+  if (panel) panel.classList.toggle('hidden', !changesPanelVisible);
+  if (changesPanelVisible) updateChangesPanel();
+}
+
+function updateChangesPanel() {
+  const list = document.getElementById('doc-changes-list');
+  if (!list) return;
+
+  // Also scan DOM for any tracked changes not in our list
+  const insertEls = editorEl?.querySelectorAll('.doc-track-insert') || [];
+  const deleteEls = editorEl?.querySelectorAll('.doc-track-delete') || [];
+
+  if (insertEls.length === 0 && deleteEls.length === 0 && trackChangesList.length === 0) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-tertiary);font-size:12px">No changes tracked yet.<br>Enable Track Changes and start editing.</div>';
+    return;
+  }
+
+  let html = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;padding:4px 6px;background:var(--hover-bg);border-radius:4px">${insertEls.length} insertions, ${deleteEls.length} deletions</div>`;
+
+  trackChangesList.forEach(c => {
+    const icon = c.type === 'insert' ? '<span style="color:#22c55e;font-weight:700">+</span>' : '<span style="color:#ef4444;font-weight:700">-</span>';
+    html += `
+      <div class="doc-change-item" data-change-id="${c.id}">
+        <div class="doc-change-item-meta">${icon} ${c.type === 'insert' ? 'Inserted' : 'Deleted'} &middot; ${c.timestamp}</div>
+        <div class="doc-change-item-text">${c.text.substring(0, 80)}${c.text.length > 80 ? '...' : ''}</div>
+        <div class="doc-change-item-actions">
+          <button class="accept-btn" data-id="${c.id}">Accept</button>
+          <button class="reject-btn" data-id="${c.id}">Reject</button>
+        </div>
+      </div>
+    `;
+  });
+
+  list.innerHTML = html;
+
+  // Wire up buttons
+  list.querySelectorAll('.accept-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = parseInt(btn.dataset.id);
+      const change = trackChangesList.find(c => c.id === id);
+      if (change?.el) acceptChange(change.el, id);
+    });
+  });
+  list.querySelectorAll('.reject-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = parseInt(btn.dataset.id);
+      const change = trackChangesList.find(c => c.id === id);
+      if (change?.el) rejectChange(change.el, id);
+    });
+  });
+
+  // Click on item to scroll to change
+  list.querySelectorAll('.doc-change-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const id = parseInt(item.dataset.changeId);
+      const change = trackChangesList.find(c => c.id === id);
+      if (change?.el) {
+        change.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        change.el.style.outline = '2px solid var(--brand-color)';
+        setTimeout(() => { if (change.el) change.el.style.outline = ''; }, 2000);
+      }
+    });
+  });
 }
 
 /* ==================== Bookmarks ==================== */
@@ -3643,4 +4068,275 @@ function updateReferencesSection(style) {
 
   editorEl.appendChild(refDiv);
   dirty = true;
+}
+
+/* ==================== Spell Check ==================== */
+
+let spellCheckEnabled = false;
+let customDictionary = JSON.parse(localStorage.getItem('doc-custom-dict') || '[]');
+
+// Basic English word list (common words). Words not in this set are flagged.
+// This is a compact list; real spell check would use a larger dictionary.
+const BASIC_DICT = new Set();
+const COMMON_WORDS = `a about above after again against all am an and any are as at be because been before being below between both but by can could did do does doing down during each few for from further get got had has have having he her here hers herself him himself his how i if in into is it its itself just know let like make me might more most my myself no nor not now of off on once only or other our ours ourselves out over own part per put re s same she should so some still such t take than that the their theirs them themselves then there these they this those through to too under until up us very want was we were what when where which while who whom why will with would you your yours yourself yourselves able about above absent accept access accident according account across act action active actually add address admit adult advance advice affect afford after afternoon again against age ago agree ahead aim air allow almost alone along already also always amount and animal another answer any anyone anything anyway apart appear apple apply area arm army around arrive art article as ask at attack attempt attention available away baby back bad bag ball bank bar base basic basis be bear beat beautiful because become bed before begin behind believe below beside best better between big bill bit black blood blue board body bone book born both box boy brain break bring brother build burn bus business but buy by call came can capital car card care carry case catch cause central century certain chair chairman chance change character charge check child choice choose church city claim class clear close cold come common community company computer concern condition consider contain continue control cost could country county couple course court cover create cross cup current cut dark data daughter day dead deal dear death decide decision deep degree department depend describe design detail develop development die difference different difficult dinner direction discover discussion do doctor dog door down draw dream dress drink drive drop during each early east eat economic economy edge education effect egg eight either election else employee end energy enjoy enough enter environment especially european even evening event ever every everyone everything evidence exactly example exchange expect experience explain eye face fact fall family far fast father fear feel few field fight figure fill final finally financial find fine finger fish five floor fly follow food foot for force foreign forget form former forward four free friend from front full fund further future game garden general get girl give glass go god good government great green ground group grow growth gun guy hair half hand hang happen happy hard have he head health hear heart heat heavy help her here herself high him himself his hit hold home hope hot hotel hour house how however human hundred husband idea if important in include increase indeed indicate individual industry information inside instead interest into investment involve issue it item its itself job join just keep key kid kill kind king kitchen know knowledge land language large last late later law lay lead leader learn least leave left leg less let letter level lie life light like likely line list listen little live long look lord lose lot love low machine main major make man manage manager many market may maybe me mean meeting member memory mention might million mind minister minute miss model modern moment money month more morning most mother mouth move much music must my myself name nation national nature near nearly necessary need never new news next nice night no none nor north not note nothing notice now number occur of off offer office officer official often oh oil ok old on once one only open operation opportunity option or order organization other our out outside over own page pair paper parent part particular particularly party pass past patient pattern pay people per perhaps period person phone pick picture piece place plan plant play player please point police political poor popular population position possible power practice prepare present president pressure pretty price private probably problem process produce product production program project provide public pull purpose push put quality question quickly quite range rate rather reach read ready real reality realize really reason receive recent recently record red reduce reflect region relate relationship remember report represent require research resource respond rest result return right rise risk road role room rule run safe same save say school science score sea season seat second section security see seek seem sell send senior sense serious serve service set seven several shake shall shape share she shoot short should shoulder show side sign significant similar simple simply since sing single sir sister sit situation six size skill skin small smile so social society soldier some someone something sometimes son soon sort south southern space speak special specific spend spring staff stage stand standard star start state statement stay step still stock stop story strategy street strong structure student study stuff style subject success successful such suddenly suggest summer support sure surface system table take talk tax teacher team technology tell ten tend term test than thank that the their them then there these they thing think third this those though thought three through throw thus time to today together tonight too top total tough toward town trade training travel treat tree trial trip trouble truth try turn tv two type under understand unit until up upon us use usually value various very visit voice vote wait walk wall want war watch water way we weapon wear week weight well west western what whatever when where whether which while white who whole whom whose why wide wife will win window wish with without woman wonder word work worker world worry would write wrong yeah year yes yet young your`;
+COMMON_WORDS.split(/\s+/).forEach(w => BASIC_DICT.add(w));
+
+// Extended word list for fewer false positives
+const EXTENDED_WORDS = `ability absolute absolutely abstract academic accept acceptable accepted access accessible according account accurate achieve achievement acknowledge acquire across actual add additional address adequate adjust administration administrative adopt advanced advantage advertising affect afternoon agency agent aggregate agree agreement ahead aid aircraft airport align alive alliance allow allowance alongside already alternative although altogether amazing amid amount analysis analyst ancient announce annual anticipate anxiety apparent apparently appeal appearance application apply appointment approach appropriate approval approve approximately archive argue argument arise arrangement array arrive aside aspect assembly assess assessment asset assign assignment assist assistance assistant associate association assume assumption atmosphere attach attempt attend attention attitude attorney attractive attribute audience author authority automatic availability avoid award aware awareness background backward balance band barrier basically bear beat bedroom behavior behind belief belong beneath benefit beside besides beyond billion bind biological blank block blow blue boat bond border bother bottom brain branch brave breast bridge brief bright brilliant broad broken brother brown budget burden burn buyer cabinet cable calculate camera camp campaign candidate capable capacity capital capture carbon careful carefully carrier carry catch category cause celebrate cell center central century ceremony chain chair chairman challenge champion championship channel chapter character characteristic charge charity chart check chief child childhood chip choice christian church cigarette citizen civilian claim classroom clean clearly client climate climb clinical clock closely closer clothes club cluster coach coalition code cognitive collapse colleague collect collection collective college colonial color column combat combination combine comedy comfort comfortable command commander comment commercial commission commit commitment committee common communicate communication community companion compare comparison compete competition competitive complaint complete completely complex complicate component compose composition comprehensive concern conclude conclusion concrete condition conduct conference confidence confirm conflict confront confusion congressional connect connection consciousness consensus consequence conservative consider considerable consideration consist consistent constant constantly constitute constitutional construct construction consultant consumer consumption contact contain container contemporary content contest context continue contract contrast contribute contribution control controversial controversy convention conventional conversation convert conviction cook core corporate correct corridor counter couple courage coverage crack craft crash crazy creature credit crew crime criminal crisis criteria critical criticism critics crop crowd crucial cry cultural culture cup curious current customer cycle daily danger dare darkness database deal dealer debate decade decide decision deck declare decline decrease deep deeply defeat defend defense defensive deficit define definitely definition degree delay deliver delivery demand democracy demonstrate department depend dependent depending deposit depress depression derive describe description desert deserve design designer desire desk despite destroy destruction detail detect determine develop developer development device devote dialogue die diet differ dimension dinner direction directly director disability disappear disaster discipline discount discourse discover discovery discrimination discuss discussion disease dismiss disorder display dispute distance distinction distinguish distribute distribution district diverse diversity divide division doctor document domestic dominant dominate door double doubt downtown dozen draft drag drama dramatic dramatically draw drawing dream dress drink drive driver drop drug dry due during dust duty each earn earning earth ease easily eastern easy eat economic economy edge edition editor education educator effect effectively efficiency effort eight either elderly election element eliminate elite elsewhere embrace emerge emergency emission emotional emphasis emphasize employ employee employer employment empty enable encounter encourage enemy energy enforcement engage engine engineer engineering enhance enjoy enormous enough ensure enter enterprise entertainment entire entirely entrance entry environment environmental episode equal equally equipment era escape especially essay essentially establish establishment estate estimate evaluate evaluation even evening eventually every everything everywhere evidence evil evolution evolve exact exactly examine example exceed excellent except exchange exciting executive exercise exhibit exhibition exist existence existing expand expansion expect expectation expense expensive experience experiment expert explain explanation explicit explicitly explore explosion export expose exposure extend extension extensive extent external extra extraordinary extreme extremely fabric facility factor failure fairly faith familiar family fan fantasy farmer fascinating fashion fast fate fault favorite federal feel fellow female fence fiction field fight fighter figure file fill final finally finance financial finding finger finish fire firm fish fit fitness fix flag flat flight float floor flow flower focus folk follow following football force foreign forest forever forget formation formula forth fortune forward found foundation founder frame framework free freedom frequently fresh friend front fruit fuel fully function fundamental funding furniture gain galaxy game garden garner gas gate gather gaze gene generally generation genetic gentleman gently genuine gift giant girlfriend given glad glance glass global gold golden gonna good grab grade gradually grand grandfather grant grass grave greatly green greet grocery gross ground guard guess guest guide guilty gun habitat half hall hand handle hanging happen happy harbor harm hat hate hay heading headquarters healthy hear hearing heart heat heavily height hell helpful hence hero herself hide highlight highly highway hire historic historical hit hold holiday honest honor hope hopefully horror hospital host hostile hotel household housing huge hurt hypothesis identification identify identity ignore ill illegal illustrate image imagination imagine immediate immediately immigrant impact implement implication imply impose impose impossible impress impression impressive improve improvement incident include income increase increasingly incredible incredibly indeed independence independent index indicate indicator individual industrial industry infant infection inflation influence inform initial initially initiative injury inner innocent innovation innovative input inquiry inside insight insist install instance instead institution institutional instruction instructor instrument insurance intellectual intelligence intend intense intention interest interested interesting internal international internet interpretation intervention interview into introduce introduction invasion investigation investigator investment investor invisible invitation involve involvement iron islamic island isolate isolation issue jacket journey joy judge judgment jump junior jury justice justify keen keeping kick killing kitchen knee knife knock label labor laboratory lack landing landscape largely laser launch lawn lawsuit lawyer layer leading league lean learning leather leave lecture left legal legislation legitimate length lesson letter liberal library lift light limit limited line link literally literary literature loan local locate location logic long loss mainly maintain major majority maker manage management manner manufacturer map margin mark massive match material math matter maximum meaning measure measurement meat mechanism media medical medication medium membership mental mention merely merely message metal method middle military mine minister minor minority minute mirror mission mixture model moderate modern modify moment monitor mood moreover mortgage mostly motion motivation mount mouse multiple murder muscle museum mutual mysterious mystery narrow naturally negotiate negotiation neighborhood nervous network nevertheless newspaper nobody nonetheless nonetheless noise nomination nonetheless norm normal normally northern nose notable noting notion novel nowhere nuclear numerous nurse nutrition object objection observation observe observer obstacle obtain obvious obviously occasion occasionally occupation occupy occurrence odd offense offensive officer official often oil ongoing online only opening operate operation operator opinion opponent opportunity opposite opposition option ordinary organic organism organization organize orientation origin otherwise ought outcome output outside overall overcome overlook overwhelming owner pace pack package page painting pair pale pan panel participate participation particular particularly partly partner passage passenger patient pattern payment peace peak peer penalty per percent percentage perception perform performance perhaps permission permit person personal personality perspective phase phenomenon philosophy photo phrase physical physician piano pile pilot pine pipe pitch place plain plan plane planet planning plate platform player pleasant please pleasure plenty plus pocket poem poet point pollution pool popular popularity portion portrait pose positive possibility possibly potential potentially pour poverty powerful practice prayer predict prefer preference pregnancy prepare presence preserve presidency president presidential pressure prevent previously primary prime principal principle print priority prison prisoner privacy private probably proceed process produce producer product production professional professor profit program project promise promote proportion proposal propose prosecutor prospect protect protection protein protest prove provider province provision psychological psychology pull punch purchase pure purple pursue qualify quarter quiet quite race racial radical rain range rapid rarely rating ratio raw reaction reading ready reality reasonable rebel recipe recognition recommend recommendation record recording recover recovery recruit red reduce reduction reflect reflection reform regard regime region regional register regular regulation reinforce reject relate relation relative relatively release relevant relief religion religious rely remark remarkable remember remind remote remove repeatedly replace reporter represent representation representative request require requirement researcher reserve resident residential resist resistance resolution resolve resort resource respond response responsibility responsible rest restore restrict restriction retain retire retirement reveal revenue review revolution rich ride rifle rise risk rival river road robot rock role romantic roof routine row rural rush sacrifice sad sadly safety salary sand satellite satisfaction satisfy save saving scale scandal scared scenario schedule scholar scholarship scope screen search seat secondary secretary section sector secure seek select selection senate senior senior sense sensitive separate sequence series seriously servant session settle settlement several severe sexual shall shape shelter shift ship shirt shoot shooting shortly shot shoulder shout shut sight silence simple simply sing singer single sister sit site size skill skin sleep slight slightly slow slowly smart smile smoke so so-called soccer social software soil soldier solid solution solve somebody somehow someone something somewhat somewhere sort soul source southern space speak specialist specific specifically spectrum speech spend spirit spiritual spokesman spot spread spring square squeeze stability stable staff stage standard star stare start station status stay steady step stick stock stomach stone stop storage storm straight strategic strategy stream street strength stress stretch strike strongly structure struggle student studio study stupid style subject submit subsequent substantial succeed sufficient sugar suggestion suitable summer summit supply supporter surely surface surgery surprised surprisingly surround surrounding survive suspect sustain sweep sweet swim swing switch symbol symptom table tail talent task tea teaching team technology telephone television temperature temporary tension territory terrorism terrorist thank the themselves theory therapy thin tired toe tone tonight tool topic total totally tough tournament toward tower trace track trade tradition traditional training transfer transform transition translate transport travel treatment tremendous trend trial trip trouble truly trust truth try typical ultimately uncle undergo understand unfortunately unfortunately union unique universe university unknown unless unlikely unusual upon urban use used user usual utility vacation valley variation variety vast vehicle version versus veteran via victim video view viewer village violence virtual virtually virtue visible vision visitor visual vital volume voluntary volunteer vulnerability wage wage wake walk wall warning wash waste wave weakness wealth weapon weather weekend welfare western whatever whom widely widespread willing wind winter wire wish withdraw within without witness wonder wonderful wooden worker workplace works workshop worried worry worth wrap writer writing yard yeah yesterday youth zone`;
+EXTENDED_WORDS.split(/\s+/).forEach(w => BASIC_DICT.add(w));
+
+function isWordInDictionary(word) {
+  const lower = word.toLowerCase();
+  if (BASIC_DICT.has(lower)) return true;
+  if (customDictionary.includes(lower)) return true;
+  // Allow common suffixes
+  if (lower.endsWith('s') && BASIC_DICT.has(lower.slice(0, -1))) return true;
+  if (lower.endsWith('ed') && BASIC_DICT.has(lower.slice(0, -2))) return true;
+  if (lower.endsWith('ing') && BASIC_DICT.has(lower.slice(0, -3))) return true;
+  if (lower.endsWith('ly') && BASIC_DICT.has(lower.slice(0, -2))) return true;
+  if (lower.endsWith('er') && BASIC_DICT.has(lower.slice(0, -2))) return true;
+  if (lower.endsWith('est') && BASIC_DICT.has(lower.slice(0, -3))) return true;
+  if (lower.endsWith('tion') && BASIC_DICT.has(lower.slice(0, -4) + 'te')) return true;
+  if (lower.endsWith('ment') && BASIC_DICT.has(lower.slice(0, -4))) return true;
+  if (lower.endsWith('ness') && BASIC_DICT.has(lower.slice(0, -4))) return true;
+  if (lower.endsWith('able') && BASIC_DICT.has(lower.slice(0, -4))) return true;
+  if (lower.endsWith('ful') && BASIC_DICT.has(lower.slice(0, -3))) return true;
+  if (lower.endsWith('less') && BASIC_DICT.has(lower.slice(0, -4))) return true;
+  if (lower.endsWith("'s")) return isWordInDictionary(lower.slice(0, -2));
+  if (lower.endsWith("n't")) return isWordInDictionary(lower.slice(0, -3));
+  // Numbers, single chars, short words
+  if (/^\d+$/.test(lower)) return true;
+  if (lower.length <= 1) return true;
+  return false;
+}
+
+function getSuggestions(word) {
+  const lower = word.toLowerCase();
+  const suggestions = [];
+  const candidates = [...BASIC_DICT];
+
+  // Simple edit distance 1 suggestions
+  for (const candidate of candidates) {
+    if (Math.abs(candidate.length - lower.length) > 2) continue;
+    const dist = editDistance(lower, candidate);
+    if (dist === 1 || dist === 2) {
+      suggestions.push({ word: candidate, dist });
+    }
+    if (suggestions.length >= 8) break;
+  }
+
+  suggestions.sort((a, b) => a.dist - b.dist);
+  return suggestions.slice(0, 5).map(s => s.word);
+}
+
+function editDistance(a, b) {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b[i - 1] === a[j - 1]) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+let spellCheckMarks = [];
+
+function toggleSpellCheck() {
+  spellCheckEnabled = !spellCheckEnabled;
+  const btn = document.getElementById('doc-spell-check');
+  if (btn) {
+    btn.style.background = spellCheckEnabled ? 'var(--brand-color)' : '';
+    btn.style.color = spellCheckEnabled ? '#fff' : '';
+  }
+
+  if (spellCheckEnabled) {
+    runSpellCheck();
+  } else {
+    clearSpellCheckMarks();
+  }
+}
+
+function clearSpellCheckMarks() {
+  for (const mark of spellCheckMarks) {
+    if (mark.parentNode) {
+      const parent = mark.parentNode;
+      parent.replaceChild(document.createTextNode(mark.textContent), mark);
+      parent.normalize();
+    }
+  }
+  spellCheckMarks = [];
+}
+
+function runSpellCheck() {
+  clearSpellCheckMarks();
+  if (!editorEl) return;
+
+  const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      // Skip elements that shouldn't be spell checked
+      const parent = node.parentElement;
+      if (!parent) return NodeFilter.FILTER_REJECT;
+      if (parent.closest('.doc-toc, .doc-footnotes, .doc-endnotes, .doc-references, .doc-equation, code, pre, .doc-spell-error')) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  const textNodes = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    textNodes.push(node);
+  }
+
+  // Process in reverse to maintain positions
+  for (let i = textNodes.length - 1; i >= 0; i--) {
+    const textNode = textNodes[i];
+    const text = textNode.textContent;
+    const wordRegex = /[a-zA-Z'\u2019]+/g;
+    let match;
+    const errors = [];
+
+    while ((match = wordRegex.exec(text)) !== null) {
+      const word = match[0];
+      if (word.length < 2) continue;
+      if (!isWordInDictionary(word)) {
+        errors.push({ start: match.index, length: word.length, word });
+      }
+    }
+
+    // Wrap errors in reverse order
+    for (let j = errors.length - 1; j >= 0; j--) {
+      const err = errors[j];
+      try {
+        const range = document.createRange();
+        range.setStart(textNode, err.start);
+        range.setEnd(textNode, err.start + err.length);
+
+        const span = document.createElement('span');
+        span.className = 'doc-spell-error';
+        span.dataset.word = err.word;
+        range.surroundContents(span);
+        spellCheckMarks.push(span);
+
+        // Right-click and regular click for suggestions
+        span.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          showSpellSuggestionMenu(span, e);
+        });
+        span.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showSpellSuggestionMenu(span, e);
+        });
+      } catch {
+        // Ignore errors from cross-boundary ranges
+      }
+    }
+  }
+}
+
+function showSpellSuggestionMenu(span, event) {
+  document.querySelector('.doc-spell-menu')?.remove();
+
+  const word = span.dataset.word || span.textContent;
+  const suggestions = getSuggestions(word);
+
+  const menu = document.createElement('div');
+  menu.className = 'doc-spell-menu';
+  menu.style.top = (event.clientY + 4) + 'px';
+  menu.style.left = Math.min(event.clientX, window.innerWidth - 200) + 'px';
+
+  let html = '';
+  if (suggestions.length > 0) {
+    suggestions.forEach(s => {
+      html += `<button class="doc-spell-suggestion" data-word="${s}">${s}</button>`;
+    });
+    html += '<div class="doc-spell-divider"></div>';
+  } else {
+    html += '<div style="padding:6px 10px;font-size:11px;color:var(--text-tertiary)">No suggestions</div>';
+    html += '<div class="doc-spell-divider"></div>';
+  }
+  html += `<button class="doc-spell-action" data-action="ignore">Ignore</button>`;
+  html += `<button class="doc-spell-action" data-action="ignore-all">Ignore All</button>`;
+  html += `<button class="doc-spell-action" data-action="add">Add to Dictionary</button>`;
+
+  menu.innerHTML = html;
+  document.body.appendChild(menu);
+
+  // Suggestions
+  menu.querySelectorAll('.doc-spell-suggestion').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const replacement = btn.dataset.word;
+      const textNode = document.createTextNode(replacement);
+      span.parentNode.replaceChild(textNode, span);
+      textNode.parentNode.normalize();
+      spellCheckMarks = spellCheckMarks.filter(m => m !== span);
+      menu.remove();
+      dirty = true;
+    });
+  });
+
+  // Actions
+  menu.querySelectorAll('.doc-spell-action').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.action;
+      if (action === 'ignore') {
+        // Just remove the error mark for this instance
+        const parent = span.parentNode;
+        parent.replaceChild(document.createTextNode(span.textContent), span);
+        parent.normalize();
+        spellCheckMarks = spellCheckMarks.filter(m => m !== span);
+      } else if (action === 'ignore-all') {
+        // Remove all marks for this word
+        const targetWord = word.toLowerCase();
+        [...spellCheckMarks].forEach(mark => {
+          if (mark.textContent.toLowerCase() === targetWord && mark.parentNode) {
+            const p = mark.parentNode;
+            p.replaceChild(document.createTextNode(mark.textContent), mark);
+            p.normalize();
+          }
+        });
+        spellCheckMarks = spellCheckMarks.filter(m => m.parentNode);
+        // Temporarily add to custom dict for this session
+        customDictionary.push(targetWord);
+      } else if (action === 'add') {
+        // Add to persistent custom dictionary
+        const targetWord = word.toLowerCase();
+        customDictionary.push(targetWord);
+        localStorage.setItem('doc-custom-dict', JSON.stringify(customDictionary));
+        // Remove all marks for this word
+        [...spellCheckMarks].forEach(mark => {
+          if (mark.textContent.toLowerCase() === targetWord && mark.parentNode) {
+            const p = mark.parentNode;
+            p.replaceChild(document.createTextNode(mark.textContent), mark);
+            p.normalize();
+          }
+        });
+        spellCheckMarks = spellCheckMarks.filter(m => m.parentNode);
+      }
+      menu.remove();
+    });
+  });
+
+  // Close on click outside
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!menu.contains(e.target)) {
+        menu.remove();
+        document.removeEventListener('click', close);
+      }
+    });
+  }, 10);
 }
