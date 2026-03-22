@@ -178,12 +178,24 @@ function cellStyle(cell, r, c) {
   if (cell?.format) {
     const f = cell.format;
     if (f.bold) parts.push('font-weight:700');
+    if (f.italic) parts.push('font-style:italic');
+    if (f.underline) parts.push('text-decoration:underline');
     if (f.align) parts.push(`text-align:${f.align}`);
+    if (f.valign) parts.push(`vertical-align:${f.valign}`);
     if (f.bg) parts.push(`background:${f.bg}`);
+    if (f.color) parts.push(`color:${f.color}`);
+    if (f.fontSize) parts.push(`font-size:${f.fontSize}px`);
+    if (f.fontFamily) parts.push(`font-family:${f.fontFamily}`);
+    if (f.wrap) parts.push('white-space:pre-wrap;word-wrap:break-word');
     if (f.merged) parts.push('display:none');
     if (f.mergeSpan) {
       // Will be applied as attributes, not inline style
     }
+    // Borders
+    if (f.borderTop) parts.push(`border-top:${f.borderTop}`);
+    if (f.borderBottom) parts.push(`border-bottom:${f.borderBottom}`);
+    if (f.borderLeft) parts.push(`border-left:${f.borderLeft}`);
+    if (f.borderRight) parts.push(`border-right:${f.borderRight}`);
   }
   // Conditional formatting
   if (r !== undefined && c !== undefined) {
@@ -506,6 +518,68 @@ function bindEvents() {
     renderGrid(); updateSelection();
   });
 
+  // Italic
+  document.getElementById('sheet-italic')?.addEventListener('click', () => {
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    const first = getCell(getSheet(), r1, c1);
+    const newVal = !(first?.format?.italic);
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        setCellFormat(getSheet(), r, c, 'italic', newVal);
+      }
+    }
+    renderGrid(); updateSelection();
+  });
+
+  // Underline
+  document.getElementById('sheet-underline')?.addEventListener('click', () => {
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    const first = getCell(getSheet(), r1, c1);
+    const newVal = !(first?.format?.underline);
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        setCellFormat(getSheet(), r, c, 'underline', newVal);
+      }
+    }
+    renderGrid(); updateSelection();
+  });
+
+  // Wrap Text
+  document.getElementById('sheet-wrap')?.addEventListener('click', () => {
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    const first = getCell(getSheet(), r1, c1);
+    const newVal = !(first?.format?.wrap);
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        setCellFormat(getSheet(), r, c, 'wrap', newVal);
+      }
+    }
+    renderGrid(); updateSelection();
+  });
+
+  // Font Family
+  document.getElementById('sheet-font-family')?.addEventListener('change', (e) => {
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        setCellFormat(getSheet(), r, c, 'fontFamily', e.target.value);
+      }
+    }
+    renderGrid(); updateSelection();
+  });
+
+  // Font Size
+  document.getElementById('sheet-font-size')?.addEventListener('change', (e) => {
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    const val = e.target.value ? parseInt(e.target.value) : '';
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        setCellFormat(getSheet(), r, c, 'fontSize', val);
+      }
+    }
+    renderGrid(); updateSelection();
+  });
+
   // Alignment
   ['left', 'center', 'right'].forEach((align) => {
     document.getElementById(`sheet-align-${align}`)?.addEventListener('click', () => {
@@ -527,6 +601,32 @@ function bindEvents() {
         setCellFormat(getSheet(), r, c, 'bg', e.target.value);
       }
     }
+    renderGrid(); updateSelection();
+  });
+
+  // Text color
+  document.getElementById('sheet-text-color')?.addEventListener('input', (e) => {
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        setCellFormat(getSheet(), r, c, 'color', e.target.value);
+      }
+    }
+    renderGrid(); updateSelection();
+  });
+
+  // Cell Borders
+  document.getElementById('sheet-borders')?.addEventListener('click', () => showBorderMenu());
+
+  // Number Format
+  document.getElementById('sheet-number-format')?.addEventListener('change', (e) => {
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        setCellFormat(getSheet(), r, c, 'numFormat', e.target.value);
+      }
+    }
+    recalcAll(getSheet());
     renderGrid(); updateSelection();
   });
 
@@ -724,6 +824,24 @@ function updateSelection() {
   if (formulaBarEl && document.activeElement !== formulaBarEl && !isEditing) {
     formulaBarEl.value = getRawValue(getSheet(), selectedRow, selectedCol);
   }
+
+  // Update toolbar state to reflect selected cell format
+  const selCell = getCell(getSheet(), selectedRow, selectedCol);
+  const fmt = selCell?.format || {};
+  const boldBtn = document.getElementById('sheet-bold');
+  const italicBtn = document.getElementById('sheet-italic');
+  const underlineBtn = document.getElementById('sheet-underline');
+  const wrapBtn = document.getElementById('sheet-wrap');
+  if (boldBtn) boldBtn.style.background = fmt.bold ? 'var(--accent-color)' : '';
+  if (italicBtn) italicBtn.style.background = fmt.italic ? 'var(--accent-color)' : '';
+  if (underlineBtn) underlineBtn.style.background = fmt.underline ? 'var(--accent-color)' : '';
+  if (wrapBtn) wrapBtn.style.background = fmt.wrap ? 'var(--accent-color)' : '';
+  const fontFamilyEl = document.getElementById('sheet-font-family');
+  const fontSizeEl = document.getElementById('sheet-font-size');
+  const numFmtEl = document.getElementById('sheet-number-format');
+  if (fontFamilyEl) fontFamilyEl.value = fmt.fontFamily || '';
+  if (fontSizeEl) fontSizeEl.value = fmt.fontSize || '';
+  if (numFmtEl) numFmtEl.value = fmt.numFormat || '';
 
   // Update status bar
   updateStatusBar();
@@ -1544,153 +1662,6 @@ function getCondFmtStyle(r, c) {
   return '';
 }
 
-/* ==================== Charts ==================== */
-
-function showChartDialog() {
-  const existing = document.querySelector('.sheet-chart-dialog');
-  if (existing) { existing.remove(); return; }
-
-  const { r1, r2, c1, c2 } = getSelectionRange();
-  const rangeStr = `${rcToRef(r1, c1)}:${rcToRef(r2, c2)}`;
-
-  const dialog = document.createElement('div');
-  dialog.className = 'ai-setup-modal sheet-chart-dialog';
-  dialog.innerHTML = `
-    <div class="ai-setup-content" style="width:500px">
-      <div class="ai-setup-header">
-        <h3>Insert Chart</h3>
-        <button class="ai-setup-close">&times;</button>
-      </div>
-      <div class="ai-setup-body">
-        <p style="font-size:12px;color:var(--text-secondary);margin:0 0 12px">Data range: <strong>${rangeStr}</strong></p>
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          ${['bar', 'line', 'pie'].map(t =>
-            `<button class="chart-type-btn" data-type="${t}" style="flex:1;padding:10px;border:2px solid var(--border-color);border-radius:8px;background:var(--bg-primary);cursor:pointer;text-align:center;color:var(--text-primary);font-size:13px;font-weight:600">${t === 'bar' ? '📊 Bar' : t === 'line' ? '📈 Line' : '🥧 Pie'}</button>`
-          ).join('')}
-        </div>
-        <canvas id="chart-preview" width="460" height="260" style="border:1px solid var(--border-color);border-radius:8px;width:100%;background:#fff"></canvas>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
-          <button class="ai-pull-btn" id="chart-cancel">Cancel</button>
-          <button class="ai-pull-btn" id="chart-insert" style="background:var(--brand-color);color:#fff">Insert as Image</button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(dialog);
-
-  let chartType = 'bar';
-
-  function drawChart() {
-    const canvas = dialog.querySelector('#chart-preview');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width, H = canvas.height;
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, W, H);
-
-    const sheet = getSheet();
-    const labels = [];
-    const values = [];
-
-    // First column = labels, second column = values
-    for (let r = r1; r <= r2; r++) {
-      labels.push(getDisplayValue(sheet, r, c1) || `Row ${r + 1}`);
-      const v = parseFloat(getDisplayValue(sheet, r, c1 < c2 ? c1 + 1 : c1));
-      values.push(isNaN(v) ? 0 : v);
-    }
-
-    const maxVal = Math.max(...values, 1);
-    const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
-    const pad = 50;
-
-    if (chartType === 'bar') {
-      const barW = (W - pad * 2) / values.length - 8;
-      ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
-      values.forEach((v, i) => {
-        const x = pad + i * ((W - pad * 2) / values.length) + 4;
-        const barH = (v / maxVal) * (H - pad * 2);
-        ctx.fillStyle = colors[i % colors.length];
-        ctx.fillRect(x, H - pad - barH, barW, barH);
-        ctx.fillStyle = '#333'; ctx.font = '10px sans-serif';
-        ctx.fillText(labels[i].slice(0, 8), x + barW / 2, H - pad + 14);
-        ctx.fillText(String(v), x + barW / 2, H - pad - barH - 4);
-      });
-      // Axes
-      ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(pad, pad - 10); ctx.lineTo(pad, H - pad); ctx.lineTo(W - pad + 10, H - pad); ctx.stroke();
-    } else if (chartType === 'line') {
-      ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(pad, pad - 10); ctx.lineTo(pad, H - pad); ctx.lineTo(W - pad + 10, H - pad); ctx.stroke();
-      const step = (W - pad * 2) / Math.max(values.length - 1, 1);
-      ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2;
-      ctx.beginPath();
-      values.forEach((v, i) => {
-        const x = pad + i * step;
-        const y = H - pad - (v / maxVal) * (H - pad * 2);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      });
-      ctx.stroke();
-      // Points + labels
-      values.forEach((v, i) => {
-        const x = pad + i * step;
-        const y = H - pad - (v / maxVal) * (H - pad * 2);
-        ctx.fillStyle = '#3b82f6';
-        ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(labels[i].slice(0, 8), x, H - pad + 14);
-      });
-    } else if (chartType === 'pie') {
-      const total = values.reduce((a, b) => a + b, 0) || 1;
-      const cx = W / 2, cy = H / 2 - 10, radius = Math.min(W, H) / 2 - 40;
-      let startAngle = -Math.PI / 2;
-      values.forEach((v, i) => {
-        const slice = (v / total) * Math.PI * 2;
-        ctx.fillStyle = colors[i % colors.length];
-        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, radius, startAngle, startAngle + slice); ctx.closePath(); ctx.fill();
-        // Label
-        const midAngle = startAngle + slice / 2;
-        const lx = cx + (radius + 16) * Math.cos(midAngle);
-        const ly = cy + (radius + 16) * Math.sin(midAngle);
-        ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(`${labels[i].slice(0, 6)} (${Math.round(v / total * 100)}%)`, lx, ly);
-        startAngle += slice;
-      });
-    }
-  }
-
-  drawChart();
-
-  dialog.querySelectorAll('.chart-type-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      chartType = btn.dataset.type;
-      dialog.querySelectorAll('.chart-type-btn').forEach(b => b.style.borderColor = 'var(--border-color)');
-      btn.style.borderColor = 'var(--brand-color)';
-      drawChart();
-    });
-  });
-  // Set initial active
-  dialog.querySelector(`[data-type="bar"]`).style.borderColor = 'var(--brand-color)';
-
-  dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
-  dialog.querySelector('#chart-cancel')?.addEventListener('click', () => dialog.remove());
-  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
-
-  dialog.querySelector('#chart-insert')?.addEventListener('click', () => {
-    const canvas = dialog.querySelector('#chart-preview');
-    const dataUrl = canvas.toDataURL('image/png');
-    // Insert chart as image below the sheet
-    const chartContainer = document.createElement('div');
-    chartContainer.className = 'sheet-chart-embed';
-    chartContainer.innerHTML = `<img src="${dataUrl}" style="max-width:100%;border-radius:8px;margin:8px 0">
-      <button class="toolbar-btn" style="position:absolute;top:4px;right:4px;font-size:10px" onclick="this.parentElement.remove()">&times;</button>`;
-    chartContainer.style.cssText = 'position:relative;display:inline-block;margin:8px';
-    containerEl.after(chartContainer);
-    dialog.remove();
-  });
-}
-
 /* ==================== Auto Filter ==================== */
 
 let filterRow = -1; // row index used as filter header
@@ -2193,14 +2164,46 @@ function insertSparkline() {
     return;
   }
 
-  // Ask where to place sparkline
-  const targetRef = prompt(`Place sparkline at cell (e.g. ${colToLetter(c2 + 1)}${r1 + 1}):`, colToLetter(c2 + 1) + (r1 + 1));
-  if (!targetRef) return;
-  const target = refToRC(targetRef.toUpperCase());
-  if (!target) return;
+  // Show sparkline type/target dialog
+  const dlg = document.createElement('div');
+  dlg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:8px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.2);z-index:10000;min-width:280px;font-size:14px;';
+  dlg.innerHTML = `
+    <h3 style="margin:0 0 16px">Insert Sparkline</h3>
+    <label>Type:</label>
+    <div style="display:flex;gap:8px;margin:8px 0 16px">
+      <button class="sl-type-btn" data-type="line" style="flex:1;padding:8px;border:2px solid #3b82f6;border-radius:6px;cursor:pointer;background:#e8f0fe">━━ Line</button>
+      <button class="sl-type-btn" data-type="bar" style="flex:1;padding:8px;border:2px solid #ddd;border-radius:6px;cursor:pointer;background:#fff">▐▐ Bar</button>
+      <button class="sl-type-btn" data-type="area" style="flex:1;padding:8px;border:2px solid #ddd;border-radius:6px;cursor:pointer;background:#fff">▓▓ Area</button>
+      <button class="sl-type-btn" data-type="column" style="flex:1;padding:8px;border:2px solid #ddd;border-radius:6px;cursor:pointer;background:#fff">║║ Column</button>
+    </div>
+    <label>Place at cell:</label>
+    <input id="sl-target" value="${colToLetter(c2 + 1)}${r1 + 1}" style="width:80px;padding:6px;margin:4px 8px;border:1px solid #ccc;border-radius:4px;">
+    <div style="margin-top:16px;text-align:right">
+      <button id="sl-cancel" style="padding:6px 16px;margin-right:8px;border:1px solid #ccc;border-radius:4px;cursor:pointer">Cancel</button>
+      <button id="sl-ok" style="padding:6px 16px;background:#3b82f6;color:#fff;border:none;border-radius:4px;cursor:pointer">Insert</button>
+    </div>
+  `;
+  document.body.appendChild(dlg);
 
-  // Generate sparkline as SVG data URL
-  const svg = generateSparklineSVG(vals, 'line');
+  let sparkType = 'line';
+  dlg.querySelectorAll('.sl-type-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      dlg.querySelectorAll('.sl-type-btn').forEach(b => { b.style.borderColor = '#ddd'; b.style.background = '#fff'; });
+      btn.style.borderColor = '#3b82f6'; btn.style.background = '#e8f0fe';
+      sparkType = btn.dataset.type;
+    });
+  });
+
+  return new Promise(resolve => {
+    dlg.querySelector('#sl-cancel').addEventListener('click', () => { dlg.remove(); resolve(); });
+    dlg.querySelector('#sl-ok').addEventListener('click', () => {
+      const targetRef = dlg.querySelector('#sl-target').value.trim();
+      dlg.remove();
+      if (!targetRef) return resolve();
+      const target = refToRC(targetRef.toUpperCase());
+      if (!target) return resolve();
+
+      const svg = generateSparklineSVG(vals, sparkType);
   const key = `${target[0]},${target[1]}`;
   if (!sheet.cells[key]) sheet.cells[key] = { raw: '', value: '', format: {} };
   sheet.cells[key].format.sparkline = svg;
@@ -2209,6 +2212,9 @@ function insertSparkline() {
 
   renderGrid();
   updateSelection();
+      resolve();
+    });
+  });
 }
 
 function generateSparklineSVG(vals, type = 'line') {
@@ -2236,7 +2242,28 @@ function generateSparklineSVG(vals, type = 'line') {
     }).join('');
 
     return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${bars}</svg>`)}`;
+  } else if (type === 'area') {
+    const points = vals.map((v, i) => {
+      const x = (i / (vals.length - 1)) * (w - 4) + 2;
+      const y = h - 2 - ((v - min) / range) * (h - 4);
+      return `${x},${y}`;
+    });
+    const polyPoints = [`2,${h - 2}`, ...points, `${w - 2},${h - 2}`].join(' ');
+    const linePoints = points.join(' ');
+    return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><polygon points="${polyPoints}" fill="#3b82f620" stroke="none"/><polyline points="${linePoints}" fill="none" stroke="#3b82f6" stroke-width="1.5"/></svg>`)}`;
+  } else if (type === 'column') {
+    const gap = 2;
+    const barW = Math.max(2, ((w - 4) / vals.length) - gap);
+    const cols = vals.map((v, i) => {
+      const bh = Math.max(1, ((v - min) / range) * (h - 4));
+      const x = 2 + i * (barW + gap);
+      const y = h - 2 - bh;
+      return `<rect x="${x}" y="${y}" width="${barW}" height="${bh}" fill="#10b981" rx="1"/>`;
+    }).join('');
+    return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${cols}</svg>`)}`;
   }
+
+  return '';
 }
 
 /* ==================== Cell Notes ==================== */
@@ -3129,8 +3156,6 @@ function getMergeInfo(r, c) {
 
 /* ==================== Conditional Formatting ==================== */
 
-let condFormats = []; // [{type, range:{r1,c1,r2,c2}, config:{...}}]
-
 function showConditionalFormatDialog() {
   const { r1, c1, r2, c2 } = getSelectionRange();
   const rangeStr = `${colToLetter(c1)}${r1 + 1}:${colToLetter(c2)}${r2 + 1}`;
@@ -4004,6 +4029,119 @@ function toggleGroupCollapse(groupIdx) {
   group.collapsed = !group.collapsed;
   renderGrid();
   updateSelection();
+}
+
+/* ==================== Border Menu ==================== */
+
+function showBorderMenu() {
+  const existing = document.querySelector('.sheet-border-menu');
+  if (existing) { existing.remove(); return; }
+
+  const btn = document.getElementById('sheet-borders');
+  const rect = btn.getBoundingClientRect();
+
+  const borderStyle = '1px solid #000';
+  const options = [
+    { label: '━ All Borders', action: 'all' },
+    { label: '▣ Outer Borders', action: 'outer' },
+    { label: '┃ Left Border', action: 'left' },
+    { label: '┃ Right Border', action: 'right' },
+    { label: '━ Top Border', action: 'top' },
+    { label: '━ Bottom Border', action: 'bottom' },
+    { label: '╋ Inner Borders', action: 'inner' },
+    { label: '━ Thick Outer', action: 'thick-outer' },
+    { label: '✕ No Borders', action: 'none' },
+  ];
+
+  const menu = document.createElement('div');
+  menu.className = 'sheet-border-menu';
+  menu.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.bottom+2}px;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);padding:4px 0;z-index:9999;min-width:170px;font-size:13px;`;
+
+  options.forEach(opt => {
+    const item = document.createElement('div');
+    item.textContent = opt.label;
+    item.style.cssText = 'padding:6px 14px;cursor:pointer;';
+    item.addEventListener('mouseenter', () => item.style.background = '#e8f0fe');
+    item.addEventListener('mouseleave', () => item.style.background = '');
+    item.addEventListener('click', () => {
+      applyBorderStyle(opt.action);
+      menu.remove();
+    });
+    menu.appendChild(item);
+  });
+
+  document.body.appendChild(menu);
+  setTimeout(() => {
+    const handler = (e) => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('mousedown', handler); } };
+    document.addEventListener('mousedown', handler);
+  }, 0);
+}
+
+function applyBorderStyle(action) {
+  const { r1, r2, c1, c2 } = getSelectionRange();
+  const sheet = getSheet();
+  const thin = '1px solid #000';
+  const thick = '2px solid #000';
+
+  // Clear all borders first for 'none'
+  if (action === 'none') {
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        setCellFormat(sheet, r, c, 'borderTop', '');
+        setCellFormat(sheet, r, c, 'borderBottom', '');
+        setCellFormat(sheet, r, c, 'borderLeft', '');
+        setCellFormat(sheet, r, c, 'borderRight', '');
+      }
+    }
+    renderGrid(); updateSelection(); return;
+  }
+
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      const isTop = r === r1, isBottom = r === r2;
+      const isLeft = c === c1, isRight = c === c2;
+
+      switch (action) {
+        case 'all':
+          setCellFormat(sheet, r, c, 'borderTop', thin);
+          setCellFormat(sheet, r, c, 'borderBottom', thin);
+          setCellFormat(sheet, r, c, 'borderLeft', thin);
+          setCellFormat(sheet, r, c, 'borderRight', thin);
+          break;
+        case 'outer':
+          if (isTop) setCellFormat(sheet, r, c, 'borderTop', thin);
+          if (isBottom) setCellFormat(sheet, r, c, 'borderBottom', thin);
+          if (isLeft) setCellFormat(sheet, r, c, 'borderLeft', thin);
+          if (isRight) setCellFormat(sheet, r, c, 'borderRight', thin);
+          break;
+        case 'thick-outer':
+          if (isTop) setCellFormat(sheet, r, c, 'borderTop', thick);
+          if (isBottom) setCellFormat(sheet, r, c, 'borderBottom', thick);
+          if (isLeft) setCellFormat(sheet, r, c, 'borderLeft', thick);
+          if (isRight) setCellFormat(sheet, r, c, 'borderRight', thick);
+          break;
+        case 'inner':
+          if (!isTop) setCellFormat(sheet, r, c, 'borderTop', thin);
+          if (!isBottom) setCellFormat(sheet, r, c, 'borderBottom', thin);
+          if (!isLeft) setCellFormat(sheet, r, c, 'borderLeft', thin);
+          if (!isRight) setCellFormat(sheet, r, c, 'borderRight', thin);
+          break;
+        case 'left':
+          if (isLeft) setCellFormat(sheet, r, c, 'borderLeft', thin);
+          break;
+        case 'right':
+          if (isRight) setCellFormat(sheet, r, c, 'borderRight', thin);
+          break;
+        case 'top':
+          if (isTop) setCellFormat(sheet, r, c, 'borderTop', thin);
+          break;
+        case 'bottom':
+          if (isBottom) setCellFormat(sheet, r, c, 'borderBottom', thin);
+          break;
+      }
+    }
+  }
+  renderGrid(); updateSelection();
 }
 
 /* ==================== Export ==================== */

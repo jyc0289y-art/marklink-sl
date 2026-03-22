@@ -152,6 +152,11 @@ function bindEvents() {
     showMasterSlideDialog();
   });
 
+  // Gradient background picker
+  document.getElementById('slide-gradient-bg')?.addEventListener('click', () => {
+    showGradientBgPicker();
+  });
+
   // Insert video
   document.getElementById('slide-insert-video')?.addEventListener('click', () => {
     const url = prompt('Enter video URL (YouTube, Vimeo, or direct):');
@@ -286,6 +291,13 @@ function loadSlide(idx) {
   // Apply master slide if set
   if (slide.master && MASTER_SLIDES[slide.master]) {
     applyMasterToCanvas(MASTER_SLIDES[slide.master]);
+  }
+
+  // Apply custom background if set
+  if (slide.customBg) {
+    canvasEl.style.background = slide.customBg;
+  } else {
+    canvasEl.style.background = '';
   }
 
   // Update active thumb
@@ -1641,5 +1653,124 @@ function insertSVGShape(shape) {
   canvasEl.focus();
   document.execCommand('insertHTML', false, html);
   slides[activeSlideIdx].content = canvasEl.innerHTML;
+  updateThumb(activeSlideIdx);
+}
+
+/* ==================== Gradient Background Picker ==================== */
+
+function showGradientBgPicker() {
+  const existing = document.querySelector('.gradient-bg-dialog');
+  if (existing) { existing.remove(); return; }
+
+  const slide = slides[activeSlideIdx];
+  const presets = [
+    { name: 'Ocean', css: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+    { name: 'Sunset', css: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+    { name: 'Forest', css: 'linear-gradient(135deg, #134e5e 0%, #71b280 100%)' },
+    { name: 'Midnight', css: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' },
+    { name: 'Warm', css: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)' },
+    { name: 'Sky', css: 'linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%)' },
+    { name: 'Fire', css: 'linear-gradient(135deg, #f12711 0%, #f5af19 100%)' },
+    { name: 'Arctic', css: 'linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%)' },
+    { name: 'Aurora', css: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
+    { name: 'Lavender', css: 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)' },
+    { name: 'Carbon', css: 'linear-gradient(135deg, #333333 0%, #1a1a1a 100%)' },
+    { name: 'Royal', css: 'linear-gradient(135deg, #141e30 0%, #243b55 100%)' },
+  ];
+
+  const dlg = document.createElement('div');
+  dlg.className = 'gradient-bg-dialog';
+  dlg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:10px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.25);z-index:10000;width:420px;max-height:80vh;overflow-y:auto;font-size:14px;color:#333;';
+
+  dlg.innerHTML = `
+    <h3 style="margin:0 0 16px;font-size:18px">Slide Background</h3>
+    <div style="margin-bottom:16px">
+      <label style="font-weight:600">Presets:</label>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px">
+        ${presets.map((p, i) => `
+          <div class="grad-preset" data-idx="${i}" style="cursor:pointer;border-radius:6px;overflow:hidden;border:2px solid transparent;transition:border-color .2s">
+            <div style="height:40px;background:${p.css};border-radius:4px"></div>
+            <div style="text-align:center;font-size:10px;padding:2px 0">${p.name}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <div style="margin-bottom:16px">
+      <label style="font-weight:600">Custom Gradient:</label>
+      <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+        <input type="color" id="grad-color1" value="#667eea" style="width:40px;height:32px;border:none;cursor:pointer">
+        <span>→</span>
+        <input type="color" id="grad-color2" value="#764ba2" style="width:40px;height:32px;border:none;cursor:pointer">
+        <select id="grad-direction" style="padding:4px;border:1px solid #ccc;border-radius:4px;font-size:12px">
+          <option value="135deg">↘ Diagonal</option>
+          <option value="to right">→ Right</option>
+          <option value="to bottom">↓ Down</option>
+          <option value="to top">↑ Up</option>
+          <option value="to left">← Left</option>
+          <option value="45deg">↗ Diagonal Up</option>
+        </select>
+      </div>
+      <div id="grad-preview" style="height:50px;border-radius:6px;margin-top:8px;border:1px solid #ddd;background:linear-gradient(135deg,#667eea,#764ba2)"></div>
+    </div>
+    <div style="margin-bottom:16px">
+      <label style="font-weight:600">Solid Color:</label>
+      <input type="color" id="grad-solid" value="#ffffff" style="margin-left:8px;width:40px;height:28px;border:none;cursor:pointer">
+      <button id="grad-apply-solid" style="margin-left:8px;padding:4px 12px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:12px">Apply Solid</button>
+    </div>
+    <div style="text-align:right">
+      <button id="grad-cancel" style="padding:6px 16px;margin-right:8px;border:1px solid #ccc;border-radius:4px;cursor:pointer">Cancel</button>
+      <button id="grad-apply" style="padding:6px 16px;background:#3b82f6;color:#fff;border:none;border-radius:4px;cursor:pointer">Apply Gradient</button>
+    </div>
+  `;
+
+  document.body.appendChild(dlg);
+
+  let selectedCSS = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+
+  // Preset click
+  dlg.querySelectorAll('.grad-preset').forEach(el => {
+    el.addEventListener('click', () => {
+      dlg.querySelectorAll('.grad-preset').forEach(e => e.style.borderColor = 'transparent');
+      el.style.borderColor = '#3b82f6';
+      selectedCSS = presets[parseInt(el.dataset.idx)].css;
+      dlg.querySelector('#grad-preview').style.background = selectedCSS;
+    });
+  });
+
+  // Custom gradient update
+  const updateCustom = () => {
+    const c1 = dlg.querySelector('#grad-color1').value;
+    const c2 = dlg.querySelector('#grad-color2').value;
+    const dir = dlg.querySelector('#grad-direction').value;
+    selectedCSS = `linear-gradient(${dir}, ${c1} 0%, ${c2} 100%)`;
+    dlg.querySelector('#grad-preview').style.background = selectedCSS;
+    dlg.querySelectorAll('.grad-preset').forEach(e => e.style.borderColor = 'transparent');
+  };
+  dlg.querySelector('#grad-color1').addEventListener('input', updateCustom);
+  dlg.querySelector('#grad-color2').addEventListener('input', updateCustom);
+  dlg.querySelector('#grad-direction').addEventListener('change', updateCustom);
+
+  // Solid color
+  dlg.querySelector('#grad-apply-solid').addEventListener('click', () => {
+    const color = dlg.querySelector('#grad-solid').value;
+    applySlideBackground(color);
+    dlg.remove();
+  });
+
+  // Cancel
+  dlg.querySelector('#grad-cancel').addEventListener('click', () => dlg.remove());
+
+  // Apply gradient
+  dlg.querySelector('#grad-apply').addEventListener('click', () => {
+    applySlideBackground(selectedCSS);
+    dlg.remove();
+  });
+}
+
+function applySlideBackground(bg) {
+  const canvas = document.getElementById('slide-canvas');
+  if (!canvas) return;
+  canvas.style.background = bg;
+  slides[activeSlideIdx].customBg = bg;
   updateThumb(activeSlideIdx);
 }

@@ -15,6 +15,15 @@ export function initDocEditor() {
     if (outlineVisible) updateDocOutline();
   });
 
+  // Image resize handles
+  editorEl.addEventListener('click', (e) => {
+    if (e.target.tagName === 'IMG') {
+      showImageResizeHandles(e.target);
+    } else {
+      removeImageResizeHandles();
+    }
+  });
+
   // Document Outline toggle
   document.getElementById('doc-outline-toggle')?.addEventListener('click', toggleDocOutline);
   document.getElementById('doc-outline-close')?.addEventListener('click', toggleDocOutline);
@@ -1798,4 +1807,95 @@ function showBookmarkJumpMenu() {
     });
   });
   menu.querySelector('.bm-close').addEventListener('click', () => menu.remove());
+}
+
+/* ==================== Image Resize Handles ==================== */
+
+let activeResizeImg = null;
+
+function removeImageResizeHandles() {
+  document.querySelectorAll('.doc-img-resize-wrap').forEach(wrap => {
+    const img = wrap.querySelector('img');
+    if (img) wrap.parentNode.insertBefore(img, wrap);
+    wrap.remove();
+  });
+  activeResizeImg = null;
+}
+
+function showImageResizeHandles(img) {
+  removeImageResizeHandles();
+  activeResizeImg = img;
+
+  const wrapper = document.createElement('span');
+  wrapper.className = 'doc-img-resize-wrap';
+  wrapper.contentEditable = 'false';
+  wrapper.style.cssText = 'display:inline-block;position:relative;line-height:0;border:2px solid #3b82f6;';
+  img.parentNode.insertBefore(wrapper, img);
+  wrapper.appendChild(img);
+
+  // 8 resize handles: corners + edges
+  const handles = [
+    { cursor: 'nw-resize', pos: 'top:0;left:0;transform:translate(-50%,-50%)' },
+    { cursor: 'n-resize', pos: 'top:0;left:50%;transform:translate(-50%,-50%)' },
+    { cursor: 'ne-resize', pos: 'top:0;right:0;transform:translate(50%,-50%)' },
+    { cursor: 'e-resize', pos: 'top:50%;right:0;transform:translate(50%,-50%)' },
+    { cursor: 'se-resize', pos: 'bottom:0;right:0;transform:translate(50%,50%)' },
+    { cursor: 's-resize', pos: 'bottom:0;left:50%;transform:translate(-50%,50%)' },
+    { cursor: 'sw-resize', pos: 'bottom:0;left:0;transform:translate(-50%,50%)' },
+    { cursor: 'w-resize', pos: 'top:50%;left:0;transform:translate(-50%,-50%)' },
+  ];
+
+  handles.forEach(h => {
+    const dot = document.createElement('div');
+    dot.style.cssText = `position:absolute;${h.pos};width:8px;height:8px;background:#3b82f6;border:1px solid #fff;border-radius:50%;cursor:${h.cursor};z-index:2;`;
+    dot.addEventListener('mousedown', (e) => startImageResize(e, img, h.cursor));
+    wrapper.appendChild(dot);
+  });
+
+  // Size label
+  const label = document.createElement('div');
+  label.className = 'doc-img-size-label';
+  label.style.cssText = 'position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);background:#333;color:#fff;font-size:10px;padding:2px 6px;border-radius:3px;white-space:nowrap;pointer-events:none;';
+  label.textContent = `${Math.round(img.offsetWidth)} × ${Math.round(img.offsetHeight)}`;
+  wrapper.appendChild(label);
+}
+
+function startImageResize(e, img, cursor) {
+  e.preventDefault();
+  e.stopPropagation();
+  const startX = e.clientX, startY = e.clientY;
+  const startW = img.offsetWidth, startH = img.offsetHeight;
+  const ratio = startW / startH;
+  const label = img.parentNode?.querySelector('.doc-img-size-label');
+
+  const onMove = (ev) => {
+    let dx = ev.clientX - startX;
+    let dy = ev.clientY - startY;
+    let newW = startW, newH = startH;
+
+    if (cursor.includes('e')) newW = startW + dx;
+    if (cursor.includes('w')) newW = startW - dx;
+    if (cursor.includes('s')) newH = startH + dy;
+    if (cursor.includes('n')) newH = startH - dy;
+
+    // Maintain aspect ratio for corner handles
+    if (cursor.length > 2) {
+      newH = newW / ratio;
+    }
+
+    newW = Math.max(20, newW);
+    newH = Math.max(20, newH);
+    img.style.width = newW + 'px';
+    img.style.height = newH + 'px';
+    if (label) label.textContent = `${Math.round(newW)} × ${Math.round(newH)}`;
+  };
+
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    dirty = true;
+  };
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
 }

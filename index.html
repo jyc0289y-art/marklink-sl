@@ -302,12 +302,49 @@
         <span class="sheet-fx-label">fx</span>
         <input type="text" id="sheet-formula-bar" class="sheet-formula-bar" placeholder="Enter value or formula (e.g. =SUM(A1:A10))">
         <div class="toolbar-divider"></div>
+        <select id="sheet-font-family" title="Font" style="padding:2px;font-size:11px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);width:100px">
+          <option value="">Default</option>
+          <option value="Arial">Arial</option>
+          <option value="Times New Roman">Times New Roman</option>
+          <option value="Courier New">Courier New</option>
+          <option value="Georgia">Georgia</option>
+          <option value="Verdana">Verdana</option>
+          <option value="Noto Sans KR">Noto Sans KR</option>
+        </select>
+        <select id="sheet-font-size" title="Font Size" style="padding:2px;font-size:11px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);width:50px">
+          <option value="">-</option>
+          <option value="8">8</option>
+          <option value="9">9</option>
+          <option value="10">10</option>
+          <option value="11">11</option>
+          <option value="12">12</option>
+          <option value="14">14</option>
+          <option value="16">16</option>
+          <option value="18">18</option>
+          <option value="20">20</option>
+          <option value="24">24</option>
+          <option value="28">28</option>
+          <option value="36">36</option>
+        </select>
         <button class="toolbar-btn doc-cmd" id="sheet-bold" title="Bold"><b>B</b></button>
+        <button class="toolbar-btn" id="sheet-italic" title="Italic"><i>I</i></button>
+        <button class="toolbar-btn" id="sheet-underline" title="Underline"><u>U</u></button>
+        <button class="toolbar-btn" id="sheet-wrap" title="Wrap Text" style="font-size:10px">↩ Wrap</button>
         <button class="toolbar-btn doc-cmd" id="sheet-align-left" title="Align Left">&#9776;</button>
         <button class="toolbar-btn doc-cmd" id="sheet-align-center" title="Align Center">&#9776;</button>
         <button class="toolbar-btn doc-cmd" id="sheet-align-right" title="Align Right">&#9776;</button>
         <div class="toolbar-divider"></div>
         <input type="color" id="sheet-bg-color" value="#ffffff" title="Cell Background">
+        <input type="color" id="sheet-text-color" value="#000000" title="Text Color">
+        <button class="toolbar-btn" id="sheet-borders" title="Cell Borders" style="font-size:11px">⊞</button>
+        <select id="sheet-number-format" title="Number Format" style="padding:2px;font-size:11px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+          <option value="">Auto</option>
+          <option value="number">Number (1,234.56)</option>
+          <option value="currency">Currency ($1,234.56)</option>
+          <option value="percent">Percent (12.34%)</option>
+          <option value="date">Date</option>
+          <option value="text">Plain Text</option>
+        </select>
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="sheet-add-row" title="Add Row">+R</button>
         <button class="toolbar-btn" id="sheet-add-col" title="Add Column">+C</button>
@@ -419,6 +456,7 @@
         <button class="toolbar-btn" id="slide-insert-table" title="Insert Table">▦</button>
         <button class="toolbar-btn" id="slide-insert-video" title="Insert Video URL" style="font-size:11px">🎬</button>
         <button class="toolbar-btn" id="slide-master" title="Master Slides" style="font-size:11px">🎨 Master</button>
+        <button class="toolbar-btn" id="slide-gradient-bg" title="Gradient Background" style="font-size:11px">🌈 BG</button>
         <button class="toolbar-btn" id="slide-layer-up" title="Bring Forward" style="font-size:11px">⬆</button>
         <button class="toolbar-btn" id="slide-layer-down" title="Send Backward" style="font-size:11px">⬇</button>
         <button class="toolbar-btn" id="slide-align" title="Align Objects" style="font-size:11px">⊞</button>
