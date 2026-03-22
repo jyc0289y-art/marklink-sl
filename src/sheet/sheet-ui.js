@@ -179,7 +179,12 @@ function cellStyle(cell, r, c) {
     const f = cell.format;
     if (f.bold) parts.push('font-weight:700');
     if (f.italic) parts.push('font-style:italic');
-    if (f.underline) parts.push('text-decoration:underline');
+    // text-decoration can be combined
+    const textDeco = [];
+    if (f.underline) textDeco.push('underline');
+    if (f.strikethrough) textDeco.push('line-through');
+    if (textDeco.length) parts.push(`text-decoration:${textDeco.join(' ')}`);
+    if (f.textRotation) parts.push(`writing-mode:vertical-rl;transform:rotate(${f.textRotation}deg)`);
     if (f.align) parts.push(`text-align:${f.align}`);
     if (f.valign) parts.push(`vertical-align:${f.valign}`);
     if (f.bg) parts.push(`background:${f.bg}`);
@@ -603,6 +608,19 @@ function bindEvents() {
     renderGrid(); updateSelection();
   });
 
+  // Strikethrough
+  document.getElementById('sheet-strikethrough')?.addEventListener('click', () => {
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    const first = getCell(getSheet(), r1, c1);
+    const newVal = !(first?.format?.strikethrough);
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        setCellFormat(getSheet(), r, c, 'strikethrough', newVal);
+      }
+    }
+    renderGrid(); updateSelection();
+  });
+
   // Wrap Text
   document.getElementById('sheet-wrap')?.addEventListener('click', () => {
     const { r1, r2, c1, c2 } = getSelectionRange();
@@ -774,6 +792,9 @@ function bindEvents() {
   document.getElementById('sheet-text-to-cols')?.addEventListener('click', () => textToColumns());
   // Print Sheet
   document.getElementById('sheet-print')?.addEventListener('click', () => printSheet());
+
+  // Sheet Protection
+  document.getElementById('sheet-protect')?.addEventListener('click', () => toggleSheetProtection());
 
   // CSV Import
   document.getElementById('sheet-import-csv')?.addEventListener('click', () => importCSV());
@@ -952,6 +973,10 @@ function scrollIntoView() {
 /* ==================== Cell Editing ==================== */
 
 function startEdit(initialChar) {
+  if (!isCellEditable(selectedRow, selectedCol)) {
+    alert('This cell is protected. Unprotect the sheet to edit.');
+    return;
+  }
   const td = gridEl.querySelector(`td[data-row="${selectedRow}"][data-col="${selectedCol}"]`);
   if (!td) return;
   isEditing = true;
@@ -1283,6 +1308,14 @@ function adjustFormulaReferences(raw, dr, dc) {
 }
 
 function clearSelection() {
+  if (sheetProtected) {
+    const { r1, r2, c1, c2 } = getSelectionRange();
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        if (!isCellEditable(r, c)) { alert('Cannot clear protected cells.'); return; }
+      }
+    }
+  }
   const sheet = getSheet();
   const { r1, r2, c1, c2 } = getSelectionRange();
   for (let r = r1; r <= r2; r++) {
@@ -1327,6 +1360,24 @@ function applyFreezeStyles() {
       td.style.background = td.style.background || 'var(--bg-primary)';
     });
   });
+
+  // Visual freeze line indicator
+  if (freezeRows > 0) {
+    const lastFrozenRow = gridEl.querySelector(`.sheet-frozen-row:last-of-type`);
+    if (lastFrozenRow) {
+      lastFrozenRow.querySelectorAll('td, th').forEach(cell => {
+        cell.style.borderBottom = '2px solid #3b82f6';
+      });
+    }
+  }
+  if (freezeCols > 0) {
+    const allTrs = gridEl.querySelectorAll('tr');
+    allTrs.forEach(tr => {
+      const cells = tr.querySelectorAll('.sheet-frozen-col');
+      const last = cells[cells.length - 1];
+      if (last) last.style.borderRight = '2px solid #3b82f6';
+    });
+  }
 }
 
 /* ==================== Sort ==================== */
@@ -1404,7 +1455,11 @@ function ensureAcEl() {
     const item = e.target.closest('.sheet-ac-item');
     if (item) {
       e.preventDefault();
-      acceptAutocomplete(item.dataset.fn);
+      if (item.dataset.colval) {
+        acceptColumnValue(item.dataset.fn);
+      } else {
+        acceptAutocomplete(item.dataset.fn);
+      }
     }
   });
 }
@@ -1420,18 +1475,47 @@ function getFormulaToken(inputEl) {
 function showAutocomplete(inputEl) {
   ensureAcEl();
   acTarget = inputEl;
-  const token = getFormulaToken(inputEl);
-  if (!token || token.length < 1) { hideAutocomplete(); return; }
 
-  const matches = FORMULA_LIST.filter((f) => f.startsWith(token));
-  if (matches.length === 0 || (matches.length === 1 && matches[0] === token)) {
-    hideAutocomplete(); return;
+  const val = inputEl.value;
+
+  // Formula autocomplete
+  if (val.startsWith('=')) {
+    const token = getFormulaToken(inputEl);
+    if (!token || token.length < 1) { hideAutocomplete(); return; }
+
+    const matches = FORMULA_LIST.filter((f) => f.startsWith(token));
+    if (matches.length === 0 || (matches.length === 1 && matches[0] === token)) {
+      hideAutocomplete(); return;
+    }
+
+    acIndex = 0;
+    acEl.innerHTML = matches.slice(0, 8).map((f, i) =>
+      `<div class="sheet-ac-item${i === 0 ? ' active' : ''}" data-fn="${f}">${f}()</div>`
+    ).join('');
+  } else {
+    // Column value autocomplete
+    if (!val || val.length < 1) { hideAutocomplete(); return; }
+    const sheet = getSheet();
+    const col = editingCol;
+    const seen = new Set();
+    const suggestions = [];
+    for (let r = 0; r < sheet.rows; r++) {
+      if (r === editingRow) continue;
+      const cv = getDisplayValue(sheet, r, col);
+      if (cv && !seen.has(cv) && cv.toLowerCase().startsWith(val.toLowerCase()) && cv !== val) {
+        seen.add(cv);
+        suggestions.push(cv);
+        if (suggestions.length >= 6) break;
+      }
+    }
+    if (suggestions.length === 0) { hideAutocomplete(); return; }
+
+    acIndex = 0;
+    acEl.innerHTML = suggestions.map((s, i) =>
+      `<div class="sheet-ac-item${i === 0 ? ' active' : ''}" data-fn="${escapeHTML(s)}" data-colval="1">${escapeHTML(s)}</div>`
+    ).join('');
   }
 
-  acIndex = 0;
-  acEl.innerHTML = matches.slice(0, 8).map((f, i) =>
-    `<div class="sheet-ac-item${i === 0 ? ' active' : ''}" data-fn="${f}">${f}()</div>`
-  ).join('');
   acEl.style.display = 'block';
 
   // Position near the input element
@@ -1464,7 +1548,11 @@ function handleAcKeydown(e, inputEl) {
     return true;
   } else if ((e.key === 'Tab' || e.key === 'Enter') && acIndex >= 0 && items[acIndex]) {
     e.preventDefault();
-    acceptAutocomplete(items[acIndex].dataset.fn);
+    if (items[acIndex].dataset.colval) {
+      acceptColumnValue(items[acIndex].dataset.fn);
+    } else {
+      acceptAutocomplete(items[acIndex].dataset.fn);
+    }
     return true;
   } else if (e.key === 'Escape') {
     hideAutocomplete();
@@ -1495,6 +1583,16 @@ function acceptAutocomplete(fnName) {
     // Enter formula mode for cell reference insertion
     isFormulaMode = true;
   }
+  hideAutocomplete();
+}
+
+function acceptColumnValue(value) {
+  const inputEl = acTarget || formulaBarEl;
+  inputEl.value = value;
+  inputEl.setSelectionRange(value.length, value.length);
+  inputEl.focus();
+  if (inputEl !== formulaBarEl) formulaBarEl.value = value;
+  else { const ci = getCellInput(); if (ci) ci.value = value; }
   hideAutocomplete();
 }
 
@@ -4088,6 +4186,79 @@ function toggleGroupCollapse(groupIdx) {
   group.collapsed = !group.collapsed;
   renderGrid();
   updateSelection();
+}
+
+/* ==================== Sheet Protection ==================== */
+
+let sheetProtected = false;
+let protectedPassword = '';
+
+function toggleSheetProtection() {
+  if (sheetProtected) {
+    const pw = prompt('Enter password to unprotect sheet:');
+    if (pw === protectedPassword) {
+      sheetProtected = false;
+      protectedPassword = '';
+      const btn = document.getElementById('sheet-protect');
+      if (btn) btn.textContent = '🔒 Protect';
+      alert('Sheet is now unprotected.');
+    } else {
+      alert('Incorrect password.');
+    }
+    return;
+  }
+
+  const dlg = document.createElement('div');
+  dlg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:10px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.25);z-index:10000;width:340px;font-size:14px;color:#333;';
+  dlg.innerHTML = `
+    <h3 style="margin:0 0 16px">Protect Sheet</h3>
+    <p style="font-size:12px;color:#666;margin:0 0 12px">Protected cells cannot be edited. Use "Lock Cells" to toggle which cells are locked.</p>
+    <div style="margin-bottom:12px">
+      <label style="font-weight:600;font-size:12px">Password (optional):</label>
+      <input type="password" id="prot-pw" style="width:100%;padding:8px;margin-top:4px;border:1px solid #ccc;border-radius:4px">
+    </div>
+    <div style="margin-bottom:16px">
+      <label style="font-size:12px"><input type="checkbox" id="prot-lock-all" checked> Lock all cells</label><br>
+      <label style="font-size:12px"><input type="checkbox" id="prot-allow-select" checked> Allow selecting cells</label>
+    </div>
+    <div style="text-align:right">
+      <button id="prot-cancel" style="padding:6px 16px;margin-right:8px;border:1px solid #ccc;border-radius:4px;cursor:pointer">Cancel</button>
+      <button id="prot-ok" style="padding:6px 16px;background:#3b82f6;color:#fff;border:none;border-radius:4px;cursor:pointer">Protect</button>
+    </div>
+  `;
+  document.body.appendChild(dlg);
+
+  dlg.querySelector('#prot-cancel').addEventListener('click', () => dlg.remove());
+  dlg.querySelector('#prot-ok').addEventListener('click', () => {
+    protectedPassword = dlg.querySelector('#prot-pw').value;
+    const lockAll = dlg.querySelector('#prot-lock-all').checked;
+    sheetProtected = true;
+
+    if (lockAll) {
+      // Mark all cells as locked
+      const sheet = getSheet();
+      for (let r = 0; r < sheet.rows; r++) {
+        for (let c = 0; c < sheet.cols; c++) {
+          const cell = getCell(sheet, r, c);
+          if (cell) {
+            if (!cell.format) cell.format = {};
+            cell.format.locked = true;
+          }
+        }
+      }
+    }
+
+    const btn = document.getElementById('sheet-protect');
+    if (btn) btn.textContent = '🔓 Unprotect';
+    dlg.remove();
+    alert('Sheet is now protected.');
+  });
+}
+
+function isCellEditable(r, c) {
+  if (!sheetProtected) return true;
+  const cell = getCell(getSheet(), r, c);
+  return cell?.format?.locked === false;
 }
 
 /* ==================== Border Menu ==================== */

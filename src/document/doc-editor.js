@@ -476,7 +476,19 @@ function updateWordCount() {
   const paras = editorEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li').length || 1;
   const readingTime = Math.max(1, Math.ceil(words / 200)); // ~200 WPM average
   const pages = Math.max(1, Math.ceil(words / 250)); // ~250 words per page
-  statusEl.textContent = `Words: ${words.toLocaleString()}  |  Chars: ${chars.toLocaleString()} (${charsNoSpace.toLocaleString()})  |  ¶${paras}  |  ~${readingTime} min read  |  ~${pages} pg`;
+
+  // Readability estimate (simplified Flesch-Kincaid grade level)
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0).length || 1;
+  const syllables = text.split(/\s+/).reduce((acc, word) => {
+    const w = word.toLowerCase().replace(/[^a-z]/g, '');
+    if (w.length <= 3) return acc + 1;
+    let count = w.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '').replace(/^y/, '').match(/[aeiouy]{1,2}/g)?.length || 1;
+    return acc + count;
+  }, 0);
+  const fkGrade = words > 30 ? Math.round((0.39 * (words / sentences) + 11.8 * (syllables / words) - 15.59) * 10) / 10 : 0;
+  const readLevel = fkGrade <= 0 ? '' : fkGrade <= 5 ? '(Easy)' : fkGrade <= 8 ? '(Medium)' : fkGrade <= 12 ? '(Advanced)' : '(Expert)';
+
+  statusEl.textContent = `Words: ${words.toLocaleString()}  |  Chars: ${chars.toLocaleString()} (${charsNoSpace.toLocaleString()})  |  ¶${paras}  |  ~${readingTime} min read  |  ~${pages} pg${fkGrade > 0 ? `  |  Grade ${fkGrade} ${readLevel}` : ''}`;
 }
 
 // ─── Helpers ────────────────────────────────────────────────
