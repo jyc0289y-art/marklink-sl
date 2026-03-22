@@ -169,17 +169,21 @@ export function deleteCol(sheet, colIdx) {
   sheet.cols--;
 }
 
-/** Recalculate all formula cells */
+/** Recalculate all formula cells with dependency ordering */
 export function recalcAll(sheet, allSheets) {
-  for (const [key, cell] of Object.entries(sheet.cells)) {
-    if (cell.raw.startsWith('=')) {
-      cell.value = evaluate(sheet, cell.raw, allSheets);
+  // Two-pass recalc: first pass evaluates, second pass catches dependencies
+  for (let pass = 0; pass < 2; pass++) {
+    for (const [key, cell] of Object.entries(sheet.cells)) {
+      if (cell.raw.startsWith('=')) {
+        cell.value = evaluate(sheet, cell.raw, allSheets);
+      }
     }
   }
 }
 
 // Module-level evaluation context for cross-sheet references
 let _evalSheets = null; // set during evaluation to enable Sheet2!A1 syntax
+let _evalStack = new Set(); // circular reference detection
 
 /**
  * Resolve a cross-sheet reference like "Sheet2!A1" or "'My Sheet'!A1:B3"
@@ -944,6 +948,125 @@ function evalFormula(sheet, expr) {
       case 'ISTEXT': {
         const v = evalSimpleExpr(sheet, argsStr);
         return typeof v === 'string' && isNaN(Number(v));
+      }
+
+      // ─── Additional Statistics ───
+      case 'PERCENTILE': {
+        const args = splitArgs(argsStr);
+        const vals = resolveRange(sheet, args[0]).filter(v => typeof v === 'number').sort((a, b) => a - b);
+        const k = Number(evalSimpleExpr(sheet, args[1]));
+        if (!vals.length || k < 0 || k > 1) return '#NUM';
+        const idx = k * (vals.length - 1);
+        const lo = Math.floor(idx), hi = Math.ceil(idx);
+        return lo === hi ? vals[lo] : vals[lo] + (vals[hi] - vals[lo]) * (idx - lo);
+      }
+      case 'QUARTILE': {
+        const args = splitArgs(argsStr);
+        const vals = resolveRange(sheet, args[0]).filter(v => typeof v === 'number').sort((a, b) => a - b);
+        const q = Number(evalSimpleExpr(sheet, args[1]));
+        if (!vals.length || q < 0 || q > 4) return '#NUM';
+        const k = q / 4;
+        const idx = k * (vals.length - 1);
+        const lo = Math.floor(idx), hi = Math.ceil(idx);
+        return lo === hi ? vals[lo] : vals[lo] + (vals[hi] - vals[lo]) * (idx - lo);
+      }
+      case 'STDEVP': {
+        const vals = resolveRange(sheet, argsStr).filter(v => typeof v === 'number');
+        if (!vals.length) return 0;
+        const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+        const variance = vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length;
+        return Math.sqrt(variance);
+      }
+      case 'VARP': {
+        const vals = resolveRange(sheet, argsStr).filter(v => typeof v === 'number');
+        if (!vals.length) return 0;
+        const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+        return vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length;
+      }
+      case 'CORREL': {
+        const args = splitArgs(argsStr);
+        const xs = resolveRange(sheet, args[0]).filter(v => typeof v === 'number');
+        const ys = resolveRange(sheet, args[1]).filter(v => typeof v === 'number');
+        const n = Math.min(xs.length, ys.length);
+        if (n < 2) return '#N/A';
+        const mx = xs.slice(0, n).reduce((a, b) => a + b, 0) / n;
+        const my = ys.slice(0, n).reduce((a, b) => a + b, 0) / n;
+        let sxy = 0, sx2 = 0, sy2 = 0;
+        for (let i = 0; i < n; i++) {
+          sxy += (xs[i] - mx) * (ys[i] - my);
+          sx2 += (xs[i] - mx) ** 2;
+          sy2 += (ys[i] - my) ** 2;
+        }
+        return sx2 && sy2 ? sxy / Math.sqrt(sx2 * sy2) : '#DIV/0';
+      }
+      case 'COVAR': {
+        const args = splitArgs(argsStr);
+        const xs = resolveRange(sheet, args[0]).filter(v => typeof v === 'number');
+        const ys = resolveRange(sheet, args[1]).filter(v => typeof v === 'number');
+        const n = Math.min(xs.length, ys.length);
+        if (n < 1) return '#N/A';
+        const mx = xs.slice(0, n).reduce((a, b) => a + b, 0) / n;
+        const my = ys.slice(0, n).reduce((a, b) => a + b, 0) / n;
+        let sxy = 0;
+        for (let i = 0; i < n; i++) sxy += (xs[i] - mx) * (ys[i] - my);
+        return sxy / n;
+      }
+      case 'MODE': {
+        const vals = resolveRange(sheet, argsStr).filter(v => typeof v === 'number');
+        if (!vals.length) return '#N/A';
+        const freq = {};
+        vals.forEach(v => { freq[v] = (freq[v] || 0) + 1; });
+        let maxFreq = 0, mode = vals[0];
+        for (const [v, f] of Object.entries(freq)) {
+          if (f > maxFreq) { maxFreq = f; mode = Number(v); }
+        }
+        return maxFreq > 1 ? mode : '#N/A';
+      }
+      case 'COUNTBLANK': {
+        const vals = resolveRange(sheet, argsStr);
+        return vals.filter(v => v === '' || v == null).length;
+      }
+      case 'SUMIFS': {
+        const args = splitArgs(argsStr);
+        if (args.length < 3 || args.length % 2 === 0) return '#ERROR';
+        const sumRange = resolveRange(sheet, args[0]);
+        const criteriaCount = (args.length - 1) / 2;
+        const critRanges = [];
+        const criteria = [];
+        for (let i = 0; i < criteriaCount; i++) {
+          critRanges.push(resolveRange(sheet, args[1 + i * 2]));
+          criteria.push(evalSimpleExpr(sheet, args[2 + i * 2]));
+        }
+        let sum = 0;
+        for (let i = 0; i < sumRange.length; i++) {
+          let allMatch = true;
+          for (let c = 0; c < criteriaCount; c++) {
+            if (!matchCriteria(critRanges[c][i], criteria[c])) { allMatch = false; break; }
+          }
+          if (allMatch && typeof sumRange[i] === 'number') sum += sumRange[i];
+        }
+        return sum;
+      }
+      case 'COUNTIFS': {
+        const args = splitArgs(argsStr);
+        if (args.length < 2 || args.length % 2 !== 0) return '#ERROR';
+        const criteriaCount = args.length / 2;
+        const critRanges = [];
+        const criteria = [];
+        for (let i = 0; i < criteriaCount; i++) {
+          critRanges.push(resolveRange(sheet, args[i * 2]));
+          criteria.push(evalSimpleExpr(sheet, args[i * 2 + 1]));
+        }
+        const len = critRanges[0]?.length || 0;
+        let count = 0;
+        for (let i = 0; i < len; i++) {
+          let allMatch = true;
+          for (let c = 0; c < criteriaCount; c++) {
+            if (!matchCriteria(critRanges[c][i], criteria[c])) { allMatch = false; break; }
+          }
+          if (allMatch) count++;
+        }
+        return count;
       }
     }
   }

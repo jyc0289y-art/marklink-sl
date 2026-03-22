@@ -50,6 +50,7 @@ const FORMULA_LIST = [
   'AND','OR','NOT','IFERROR','IFS','SWITCH','CHOOSE',
   'DATE','YEAR','MONTH','DAY','HOUR','MINUTE','SECOND','WEEKDAY','DATEDIF','EDATE',
   'LARGE','SMALL','RANK','ISBLANK','ISNUMBER','ISTEXT',
+  'PERCENTILE','QUARTILE','STDEVP','VARP','CORREL','COVAR','MODE','COUNTBLANK','SUMIFS','COUNTIFS',
 ];
 let acEl = null;
 let acIndex = -1;
@@ -1887,6 +1888,8 @@ function showCondFmtDialog() {
             <option value="text">Text contains</option>
             <option value="empty">Is empty</option>
             <option value="notempty">Is not empty</option>
+            <option value="color_scale">Color Scale (min→max)</option>
+            <option value="data_bars">Data Bars</option>
           </select>
         </div>
         <div id="cf-value-row" style="display:flex;gap:8px;margin-bottom:10px">
@@ -1912,8 +1915,10 @@ function showCondFmtDialog() {
   const typeSelect = dialog.querySelector('#cf-type');
   const val2Input = dialog.querySelector('#cf-val2');
   typeSelect.addEventListener('change', () => {
-    val2Input.style.display = typeSelect.value === 'between' ? '' : 'none';
-    dialog.querySelector('#cf-val1').style.display = ['empty', 'notempty'].includes(typeSelect.value) ? 'none' : '';
+    const t = typeSelect.value;
+    val2Input.style.display = t === 'between' ? '' : 'none';
+    dialog.querySelector('#cf-val1').style.display = ['empty', 'notempty', 'color_scale', 'data_bars'].includes(t) ? 'none' : '';
+    dialog.querySelector('#cf-color').parentElement.style.display = ['color_scale', 'data_bars'].includes(t) ? 'none' : '';
   });
 
   dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
@@ -1950,6 +1955,32 @@ function getCondFmtStyle(r, c) {
 
   for (const cf of condFormats) {
     if (r < cf.range.r1 || r > cf.range.r2 || c < cf.range.c1 || c > cf.range.c2) continue;
+
+    // Color scale / data bars — compute range min/max
+    if (cf.type === 'color_scale' || cf.type === 'data_bars') {
+      if (isNaN(numVal)) continue;
+      let min = Infinity, max = -Infinity;
+      for (let rr = cf.range.r1; rr <= cf.range.r2; rr++) {
+        for (let cc = cf.range.c1; cc <= cf.range.c2; cc++) {
+          const v = parseFloat(getDisplayValue(sheet, rr, cc));
+          if (!isNaN(v)) { min = Math.min(min, v); max = Math.max(max, v); }
+        }
+      }
+      const range = max - min || 1;
+      const pct = Math.max(0, Math.min(1, (numVal - min) / range));
+
+      if (cf.type === 'color_scale') {
+        // Green (low) → Yellow (mid) → Red (high)
+        const r2 = pct < 0.5 ? Math.round(87 + pct * 2 * 168) : 255;
+        const g = pct < 0.5 ? 200 : Math.round(200 - (pct - 0.5) * 2 * 155);
+        const b = Math.round(87 * (1 - pct));
+        return `background:rgb(${r2},${g},${b});color:${pct > 0.7 ? '#fff' : '#000'}`;
+      } else {
+        // Data bars — gradient background
+        const barPct = Math.round(pct * 100);
+        return `background:linear-gradient(90deg, #4285f4 ${barPct}%, transparent ${barPct}%);color:${barPct > 50 ? '#fff' : 'var(--text-primary)'}`;
+      }
+    }
 
     let match = false;
     switch (cf.type) {
