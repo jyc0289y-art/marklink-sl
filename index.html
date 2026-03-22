@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OfficeLink SL</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0071e3" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="OfficeLink SL" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
   <link rel="stylesheet" href="/src/styles/main.css" />
   <link rel="stylesheet" href="/src/styles/editor.css" />
   <link rel="stylesheet" href="/src/styles/preview.css" />
@@ -76,6 +82,9 @@
       <button id="lang-btn" class="lang-btn" data-tip="tip.lang" title="Change Language">🇺🇸 English</button>
       <button id="btn-tutorial" class="toolbar-btn" data-tip="tip.tutorial" title="Tutorial">
         <span class="icon">❓</span>
+      </button>
+      <button id="btn-install" class="toolbar-btn" data-tip="tip.install" title="Install App" style="display:none">
+        <span class="icon">📲</span>
       </button>
       <button id="btn-fullscreen" class="toolbar-btn toolbar-btn-fullscreen" data-tip="tip.fullscreen" title="Fullscreen">
         <span class="icon" id="fullscreen-icon">⛶</span>

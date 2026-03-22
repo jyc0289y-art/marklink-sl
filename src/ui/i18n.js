@@ -161,6 +161,14 @@ const T = {
     hi: 'निर्यात', id: 'Ekspor', tr: 'Dışa aktar', vi: 'Xuất', th: 'ส่งออก',
     it: 'Esporta', pl: 'Eksportuj', uk: 'Експорт',
   },
+  'tip.install': {
+    en: 'Install App', ko: '앱 설치', ja: 'アプリをインストール', zh: '安装应用',
+    es: 'Instalar App', fr: 'Installer', pt: 'Instalar App',
+    de: 'App installieren', ru: 'Установить', ar: 'تثبيت التطبيق',
+    hi: 'ऐप इंस्टॉल करें', id: 'Instal Aplikasi', tr: 'Uygulamayı Yükle', vi: 'Cài đặt ứng dụng',
+    th: 'ติดตั้งแอป', it: 'Installa App', pl: 'Zainstaluj', uk: 'Встановити додаток',
+    sw: 'Sakinisha App',
+  },
   'tip.fullscreen': {
     en: 'Fullscreen', ko: '전체 화면', ja: '全画面', zh: '全屏',
     es: 'Pantalla completa', fr: 'Plein écran', pt: 'Tela cheia',

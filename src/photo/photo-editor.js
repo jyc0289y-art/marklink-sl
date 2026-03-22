@@ -23,7 +23,16 @@ export function initPhotoEditor() {
   // Canvas setup
   const canvasEl = document.getElementById('photo-canvas');
   if (canvasEl) {
-    try { engine = new WebGLEngine(canvasEl); } catch (e) { console.error('WebGL init failed:', e); }
+    try {
+      engine = new WebGLEngine(canvasEl);
+    } catch (e) {
+      console.error('WebGL init failed:', e);
+      const notice = document.createElement('div');
+      notice.className = 'photo-webgl-error';
+      notice.textContent = 'WebGL is not supported in this browser. Photo editing is unavailable.';
+      notice.style.cssText = 'padding:24px;text-align:center;color:#e74c3c;font-weight:600;';
+      container.prepend(notice);
+    }
   }
 
   // Event bindings
