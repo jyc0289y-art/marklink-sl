@@ -51,6 +51,11 @@ let acEl = null;
 let acIndex = -1;
 let acTarget = null; // the input element autocomplete is bound to
 
+// Undo/Redo
+let undoStack = [];
+let redoStack = [];
+const MAX_UNDO = 50;
+
 // DOM refs
 let gridEl, cellRefEl, formulaBarEl, containerEl;
 
@@ -112,7 +117,10 @@ function renderGrid() {
         ? ` rowspan="${mergeSpan.rows}" colspan="${mergeSpan.cols}"`
         : '';
       const w = getColWidth(c);
-      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="width:${w}px;min-width:${w}px;height:${rh}px;${style}"${spanAttrs}>${escapeHTML(String(val))}</td>`;
+      const noteKey = `${r},${c}`;
+      const hasNote = cellNotes[noteKey];
+      const noteIndicator = hasNote ? '<span class="cell-note-indicator" title="' + escapeHTML(hasNote) + '"></span>' : '';
+      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="width:${w}px;min-width:${w}px;height:${rh}px;${style}"${spanAttrs}>${escapeHTML(String(val))}${noteIndicator}</td>`;
     }
     html += '</tr>';
   }
@@ -352,6 +360,16 @@ function bindEvents() {
       showSheetFindReplace();
       return;
     }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      sheetUndo();
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+      e.preventDefault();
+      sheetRedo();
+      return;
+    }
 
     if (isEditing) {
       // In-cell editing: only handle Enter/Tab/Escape
@@ -507,6 +525,10 @@ function bindEvents() {
   document.getElementById('sheet-find')?.addEventListener('click', () => {
     showSheetFindReplace();
   });
+
+  // Undo/Redo
+  document.getElementById('sheet-undo')?.addEventListener('click', () => sheetUndo());
+  document.getElementById('sheet-redo')?.addEventListener('click', () => sheetRedo());
 
   // CSV Import
   document.getElementById('sheet-import-csv')?.addEventListener('click', () => importCSV());
@@ -685,12 +707,43 @@ function getCellInput() {
   return td?.querySelector('input');
 }
 
+function saveUndoState() {
+  const sheet = getSheet();
+  const snapshot = JSON.stringify(sheet.cells);
+  undoStack.push(snapshot);
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0; // clear redo on new action
+}
+
+function sheetUndo() {
+  if (!undoStack.length) return;
+  const sheet = getSheet();
+  redoStack.push(JSON.stringify(sheet.cells));
+  const prev = undoStack.pop();
+  sheet.cells = JSON.parse(prev);
+  recalcAll(sheet);
+  renderGrid();
+  updateSelection();
+}
+
+function sheetRedo() {
+  if (!redoStack.length) return;
+  const sheet = getSheet();
+  undoStack.push(JSON.stringify(sheet.cells));
+  const next = redoStack.pop();
+  sheet.cells = JSON.parse(next);
+  recalcAll(sheet);
+  renderGrid();
+  updateSelection();
+}
+
 function commitEdit() {
   const td = gridEl.querySelector(`td[data-row="${editingRow}"][data-col="${editingCol}"]`);
   if (!td) return;
   const input = td.querySelector('input');
   const val = input ? input.value : (formulaEditTarget === 'bar' ? formulaBarEl.value : '');
   if (val !== undefined) {
+    saveUndoState();
     setCell(getSheet(), editingRow, editingCol, val);
     recalcAll(getSheet());
   }
@@ -1658,6 +1711,7 @@ function showCellContextMenu(x, y, r, c) {
     { label: '📈 Insert Chart', action: () => showChartDialog() },
     { divider: true },
     { label: '📋 Set Data Validation', action: () => showDataValidationDialog(r, c) },
+    { label: '📝 Add/Edit Note', action: () => addCellNote(r, c) },
     { divider: true },
     { label: '+R Insert Row', action: () => { addRows(getSheet()); renderGrid(); updateSelection(); } },
     { label: '+C Insert Column', action: () => { addCols(getSheet()); renderGrid(); updateSelection(); } },
@@ -1770,6 +1824,24 @@ function showDataValidationDialog(r, c) {
     renderGrid(); updateSelection();
     dialog.remove();
   });
+}
+
+/* ==================== Cell Notes ==================== */
+
+let cellNotes = {}; // "r,c" → string
+
+function addCellNote(r, c) {
+  const key = `${r},${c}`;
+  const existing = cellNotes[key] || '';
+  const note = prompt('Cell note:', existing);
+  if (note === null) return; // cancelled
+  if (note.trim() === '') {
+    delete cellNotes[key];
+  } else {
+    cellNotes[key] = note;
+  }
+  renderGrid();
+  updateSelection();
 }
 
 /* ==================== CSV Import/Export ==================== */

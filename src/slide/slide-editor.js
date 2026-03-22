@@ -162,6 +162,11 @@ function bindEvents() {
     updateThumb(activeSlideIdx);
   });
 
+  // Layer controls
+  document.getElementById('slide-layer-up')?.addEventListener('click', () => moveLayer('up'));
+  document.getElementById('slide-layer-down')?.addEventListener('click', () => moveLayer('down'));
+  document.getElementById('slide-align')?.addEventListener('click', showAlignMenu);
+
   // Animations
   document.getElementById('slide-anim')?.addEventListener('click', showAnimationPanel);
 
@@ -846,6 +851,107 @@ function openSpeakerView() {
       win.document.body.innerHTML = '';
       win.document.write(renderSpeakerHTML(speakerIdx));
       win.document.close();
+    }
+  });
+}
+
+/* ==================== Layer Control ==================== */
+
+function moveLayer(direction) {
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return;
+
+  const node = selection.anchorNode;
+  const el = node?.nodeType === 1 ? node : node?.parentElement;
+  if (!el || !canvasEl.contains(el) || el === canvasEl) return;
+
+  // Find the top-level block inside the canvas
+  let target = el;
+  while (target.parentElement && target.parentElement !== canvasEl) {
+    target = target.parentElement;
+  }
+  if (target.parentElement !== canvasEl) return;
+
+  if (direction === 'up') {
+    const next = target.nextElementSibling;
+    if (next) canvasEl.insertBefore(next, target);
+  } else {
+    const prev = target.previousElementSibling;
+    if (prev) canvasEl.insertBefore(target, prev);
+  }
+
+  slides[activeSlideIdx].content = canvasEl.innerHTML;
+  updateThumb(activeSlideIdx);
+}
+
+/* ==================== Alignment Tools ==================== */
+
+function showAlignMenu() {
+  const existing = document.querySelector('.slide-align-menu');
+  if (existing) { existing.remove(); return; }
+
+  const btn = document.getElementById('slide-align');
+  const rect = btn.getBoundingClientRect();
+
+  const menu = document.createElement('div');
+  menu.className = 'slide-align-menu';
+  menu.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${rect.left}px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:8px;z-index:2000;display:flex;flex-direction:column;gap:2px;min-width:160px`;
+
+  const alignOpts = [
+    { label: '⬅ Align Left', style: 'text-align:left' },
+    { label: '↔ Align Center', style: 'text-align:center' },
+    { label: '➡ Align Right', style: 'text-align:right' },
+    { label: '⬆ Align Top', style: 'display:flex;align-items:flex-start' },
+    { label: '↕ Align Middle', style: 'display:flex;align-items:center' },
+    { label: '⬇ Align Bottom', style: 'display:flex;align-items:flex-end' },
+    { divider: true },
+    { label: '📏 Distribute Horizontally', action: 'dist-h' },
+    { label: '📐 Distribute Vertically', action: 'dist-v' },
+  ];
+
+  alignOpts.forEach(opt => {
+    if (opt.divider) {
+      const div = document.createElement('div');
+      div.style.cssText = 'height:1px;background:var(--border-color);margin:4px 0';
+      menu.appendChild(div);
+      return;
+    }
+
+    const item = document.createElement('button');
+    item.style.cssText = 'padding:6px 12px;border:none;background:transparent;text-align:left;cursor:pointer;font-size:12px;color:var(--text-primary);border-radius:4px';
+    item.textContent = opt.label;
+    item.addEventListener('mouseenter', () => item.style.background = 'var(--hover-bg)');
+    item.addEventListener('mouseleave', () => item.style.background = 'transparent');
+    item.addEventListener('click', () => {
+      if (opt.style) {
+        const selection = window.getSelection();
+        if (selection.rangeCount) {
+          const node = selection.anchorNode;
+          const el = node?.nodeType === 1 ? node : node?.parentElement;
+          if (el && canvasEl.contains(el)) {
+            let target = el;
+            while (target.parentElement && target.parentElement !== canvasEl) target = target.parentElement;
+            if (target.parentElement === canvasEl) {
+              opt.style.split(';').forEach(s => {
+                const [prop, val] = s.split(':').map(x => x.trim());
+                if (prop && val) target.style[prop.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = val;
+              });
+              slides[activeSlideIdx].content = canvasEl.innerHTML;
+              updateThumb(activeSlideIdx);
+            }
+          }
+        }
+      }
+      menu.remove();
+    });
+    menu.appendChild(item);
+  });
+
+  document.body.appendChild(menu);
+  document.addEventListener('click', function close(e) {
+    if (!menu.contains(e.target) && e.target !== btn) {
+      menu.remove();
+      document.removeEventListener('click', close);
     }
   });
 }

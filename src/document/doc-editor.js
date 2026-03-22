@@ -19,6 +19,15 @@ export function initDocEditor() {
   document.getElementById('doc-outline-toggle')?.addEventListener('click', toggleDocOutline);
   document.getElementById('doc-outline-close')?.addEventListener('click', toggleDocOutline);
 
+  // Comments
+  document.getElementById('doc-insert-comment')?.addEventListener('click', () => addComment());
+
+  // Page Break
+  document.getElementById('doc-insert-pagebreak')?.addEventListener('click', () => insertPageBreak());
+
+  // Equation Editor
+  document.getElementById('doc-insert-equation')?.addEventListener('click', () => showEquationEditor());
+
   // Undo / Redo buttons
   const undoBtn = document.getElementById('doc-undo');
   if (undoBtn) {
@@ -1046,5 +1055,240 @@ function updateDocOutline() {
       }, 1500);
     });
     list.appendChild(btn);
+  });
+}
+
+/* ==================== Comments ==================== */
+
+let comments = [];
+let commentCounter = 0;
+
+function addComment() {
+  const selection = window.getSelection();
+  if (!selection.rangeCount || selection.isCollapsed) {
+    alert('Select text to add a comment');
+    return;
+  }
+
+  const text = prompt('Enter your comment:');
+  if (!text) return;
+
+  const range = selection.getRangeAt(0);
+  const commentId = ++commentCounter;
+
+  // Wrap selected text in a comment highlight span
+  const wrapper = document.createElement('span');
+  wrapper.className = 'doc-comment-highlight';
+  wrapper.dataset.commentId = commentId;
+  wrapper.title = `Comment: ${text}`;
+  wrapper.style.cssText = 'background:rgba(255, 213, 79, 0.4);border-bottom:2px solid #f59e0b;cursor:pointer;position:relative';
+
+  try {
+    range.surroundContents(wrapper);
+  } catch {
+    // If selection crosses element boundaries, wrap text content
+    const fragment = range.extractContents();
+    wrapper.appendChild(fragment);
+    range.insertNode(wrapper);
+  }
+
+  comments.push({
+    id: commentId,
+    text,
+    author: 'User',
+    timestamp: new Date().toLocaleString(),
+    resolved: false,
+  });
+
+  // Click to view/edit/resolve/delete
+  wrapper.addEventListener('click', (e) => {
+    e.stopPropagation();
+    showCommentPopup(wrapper, commentId);
+  });
+
+  dirty = true;
+}
+
+function showCommentPopup(el, commentId) {
+  document.querySelector('.doc-comment-popup')?.remove();
+
+  const comment = comments.find(c => c.id === commentId);
+  if (!comment) return;
+
+  const rect = el.getBoundingClientRect();
+  const popup = document.createElement('div');
+  popup.className = 'doc-comment-popup';
+  popup.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${Math.min(rect.left, window.innerWidth - 280)}px;width:260px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.2);padding:12px;z-index:2000;font-size:13px`;
+
+  popup.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <strong style="font-size:12px;color:var(--text-primary)">${comment.author}</strong>
+      <span style="font-size:10px;color:var(--text-tertiary)">${comment.timestamp}</span>
+    </div>
+    <p style="margin:0 0 10px;color:var(--text-primary);line-height:1.5">${comment.text}</p>
+    <div style="display:flex;gap:6px">
+      <button class="cmt-resolve" style="flex:1;padding:5px;font-size:11px;border:1px solid var(--border-color);border-radius:6px;background:var(--hover-bg);cursor:pointer;color:var(--text-primary)">✓ Resolve</button>
+      <button class="cmt-delete" style="flex:1;padding:5px;font-size:11px;border:1px solid var(--border-color);border-radius:6px;background:var(--hover-bg);cursor:pointer;color:#e74c3c">Delete</button>
+    </div>
+  `;
+
+  document.body.appendChild(popup);
+
+  popup.querySelector('.cmt-resolve').addEventListener('click', () => {
+    comment.resolved = true;
+    el.style.background = 'rgba(34, 197, 94, 0.2)';
+    el.style.borderBottom = '2px solid #22c55e';
+    el.title = `[Resolved] ${comment.text}`;
+    popup.remove();
+  });
+
+  popup.querySelector('.cmt-delete').addEventListener('click', () => {
+    // Unwrap the span, keeping text
+    const parent = el.parentNode;
+    while (el.firstChild) parent.insertBefore(el.firstChild, el);
+    parent.removeChild(el);
+    comments = comments.filter(c => c.id !== commentId);
+    popup.remove();
+    dirty = true;
+  });
+
+  // Close on click outside
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!popup.contains(e.target)) {
+        popup.remove();
+        document.removeEventListener('click', close);
+      }
+    });
+  }, 50);
+}
+
+/* ==================== Page Break ==================== */
+
+function insertPageBreak() {
+  if (!editorEl) return;
+  editorEl.focus();
+
+  const breakHtml = `<div class="doc-page-break" contenteditable="false" style="page-break-after:always;border-top:2px dashed var(--border-color);margin:24px 0;padding:4px 0;text-align:center;font-size:10px;color:var(--text-tertiary);user-select:none;cursor:default">— Page Break —</div>`;
+  document.execCommand('insertHTML', false, breakHtml);
+  dirty = true;
+}
+
+/* ==================== Equation Editor ==================== */
+
+function showEquationEditor() {
+  const existing = document.querySelector('.doc-eq-dialog');
+  if (existing) existing.remove();
+
+  const dialog = document.createElement('div');
+  dialog.className = 'doc-eq-dialog';
+  dialog.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:2000';
+
+  const presets = [
+    { label: 'Fraction', tex: '\\frac{a}{b}' },
+    { label: 'Square Root', tex: '\\sqrt{x}' },
+    { label: 'Power', tex: 'x^{n}' },
+    { label: 'Subscript', tex: 'x_{i}' },
+    { label: 'Sum', tex: '\\sum_{i=1}^{n} x_i' },
+    { label: 'Product', tex: '\\prod_{i=1}^{n} x_i' },
+    { label: 'Integral', tex: '\\int_{a}^{b} f(x) dx' },
+    { label: 'Limit', tex: '\\lim_{x \\to \\infty} f(x)' },
+    { label: 'Matrix', tex: '\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}' },
+    { label: 'Quadratic', tex: 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}' },
+    { label: 'E=mc²', tex: 'E = mc^{2}' },
+    { label: 'Pythagorean', tex: 'a^{2} + b^{2} = c^{2}' },
+    { label: 'Euler', tex: 'e^{i\\pi} + 1 = 0' },
+    { label: 'Derivative', tex: '\\frac{dy}{dx}' },
+    { label: 'Partial', tex: '\\frac{\\partial f}{\\partial x}' },
+    { label: 'Infinity', tex: '\\infty' },
+  ];
+
+  dialog.innerHTML = `
+    <div style="background:var(--bg-primary);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.2);padding:20px 24px;width:500px;max-height:80vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--text-primary)">Equation Editor</h3>
+        <button class="eq-close" style="border:none;background:transparent;font-size:20px;cursor:pointer;color:var(--text-primary)">&times;</button>
+      </div>
+      <p style="font-size:11px;color:var(--text-tertiary);margin:0 0 12px">Enter LaTeX-like notation or click a preset:</p>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+        ${presets.map(p => `<button class="eq-preset" data-tex="${p.tex}" style="padding:4px 8px;font-size:11px;border:1px solid var(--border-color);border-radius:6px;background:var(--hover-bg);cursor:pointer;color:var(--text-primary);font-family:'SF Mono',monospace" title="${p.tex}">${p.label}</button>`).join('')}
+      </div>
+      <textarea id="eq-input" style="width:100%;height:60px;padding:8px;border:1px solid var(--border-color);border-radius:8px;font-family:'SF Mono','Fira Code',monospace;font-size:14px;background:var(--bg-primary);color:var(--text-primary);resize:vertical" placeholder="e.g. E = mc^{2}"></textarea>
+      <div style="margin-top:8px;padding:16px;background:var(--hover-bg);border-radius:8px;min-height:40px;text-align:center;font-size:20px" id="eq-preview"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+        <button class="eq-close" style="padding:8px 16px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);cursor:pointer;color:var(--text-primary);font-size:13px">Cancel</button>
+        <button id="eq-insert" style="padding:8px 16px;border:none;border-radius:6px;background:var(--brand-color);cursor:pointer;color:#fff;font-weight:600;font-size:13px">Insert</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(dialog);
+
+  const input = dialog.querySelector('#eq-input');
+  const preview = dialog.querySelector('#eq-preview');
+
+  // Simple TeX to HTML renderer
+  function texToHTML(tex) {
+    return tex
+      .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '<span style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle"><span style="border-bottom:1px solid currentColor;padding:0 4px">$1</span><span style="padding:0 4px">$2</span></span>')
+      .replace(/\\sqrt\{([^}]+)\}/g, '√<span style="border-top:1px solid currentColor;padding:0 2px">$1</span>')
+      .replace(/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, '<span style="font-size:1.4em">∑</span><sub>$1</sub><sup>$2</sup>')
+      .replace(/\\prod_\{([^}]+)\}\^\{([^}]+)\}/g, '<span style="font-size:1.4em">∏</span><sub>$1</sub><sup>$2</sup>')
+      .replace(/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, '<span style="font-size:1.4em">∫</span><sub>$1</sub><sup>$2</sup>')
+      .replace(/\\lim_\{([^}]+)\}/g, 'lim<sub>$1</sub>')
+      .replace(/\\begin\{pmatrix\}(.+?)\\end\{pmatrix\}/g, (_, content) => {
+        const rows = content.split('\\\\').map(r => r.trim().split('&').map(c => `<td style="padding:2px 8px">${c.trim()}</td>`).join('')).map(r => `<tr>${r}</tr>`).join('');
+        return `<span style="display:inline-flex;align-items:center">(<table style="display:inline-table;border-collapse:collapse">${rows}</table>)</span>`;
+      })
+      .replace(/\^\{([^}]+)\}/g, '<sup>$1</sup>')
+      .replace(/_\{([^}]+)\}/g, '<sub>$1</sub>')
+      .replace(/\^(\w)/g, '<sup>$1</sup>')
+      .replace(/_(\w)/g, '<sub>$1</sub>')
+      .replace(/\\pm/g, '±')
+      .replace(/\\times/g, '×')
+      .replace(/\\div/g, '÷')
+      .replace(/\\infty/g, '∞')
+      .replace(/\\pi/g, 'π')
+      .replace(/\\alpha/g, 'α').replace(/\\beta/g, 'β').replace(/\\gamma/g, 'γ').replace(/\\delta/g, 'δ')
+      .replace(/\\theta/g, 'θ').replace(/\\lambda/g, 'λ').replace(/\\mu/g, 'μ').replace(/\\sigma/g, 'σ')
+      .replace(/\\phi/g, 'φ').replace(/\\omega/g, 'ω').replace(/\\epsilon/g, 'ε')
+      .replace(/\\partial/g, '∂')
+      .replace(/\\to/g, '→')
+      .replace(/\\leq/g, '≤').replace(/\\geq/g, '≥').replace(/\\neq/g, '≠')
+      .replace(/\\cdot/g, '·')
+      .replace(/\\ldots/g, '…')
+      .replace(/\\forall/g, '∀').replace(/\\exists/g, '∃')
+      .replace(/\\in/g, '∈').replace(/\\subset/g, '⊂').replace(/\\cup/g, '∪').replace(/\\cap/g, '∩')
+      .replace(/\\nabla/g, '∇')
+      .replace(/\\Delta/g, 'Δ').replace(/\\Sigma/g, 'Σ').replace(/\\Omega/g, 'Ω')
+      .replace(/\\left\(/g, '(').replace(/\\right\)/g, ')')
+      .replace(/\\left\[/g, '[').replace(/\\right\]/g, ']');
+  }
+
+  input.addEventListener('input', () => {
+    preview.innerHTML = texToHTML(input.value) || '<span style="color:var(--text-tertiary)">Preview</span>';
+  });
+
+  dialog.querySelectorAll('.eq-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      input.value = btn.dataset.tex;
+      preview.innerHTML = texToHTML(btn.dataset.tex);
+    });
+  });
+
+  dialog.querySelectorAll('.eq-close').forEach(btn => {
+    btn.addEventListener('click', () => dialog.remove());
+  });
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
+
+  dialog.querySelector('#eq-insert').addEventListener('click', () => {
+    const tex = input.value.trim();
+    if (!tex) return;
+
+    editorEl?.focus();
+    const html = `<span class="doc-equation" contenteditable="false" style="display:inline-block;padding:4px 8px;margin:2px 4px;background:var(--hover-bg);border:1px solid var(--border-color);border-radius:6px;font-family:'Times New Roman',serif;font-size:1.1em;cursor:default;user-select:all" title="${tex}">${texToHTML(tex)}</span>`;
+    document.execCommand('insertHTML', false, html);
+    dirty = true;
+    dialog.remove();
   });
 }

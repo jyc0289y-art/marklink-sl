@@ -272,6 +272,26 @@
   outline: 1px dashed rgba(59, 130, 246, 0.5);
 }
 
+/* Cell note indicator */
+.cell-note-indicator {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-top: 6px solid #f59e0b;
+  cursor: help;
+}
+
+/* Zebra striping */
+.sheet-grid.zebra tbody tr:nth-child(even) td {
+  background: rgba(0, 0, 0, 0.02);
+}
+[data-theme="dark"] .sheet-grid.zebra tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sheet-toolbar {
