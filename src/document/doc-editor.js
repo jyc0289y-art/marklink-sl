@@ -28,6 +28,12 @@ export function initDocEditor() {
   // Equation Editor
   document.getElementById('doc-insert-equation')?.addEventListener('click', () => showEquationEditor());
 
+  // Track Changes
+  document.getElementById('doc-track-changes')?.addEventListener('click', toggleTrackChanges);
+
+  // Bookmarks
+  document.getElementById('doc-insert-bookmark')?.addEventListener('click', () => insertBookmark());
+
   // Undo / Redo buttons
   const undoBtn = document.getElementById('doc-undo');
   if (undoBtn) {
@@ -1291,4 +1297,109 @@ function showEquationEditor() {
     dirty = true;
     dialog.remove();
   });
+}
+
+/* ==================== Track Changes ==================== */
+
+let trackChangesEnabled = false;
+let docSnapshots = [];
+
+function toggleTrackChanges() {
+  trackChangesEnabled = !trackChangesEnabled;
+  const btn = document.getElementById('doc-track-changes');
+  if (btn) {
+    btn.style.background = trackChangesEnabled ? 'var(--brand-color)' : '';
+    btn.style.color = trackChangesEnabled ? '#fff' : '';
+    btn.title = trackChangesEnabled ? 'Track Changes: ON' : 'Track Changes: OFF';
+  }
+
+  if (trackChangesEnabled) {
+    // Take snapshot
+    docSnapshots.push({
+      timestamp: new Date().toLocaleString(),
+      content: editorEl.innerHTML,
+    });
+
+    // Watch for changes via MutationObserver
+    if (!editorEl._trackObserver) {
+      editorEl._trackObserver = new MutationObserver((mutations) => {
+        if (!trackChangesEnabled) return;
+        mutations.forEach(m => {
+          if (m.type === 'childList') {
+            m.addedNodes.forEach(node => {
+              if (node.nodeType === 1 && !node.classList?.contains('doc-track-insert')) {
+                node.classList?.add('doc-track-insert');
+              }
+            });
+          }
+        });
+      });
+      editorEl._trackObserver.observe(editorEl, { childList: true, subtree: true });
+    }
+  }
+}
+
+/* ==================== Bookmarks ==================== */
+
+let bookmarks = [];
+
+function insertBookmark() {
+  const name = prompt('Bookmark name:');
+  if (!name) return;
+
+  const id = 'bm-' + Date.now();
+  const bookmark = { id, name };
+  bookmarks.push(bookmark);
+
+  editorEl?.focus();
+  const html = `<span class="doc-bookmark" id="${id}" contenteditable="false" style="display:inline-block;width:16px;height:16px;background:#3b82f6;color:#fff;font-size:9px;font-weight:700;text-align:center;line-height:16px;border-radius:3px;cursor:pointer;vertical-align:middle;margin:0 2px;user-select:none" title="Bookmark: ${name}">🔖</span>`;
+  document.execCommand('insertHTML', false, html);
+
+  // Clicking a bookmark scrolls to it
+  setTimeout(() => {
+    const bmEl = document.getElementById(id);
+    if (bmEl) {
+      bmEl.addEventListener('click', (e) => {
+        e.preventDefault();
+        showBookmarkJumpMenu();
+      });
+    }
+  }, 100);
+
+  dirty = true;
+}
+
+function showBookmarkJumpMenu() {
+  const existing = document.querySelector('.doc-bookmark-menu');
+  if (existing) existing.remove();
+
+  if (!bookmarks.length) {
+    alert('No bookmarks found');
+    return;
+  }
+
+  const menu = document.createElement('div');
+  menu.className = 'doc-bookmark-menu';
+  menu.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-primary);border:1px solid var(--border-color);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.2);padding:16px;z-index:2000;min-width:240px';
+
+  menu.innerHTML = `
+    <h3 style="margin:0 0 12px;font-size:14px;font-weight:700;color:var(--text-primary)">Bookmarks</h3>
+    ${bookmarks.map(bm => `
+      <button class="bm-item" data-id="${bm.id}" style="display:block;width:100%;text-align:left;padding:8px 12px;margin:4px 0;border:1px solid var(--border-color);border-radius:6px;background:var(--hover-bg);cursor:pointer;color:var(--text-primary);font-size:13px">
+        🔖 ${bm.name}
+      </button>
+    `).join('')}
+    <button class="bm-close" style="margin-top:8px;width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);cursor:pointer;color:var(--text-primary);font-size:12px">Close</button>
+  `;
+
+  document.body.appendChild(menu);
+
+  menu.querySelectorAll('.bm-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const el = document.getElementById(btn.dataset.id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      menu.remove();
+    });
+  });
+  menu.querySelector('.bm-close').addEventListener('click', () => menu.remove());
 }

@@ -391,3 +391,14 @@ mark.doc-find-highlight.doc-find-current {
 .doc-outline-item[data-level="4"] { padding-left: 48px; font-size: 11px; }
 .doc-outline-item[data-level="5"] { padding-left: 56px; font-size: 11px; }
 .doc-outline-item[data-level="6"] { padding-left: 64px; font-size: 11px; }
+
+/* Track Changes */
+.doc-track-insert {
+  background: rgba(34, 197, 94, 0.15);
+  border-left: 3px solid #22c55e;
+}
+.doc-track-delete {
+  background: rgba(239, 68, 68, 0.15);
+  text-decoration: line-through;
+  color: #ef4444;
+}

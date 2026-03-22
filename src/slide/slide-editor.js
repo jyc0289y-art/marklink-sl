@@ -142,6 +142,13 @@ function bindEvents() {
     showShapeMenu();
   });
 
+  // Insert video
+  document.getElementById('slide-insert-video')?.addEventListener('click', () => {
+    const url = prompt('Enter video URL (YouTube, Vimeo, or direct):');
+    if (!url) return;
+    insertVideoInSlide(url);
+  });
+
   // Insert table
   document.getElementById('slide-insert-table')?.addEventListener('click', () => {
     const rows = parseInt(prompt('Rows:', '3')) || 3;
@@ -954,4 +961,31 @@ function showAlignMenu() {
       document.removeEventListener('click', close);
     }
   });
+}
+
+/* ==================== Video Embedding ==================== */
+
+function insertVideoInSlide(url) {
+  let embedUrl = url;
+
+  // Convert YouTube URL to embed
+  const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/);
+  if (ytMatch) {
+    embedUrl = `https://www.youtube.com/embed/${ytMatch[1]}`;
+  }
+
+  // Convert Vimeo URL
+  const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+  if (vimeoMatch) {
+    embedUrl = `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+  }
+
+  const html = `<div style="text-align:center;margin:16px 0" contenteditable="false">
+    <iframe src="${embedUrl}" width="640" height="360" style="border:none;border-radius:8px;max-width:100%" allowfullscreen></iframe>
+  </div>`;
+
+  canvasEl.focus();
+  document.execCommand('insertHTML', false, html);
+  slides[activeSlideIdx].content = canvasEl.innerHTML;
+  updateThumb(activeSlideIdx);
 }

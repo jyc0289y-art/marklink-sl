@@ -120,7 +120,11 @@ function renderGrid() {
       const noteKey = `${r},${c}`;
       const hasNote = cellNotes[noteKey];
       const noteIndicator = hasNote ? '<span class="cell-note-indicator" title="' + escapeHTML(hasNote) + '"></span>' : '';
-      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="width:${w}px;min-width:${w}px;height:${rh}px;${style}"${spanAttrs}>${escapeHTML(String(val))}${noteIndicator}</td>`;
+      const sparkline = cell?.format?.sparkline;
+      const cellContent = sparkline
+        ? `<img src="${sparkline}" style="width:100%;height:100%;object-fit:contain" alt="sparkline">`
+        : escapeHTML(String(val));
+      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="width:${w}px;min-width:${w}px;height:${rh}px;${style}"${spanAttrs}>${cellContent}${noteIndicator}</td>`;
     }
     html += '</tr>';
   }
@@ -529,6 +533,8 @@ function bindEvents() {
   // Undo/Redo
   document.getElementById('sheet-undo')?.addEventListener('click', () => sheetUndo());
   document.getElementById('sheet-redo')?.addEventListener('click', () => sheetRedo());
+  // Sparkline
+  document.getElementById('sheet-sparkline')?.addEventListener('click', () => insertSparkline());
 
   // CSV Import
   document.getElementById('sheet-import-csv')?.addEventListener('click', () => importCSV());
@@ -1824,6 +1830,73 @@ function showDataValidationDialog(r, c) {
     renderGrid(); updateSelection();
     dialog.remove();
   });
+}
+
+/* ==================== Sparklines ==================== */
+
+function insertSparkline() {
+  const sheet = getSheet();
+  const { r1, r2, c1, c2 } = getSelectionRange();
+
+  // Collect numeric values from selection
+  const vals = [];
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      const v = getDisplayValue(sheet, r, c);
+      const n = Number(v);
+      if (!isNaN(n) && v !== '') vals.push(n);
+    }
+  }
+
+  if (vals.length < 2) {
+    alert('Select at least 2 numeric cells to create a sparkline');
+    return;
+  }
+
+  // Ask where to place sparkline
+  const targetRef = prompt(`Place sparkline at cell (e.g. ${colToLetter(c2 + 1)}${r1 + 1}):`, colToLetter(c2 + 1) + (r1 + 1));
+  if (!targetRef) return;
+  const target = refToRC(targetRef.toUpperCase());
+  if (!target) return;
+
+  // Generate sparkline as SVG data URL
+  const svg = generateSparklineSVG(vals, 'line');
+  const key = `${target[0]},${target[1]}`;
+  if (!sheet.cells[key]) sheet.cells[key] = { raw: '', value: '', format: {} };
+  sheet.cells[key].format.sparkline = svg;
+  sheet.cells[key].raw = `[sparkline:${vals.join(',')}]`;
+  sheet.cells[key].value = '';
+
+  renderGrid();
+  updateSelection();
+}
+
+function generateSparklineSVG(vals, type = 'line') {
+  const w = 120, h = 20;
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const range = max - min || 1;
+
+  if (type === 'line') {
+    const points = vals.map((v, i) => {
+      const x = (i / (vals.length - 1)) * (w - 4) + 2;
+      const y = h - 2 - ((v - min) / range) * (h - 4);
+      return `${x},${y}`;
+    }).join(' ');
+
+    return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><polyline points="${points}" fill="none" stroke="#3b82f6" stroke-width="1.5"/></svg>`)}`;
+  } else if (type === 'bar') {
+    const barW = (w - 4) / vals.length - 1;
+    const bars = vals.map((v, i) => {
+      const bh = ((v - min) / range) * (h - 4);
+      const x = 2 + i * (barW + 1);
+      const y = h - 2 - bh;
+      const color = v >= 0 ? '#3b82f6' : '#ef4444';
+      return `<rect x="${x}" y="${y}" width="${barW}" height="${bh}" fill="${color}"/>`;
+    }).join('');
+
+    return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${bars}</svg>`)}`;
+  }
 }
 
 /* ==================== Cell Notes ==================== */

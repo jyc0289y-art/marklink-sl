@@ -435,6 +435,11 @@ export async function initApp() {
     showFeedbackDialog();
   });
 
+  // 24-c. Templates button
+  document.getElementById('btn-templates')?.addEventListener('click', () => {
+    showTemplateLibrary();
+  });
+
   // 25. Auto-save to localStorage
   initAutoSave();
 
@@ -1117,5 +1122,165 @@ function initScrollSync(editorContainer, previewContainer) {
       previewContainer.scrollTop = ratio * (previewContainer.scrollHeight - previewContainer.clientHeight);
       requestAnimationFrame(() => { syncing = false; });
     });
+  }
+}
+
+/* ==================== Template Library ==================== */
+
+function showTemplateLibrary() {
+  const existing = document.querySelector('.template-library');
+  if (existing) { existing.remove(); return; }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'template-library';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:2000';
+
+  const templates = {
+    document: [
+      { name: 'Business Report', icon: '📊', content: '<h1>Business Report</h1><h2>Executive Summary</h2><p>Summary of key findings and recommendations.</p><h2>1. Introduction</h2><p>Background and objectives of this report.</p><h2>2. Analysis</h2><p>Detailed analysis of the subject matter.</p><h2>3. Findings</h2><ul><li>Finding 1</li><li>Finding 2</li><li>Finding 3</li></ul><h2>4. Recommendations</h2><p>Based on the findings, we recommend...</p><h2>5. Conclusion</h2><p>In conclusion...</p>' },
+      { name: 'Meeting Minutes', icon: '📝', content: '<h1>Meeting Minutes</h1><p><strong>Date:</strong> [Date]<br><strong>Time:</strong> [Time]<br><strong>Location:</strong> [Location]<br><strong>Attendees:</strong> [Names]</p><h2>Agenda</h2><ol><li>Item 1</li><li>Item 2</li><li>Item 3</li></ol><h2>Discussion</h2><p>Key points discussed...</p><h2>Action Items</h2><table style="width:100%;border-collapse:collapse"><tr><th style="border:1px solid #ddd;padding:8px;text-align:left;background:#f5f5f5">Task</th><th style="border:1px solid #ddd;padding:8px;text-align:left;background:#f5f5f5">Owner</th><th style="border:1px solid #ddd;padding:8px;text-align:left;background:#f5f5f5">Deadline</th></tr><tr><td style="border:1px solid #ddd;padding:8px">Action 1</td><td style="border:1px solid #ddd;padding:8px">Name</td><td style="border:1px solid #ddd;padding:8px">Date</td></tr></table><h2>Next Meeting</h2><p>[Date and time]</p>' },
+      { name: 'Letter', icon: '✉️', content: '<p style="text-align:right">[Your Name]<br>[Your Address]<br>[City, State ZIP]<br>[Date]</p><br><p>[Recipient Name]<br>[Company]<br>[Address]<br>[City, State ZIP]</p><br><p>Dear [Name],</p><p>I am writing to...</p><p>Thank you for your consideration.</p><p>Sincerely,<br>[Your Name]</p>' },
+      { name: 'Resume', icon: '👤', content: '<h1 style="text-align:center;margin-bottom:4px">[Your Name]</h1><p style="text-align:center;color:#666;margin-top:0">[Email] | [Phone] | [City, State]</p><hr><h2>Professional Summary</h2><p>Experienced professional with...</p><h2>Work Experience</h2><h3>[Job Title] — [Company]</h3><p style="color:#888;font-size:0.9em">[Start Date] – [End Date]</p><ul><li>Achievement 1</li><li>Achievement 2</li></ul><h2>Education</h2><h3>[Degree] — [University]</h3><p style="color:#888;font-size:0.9em">[Graduation Year]</p><h2>Skills</h2><p>[Skill 1] • [Skill 2] • [Skill 3] • [Skill 4]</p>' },
+      { name: 'Research Paper', icon: '🔬', content: '<h1 style="text-align:center">[Paper Title]</h1><p style="text-align:center"><em>[Author Name]<br>[Institution]<br>[Date]</em></p><h2>Abstract</h2><p>[Abstract text]</p><h2>1. Introduction</h2><p>[Introduction text]</p><h2>2. Literature Review</h2><p>[Review text]</p><h2>3. Methodology</h2><p>[Methods text]</p><h2>4. Results</h2><p>[Results text]</p><h2>5. Discussion</h2><p>[Discussion text]</p><h2>6. Conclusion</h2><p>[Conclusion text]</p><h2>References</h2><ol><li>[Reference 1]</li></ol>' },
+    ],
+    sheet: [
+      { name: 'Budget Tracker', icon: '💰', data: [['Category','Budget','Actual','Difference'],['Housing','1500','1450','=B2-C2'],['Food','500','480','=B3-C3'],['Transport','200','220','=B4-C4'],['Utilities','150','140','=B5-C5'],['Entertainment','100','130','=B6-C6'],['Savings','300','250','=B7-C7'],['Total','=SUM(B2:B7)','=SUM(C2:C7)','=SUM(D2:D7)']] },
+      { name: 'Project Timeline', icon: '📅', data: [['Task','Start Date','End Date','Status','Owner'],['Planning','2024-01-01','2024-01-15','Complete','Team A'],['Design','2024-01-16','2024-02-15','In Progress','Team B'],['Development','2024-02-16','2024-04-30','Pending','Team C'],['Testing','2024-05-01','2024-05-31','Pending','Team D'],['Launch','2024-06-01','2024-06-15','Pending','All']] },
+      { name: 'Grade Book', icon: '📚', data: [['Student','Quiz 1','Quiz 2','Midterm','Final','Average'],['Alice','85','92','88','91','=AVERAGE(B2:E2)'],['Bob','78','85','82','87','=AVERAGE(B3:E3)'],['Charlie','92','88','95','93','=AVERAGE(B4:E4)'],['Diana','90','91','89','94','=AVERAGE(B5:E5)'],['Class Avg','=AVERAGE(B2:B5)','=AVERAGE(C2:C5)','=AVERAGE(D2:D5)','=AVERAGE(E2:E5)','=AVERAGE(F2:F5)']] },
+      { name: 'Invoice', icon: '🧾', data: [['INVOICE'],[],['Bill To:','[Client Name]'],['Date:','[Date]'],['Invoice #:','[INV-001]'],[],['Item','Quantity','Unit Price','Total'],['Service 1','10','50','=B8*C8'],['Service 2','5','100','=B9*C9'],['Service 3','2','200','=B10*C10'],[],[],['','','Subtotal','=SUM(D8:D10)'],['','','Tax (10%)','=D13*0.1'],['','','Total','=D13+D14']] },
+    ],
+    slide: [
+      { name: 'Pitch Deck', icon: '🚀', slides: [
+        { content: '<h1 class="slide-title">[Company Name]</h1><p class="slide-subtitle">Investor Pitch Deck — [Date]</p>', theme: 'gradient' },
+        { content: '<h2>The Problem</h2><ul><li>Pain point 1</li><li>Pain point 2</li><li>Market gap</li></ul>', theme: 'gradient' },
+        { content: '<h2>Our Solution</h2><p style="font-size:28px;text-align:center;margin-top:40px">[Your product/service description]</p>', theme: 'gradient' },
+        { content: '<h2>Market Size</h2><div style="display:flex;gap:32px;margin-top:20px"><div style="flex:1;text-align:center"><span style="font-size:48px;font-weight:700;color:#f59e0b">$XB</span><p>TAM</p></div><div style="flex:1;text-align:center"><span style="font-size:48px;font-weight:700;color:#3b82f6">$XM</span><p>SAM</p></div><div style="flex:1;text-align:center"><span style="font-size:48px;font-weight:700;color:#22c55e">$XM</span><p>SOM</p></div></div>', theme: 'gradient' },
+        { content: '<h2>Business Model</h2><ul><li>Revenue stream 1</li><li>Revenue stream 2</li><li>Pricing strategy</li></ul>', theme: 'gradient' },
+        { content: '<div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%"><h1 style="font-size:48px;margin:0">Thank You</h1><p style="font-size:24px;opacity:0.7;margin:12px 0">[contact@email.com]</p></div>', theme: 'gradient' },
+      ]},
+      { name: 'Lecture', icon: '🎓', slides: [
+        { content: '<h1 class="slide-title">[Lecture Title]</h1><p class="slide-subtitle">[Course Name] — [Date]</p>', theme: 'blue' },
+        { content: '<h2>Today\'s Outline</h2><ol><li>Topic 1</li><li>Topic 2</li><li>Topic 3</li><li>Summary & Q&A</li></ol>', theme: 'blue' },
+        { content: '<h2>Key Concepts</h2><ul><li><strong>Concept 1:</strong> Definition</li><li><strong>Concept 2:</strong> Definition</li><li><strong>Concept 3:</strong> Definition</li></ul>', theme: 'blue' },
+        { content: '<div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%"><h1 style="font-size:48px;margin:0">Questions?</h1></div>', theme: 'blue' },
+      ]},
+      { name: 'Team Update', icon: '👥', slides: [
+        { content: '<h1 class="slide-title">Team Update</h1><p class="slide-subtitle">[Week/Month] — [Team Name]</p>', theme: 'green' },
+        { content: '<h2>Completed This Week</h2><ul><li>Task 1 ✅</li><li>Task 2 ✅</li><li>Task 3 ✅</li></ul>', theme: 'green' },
+        { content: '<h2>In Progress</h2><ul><li>Task 4 🟡</li><li>Task 5 🟡</li></ul>', theme: 'green' },
+        { content: '<h2>Next Steps</h2><ul><li>Priority 1</li><li>Priority 2</li><li>Priority 3</li></ul>', theme: 'green' },
+      ]},
+    ],
+  };
+
+  const currentTab = getCurrentTab ? getCurrentTab() : 'document';
+
+  overlay.innerHTML = `
+    <div style="background:var(--bg-primary);border-radius:16px;box-shadow:0 16px 48px rgba(0,0,0,0.3);width:700px;max-height:80vh;overflow-y:auto;padding:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:var(--text-primary)">📋 Template Library</h2>
+        <button class="tpl-close" style="border:none;background:transparent;font-size:24px;cursor:pointer;color:var(--text-primary)">&times;</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:20px">
+        <button class="tpl-tab ${currentTab === 'document' ? 'active' : ''}" data-tpl-tab="document" style="padding:8px 16px;border:1px solid var(--border-color);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-primary);background:${currentTab === 'document' ? 'var(--brand-color)' : 'var(--bg-primary)'};${currentTab === 'document' ? 'color:#fff' : ''}">Documents</button>
+        <button class="tpl-tab ${currentTab === 'sheet' ? 'active' : ''}" data-tpl-tab="sheet" style="padding:8px 16px;border:1px solid var(--border-color);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-primary);background:${currentTab === 'sheet' ? 'var(--brand-color)' : 'var(--bg-primary)'};${currentTab === 'sheet' ? 'color:#fff' : ''}">Sheets</button>
+        <button class="tpl-tab ${currentTab === 'slide' ? 'active' : ''}" data-tpl-tab="slide" style="padding:8px 16px;border:1px solid var(--border-color);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-primary);background:${currentTab === 'slide' ? 'var(--brand-color)' : 'var(--bg-primary)'};${currentTab === 'slide' ? 'color:#fff' : ''}">Slides</button>
+      </div>
+      <div id="tpl-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px"></div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const grid = overlay.querySelector('#tpl-grid');
+  let activeTab = currentTab === 'document' || currentTab === 'sheet' || currentTab === 'slide' ? currentTab : 'document';
+
+  function renderTemplates(tab) {
+    const items = templates[tab] || [];
+    grid.innerHTML = items.map((t, i) => `
+      <button class="tpl-card" data-idx="${i}" style="padding:20px;border:1px solid var(--border-color);border-radius:12px;background:var(--hover-bg);cursor:pointer;text-align:center;transition:all 0.2s">
+        <span style="font-size:36px;display:block;margin-bottom:8px">${t.icon}</span>
+        <span style="font-size:14px;font-weight:600;color:var(--text-primary)">${t.name}</span>
+      </button>
+    `).join('');
+
+    grid.querySelectorAll('.tpl-card').forEach(card => {
+      card.addEventListener('mouseenter', () => card.style.borderColor = 'var(--brand-color)');
+      card.addEventListener('mouseleave', () => card.style.borderColor = 'var(--border-color)');
+      card.addEventListener('click', () => {
+        const idx = parseInt(card.dataset.idx);
+        applyTemplate(tab, items[idx]);
+        overlay.remove();
+      });
+    });
+  }
+
+  renderTemplates(activeTab);
+
+  overlay.querySelectorAll('.tpl-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      overlay.querySelectorAll('.tpl-tab').forEach(t => {
+        t.style.background = 'var(--bg-primary)';
+        t.style.color = 'var(--text-primary)';
+      });
+      tab.style.background = 'var(--brand-color)';
+      tab.style.color = '#fff';
+      activeTab = tab.dataset.tplTab;
+      renderTemplates(activeTab);
+    });
+  });
+
+  overlay.querySelector('.tpl-close').addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
+function applyTemplate(type, template) {
+  if (type === 'document') {
+    // Switch to document tab and apply content
+    const docTab = document.querySelector('.tab-item[data-tab="document"]');
+    if (docTab) docTab.click();
+    const editor = document.getElementById('doc-editor');
+    if (editor) {
+      editor.innerHTML = template.content;
+    }
+  } else if (type === 'sheet') {
+    // Switch to sheet tab and fill data
+    const sheetTab = document.querySelector('.tab-item[data-tab="sheet"]');
+    if (sheetTab) sheetTab.click();
+    // Need to import and use sheet functions
+    setTimeout(() => {
+      const data = template.data;
+      if (!data) return;
+      import('./sheet/sheet-engine.js').then(engine => {
+        import('./sheet/sheet-ui.js').then(ui => {
+          const sheetsData = ui.getSheetsData();
+          const sheet = sheetsData[0];
+          sheet.cells = {};
+          sheet.rows = Math.max(data.length + 5, 50);
+          sheet.cols = Math.max((data[0]?.length || 0) + 3, 26);
+          for (let r = 0; r < data.length; r++) {
+            for (let c = 0; c < data[r].length; c++) {
+              if (data[r][c]) engine.setCell(sheet, r, c, data[r][c]);
+            }
+          }
+          ui.setSheetsData(sheetsData);
+        });
+      });
+    }, 200);
+  } else if (type === 'slide') {
+    // Switch to slide tab and set slides
+    const slideTab = document.querySelector('.tab-item[data-tab="slide"]');
+    if (slideTab) slideTab.click();
+    setTimeout(() => {
+      import('./slide/slide-editor.js').then(mod => {
+        const newSlides = template.slides.map(s => ({
+          content: s.content,
+          notes: '',
+          theme: s.theme || 'default',
+          transition: 'fade',
+        }));
+        mod.setSlidesData(newSlides);
+      });
+    }, 200);
   }
 }
