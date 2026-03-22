@@ -213,6 +213,9 @@ function bindEvents() {
     slides[activeSlideIdx].autoAdvance = parseInt(e.target.value) || 0;
   });
 
+  // Rehearse timings
+  document.getElementById('slide-rehearse')?.addEventListener('click', startRehearsal);
+
   // Thumbnail click
   panelEl?.addEventListener('click', (e) => {
     const thumb = e.target.closest('.slide-thumb');
@@ -287,6 +290,8 @@ function loadSlide(idx) {
   applyTheme(slide.theme);
   if (themeSelect) themeSelect.value = slide.theme;
   if (transitionSelect) transitionSelect.value = slide.transition || 'none';
+  const autoAdvInput = document.getElementById('slide-auto-advance');
+  if (autoAdvInput) autoAdvInput.value = slide.autoAdvance || 0;
 
   // Apply master slide if set
   if (slide.master && MASTER_SLIDES[slide.master]) {
@@ -537,9 +542,40 @@ function startPresentation() {
     el.setAttribute('data-theme', theme === 'default' ? '' : theme);
   }
 
+  // Auto-advance progress bar
+  const autoAdvBar = document.createElement('div');
+  autoAdvBar.style.cssText = 'position:fixed;bottom:0;left:0;height:3px;background:linear-gradient(90deg,#4285f4,#34a853);z-index:10003;transition:none;width:0';
+
+  let autoAdvanceTimer = null;
+  let autoAdvAnimFrame = null;
+  function scheduleAutoAdvance(idx) {
+    clearTimeout(autoAdvanceTimer);
+    cancelAnimationFrame(autoAdvAnimFrame);
+    autoAdvBar.style.width = '0';
+    const secs = slides[idx].autoAdvance || 0;
+    if (secs > 0 && idx < slides.length - 1) {
+      const start = performance.now();
+      const duration = secs * 1000;
+      function animateBar() {
+        const elapsed = performance.now() - start;
+        const pct = Math.min(elapsed / duration * 100, 100);
+        autoAdvBar.style.width = pct + '%';
+        if (pct < 100) autoAdvAnimFrame = requestAnimationFrame(animateBar);
+      }
+      autoAdvAnimFrame = requestAnimationFrame(animateBar);
+      autoAdvanceTimer = setTimeout(() => {
+        presIdx++;
+        showSlide(presIdx, 1);
+        scheduleAutoAdvance(presIdx);
+      }, duration);
+    }
+  }
+
   showSlide(presIdx);
+  scheduleAutoAdvance(presIdx);
   overlay.appendChild(slideEl);
   overlay.appendChild(counter);
+  overlay.appendChild(autoAdvBar);
   document.body.appendChild(overlay);
 
   // Try fullscreen
@@ -549,6 +585,8 @@ function startPresentation() {
     if (e.key === 'Escape') {
       document.exitFullscreen?.().catch(() => {});
       clearInterval(timerInterval);
+      clearTimeout(autoAdvanceTimer);
+      cancelAnimationFrame(autoAdvAnimFrame);
       overlay.remove();
       document.removeEventListener('keydown', handler);
     } else if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') {
@@ -556,12 +594,14 @@ function startPresentation() {
       if (presIdx < slides.length - 1) {
         presIdx++;
         showSlide(presIdx, 1);
+        scheduleAutoAdvance(presIdx);
       }
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
       if (presIdx > 0) {
         presIdx--;
         showSlide(presIdx, -1);
+        scheduleAutoAdvance(presIdx);
       }
     }
   };
@@ -672,9 +712,12 @@ function startPresentation() {
     if (presIdx < slides.length - 1) {
       presIdx++;
       showSlide(presIdx, 1);
+      scheduleAutoAdvance(presIdx);
     } else {
       document.exitFullscreen?.().catch(() => {});
       clearInterval(timerInterval);
+      clearTimeout(autoAdvanceTimer);
+      cancelAnimationFrame(autoAdvAnimFrame);
       overlay.remove();
       document.removeEventListener('keydown', handler);
     }
@@ -1066,12 +1109,20 @@ function openSpeakerView() {
           ${next ? `<div class="slide-canvas" data-theme="${next.theme === 'default' ? '' : next.theme}" style="pointer-events:none">${next.content}</div>` : '<div style="color:#666;font-size:14px">End of presentation</div>'}
         </div>
         <div class="speaker-counter">${idx + 1} / ${slides.length}</div>
+        ${s.autoAdvance ? `<div style="font-size:12px;color:#3b82f6;margin-top:4px">Auto-advance: ${s.autoAdvance}s</div>` : ''}
       </div>
     </div>
     <div class="speaker-controls">
       <button onclick="window.opener.postMessage({type:'speaker-prev'},'*')">◀ Previous</button>
       <button onclick="window.opener.postMessage({type:'speaker-next'},'*')">Next ▶</button>
+      <button onclick="window.opener.postMessage({type:'speaker-start-pres'},'*')" style="background:#10b981">▶ Start Presentation</button>
     </div>
+    <script>
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); window.opener.postMessage({type:'speaker-next'},'*'); }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); window.opener.postMessage({type:'speaker-prev'},'*'); }
+      });
+    </script>
     </body></html>`;
   };
 
@@ -1102,6 +1153,9 @@ function openSpeakerView() {
       win.document.body.innerHTML = '';
       win.document.write(renderSpeakerHTML(speakerIdx));
       win.document.close();
+    } else if (e.data.type === 'speaker-start-pres') {
+      activeSlideIdx = speakerIdx;
+      startPresentation();
     }
   });
 }
@@ -1902,4 +1956,153 @@ function applySlideBackground(bg) {
   canvas.style.background = bg;
   slides[activeSlideIdx].customBg = bg;
   updateThumb(activeSlideIdx);
+}
+
+// ─── Rehearsal Timing Mode ────────────────────────────────────
+function startRehearsal() {
+  saveCurrentSlide();
+  let rehIdx = 0;
+  const timings = new Array(slides.length).fill(0);
+  let slideStart = Date.now();
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#000;display:flex;flex-direction:column';
+
+  const topBar = document.createElement('div');
+  topBar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:rgba(30,30,60,0.95);z-index:10001';
+  topBar.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="color:#fff;font-size:14px;font-weight:600">Rehearsal Mode</span>
+      <span id="reh-slide-num" style="color:rgba(255,255,255,0.6);font-size:13px">Slide 1/${slides.length}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px">
+      <span id="reh-slide-time" style="color:#3b82f6;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums">00:00</span>
+      <span style="color:rgba(255,255,255,0.3)">|</span>
+      <span id="reh-total-time" style="color:rgba(255,255,255,0.6);font-size:14px;font-variant-numeric:tabular-nums">Total: 00:00</span>
+      <button id="reh-next" style="padding:6px 20px;border:none;border-radius:6px;background:#3b82f6;color:#fff;font-size:13px;font-weight:600;cursor:pointer">Next ▶</button>
+      <button id="reh-cancel" style="padding:6px 16px;border:none;border-radius:6px;background:#ef4444;color:#fff;font-size:13px;cursor:pointer">Cancel</button>
+    </div>
+  `;
+
+  const slideEl = document.createElement('div');
+  slideEl.className = 'slide-canvas';
+  slideEl.style.cssText = 'flex:1;display:flex;flex-direction:column;justify-content:center;padding:64px 96px;font-size:32px;cursor:default';
+  slideEl.contentEditable = 'false';
+
+  const totalStart = Date.now();
+
+  function showRehSlide(idx) {
+    const s = slides[idx];
+    slideEl.innerHTML = s.content;
+    slideEl.setAttribute('data-theme', s.theme === 'default' ? '' : s.theme);
+    if (s.customBg) slideEl.style.background = s.customBg;
+    else slideEl.style.background = '';
+    overlay.querySelector('#reh-slide-num').textContent = `Slide ${idx + 1}/${slides.length}`;
+    slideStart = Date.now();
+  }
+
+  function fmtTime(ms) {
+    const s = Math.floor(ms / 1000);
+    return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  const timerInterval = setInterval(() => {
+    const now = Date.now();
+    overlay.querySelector('#reh-slide-time').textContent = fmtTime(now - slideStart);
+    overlay.querySelector('#reh-total-time').textContent = `Total: ${fmtTime(now - totalStart)}`;
+  }, 200);
+
+  function nextSlide() {
+    timings[rehIdx] = Math.round((Date.now() - slideStart) / 1000);
+    rehIdx++;
+    if (rehIdx >= slides.length) {
+      finishRehearsal();
+    } else {
+      showRehSlide(rehIdx);
+    }
+  }
+
+  function finishRehearsal() {
+    clearInterval(timerInterval);
+    overlay.remove();
+
+    // Show results dialog
+    const totalSecs = timings.reduce((a, b) => a + b, 0);
+    const dlg = document.createElement('div');
+    dlg.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center';
+
+    let rows = timings.map((t, i) => `
+      <tr>
+        <td style="padding:6px 12px;border-bottom:1px solid var(--border-color)">${i + 1}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid var(--border-color)">${fmtTime(t * 1000)}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid var(--border-color);text-align:center">
+          <input type="checkbox" class="reh-apply" data-idx="${i}" checked>
+        </td>
+      </tr>
+    `).join('');
+
+    dlg.innerHTML = `
+      <div style="background:var(--bg-primary);border-radius:16px;padding:24px 28px;max-width:420px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.25);color:var(--text-primary)">
+        <h3 style="margin:0 0 4px;font-size:18px">Rehearsal Complete</h3>
+        <p style="margin:0 0 16px;font-size:13px;color:var(--text-secondary)">Total: ${fmtTime(totalSecs * 1000)} • Avg: ${fmtTime(Math.round(totalSecs / slides.length) * 1000)}/slide</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr>
+            <th style="text-align:left;padding:6px 12px;border-bottom:2px solid var(--border-color)">Slide</th>
+            <th style="text-align:left;padding:6px 12px;border-bottom:2px solid var(--border-color)">Time</th>
+            <th style="text-align:center;padding:6px 12px;border-bottom:2px solid var(--border-color)">Apply</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+          <button id="reh-discard" style="padding:8px 20px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-primary);color:var(--text-primary);cursor:pointer;font-size:13px">Discard</button>
+          <button id="reh-apply-all" style="padding:8px 20px;border:none;border-radius:8px;background:#0071e3;color:#fff;cursor:pointer;font-size:13px;font-weight:600">Apply Timings</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(dlg);
+
+    dlg.querySelector('#reh-discard')?.addEventListener('click', () => dlg.remove());
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.remove(); });
+
+    dlg.querySelector('#reh-apply-all')?.addEventListener('click', () => {
+      dlg.querySelectorAll('.reh-apply').forEach(cb => {
+        if (cb.checked) {
+          const idx = parseInt(cb.dataset.idx);
+          slides[idx].autoAdvance = timings[idx];
+        }
+      });
+      // Refresh current slide's auto-advance input
+      const autoAdvInput = document.getElementById('slide-auto-advance');
+      if (autoAdvInput) autoAdvInput.value = slides[activeSlideIdx].autoAdvance || 0;
+      dlg.remove();
+    });
+  }
+
+  function cancelRehearsal() {
+    clearInterval(timerInterval);
+    overlay.remove();
+  }
+
+  overlay.appendChild(topBar);
+  overlay.appendChild(slideEl);
+  document.body.appendChild(overlay);
+  showRehSlide(0);
+
+  // Event handlers
+  overlay.querySelector('#reh-next').addEventListener('click', nextSlide);
+  overlay.querySelector('#reh-cancel').addEventListener('click', cancelRehearsal);
+
+  // Keyboard
+  document.addEventListener('keydown', function rehKey(e) {
+    if (!document.body.contains(overlay)) {
+      document.removeEventListener('keydown', rehKey);
+      return;
+    }
+    if (e.key === 'Escape') { cancelRehearsal(); document.removeEventListener('keydown', rehKey); }
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') { e.preventDefault(); nextSlide(); }
+  });
+
+  // Click to advance
+  slideEl.addEventListener('click', nextSlide);
 }

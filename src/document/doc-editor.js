@@ -116,6 +116,51 @@ export function initDocEditor() {
     });
   }
 
+  // Quick highlight color menu
+  document.getElementById('doc-highlight-menu')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const existing = document.querySelector('.doc-highlight-palette');
+    if (existing) { existing.remove(); return; }
+
+    const btn = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+    const palette = document.createElement('div');
+    palette.className = 'doc-highlight-palette';
+    palette.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${rect.left}px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:8px;display:grid;grid-template-columns:repeat(5,1fr);gap:4px;z-index:2000`;
+
+    const colors = [
+      { c: '#fef08a', n: 'Yellow' }, { c: '#bbf7d0', n: 'Green' }, { c: '#bfdbfe', n: 'Blue' },
+      { c: '#fecaca', n: 'Red' }, { c: '#e9d5ff', n: 'Purple' }, { c: '#fed7aa', n: 'Orange' },
+      { c: '#99f6e4', n: 'Teal' }, { c: '#fce7f3', n: 'Pink' }, { c: '#e5e7eb', n: 'Gray' },
+      { c: 'transparent', n: 'None' },
+    ];
+
+    colors.forEach(({ c, n }) => {
+      const swatch = document.createElement('button');
+      swatch.style.cssText = `width:28px;height:28px;border:1px solid var(--border-color);border-radius:4px;cursor:pointer;background:${c === 'transparent' ? 'var(--bg-primary)' : c};position:relative`;
+      swatch.title = n;
+      if (c === 'transparent') swatch.innerHTML = '<span style="font-size:14px;line-height:28px">✕</span>';
+      swatch.addEventListener('click', () => {
+        editorEl?.focus();
+        if (c === 'transparent') {
+          document.execCommand('removeFormat', false, null);
+        } else {
+          document.execCommand('hiliteColor', false, c);
+        }
+        palette.remove();
+      });
+      palette.appendChild(swatch);
+    });
+
+    document.body.appendChild(palette);
+    document.addEventListener('click', function closePalette(ev) {
+      if (!palette.contains(ev.target) && ev.target !== btn) {
+        palette.remove();
+        document.removeEventListener('click', closePalette);
+      }
+    });
+  });
+
   // Insert link
   document.getElementById('doc-insert-link')?.addEventListener('click', () => {
     const url = prompt('Enter URL:');

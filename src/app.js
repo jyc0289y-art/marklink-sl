@@ -292,6 +292,7 @@ export async function initApp() {
     },
     save: async () => {
       try {
+        saveVersionSnapshot('save');
         const tab = getCurrentTab();
         let result;
         if (tab === 'document') result = await quickSaveDoc();
@@ -442,6 +443,9 @@ export async function initApp() {
 
   // 25. Auto-save to localStorage
   initAutoSave();
+
+  // 30. Version history
+  initVersionHistory();
 
   // 27. Zoom controls
   initZoomControls();
@@ -1042,6 +1046,182 @@ function initAutoSave() {
       };
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state));
     } catch {}
+  });
+}
+
+/**
+ * Version History — stores snapshots in localStorage with timestamps
+ */
+const VERSION_KEY = 'officelink-versions';
+const MAX_VERSIONS = 30;
+
+function initVersionHistory() {
+  document.getElementById('btn-version-history')?.addEventListener('click', showVersionHistory);
+
+  // Auto-snapshot every 5 minutes (separate from auto-save)
+  setInterval(() => {
+    saveVersionSnapshot('auto');
+  }, 300000);
+}
+
+function saveVersionSnapshot(type = 'auto') {
+  try {
+    const tab = getCurrentTab?.() || 'editor';
+    let content = '';
+    let label = '';
+
+    if (tab === 'editor') {
+      content = getContent();
+      label = 'Markdown';
+    } else if (tab === 'document') {
+      content = document.getElementById('doc-editor')?.innerHTML || '';
+      label = 'Document';
+    } else if (tab === 'sheet') {
+      // Store visible sheet data summary
+      const table = document.getElementById('sheet-grid');
+      content = table?.outerHTML || '';
+      label = 'Sheet';
+    } else if (tab === 'slide') {
+      content = document.getElementById('slide-canvas')?.innerHTML || '';
+      label = 'Slide';
+    }
+
+    if (!content) return;
+
+    const versions = JSON.parse(localStorage.getItem(VERSION_KEY) || '[]');
+
+    // Don't save duplicate if content is same as last snapshot for this tab
+    const lastSame = versions.find(v => v.tab === tab);
+    if (lastSame && lastSame.content === content) return;
+
+    versions.unshift({
+      id: Date.now(),
+      tab,
+      label,
+      type,
+      content,
+      timestamp: new Date().toISOString(),
+      fileName: getCurrentFileName?.() || 'Untitled',
+    });
+
+    // Keep only MAX_VERSIONS
+    while (versions.length > MAX_VERSIONS) versions.pop();
+    localStorage.setItem(VERSION_KEY, JSON.stringify(versions));
+  } catch {}
+}
+
+function showVersionHistory() {
+  // Save current state first
+  saveVersionSnapshot('manual');
+
+  const existing = document.querySelector('.version-history-overlay');
+  if (existing) { existing.remove(); return; }
+
+  const versions = JSON.parse(localStorage.getItem(VERSION_KEY) || '[]');
+  const tab = getCurrentTab?.() || 'editor';
+  const filtered = versions.filter(v => v.tab === tab);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'version-history-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.5);display:flex;align-items:stretch';
+
+  const sidebar = document.createElement('div');
+  sidebar.style.cssText = 'width:300px;background:var(--bg-primary);border-right:1px solid var(--border-color);overflow-y:auto;display:flex;flex-direction:column';
+
+  const header = document.createElement('div');
+  header.style.cssText = 'padding:16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center';
+  header.innerHTML = `<h3 style="margin:0;font-size:16px;color:var(--text-primary)">Version History</h3><button id="vh-close" style="border:none;background:none;font-size:18px;cursor:pointer;color:var(--text-secondary)">✕</button>`;
+  sidebar.appendChild(header);
+
+  const list = document.createElement('div');
+  list.style.cssText = 'flex:1;overflow-y:auto;padding:8px';
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);font-size:13px">No versions saved yet for this tab.<br>Versions are saved automatically every 5 minutes.</div>';
+  }
+
+  filtered.forEach((v, i) => {
+    const item = document.createElement('div');
+    item.style.cssText = `padding:10px 12px;border-radius:8px;cursor:pointer;margin-bottom:4px;border:1px solid transparent;transition:all 0.15s;${i === 0 ? 'border-color:var(--brand-color,#0071e3);background:rgba(0,113,227,0.05)' : ''}`;
+    item.addEventListener('mouseenter', () => { item.style.background = 'var(--sidebar-bg,#f5f5f5)'; });
+    item.addEventListener('mouseleave', () => { item.style.background = i === 0 ? 'rgba(0,113,227,0.05)' : ''; });
+
+    const date = new Date(v.timestamp);
+    const timeStr = date.toLocaleString();
+    const typeIcon = v.type === 'manual' ? '📌' : '⏰';
+    const sizeKB = (new Blob([v.content]).size / 1024).toFixed(1);
+
+    item.innerHTML = `
+      <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${typeIcon} ${v.fileName}${i === 0 ? ' <span style="font-size:10px;color:var(--brand-color,#0071e3);font-weight:700">CURRENT</span>' : ''}</div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${timeStr}</div>
+      <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${v.label} • ${sizeKB} KB</div>
+    `;
+
+    item.addEventListener('click', () => {
+      // Show this version in preview
+      previewPane.innerHTML = '';
+      if (v.tab === 'editor') {
+        previewPane.style.cssText = previewBaseStyle + 'white-space:pre-wrap;font-family:monospace;font-size:13px;padding:24px';
+        previewPane.textContent = v.content;
+      } else {
+        previewPane.style.cssText = previewBaseStyle + 'padding:24px';
+        previewPane.innerHTML = v.content;
+      }
+
+      // Add restore button
+      const restoreBar = document.createElement('div');
+      restoreBar.style.cssText = 'position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:2';
+      restoreBar.innerHTML = `
+        <button class="vh-restore" style="padding:10px 24px;border:none;border-radius:8px;background:#0071e3;color:#fff;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2)">Restore this version</button>
+      `;
+      restoreBar.querySelector('.vh-restore').addEventListener('click', () => {
+        if (!confirm('Restore this version? Current content will be replaced.')) return;
+        if (v.tab === 'editor' && typeof setContent === 'function') {
+          setContent(v.content);
+        } else if (v.tab === 'document') {
+          const docEditor = document.getElementById('doc-editor');
+          if (docEditor) docEditor.innerHTML = v.content;
+        } else if (v.tab === 'slide') {
+          const canvas = document.getElementById('slide-canvas');
+          if (canvas) canvas.innerHTML = v.content;
+        }
+        overlay.remove();
+      });
+      previewPane.appendChild(restoreBar);
+
+      // Update selection
+      list.querySelectorAll('div').forEach(d => {
+        d.style.borderColor = 'transparent';
+        d.style.background = '';
+      });
+      item.style.borderColor = 'var(--brand-color,#0071e3)';
+      item.style.background = 'rgba(0,113,227,0.05)';
+    });
+
+    list.appendChild(item);
+  });
+
+  sidebar.appendChild(list);
+
+  const previewBaseStyle = 'flex:1;background:var(--bg-secondary,#f8f8f8);overflow-y:auto;position:relative;color:var(--text-primary);';
+  const previewPane = document.createElement('div');
+  previewPane.style.cssText = previewBaseStyle + 'display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text-tertiary)';
+  previewPane.textContent = 'Select a version to preview';
+
+  overlay.appendChild(sidebar);
+  overlay.appendChild(previewPane);
+  document.body.appendChild(overlay);
+
+  // Auto-show first version
+  if (filtered.length > 0) {
+    list.querySelector('div')?.click();
+  }
+
+  // Close handlers
+  overlay.querySelector('#vh-close')?.addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.addEventListener('keydown', function escClose(e) {
+    if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escClose); }
   });
 }
 

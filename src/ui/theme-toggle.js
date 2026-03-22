@@ -8,12 +8,13 @@ let currentTheme = 'dark'; // Default to dark
  * Initialize theme system
  */
 export function initTheme() {
-  // Check localStorage first; default to dark if no saved preference
+  // Check localStorage first; fall back to system preference
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved === 'dark' || saved === 'light') {
     currentTheme = saved;
   } else {
-    currentTheme = 'dark'; // Dark mode by default
+    // Auto-detect from system preference
+    currentTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
 
   applyTheme(currentTheme);
@@ -58,8 +59,24 @@ export function getCurrentTheme() {
 }
 
 /**
+ * Reset to system preference (auto mode)
+ */
+export function autoTheme() {
+  localStorage.removeItem(STORAGE_KEY);
+  currentTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  applyTheme(currentTheme);
+}
+
+/**
  * Check if dark mode is active
  */
 export function isDark() {
   return currentTheme === 'dark';
+}
+
+/**
+ * Check if using auto (system) theme
+ */
+export function isAutoTheme() {
+  return !localStorage.getItem(STORAGE_KEY);
 }
