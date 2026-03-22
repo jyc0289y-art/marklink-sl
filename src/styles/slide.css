@@ -255,3 +255,184 @@
   .slide-editor-area { padding: 8px; }
   .slide-notes-area { height: 60px; }
 }
+
+/* ═══ Object Selection & Resize Handles ═══ */
+.slide-obj-selected {
+  outline: 2px solid #4285f4 !important;
+  outline-offset: 1px;
+  cursor: move;
+  position: relative;
+}
+
+.slide-resize-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border: 2px solid #4285f4;
+  border-radius: 2px;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.slide-resize-handle[data-pos="nw"] { top: -5px; left: -5px; cursor: nw-resize; }
+.slide-resize-handle[data-pos="n"]  { top: -5px; left: 50%; margin-left: -4px; cursor: n-resize; }
+.slide-resize-handle[data-pos="ne"] { top: -5px; right: -5px; cursor: ne-resize; }
+.slide-resize-handle[data-pos="e"]  { top: 50%; margin-top: -4px; right: -5px; cursor: e-resize; }
+.slide-resize-handle[data-pos="se"] { bottom: -5px; right: -5px; cursor: se-resize; }
+.slide-resize-handle[data-pos="s"]  { bottom: -5px; left: 50%; margin-left: -4px; cursor: s-resize; }
+.slide-resize-handle[data-pos="sw"] { bottom: -5px; left: -5px; cursor: sw-resize; }
+.slide-resize-handle[data-pos="w"]  { top: 50%; margin-top: -4px; left: -5px; cursor: w-resize; }
+
+.slide-rotate-handle {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  margin-left: -6px;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border: 2px solid #4285f4;
+  border-radius: 50%;
+  cursor: grab;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.slide-rotate-handle::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: 4px;
+  width: 1px;
+  height: 16px;
+  background: #4285f4;
+}
+
+/* Multi-select */
+.slide-obj-multi-selected {
+  outline: 2px dashed #ea4335 !important;
+  outline-offset: 1px;
+}
+
+/* Group */
+.slide-obj-group {
+  border: 1px dashed rgba(66, 133, 244, 0.4);
+  padding: 4px;
+  position: relative;
+  display: inline-block;
+}
+
+/* ═══ Rich Text Formatting Toolbar ═══ */
+.slide-text-format-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-secondary, #f5f5f5);
+  border-bottom: 1px solid var(--border-color);
+  min-height: 30px;
+}
+
+.slide-text-format-bar select {
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  max-width: 120px;
+}
+
+/* ═══ Notes Header with toolbar ═══ */
+.slide-notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.slide-notes-toolbar {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+/* Contenteditable notes */
+.slide-notes[contenteditable] {
+  flex: 1;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  overflow-y: auto;
+  min-height: 40px;
+  line-height: 1.5;
+}
+
+.slide-notes[contenteditable]:empty::before {
+  content: 'Add speaker notes...';
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.slide-notes[contenteditable] ul,
+.slide-notes[contenteditable] ol {
+  padding-left: 1.2em;
+  margin: 2px 0;
+}
+
+.slide-notes[contenteditable] li {
+  font-size: 12px;
+}
+
+/* ═══ Shape Library Panel ═══ */
+.slide-shape-lib-panel {
+  position: fixed;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  padding: 16px;
+  z-index: 2000;
+  width: 380px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.slide-shape-lib-panel h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.slide-shape-lib-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.slide-shape-lib-grid button {
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  color: var(--text-primary);
+}
+
+.slide-shape-lib-grid button:hover {
+  background: var(--hover-bg);
+  border-color: var(--accent-color);
+}

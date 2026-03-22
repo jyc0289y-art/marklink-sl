@@ -16,6 +16,14 @@
   font-size: 13px;
 }
 
+.md-toolbar .toolbar-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color);
+  margin: 4px 4px;
+  align-self: center;
+}
+
 .editor-container .cm-editor {
   height: 100%;
   font-size: 14px;

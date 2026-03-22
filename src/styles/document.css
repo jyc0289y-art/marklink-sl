@@ -393,6 +393,54 @@ mark.doc-find-highlight.doc-find-current {
 .doc-outline-item[data-level="5"] { padding-left: 56px; font-size: 11px; }
 .doc-outline-item[data-level="6"] { padding-left: 64px; font-size: 11px; }
 
+/* Paragraph Drag-Reorder */
+.doc-draggable-block {
+  position: relative;
+  transition: background 0.15s, transform 0.1s;
+  cursor: grab;
+  border-left: 3px solid transparent;
+}
+.doc-draggable-block:hover {
+  border-left-color: var(--brand-color, #0071e3);
+  background: rgba(0, 113, 227, 0.03);
+}
+.doc-draggable-block::before {
+  content: '\2630';
+  position: absolute;
+  left: -28px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  color: var(--text-tertiary, #999);
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: grab;
+}
+.doc-draggable-block:hover::before {
+  opacity: 1;
+}
+.doc-drag-over {
+  border-top: 3px solid var(--brand-color, #0071e3) !important;
+  border-left-color: transparent !important;
+}
+
+/* Citation inline ref */
+.doc-cite-ref {
+  color: var(--brand-color, #0071e3);
+  cursor: pointer;
+  font-weight: 500;
+}
+.doc-cite-ref:hover {
+  text-decoration: underline;
+}
+
+/* References section */
+.doc-references {
+  border-top: 2px solid var(--border-color);
+  margin-top: 32px;
+  padding-top: 16px;
+}
+
 /* Track Changes */
 .doc-track-insert {
   background: rgba(34, 197, 94, 0.15);

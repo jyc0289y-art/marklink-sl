@@ -36,9 +36,9 @@ function bindEvents() {
     updateThumb(activeSlideIdx);
   });
 
-  // Notes
+  // Notes (contenteditable div or textarea)
   notesEl?.addEventListener('input', () => {
-    slides[activeSlideIdx].notes = notesEl.value;
+    slides[activeSlideIdx].notes = notesEl.tagName === 'TEXTAREA' ? notesEl.value : notesEl.innerHTML;
   });
 
   // Add slide
@@ -285,14 +285,22 @@ function bindEvents() {
 
 function saveCurrentSlide() {
   slides[activeSlideIdx].content = canvasEl.innerHTML;
-  slides[activeSlideIdx].notes = notesEl?.value || '';
+  if (notesEl) {
+    slides[activeSlideIdx].notes = notesEl.tagName === 'TEXTAREA' ? (notesEl.value || '') : (notesEl.innerHTML || '');
+  }
 }
 
 function loadSlide(idx) {
   activeSlideIdx = idx;
   const slide = slides[idx];
   canvasEl.innerHTML = slide.content;
-  if (notesEl) notesEl.value = slide.notes || '';
+  if (notesEl) {
+    if (notesEl.tagName === 'TEXTAREA') {
+      notesEl.value = slide.notes || '';
+    } else {
+      notesEl.innerHTML = slide.notes || '';
+    }
+  }
   applyTheme(slide.theme);
   if (themeSelect) themeSelect.value = slide.theme;
   if (transitionSelect) transitionSelect.value = slide.transition || 'none';
@@ -2371,4 +2379,643 @@ function launchTimerOverlay(totalSecs, warnSecs) {
   };
   controls.querySelector('#timer-reset').onclick = () => { elapsed = 0; update(); };
   controls.querySelector('#timer-close').onclick = () => { clearInterval(interval); overlay.remove(); };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE 1: Object Selection, Resize Handles, Rotate
+   ═══════════════════════════════════════════════════════════════ */
+
+let slideSelectedObjects = [];
+let slideIsResizing = false;
+let slideIsRotating = false;
+let slideIsDragging = false;
+
+function initObjectSelection() {
+  if (!canvasEl) return;
+
+  canvasEl.addEventListener('click', (e) => {
+    if (slideIsResizing || slideIsRotating || slideIsDragging) return;
+
+    const target = findSelectableElement(e.target);
+    if (!target || target === canvasEl) {
+      if (!e.shiftKey) clearObjectSelection();
+      return;
+    }
+
+    if (e.shiftKey) {
+      // Multi-select toggle
+      if (target.classList.contains('slide-obj-selected') || target.classList.contains('slide-obj-multi-selected')) {
+        target.classList.remove('slide-obj-selected', 'slide-obj-multi-selected');
+        removeResizeHandles(target);
+        slideSelectedObjects = slideSelectedObjects.filter(o => o !== target);
+        // If multiple selected, mark as multi-selected
+        if (slideSelectedObjects.length > 1) {
+          slideSelectedObjects.forEach(o => {
+            o.classList.remove('slide-obj-selected');
+            o.classList.add('slide-obj-multi-selected');
+          });
+        } else if (slideSelectedObjects.length === 1) {
+          slideSelectedObjects[0].classList.remove('slide-obj-multi-selected');
+          slideSelectedObjects[0].classList.add('slide-obj-selected');
+          addResizeHandles(slideSelectedObjects[0]);
+        }
+      } else {
+        slideSelectedObjects.push(target);
+        if (slideSelectedObjects.length > 1) {
+          slideSelectedObjects.forEach(o => {
+            o.classList.remove('slide-obj-selected');
+            o.classList.add('slide-obj-multi-selected');
+            removeResizeHandles(o);
+          });
+        } else {
+          target.classList.add('slide-obj-selected');
+          addResizeHandles(target);
+        }
+      }
+    } else {
+      clearObjectSelection();
+      slideSelectedObjects = [target];
+      target.classList.add('slide-obj-selected');
+      addResizeHandles(target);
+    }
+
+    e.stopPropagation();
+  });
+
+  // Drag selected objects
+  canvasEl.addEventListener('mousedown', (e) => {
+    const target = findSelectableElement(e.target);
+    if (!target || !target.classList.contains('slide-obj-selected') && !target.classList.contains('slide-obj-multi-selected')) return;
+    if (e.target.classList.contains('slide-resize-handle') || e.target.classList.contains('slide-rotate-handle')) return;
+
+    // Only drag positioned (absolute/relative) elements or inline-block shapes
+    const style = window.getComputedStyle(target);
+    if (style.position !== 'absolute' && style.display !== 'inline-block') return;
+
+    slideIsDragging = true;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const origPositions = slideSelectedObjects.map(obj => {
+      const cs = window.getComputedStyle(obj);
+      return {
+        el: obj,
+        left: parseInt(cs.marginLeft) || 0,
+        top: parseInt(cs.marginTop) || 0,
+      };
+    });
+
+    const onMove = (ev) => {
+      ev.preventDefault();
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      origPositions.forEach(p => {
+        p.el.style.marginLeft = (p.left + dx) + 'px';
+        p.el.style.marginTop = (p.top + dy) + 'px';
+      });
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      setTimeout(() => { slideIsDragging = false; }, 50);
+      slides[activeSlideIdx].content = canvasEl.innerHTML;
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+function findSelectableElement(el) {
+  if (!el || el === canvasEl) return null;
+  // Walk up to find a direct child of canvas or an inline-block/SVG container
+  let current = el;
+  while (current && current.parentElement !== canvasEl) {
+    if (!current.parentElement) return null;
+    current = current.parentElement;
+  }
+  if (current && current.parentElement === canvasEl) return current;
+  return null;
+}
+
+function clearObjectSelection() {
+  canvasEl?.querySelectorAll('.slide-obj-selected, .slide-obj-multi-selected').forEach(el => {
+    el.classList.remove('slide-obj-selected', 'slide-obj-multi-selected');
+    removeResizeHandles(el);
+  });
+  slideSelectedObjects = [];
+}
+
+function addResizeHandles(el) {
+  removeResizeHandles(el);
+  const positions = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+  // Make element positioned if not already
+  const cs = window.getComputedStyle(el);
+  if (cs.position === 'static') {
+    el.style.position = 'relative';
+  }
+
+  positions.forEach(pos => {
+    const handle = document.createElement('div');
+    handle.className = 'slide-resize-handle';
+    handle.dataset.pos = pos;
+    handle.contentEditable = 'false';
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      startResize(el, pos, e);
+    });
+    el.appendChild(handle);
+  });
+
+  // Rotate handle
+  const rotHandle = document.createElement('div');
+  rotHandle.className = 'slide-rotate-handle';
+  rotHandle.contentEditable = 'false';
+  rotHandle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    startRotate(el, e);
+  });
+  el.appendChild(rotHandle);
+}
+
+function removeResizeHandles(el) {
+  el.querySelectorAll('.slide-resize-handle, .slide-rotate-handle').forEach(h => h.remove());
+}
+
+function startResize(el, pos, e) {
+  slideIsResizing = true;
+  const startX = e.clientX;
+  const startY = e.clientY;
+  const origW = el.offsetWidth;
+  const origH = el.offsetHeight;
+
+  const onMove = (ev) => {
+    ev.preventDefault();
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+
+    let newW = origW, newH = origH;
+    if (pos.includes('e')) newW = origW + dx;
+    if (pos.includes('w')) newW = origW - dx;
+    if (pos.includes('s')) newH = origH + dy;
+    if (pos.includes('n')) newH = origH - dy;
+
+    if (newW > 20) el.style.width = newW + 'px';
+    if (newH > 20) el.style.height = newH + 'px';
+
+    // For SVGs inside, also resize
+    const svg = el.querySelector('svg');
+    if (svg) {
+      if (newW > 20) svg.setAttribute('width', newW);
+      if (newH > 20) svg.setAttribute('height', newH);
+    }
+    const img = el.querySelector('img') || (el.tagName === 'IMG' ? el : null);
+    if (img) {
+      if (newW > 20) img.style.width = newW + 'px';
+      if (newH > 20) img.style.height = newH + 'px';
+    }
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    setTimeout(() => { slideIsResizing = false; }, 50);
+    slides[activeSlideIdx].content = canvasEl.innerHTML;
+    updateThumb(activeSlideIdx);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function startRotate(el, e) {
+  slideIsRotating = true;
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const startAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
+  const currentRotation = getRotationDeg(el);
+
+  const onMove = (ev) => {
+    ev.preventDefault();
+    const angle = Math.atan2(ev.clientY - cy, ev.clientX - cx);
+    const rotation = currentRotation + (angle - startAngle) * (180 / Math.PI);
+    el.style.transform = `rotate(${Math.round(rotation)}deg)`;
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    setTimeout(() => { slideIsRotating = false; }, 50);
+    slides[activeSlideIdx].content = canvasEl.innerHTML;
+    updateThumb(activeSlideIdx);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function getRotationDeg(el) {
+  const st = window.getComputedStyle(el);
+  const tr = st.transform;
+  if (!tr || tr === 'none') return 0;
+  const values = tr.split('(')[1]?.split(')')[0]?.split(',');
+  if (!values || values.length < 2) return 0;
+  return Math.round(Math.atan2(parseFloat(values[1]), parseFloat(values[0])) * (180 / Math.PI));
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE 2: Multi-select & Grouping
+   ═══════════════════════════════════════════════════════════════ */
+
+function groupSelectedObjects() {
+  if (slideSelectedObjects.length < 2) return;
+
+  const group = document.createElement('div');
+  group.className = 'slide-obj-group';
+  group.style.position = 'relative';
+  group.style.display = 'inline-block';
+  group.contentEditable = 'false';
+
+  // Insert group before first selected
+  const first = slideSelectedObjects[0];
+  first.parentElement.insertBefore(group, first);
+
+  slideSelectedObjects.forEach(obj => {
+    obj.classList.remove('slide-obj-selected', 'slide-obj-multi-selected');
+    removeResizeHandles(obj);
+    group.appendChild(obj);
+  });
+
+  slideSelectedObjects = [group];
+  group.classList.add('slide-obj-selected');
+  addResizeHandles(group);
+
+  slides[activeSlideIdx].content = canvasEl.innerHTML;
+  updateThumb(activeSlideIdx);
+}
+
+function ungroupSelectedObjects() {
+  slideSelectedObjects.forEach(obj => {
+    if (!obj.classList.contains('slide-obj-group')) return;
+    const parent = obj.parentElement;
+    const children = Array.from(obj.children).filter(c =>
+      !c.classList.contains('slide-resize-handle') && !c.classList.contains('slide-rotate-handle')
+    );
+    children.forEach(child => {
+      parent.insertBefore(child, obj);
+    });
+    removeResizeHandles(obj);
+    obj.remove();
+  });
+  clearObjectSelection();
+  slides[activeSlideIdx].content = canvasEl.innerHTML;
+  updateThumb(activeSlideIdx);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE 3: Rich Text Formatting Toolbar
+   ═══════════════════════════════════════════════════════════════ */
+
+function initTextFormatBar() {
+  const formatBar = document.getElementById('slide-text-format-bar');
+  if (!formatBar || !canvasEl) return;
+
+  // Show/hide on text selection
+  canvasEl.addEventListener('mouseup', () => {
+    setTimeout(checkTextSelection, 50);
+  });
+  canvasEl.addEventListener('keyup', () => {
+    setTimeout(checkTextSelection, 50);
+  });
+
+  function checkTextSelection() {
+    const sel = window.getSelection();
+    if (sel && sel.toString().length > 0 && canvasEl.contains(sel.anchorNode)) {
+      formatBar.style.display = 'flex';
+    } else {
+      // Keep it shown while it has focus (user clicking controls)
+      if (!formatBar.contains(document.activeElement)) {
+        formatBar.style.display = 'none';
+      }
+    }
+  }
+
+  // Format commands
+  formatBar.querySelectorAll('.slide-fmt2-cmd').forEach(btn => {
+    btn.addEventListener('mousedown', (e) => e.preventDefault());
+    btn.addEventListener('click', () => {
+      document.execCommand(btn.dataset.cmd, false, null);
+      canvasEl.focus();
+      slides[activeSlideIdx].content = canvasEl.innerHTML;
+    });
+  });
+
+  // Font family
+  document.getElementById('slide-font-family')?.addEventListener('change', (e) => {
+    if (!e.target.value) return;
+    applyStyleToSelection('fontFamily', e.target.value);
+    canvasEl.focus();
+    slides[activeSlideIdx].content = canvasEl.innerHTML;
+  });
+
+  // Font size
+  document.getElementById('slide-font-size')?.addEventListener('change', (e) => {
+    if (!e.target.value) return;
+    applyStyleToSelection('fontSize', e.target.value);
+    canvasEl.focus();
+    slides[activeSlideIdx].content = canvasEl.innerHTML;
+  });
+
+  // Line height
+  document.getElementById('slide-line-height')?.addEventListener('change', (e) => {
+    applyBlockStyle('lineHeight', e.target.value);
+    canvasEl.focus();
+    slides[activeSlideIdx].content = canvasEl.innerHTML;
+  });
+
+  // Letter spacing
+  document.getElementById('slide-letter-spacing')?.addEventListener('change', (e) => {
+    applyStyleToSelection('letterSpacing', e.target.value + 'px');
+    canvasEl.focus();
+    slides[activeSlideIdx].content = canvasEl.innerHTML;
+  });
+
+  // Text color
+  document.getElementById('slide-fmt-text-color')?.addEventListener('input', (e) => {
+    document.execCommand('foreColor', false, e.target.value);
+    canvasEl.focus();
+    slides[activeSlideIdx].content = canvasEl.innerHTML;
+  });
+
+  // Highlight color
+  document.getElementById('slide-fmt-bg-color')?.addEventListener('input', (e) => {
+    document.execCommand('hiliteColor', false, e.target.value);
+    canvasEl.focus();
+    slides[activeSlideIdx].content = canvasEl.innerHTML;
+  });
+
+  // Clear formatting
+  document.getElementById('slide-fmt-clear')?.addEventListener('click', () => {
+    document.execCommand('removeFormat', false, null);
+    canvasEl.focus();
+    slides[activeSlideIdx].content = canvasEl.innerHTML;
+  });
+}
+
+function applyStyleToSelection(prop, value) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  if (range.collapsed) return;
+
+  const span = document.createElement('span');
+  span.style[prop] = value;
+  try {
+    range.surroundContents(span);
+  } catch (_e) {
+    // If range crosses element boundaries, wrap the extracted content
+    const fragment = range.extractContents();
+    span.appendChild(fragment);
+    range.insertNode(span);
+  }
+  // Re-select
+  sel.removeAllRanges();
+  const newRange = document.createRange();
+  newRange.selectNodeContents(span);
+  sel.addRange(newRange);
+}
+
+function applyBlockStyle(prop, value) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const node = sel.anchorNode;
+  const blockEl = node?.nodeType === 1 ? node : node?.parentElement;
+  if (!blockEl || !canvasEl.contains(blockEl)) return;
+
+  let target = blockEl;
+  while (target.parentElement && target.parentElement !== canvasEl) {
+    target = target.parentElement;
+  }
+  if (target && target.parentElement === canvasEl) {
+    target.style[prop] = value;
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE 4: Expanded Shape Library
+   ═══════════════════════════════════════════════════════════════ */
+
+function showShapeLibrary() {
+  const existing = document.querySelector('.slide-shape-lib-panel');
+  if (existing) { existing.remove(); return; }
+
+  const btn = document.getElementById('slide-shape-lib');
+  const rect = btn.getBoundingClientRect();
+
+  const panel = document.createElement('div');
+  panel.className = 'slide-shape-lib-panel';
+  panel.style.top = (rect.bottom + 4) + 'px';
+  panel.style.left = Math.min(rect.left, window.innerWidth - 400) + 'px';
+
+  const categories = [
+    {
+      name: 'Basic Shapes',
+      shapes: [
+        { label: 'Rectangle', svg: (c) => `<svg width="100" height="70" viewBox="0 0 100 70"><rect x="2" y="2" width="96" height="66" rx="4" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Rounded Rect', svg: (c) => `<svg width="100" height="70" viewBox="0 0 100 70"><rect x="2" y="2" width="96" height="66" rx="16" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Circle', svg: (c) => `<svg width="80" height="80" viewBox="0 0 80 80"><circle cx="40" cy="40" r="38" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Ellipse', svg: (c) => `<svg width="120" height="80" viewBox="0 0 120 80"><ellipse cx="60" cy="40" rx="58" ry="38" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Triangle', svg: (c) => `<svg width="100" height="90" viewBox="0 0 100 90"><polygon points="50,4 96,86 4,86" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Diamond', svg: (c) => `<svg width="80" height="100" viewBox="0 0 80 100"><polygon points="40,4 76,50 40,96 4,50" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Pentagon', svg: (c) => `<svg width="90" height="86" viewBox="0 0 90 86"><polygon points="45,4 88,32 72,82 18,82 2,32" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Hexagon', svg: (c) => `<svg width="100" height="86" viewBox="0 0 100 86"><polygon points="25,4 75,4 98,43 75,82 25,82 2,43" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Octagon', svg: (c) => `<svg width="90" height="90" viewBox="0 0 90 90"><polygon points="28,4 62,4 86,28 86,62 62,86 28,86 4,62 4,28" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Cross', svg: (c) => `<svg width="80" height="80" viewBox="0 0 80 80"><polygon points="28,4 52,4 52,28 76,28 76,52 52,52 52,76 28,76 28,52 4,52 4,28 28,28" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Trapezoid', svg: (c) => `<svg width="120" height="70" viewBox="0 0 120 70"><polygon points="20,4 100,4 116,66 4,66" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Parallelogram', svg: (c) => `<svg width="120" height="70" viewBox="0 0 120 70"><polygon points="24,4 116,4 96,66 4,66" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+      ],
+    },
+    {
+      name: 'Arrows',
+      shapes: [
+        { label: 'Right Arrow', svg: (c) => `<svg width="140" height="60" viewBox="0 0 140 60"><polygon points="0,16 96,16 96,0 140,30 96,60 96,44 0,44" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Left Arrow', svg: (c) => `<svg width="140" height="60" viewBox="0 0 140 60"><polygon points="140,16 44,16 44,0 0,30 44,60 44,44 140,44" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Up Arrow', svg: (c) => `<svg width="60" height="140" viewBox="0 0 60 140"><polygon points="16,140 16,44 0,44 30,0 60,44 44,44 44,140" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Down Arrow', svg: (c) => `<svg width="60" height="140" viewBox="0 0 60 140"><polygon points="16,0 16,96 0,96 30,140 60,96 44,96 44,0" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Double Arrow', svg: (c) => `<svg width="160" height="60" viewBox="0 0 160 60"><polygon points="0,30 30,0 30,16 130,16 130,0 160,30 130,60 130,44 30,44 30,60" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Chevron', svg: (c) => `<svg width="120" height="60" viewBox="0 0 120 60"><polygon points="0,0 90,0 120,30 90,60 0,60 30,30" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+      ],
+    },
+    {
+      name: 'Callouts',
+      shapes: [
+        { label: 'Speech Bubble', svg: (c) => `<svg width="140" height="110" viewBox="0 0 140 110"><path d="M4,4 h128 a4,4 0 0 1 4,4 v60 a4,4 0 0 1 -4,4 h-72 l-16,30 l0,-30 h-40 a4,4 0 0 1 -4,-4 v-60 a4,4 0 0 1 4,-4z" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Thought Bubble', svg: (c) => `<svg width="140" height="120" viewBox="0 0 140 120"><ellipse cx="70" cy="45" rx="66" ry="42" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/><circle cx="36" cy="98" r="8" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/><circle cx="22" cy="112" r="5" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Note', svg: (c) => `<svg width="100" height="100" viewBox="0 0 100 100"><path d="M4,4 h72 l20,20 v72 a4,4 0 0 1 -4,4 h-84 a4,4 0 0 1 -4,-4 v-88 a4,4 0 0 1 4,-4z M76,4 v20 h20" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Cloud', svg: (c) => `<svg width="140" height="90" viewBox="0 0 140 90"><path d="M30,80 A25,25 0 0 1 20,36 A30,30 0 0 1 56,10 A32,32 0 0 1 108,20 A24,24 0 0 1 120,70 A20,20 0 0 1 100,80 Z" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+      ],
+    },
+    {
+      name: 'Stars & Banners',
+      shapes: [
+        { label: '4-Star', svg: (c) => `<svg width="80" height="80" viewBox="0 0 80 80"><polygon points="40,0 48,28 80,28 54,48 62,76 40,58 18,76 26,48 0,28 32,28" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: '5-Star', svg: (c) => `<svg width="90" height="86" viewBox="0 0 90 86"><polygon points="45,4 55,32 86,32 61,50 69,80 45,64 21,80 29,50 4,32 35,32" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: '6-Star', svg: (c) => `<svg width="86" height="90" viewBox="0 0 86 90"><polygon points="43,2 54,26 80,12 68,38 86,52 60,52 54,78 43,56 32,78 26,52 0,52 18,38 6,12 32,26" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Heart', svg: (c) => `<svg width="90" height="84" viewBox="0 0 90 84"><path d="M45,78 C15,52 -5,26 20,10 C32,2 45,12 45,26 C45,12 58,2 70,10 C95,26 75,52 45,78z" fill="${c}" opacity="0.5" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Lightning', svg: (c) => `<svg width="60" height="100" viewBox="0 0 60 100"><polygon points="36,0 8,44 28,44 4,100 56,48 32,48 56,0" fill="${c}" opacity="0.4" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Ribbon', svg: (c) => `<svg width="140" height="60" viewBox="0 0 140 60"><path d="M16,8 h108 l-12,22 l12,22 h-108 l12,-22z" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+      ],
+    },
+    {
+      name: 'Process & Flowchart',
+      shapes: [
+        { label: 'Process', svg: (c) => `<svg width="120" height="60" viewBox="0 0 120 60"><rect x="2" y="2" width="116" height="56" rx="4" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Decision', svg: (c) => `<svg width="100" height="80" viewBox="0 0 100 80"><polygon points="50,4 96,40 50,76 4,40" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Terminator', svg: (c) => `<svg width="120" height="50" viewBox="0 0 120 50"><rect x="2" y="2" width="116" height="46" rx="23" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Data', svg: (c) => `<svg width="120" height="60" viewBox="0 0 120 60"><polygon points="18,4 118,4 102,56 2,56" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Document', svg: (c) => `<svg width="120" height="70" viewBox="0 0 120 70"><path d="M4,4 h112 v48 c-28,20 -56,-10 -84,10 h-28 z" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Cylinder', svg: (c) => `<svg width="80" height="100" viewBox="0 0 80 100"><ellipse cx="40" cy="14" rx="36" ry="12" fill="${c}" opacity="0.3" stroke="${c}" stroke-width="2"/><path d="M4,14 v70 a36,12 0 0 0 72,0 v-70" fill="${c}" opacity="0.2" stroke="${c}" stroke-width="2"/></svg>` },
+      ],
+    },
+    {
+      name: 'Lines & Connectors',
+      shapes: [
+        { label: 'Horiz. Line', svg: (c) => `<svg width="200" height="10" viewBox="0 0 200 10"><line x1="2" y1="5" x2="198" y2="5" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Vert. Line', svg: (c) => `<svg width="10" height="200" viewBox="0 0 10 200"><line x1="5" y1="2" x2="5" y2="198" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Divider', svg: (c) => `<svg width="200" height="6" viewBox="0 0 200 6"><line x1="0" y1="3" x2="200" y2="3" stroke="${c}" stroke-width="3" stroke-dasharray="8,4"/></svg>` },
+        { label: 'L-Connector', svg: (c) => `<svg width="100" height="100" viewBox="0 0 100 100"><polyline points="4,4 4,96 96,96" fill="none" stroke="${c}" stroke-width="2"/></svg>` },
+        { label: 'Curved Arrow', svg: (c) => `<svg width="120" height="80" viewBox="0 0 120 80"><path d="M4,60 C4,4 116,4 116,40" fill="none" stroke="${c}" stroke-width="2"/><polygon points="116,40 108,28 120,32" fill="${c}"/></svg>` },
+      ],
+    },
+  ];
+
+  // Color picker row
+  let shapeColor = '#4285f4';
+  let panelHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <h3 style="margin:0;font-size:15px;font-weight:700;color:var(--text-primary)">Shape Library</h3>
+    <div style="display:flex;align-items:center;gap:6px">
+      <input type="color" id="shape-lib-color" value="${shapeColor}" style="width:28px;height:28px;border:none;cursor:pointer;border-radius:4px">
+      <button class="shape-lib-close" style="border:none;background:transparent;font-size:18px;cursor:pointer;color:var(--text-primary)">&times;</button>
+    </div>
+  </div>`;
+
+  categories.forEach(cat => {
+    panelHTML += `<h4>${cat.name}</h4><div class="slide-shape-lib-grid">`;
+    cat.shapes.forEach((shape, i) => {
+      panelHTML += `<button data-cat="${cat.name}" data-idx="${i}" title="${shape.label}">
+        ${shape.svg('#888')}
+      </button>`;
+    });
+    panelHTML += '</div>';
+  });
+
+  panel.innerHTML = panelHTML;
+  document.body.appendChild(panel);
+
+  // Color picker
+  panel.querySelector('#shape-lib-color')?.addEventListener('input', (e) => {
+    shapeColor = e.target.value;
+  });
+
+  // Close
+  panel.querySelector('.shape-lib-close').addEventListener('click', () => panel.remove());
+
+  // Click handlers
+  panel.querySelectorAll('.slide-shape-lib-grid button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const catName = btn.dataset.cat;
+      const idx = parseInt(btn.dataset.idx);
+      const cat = categories.find(c => c.name === catName);
+      if (!cat) return;
+      const shape = cat.shapes[idx];
+      const svgHtml = shape.svg(shapeColor);
+      const html = `<div style="display:inline-block;margin:8px;cursor:move" contenteditable="false">${svgHtml}</div>`;
+      canvasEl.focus();
+      document.execCommand('insertHTML', false, html);
+      slides[activeSlideIdx].content = canvasEl.innerHTML;
+      updateThumb(activeSlideIdx);
+      panel.remove();
+    });
+  });
+
+  // Close on outside click
+  document.addEventListener('click', function closeLib(e) {
+    if (!panel.contains(e.target) && e.target !== btn) {
+      panel.remove();
+      document.removeEventListener('click', closeLib);
+    }
+  });
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE 5: Rich Speaker Notes
+   ═══════════════════════════════════════════════════════════════ */
+
+function initRichNotes() {
+  const notesDiv = document.getElementById('slide-notes');
+  if (!notesDiv || notesDiv.tagName === 'TEXTAREA') return;
+
+  // Save notes on input (now HTML)
+  notesDiv.addEventListener('input', () => {
+    slides[activeSlideIdx].notes = notesDiv.innerHTML;
+  });
+
+  // Format buttons
+  document.querySelectorAll('.slide-notes-fmt').forEach(btn => {
+    btn.addEventListener('mousedown', (e) => e.preventDefault());
+    btn.addEventListener('click', () => {
+      notesDiv.focus();
+      document.execCommand(btn.dataset.cmd, false, null);
+      slides[activeSlideIdx].notes = notesDiv.innerHTML;
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Initialize all new features (called from initSlideEditor patch)
+   ═══════════════════════════════════════════════════════════════ */
+
+export function initSlideEditorEnhanced() {
+  // Call original init
+  initSlideEditor();
+
+  // Initialize enhanced features
+  initObjectSelection();
+  initTextFormatBar();
+  initRichNotes();
+
+  // Group/Ungroup buttons
+  document.getElementById('slide-obj-group')?.addEventListener('click', groupSelectedObjects);
+  document.getElementById('slide-obj-ungroup')?.addEventListener('click', ungroupSelectedObjects);
+
+  // Shape Library
+  document.getElementById('slide-shape-lib')?.addEventListener('click', showShapeLibrary);
+
+  // Keyboard shortcuts for group
+  document.addEventListener('keydown', (e) => {
+    const slideView = document.getElementById('view-slide');
+    if (!slideView?.classList.contains('active')) return;
+
+    // Ctrl/Cmd + G = group
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'g') {
+      e.preventDefault();
+      groupSelectedObjects();
+    }
+    // Ctrl/Cmd + Shift + G = ungroup
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'g') {
+      e.preventDefault();
+      ungroupSelectedObjects();
+    }
+    // Delete selected objects
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (slideSelectedObjects.length > 0 && document.activeElement !== canvasEl) {
+        e.preventDefault();
+        slideSelectedObjects.forEach(obj => obj.remove());
+        slideSelectedObjects = [];
+        slides[activeSlideIdx].content = canvasEl.innerHTML;
+        updateThumb(activeSlideIdx);
+      }
+    }
+  });
 }

@@ -47,6 +47,50 @@
 .ai-status-dot.online { background: #4caf50; }
 .ai-status-dot.offline { background: #f44336; }
 
+/* URL Settings Panel */
+.ai-url-settings {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--pane-header-bg);
+}
+.ai-url-settings.hidden { display: none; }
+.ai-url-settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ai-url-input {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-width: 0;
+}
+.ai-url-save-btn, .ai-url-reset-btn {
+  padding: 3px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ai-url-save-btn:hover { background: #4caf50; color: #fff; border-color: #4caf50; }
+.ai-url-reset-btn:hover { background: var(--hover-bg, #f0f0f0); }
+.ai-url-dot {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.ai-url-dot.online { background: #4caf50; }
+.ai-url-dot.offline { background: #f44336; }
+
 /* Chat list */
 .ai-chat-list {
   flex: 1;

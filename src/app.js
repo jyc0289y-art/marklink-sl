@@ -21,7 +21,7 @@ import { initDocEditor, getDocContent } from './document/doc-editor.js';
 import { openDocFile, saveDocFile, quickSaveDoc, getDocFileName, setDocFileName } from './document/doc-file.js';
 import { initSheetEditor, getSheetsData } from './sheet/sheet-ui.js';
 import { openSheetFile, saveSheetFile, getSheetFileName } from './sheet/sheet-file.js';
-import { initSlideEditor } from './slide/slide-editor.js';
+import { initSlideEditor, initSlideEditorEnhanced } from './slide/slide-editor.js';
 import { openSlideFile, saveSlideFile, getSlideFileName } from './slide/slide-file.js';
 import { initPdfViewer, getPdfFileName, getPdfText, getPdfPageImages, openPdf } from './pdf/pdf-viewer.js';
 import { initAiChat, setContextProviders, enterAiFullscreen, exitAiFullscreen } from './ai/ai-chat.js';
@@ -330,7 +330,7 @@ export async function initApp() {
   initTabs();
   initDocEditor();
   initSheetEditor();
-  initSlideEditor();
+  initSlideEditorEnhanced();
   initPdfViewer();
   initPhotoEditor();
   initCalculator();

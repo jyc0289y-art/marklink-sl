@@ -343,6 +343,31 @@ export function initDocEditor() {
     }
   });
 
+  // Multi-Column Layout
+  document.getElementById('doc-multi-column')?.addEventListener('click', () => {
+    showMultiColumnPicker();
+  });
+
+  // Paragraph Drag Reorder
+  document.getElementById('doc-drag-reorder')?.addEventListener('click', () => {
+    toggleParagraphDragReorder();
+  });
+
+  // Smart Table Operations
+  document.getElementById('doc-table-ops')?.addEventListener('click', () => {
+    showSmartTableOps();
+  });
+
+  // Document Templates
+  document.getElementById('doc-templates')?.addEventListener('click', () => {
+    showTemplateLibrary();
+  });
+
+  // Citation / Bibliography
+  document.getElementById('doc-citation')?.addEventListener('click', () => {
+    showCitationDialog();
+  });
+
   // Keyboard shortcuts within doc editor
   editorEl.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey) {
@@ -2848,4 +2873,774 @@ function toggleReadingMode() {
     }
     if (btn) btn.style.background = '';
   }
+}
+
+// ─── Feature 1: Multi-Column Layout ─────────────────────────
+function showMultiColumnPicker() {
+  document.querySelector('.doc-multicol-picker')?.remove();
+  const btn = document.getElementById('doc-multi-column');
+  if (!btn) return;
+  const rect = btn.getBoundingClientRect();
+
+  const picker = document.createElement('div');
+  picker.className = 'doc-multicol-picker';
+  picker.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${rect.left}px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,0.18);padding:12px;z-index:2000;display:flex;gap:10px`;
+
+  [1, 2, 3].forEach(n => {
+    const opt = document.createElement('button');
+    opt.style.cssText = 'padding:12px 16px;border:2px solid var(--border-color);border-radius:8px;background:var(--bg-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--text-primary);transition:border-color 0.15s,background 0.15s';
+    const colVisual = Array(n).fill('<div style="width:18px;height:32px;border:1px solid var(--text-secondary);border-radius:2px;background:var(--sidebar-bg)"></div>').join('');
+    opt.innerHTML = `<div style="display:flex;gap:3px">${colVisual}</div><span style="font-size:11px;font-weight:600">${n} Col${n > 1 ? 's' : ''}</span>`;
+    opt.addEventListener('mouseenter', () => { opt.style.borderColor = 'var(--brand-color)'; opt.style.background = 'var(--hover-bg)'; });
+    opt.addEventListener('mouseleave', () => { opt.style.borderColor = 'var(--border-color)'; opt.style.background = 'var(--bg-primary)'; });
+    opt.addEventListener('click', () => {
+      if (!editorEl) return;
+      if (n === 1) {
+        editorEl.style.columnCount = '';
+        editorEl.style.columnGap = '';
+        editorEl.style.columnRule = '';
+      } else {
+        editorEl.style.columnCount = n;
+        editorEl.style.columnGap = '24px';
+        editorEl.style.columnRule = '1px solid var(--border-color)';
+      }
+      picker.remove();
+      dirty = true;
+    });
+    picker.appendChild(opt);
+  });
+
+  document.body.appendChild(picker);
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!picker.contains(e.target) && e.target !== btn) { picker.remove(); document.removeEventListener('click', close); }
+    });
+  }, 10);
+}
+
+// ─── Feature 2: Paragraph Drag-Reorder ──────────────────────
+let dragReorderEnabled = false;
+let dragSrcEl = null;
+
+function toggleParagraphDragReorder() {
+  dragReorderEnabled = !dragReorderEnabled;
+  const btn = document.getElementById('doc-drag-reorder');
+  if (btn) {
+    btn.style.background = dragReorderEnabled ? 'var(--accent-color)' : '';
+    btn.style.color = dragReorderEnabled ? '#fff' : '';
+  }
+
+  if (!editorEl) return;
+
+  if (dragReorderEnabled) {
+    applyDragHandles();
+    editorEl.addEventListener('input', applyDragHandles);
+  } else {
+    removeDragHandles();
+    editorEl.removeEventListener('input', applyDragHandles);
+  }
+}
+
+function applyDragHandles() {
+  if (!editorEl || !dragReorderEnabled) return;
+  removeDragHandles();
+
+  const blocks = editorEl.querySelectorAll(':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > ul, :scope > ol, :scope > blockquote, :scope > table, :scope > div:not(.doc-toc):not(.doc-footnotes):not(.doc-endnotes):not(.doc-references)');
+
+  blocks.forEach(block => {
+    block.setAttribute('draggable', 'true');
+    block.classList.add('doc-draggable-block');
+
+    block.addEventListener('dragstart', handleDragStart);
+    block.addEventListener('dragover', handleDragOver);
+    block.addEventListener('dragenter', handleDragEnter);
+    block.addEventListener('dragleave', handleDragLeave);
+    block.addEventListener('drop', handleDrop);
+    block.addEventListener('dragend', handleDragEnd);
+  });
+}
+
+function removeDragHandles() {
+  if (!editorEl) return;
+  const blocks = editorEl.querySelectorAll('.doc-draggable-block');
+  blocks.forEach(block => {
+    block.removeAttribute('draggable');
+    block.classList.remove('doc-draggable-block', 'doc-drag-over');
+    block.removeEventListener('dragstart', handleDragStart);
+    block.removeEventListener('dragover', handleDragOver);
+    block.removeEventListener('dragenter', handleDragEnter);
+    block.removeEventListener('dragleave', handleDragLeave);
+    block.removeEventListener('drop', handleDrop);
+    block.removeEventListener('dragend', handleDragEnd);
+  });
+}
+
+function handleDragStart(e) {
+  dragSrcEl = this;
+  this.style.opacity = '0.4';
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/html', this.outerHTML);
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  return false;
+}
+
+function handleDragEnter() {
+  this.classList.add('doc-drag-over');
+}
+
+function handleDragLeave() {
+  this.classList.remove('doc-drag-over');
+}
+
+function handleDrop(e) {
+  e.stopPropagation();
+  e.preventDefault();
+  if (dragSrcEl !== this) {
+    const rect = this.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    if (e.clientY < midY) {
+      this.parentNode.insertBefore(dragSrcEl, this);
+    } else {
+      this.parentNode.insertBefore(dragSrcEl, this.nextSibling);
+    }
+    dirty = true;
+  }
+  this.classList.remove('doc-drag-over');
+  return false;
+}
+
+function handleDragEnd() {
+  this.style.opacity = '1';
+  const blocks = editorEl?.querySelectorAll('.doc-draggable-block') || [];
+  blocks.forEach(b => b.classList.remove('doc-drag-over'));
+}
+
+// ─── Feature 3: Smart Table Operations ──────────────────────
+function showSmartTableOps() {
+  if (!editorEl) return;
+
+  const tables = editorEl.querySelectorAll('table');
+  if (tables.length === 0) {
+    alert('No tables found in the document. Insert a table first.');
+    return;
+  }
+
+  const sel = window.getSelection();
+  let targetTable = null;
+  if (sel && sel.rangeCount > 0) {
+    const node = sel.anchorNode;
+    targetTable = node?.closest?.('table') || node?.parentElement?.closest?.('table');
+  }
+  if (!targetTable) targetTable = tables[tables.length - 1];
+
+  document.querySelector('.doc-tableops-dialog')?.remove();
+
+  const dialog = document.createElement('div');
+  dialog.className = 'ai-setup-modal doc-tableops-dialog';
+  dialog.innerHTML = `
+    <div class="ai-setup-content" style="width:440px">
+      <div class="ai-setup-header">
+        <h3>Smart Table Operations</h3>
+        <button class="ai-setup-close">&times;</button>
+      </div>
+      <div class="ai-setup-body">
+        <div style="margin-bottom:16px">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px">Target Table (${tables.length} table${tables.length > 1 ? 's' : ''} found)</label>
+          <select id="tblops-target" style="width:100%;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+            ${Array.from(tables).map((t, i) => {
+              const firstRow = t.querySelector('tr');
+              const preview = firstRow ? Array.from(firstRow.cells).slice(0, 3).map(c => c.textContent.trim().substring(0, 15)).join(', ') : 'Empty';
+              return `<option value="${i}" ${t === targetTable ? 'selected' : ''}>Table ${i + 1}: ${preview}...</option>`;
+            }).join('')}
+          </select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
+          <div style="font-size:12px;font-weight:700;color:var(--brand-color);text-transform:uppercase;letter-spacing:0.5px;grid-column:span 2;margin-bottom:4px">Sort</div>
+          <div>
+            <label style="font-size:12px;color:var(--text-secondary)">Column</label>
+            <select id="tblops-sort-col" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;background:var(--bg-primary);color:var(--text-primary)">
+            </select>
+          </div>
+          <div style="display:flex;gap:4px;align-items:flex-end">
+            <button id="tblops-sort-asc" class="ai-pull-btn" style="flex:1;font-size:11px">Sort A-Z</button>
+            <button id="tblops-sort-desc" class="ai-pull-btn" style="flex:1;font-size:11px">Sort Z-A</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
+          <div style="font-size:12px;font-weight:700;color:var(--brand-color);text-transform:uppercase;letter-spacing:0.5px;grid-column:span 2;margin-bottom:4px">Filter Rows</div>
+          <div>
+            <label style="font-size:12px;color:var(--text-secondary)">Column</label>
+            <select id="tblops-filter-col" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;background:var(--bg-primary);color:var(--text-primary)">
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text-secondary)">Contains</label>
+            <div style="display:flex;gap:4px">
+              <input id="tblops-filter-val" type="text" placeholder="keyword" style="flex:1;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;background:var(--bg-primary);color:var(--text-primary)">
+              <button id="tblops-filter-apply" class="ai-pull-btn" style="font-size:11px">Filter</button>
+              <button id="tblops-filter-reset" class="ai-pull-btn" style="font-size:11px">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div style="margin-bottom:16px">
+          <div style="font-size:12px;font-weight:700;color:var(--brand-color);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Aggregate (Numeric Column)</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="tblops-agg-col" style="flex:1;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;background:var(--bg-primary);color:var(--text-primary)">
+            </select>
+            <button id="tblops-sum" class="ai-pull-btn" style="font-size:11px">Sum</button>
+            <button id="tblops-avg" class="ai-pull-btn" style="font-size:11px">Average</button>
+            <button id="tblops-min" class="ai-pull-btn" style="font-size:11px">Min</button>
+            <button id="tblops-max" class="ai-pull-btn" style="font-size:11px">Max</button>
+          </div>
+          <div id="tblops-agg-result" style="margin-top:8px;font-size:13px;font-weight:600;color:var(--text-primary);min-height:20px"></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(dialog);
+  dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
+
+  const getSelectedTable = () => tables[parseInt(dialog.querySelector('#tblops-target').value)] || tables[0];
+
+  function populateColumns() {
+    const table = getSelectedTable();
+    const firstRow = table.querySelector('tr');
+    if (!firstRow) return;
+    const headers = Array.from(firstRow.cells).map((c, i) => ({ idx: i, label: c.textContent.trim() || `Col ${i + 1}` }));
+    const optionsHtml = headers.map(h => `<option value="${h.idx}">${h.label}</option>`).join('');
+    dialog.querySelector('#tblops-sort-col').innerHTML = optionsHtml;
+    dialog.querySelector('#tblops-filter-col').innerHTML = optionsHtml;
+    dialog.querySelector('#tblops-agg-col').innerHTML = optionsHtml;
+  }
+  populateColumns();
+  dialog.querySelector('#tblops-target').addEventListener('change', populateColumns);
+
+  const doSort = (asc) => {
+    const table = getSelectedTable();
+    const colIdx = parseInt(dialog.querySelector('#tblops-sort-col').value);
+    const tbody = table.querySelector('tbody') || table;
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort((a, b) => {
+      const aVal = a.cells[colIdx]?.textContent.trim() || '';
+      const bVal = b.cells[colIdx]?.textContent.trim() || '';
+      const aNum = parseFloat(aVal);
+      const bNum = parseFloat(bVal);
+      if (!isNaN(aNum) && !isNaN(bNum)) return asc ? aNum - bNum : bNum - aNum;
+      return asc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+    dirty = true;
+  };
+  dialog.querySelector('#tblops-sort-asc').addEventListener('click', () => doSort(true));
+  dialog.querySelector('#tblops-sort-desc').addEventListener('click', () => doSort(false));
+
+  dialog.querySelector('#tblops-filter-apply').addEventListener('click', () => {
+    const table = getSelectedTable();
+    const colIdx = parseInt(dialog.querySelector('#tblops-filter-col').value);
+    const keyword = dialog.querySelector('#tblops-filter-val').value.toLowerCase();
+    const tbody = table.querySelector('tbody') || table;
+    const rows = tbody.querySelectorAll('tr');
+    rows.forEach(r => {
+      const cellText = r.cells[colIdx]?.textContent.toLowerCase() || '';
+      r.style.display = cellText.includes(keyword) ? '' : 'none';
+    });
+  });
+  dialog.querySelector('#tblops-filter-reset').addEventListener('click', () => {
+    const table = getSelectedTable();
+    const tbody = table.querySelector('tbody') || table;
+    tbody.querySelectorAll('tr').forEach(r => r.style.display = '');
+    dialog.querySelector('#tblops-filter-val').value = '';
+  });
+
+  const doAggregate = (fn) => {
+    const table = getSelectedTable();
+    const colIdx = parseInt(dialog.querySelector('#tblops-agg-col').value);
+    const tbody = table.querySelector('tbody') || table;
+    const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.style.display !== 'none');
+    const values = rows.map(r => parseFloat(r.cells[colIdx]?.textContent.trim())).filter(v => !isNaN(v));
+    let result = '';
+    if (values.length === 0) { result = 'No numeric values found'; }
+    else {
+      switch (fn) {
+        case 'sum': result = `Sum = ${values.reduce((a, b) => a + b, 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}`; break;
+        case 'avg': result = `Average = ${(values.reduce((a, b) => a + b, 0) / values.length).toLocaleString(undefined, { maximumFractionDigits: 4 })}`; break;
+        case 'min': result = `Min = ${Math.min(...values).toLocaleString(undefined, { maximumFractionDigits: 4 })}`; break;
+        case 'max': result = `Max = ${Math.max(...values).toLocaleString(undefined, { maximumFractionDigits: 4 })}`; break;
+      }
+    }
+    dialog.querySelector('#tblops-agg-result').textContent = result;
+  };
+  dialog.querySelector('#tblops-sum').addEventListener('click', () => doAggregate('sum'));
+  dialog.querySelector('#tblops-avg').addEventListener('click', () => doAggregate('avg'));
+  dialog.querySelector('#tblops-min').addEventListener('click', () => doAggregate('min'));
+  dialog.querySelector('#tblops-max').addEventListener('click', () => doAggregate('max'));
+}
+
+// ─── Feature 4: Document Templates ──────────────────────────
+const DOC_TEMPLATES = {
+  resume: {
+    name: 'Resume / CV',
+    icon: '\u{1F464}',
+    content: `<h1 style="text-align:center;margin-bottom:4px">Your Name</h1>
+<p style="text-align:center;color:gray;font-size:14px">your.email@example.com | (123) 456-7890 | City, State | linkedin.com/in/yourname</p>
+<hr>
+<h2>Professional Summary</h2>
+<p>Experienced professional with a proven track record in [industry/field]. Skilled in [key competencies]. Passionate about delivering results and driving innovation.</p>
+<h2>Experience</h2>
+<h3>Job Title \u2014 Company Name</h3>
+<p style="color:gray;font-size:13px"><em>Jan 2022 \u2013 Present | City, State</em></p>
+<ul>
+<li>Led cross-functional team of 10+ members to deliver projects on time and under budget</li>
+<li>Improved operational efficiency by 25% through process optimization</li>
+<li>Managed annual budget of $500K with consistent positive variance</li>
+</ul>
+<h3>Previous Job Title \u2014 Previous Company</h3>
+<p style="color:gray;font-size:13px"><em>Jun 2019 \u2013 Dec 2021 | City, State</em></p>
+<ul>
+<li>Developed and implemented new strategies resulting in 30% revenue growth</li>
+<li>Collaborated with stakeholders to define requirements and deliver solutions</li>
+</ul>
+<h2>Education</h2>
+<h3>Degree \u2014 University Name</h3>
+<p style="color:gray;font-size:13px"><em>Graduated: May 2019 | GPA: 3.8/4.0</em></p>
+<h2>Skills</h2>
+<p>Project Management, Data Analysis, Python, JavaScript, SQL, Communication, Leadership</p>`
+  },
+  report: {
+    name: 'Business Report',
+    icon: '\u{1F4CA}',
+    content: `<h1>Report Title</h1>
+<p style="color:gray"><strong>Prepared by:</strong> Author Name | <strong>Date:</strong> ${new Date().toLocaleDateString()} | <strong>Department:</strong> Division Name</p>
+<hr>
+<h2>1. Executive Summary</h2>
+<p>Provide a brief overview of the report's purpose, methodology, key findings, and recommendations.</p>
+<h2>2. Introduction</h2>
+<p>Describe the background and context for this report.</p>
+<h2>3. Methodology</h2>
+<p>Detail the approach, data sources, tools, and frameworks used.</p>
+<h2>4. Findings</h2>
+<h3>4.1 Key Finding One</h3>
+<p>Describe the first major finding with supporting data.</p>
+<h3>4.2 Key Finding Two</h3>
+<p>Describe the second major finding with supporting data.</p>
+<h2>5. Recommendations</h2>
+<ul>
+<li><strong>Recommendation 1:</strong> Description and expected impact</li>
+<li><strong>Recommendation 2:</strong> Description and expected impact</li>
+</ul>
+<h2>6. Conclusion</h2>
+<p>Summarize the key takeaways and next steps.</p>
+<h2>Appendix</h2>
+<p>Additional supporting data, charts, and references.</p>`
+  },
+  letter: {
+    name: 'Formal Letter',
+    icon: '\u2709\uFE0F',
+    content: `<p style="text-align:right">${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+<p><br></p>
+<p><strong>Sender Name</strong><br>Sender Address<br>City, State ZIP</p>
+<p><br></p>
+<p><strong>Recipient Name</strong><br>Recipient Title<br>Company / Organization<br>City, State ZIP</p>
+<p><br></p>
+<p>Dear [Recipient Name],</p>
+<p><br></p>
+<p>I am writing to [state the purpose of the letter]. I would like to bring to your attention [briefly describe the main topic].</p>
+<p><br></p>
+<p>[Body paragraph: Provide detailed information, context, or explanation.]</p>
+<p><br></p>
+<p>I look forward to your response. Please contact me at [phone] or [email].</p>
+<p><br></p>
+<p>Sincerely,</p>
+<p><br></p>
+<p><strong>Your Name</strong><br>Your Title</p>`
+  },
+  meeting: {
+    name: 'Meeting Notes',
+    icon: '\u{1F4DD}',
+    content: `<h1>Meeting Notes</h1>
+<table style="width:100%;margin-bottom:16px">
+<tr><td style="width:120px;font-weight:600;padding:6px 10px;border:1px solid var(--border-color)">Date</td><td style="padding:6px 10px;border:1px solid var(--border-color)">${new Date().toLocaleDateString()}</td></tr>
+<tr><td style="font-weight:600;padding:6px 10px;border:1px solid var(--border-color)">Time</td><td style="padding:6px 10px;border:1px solid var(--border-color)">10:00 AM \u2013 11:00 AM</td></tr>
+<tr><td style="font-weight:600;padding:6px 10px;border:1px solid var(--border-color)">Location</td><td style="padding:6px 10px;border:1px solid var(--border-color)">Conference Room / Video Call</td></tr>
+<tr><td style="font-weight:600;padding:6px 10px;border:1px solid var(--border-color)">Attendees</td><td style="padding:6px 10px;border:1px solid var(--border-color)">Name 1, Name 2, Name 3</td></tr>
+</table>
+<h2>Agenda</h2>
+<ol>
+<li>Review of previous action items</li>
+<li>Topic 1: [Description]</li>
+<li>Topic 2: [Description]</li>
+<li>Next steps and action items</li>
+</ol>
+<h2>Discussion Notes</h2>
+<h3>Topic 1</h3>
+<ul><li>Key point discussed</li><li>Decisions made</li></ul>
+<h3>Topic 2</h3>
+<ul><li>Key point discussed</li><li>Decisions made</li></ul>
+<h2>Action Items</h2>
+<table style="width:100%">
+<thead><tr><th style="padding:6px 10px;border:1px solid var(--border-color);background:var(--pane-header-bg)">Action</th><th style="padding:6px 10px;border:1px solid var(--border-color);background:var(--pane-header-bg)">Owner</th><th style="padding:6px 10px;border:1px solid var(--border-color);background:var(--pane-header-bg)">Due Date</th><th style="padding:6px 10px;border:1px solid var(--border-color);background:var(--pane-header-bg)">Status</th></tr></thead>
+<tbody>
+<tr><td style="padding:6px 10px;border:1px solid var(--border-color)">Action item 1</td><td style="padding:6px 10px;border:1px solid var(--border-color)">Name</td><td style="padding:6px 10px;border:1px solid var(--border-color)">Date</td><td style="padding:6px 10px;border:1px solid var(--border-color)">Pending</td></tr>
+</tbody>
+</table>
+<h2>Next Meeting</h2>
+<p><strong>Date:</strong> TBD | <strong>Time:</strong> TBD</p>`
+  },
+  invoice: {
+    name: 'Invoice',
+    icon: '\u{1F4B0}',
+    content: `<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
+<div>
+<h1 style="margin:0;font-size:28px;color:var(--brand-color,#0071e3)">INVOICE</h1>
+<p style="margin:4px 0;color:gray;font-size:13px">Invoice #: INV-001</p>
+<p style="margin:4px 0;color:gray;font-size:13px">Date: ${new Date().toLocaleDateString()}</p>
+<p style="margin:4px 0;color:gray;font-size:13px">Due Date: ${new Date(Date.now() + 30 * 86400000).toLocaleDateString()}</p>
+</div>
+<div style="text-align:right">
+<p style="margin:0;font-weight:700;font-size:16px">Your Company Name</p>
+<p style="margin:2px 0;font-size:13px;color:gray">123 Business Street<br>City, State ZIP<br>Phone: (123) 456-7890<br>Email: billing@company.com</p>
+</div>
+</div>
+<hr>
+<div style="margin-bottom:20px">
+<p style="font-weight:700;font-size:14px;margin-bottom:4px">Bill To:</p>
+<p style="margin:0;font-size:13px">Client Name<br>Client Company<br>456 Client Avenue<br>City, State ZIP</p>
+</div>
+<table style="width:100%;margin-bottom:20px">
+<thead>
+<tr>
+<th style="padding:8px 12px;border:1px solid var(--border-color);background:var(--pane-header-bg);text-align:left">Description</th>
+<th style="padding:8px 12px;border:1px solid var(--border-color);background:var(--pane-header-bg);text-align:center;width:80px">Qty</th>
+<th style="padding:8px 12px;border:1px solid var(--border-color);background:var(--pane-header-bg);text-align:right;width:100px">Unit Price</th>
+<th style="padding:8px 12px;border:1px solid var(--border-color);background:var(--pane-header-bg);text-align:right;width:100px">Amount</th>
+</tr>
+</thead>
+<tbody>
+<tr><td style="padding:8px 12px;border:1px solid var(--border-color)">Service / Product 1</td><td style="padding:8px 12px;border:1px solid var(--border-color);text-align:center">1</td><td style="padding:8px 12px;border:1px solid var(--border-color);text-align:right">$500.00</td><td style="padding:8px 12px;border:1px solid var(--border-color);text-align:right">$500.00</td></tr>
+<tr><td style="padding:8px 12px;border:1px solid var(--border-color)">Service / Product 2</td><td style="padding:8px 12px;border:1px solid var(--border-color);text-align:center">2</td><td style="padding:8px 12px;border:1px solid var(--border-color);text-align:right">$250.00</td><td style="padding:8px 12px;border:1px solid var(--border-color);text-align:right">$500.00</td></tr>
+<tr><td style="padding:8px 12px;border:1px solid var(--border-color)">Service / Product 3</td><td style="padding:8px 12px;border:1px solid var(--border-color);text-align:center">5</td><td style="padding:8px 12px;border:1px solid var(--border-color);text-align:right">$100.00</td><td style="padding:8px 12px;border:1px solid var(--border-color);text-align:right">$500.00</td></tr>
+</tbody>
+</table>
+<div style="text-align:right;margin-bottom:24px">
+<p style="margin:4px 0;font-size:14px"><strong>Subtotal:</strong> $1,500.00</p>
+<p style="margin:4px 0;font-size:14px"><strong>Tax (10%):</strong> $150.00</p>
+<p style="margin:4px 0;font-size:18px;font-weight:700;color:var(--brand-color,#0071e3)"><strong>Total Due:</strong> $1,650.00</p>
+</div>
+<hr>
+<div style="margin-top:16px">
+<p style="font-weight:700;font-size:14px;margin-bottom:4px">Payment Terms</p>
+<p style="font-size:13px;color:gray">Payment is due within 30 days. Please make checks payable to Your Company Name.</p>
+<p style="font-size:12px;color:gray;margin-top:12px;text-align:center">Thank you for your business!</p>
+</div>`
+  }
+};
+
+function showTemplateLibrary() {
+  document.querySelector('.doc-template-dialog')?.remove();
+
+  const dialog = document.createElement('div');
+  dialog.className = 'ai-setup-modal doc-template-dialog';
+  dialog.innerHTML = `
+    <div class="ai-setup-content" style="width:560px;max-height:80vh;overflow-y:auto">
+      <div class="ai-setup-header">
+        <h3>Document Templates</h3>
+        <button class="ai-setup-close">&times;</button>
+      </div>
+      <div class="ai-setup-body">
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">Choose a template to start with. Your current content will be replaced.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          ${Object.entries(DOC_TEMPLATES).map(([key, tpl]) => `
+            <button class="doc-tpl-card" data-tpl="${key}" style="padding:16px;border:2px solid var(--border-color);border-radius:10px;background:var(--bg-primary);cursor:pointer;text-align:left;transition:border-color 0.15s,box-shadow 0.15s;color:var(--text-primary)">
+              <div style="font-size:24px;margin-bottom:8px">${tpl.icon}</div>
+              <div style="font-size:14px;font-weight:700">${tpl.name}</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Click to apply this template</div>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(dialog);
+  dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
+
+  dialog.querySelectorAll('.doc-tpl-card').forEach(card => {
+    card.addEventListener('mouseenter', () => { card.style.borderColor = 'var(--brand-color)'; card.style.boxShadow = '0 2px 12px rgba(0,0,0,0.08)'; });
+    card.addEventListener('mouseleave', () => { card.style.borderColor = 'var(--border-color)'; card.style.boxShadow = 'none'; });
+    card.addEventListener('click', () => {
+      const tplKey = card.dataset.tpl;
+      const tpl = DOC_TEMPLATES[tplKey];
+      if (!tpl || !editorEl) return;
+      if (editorEl.innerText.trim().length > 30) {
+        if (!confirm('This will replace your current document content. Continue?')) return;
+      }
+      editorEl.innerHTML = tpl.content;
+      dirty = true;
+      updateWordCount();
+      dialog.remove();
+    });
+  });
+}
+
+// ─── Feature 5: Citation / Bibliography ─────────────────────
+let citations = [];
+
+function showCitationDialog() {
+  document.querySelector('.doc-cite-dialog')?.remove();
+
+  const dialog = document.createElement('div');
+  dialog.className = 'ai-setup-modal doc-cite-dialog';
+  dialog.innerHTML = `
+    <div class="ai-setup-content" style="width:520px;max-height:85vh;overflow-y:auto">
+      <div class="ai-setup-header">
+        <h3>Citation Manager</h3>
+        <button class="ai-setup-close">&times;</button>
+      </div>
+      <div class="ai-setup-body">
+        <div style="display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--border-color);padding-bottom:8px">
+          <button id="cite-tab-add" class="ai-pull-btn" style="font-weight:700;background:var(--brand-color);color:#fff">Add Citation</button>
+          <button id="cite-tab-list" class="ai-pull-btn">Manage (${citations.length})</button>
+        </div>
+
+        <div id="cite-add-panel">
+          <div style="margin-bottom:12px">
+            <label style="font-size:12px;font-weight:600">Type</label>
+            <select id="cite-type" style="width:100%;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+              <option value="article">Journal Article</option>
+              <option value="book">Book</option>
+              <option value="web">Website</option>
+              <option value="conference">Conference Paper</option>
+            </select>
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;font-weight:600">Authors</label>
+            <input id="cite-authors" type="text" placeholder="e.g. Smith, J., & Doe, A." style="width:100%;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;font-weight:600">Title</label>
+            <input id="cite-title" type="text" placeholder="Title of the work" style="width:100%;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+            <div>
+              <label style="font-size:12px;font-weight:600">Year</label>
+              <input id="cite-year" type="text" placeholder="2024" style="width:100%;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:12px;font-weight:600">Source / Journal</label>
+              <input id="cite-source" type="text" placeholder="Journal name or publisher" style="width:100%;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box">
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+            <div>
+              <label style="font-size:12px;font-weight:600">Volume / Issue</label>
+              <input id="cite-volume" type="text" placeholder="12(3)" style="width:100%;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:12px;font-weight:600">Pages</label>
+              <input id="cite-pages" type="text" placeholder="45-67" style="width:100%;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box">
+            </div>
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:12px;font-weight:600">URL / DOI</label>
+            <input id="cite-url" type="text" placeholder="https://doi.org/..." style="width:100%;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box">
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:12px;font-weight:600">Citation Style</label>
+            <select id="cite-style" style="width:100%;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+              <option value="apa">APA 7th</option>
+              <option value="mla">MLA 9th</option>
+              <option value="chicago">Chicago</option>
+              <option value="ieee">IEEE</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button id="cite-insert" class="ai-pull-btn" style="background:var(--brand-color);color:#fff;font-weight:600">Insert Citation</button>
+            <button id="cite-update-refs" class="ai-pull-btn">Update References</button>
+          </div>
+        </div>
+
+        <div id="cite-list-panel" style="display:none">
+          <div id="cite-list-items" style="margin-bottom:12px"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button id="cite-clear-all" class="ai-pull-btn" style="color:#ef4444">Clear All</button>
+            <button id="cite-regenerate" class="ai-pull-btn" style="background:var(--brand-color);color:#fff">Regenerate References</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(dialog);
+  dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
+
+  const addPanel = dialog.querySelector('#cite-add-panel');
+  const listPanel = dialog.querySelector('#cite-list-panel');
+
+  dialog.querySelector('#cite-tab-add').addEventListener('click', () => {
+    addPanel.style.display = '';
+    listPanel.style.display = 'none';
+    dialog.querySelector('#cite-tab-add').style.background = 'var(--brand-color)';
+    dialog.querySelector('#cite-tab-add').style.color = '#fff';
+    dialog.querySelector('#cite-tab-list').style.background = '';
+    dialog.querySelector('#cite-tab-list').style.color = '';
+  });
+
+  dialog.querySelector('#cite-tab-list').addEventListener('click', () => {
+    addPanel.style.display = 'none';
+    listPanel.style.display = '';
+    dialog.querySelector('#cite-tab-list').style.background = 'var(--brand-color)';
+    dialog.querySelector('#cite-tab-list').style.color = '#fff';
+    dialog.querySelector('#cite-tab-add').style.background = '';
+    dialog.querySelector('#cite-tab-add').style.color = '';
+    renderCitationList(dialog);
+  });
+
+  dialog.querySelector('#cite-insert').addEventListener('click', () => {
+    const c = {
+      id: 'cite-' + Date.now(),
+      type: dialog.querySelector('#cite-type').value,
+      authors: dialog.querySelector('#cite-authors').value.trim(),
+      title: dialog.querySelector('#cite-title').value.trim(),
+      year: dialog.querySelector('#cite-year').value.trim(),
+      source: dialog.querySelector('#cite-source').value.trim(),
+      volume: dialog.querySelector('#cite-volume').value.trim(),
+      pages: dialog.querySelector('#cite-pages').value.trim(),
+      url: dialog.querySelector('#cite-url').value.trim(),
+    };
+    if (!c.authors || !c.title) {
+      alert('At least Authors and Title are required.');
+      return;
+    }
+    citations.push(c);
+    const idx = citations.length;
+    const style = dialog.querySelector('#cite-style').value;
+    const inlineText = formatInlineCitation(c, idx, style);
+    editorEl?.focus();
+    document.execCommand('insertHTML', false, `<span class="doc-cite-ref" data-cite-id="${c.id}" style="color:var(--brand-color);cursor:pointer;font-weight:500" title="${c.authors} (${c.year})">${inlineText}</span>`);
+    dirty = true;
+    ['#cite-authors', '#cite-title', '#cite-year', '#cite-source', '#cite-volume', '#cite-pages', '#cite-url'].forEach(sel => {
+      const el = dialog.querySelector(sel);
+      if (el) el.value = '';
+    });
+    dialog.querySelector('#cite-tab-list').textContent = `Manage (${citations.length})`;
+  });
+
+  dialog.querySelector('#cite-update-refs').addEventListener('click', () => {
+    const style = dialog.querySelector('#cite-style').value;
+    updateReferencesSection(style);
+    dialog.remove();
+  });
+
+  dialog.querySelector('#cite-regenerate').addEventListener('click', () => {
+    const style = dialog.querySelector('#cite-style').value;
+    updateReferencesSection(style);
+    dialog.remove();
+  });
+
+  dialog.querySelector('#cite-clear-all').addEventListener('click', () => {
+    if (!confirm('Remove all citations and references?')) return;
+    editorEl?.querySelectorAll('.doc-cite-ref').forEach(el => {
+      el.replaceWith(document.createTextNode(''));
+    });
+    editorEl?.querySelector('.doc-references')?.remove();
+    citations = [];
+    dirty = true;
+    dialog.remove();
+  });
+}
+
+function renderCitationList(dialog) {
+  const container = dialog.querySelector('#cite-list-items');
+  if (!container) return;
+  if (citations.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-secondary);font-size:13px;text-align:center;padding:20px">No citations added yet.</p>';
+    return;
+  }
+  container.innerHTML = citations.map((c, i) => `
+    <div style="padding:8px 10px;border:1px solid var(--border-color);border-radius:6px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">[${i + 1}] ${c.title}</div>
+        <div style="font-size:11px;color:var(--text-secondary)">${c.authors} (${c.year})${c.source ? ' \u2014 ' + c.source : ''}</div>
+      </div>
+      <button class="cite-remove-btn" data-idx="${i}" style="border:none;background:none;cursor:pointer;font-size:16px;color:#ef4444;padding:4px 8px" title="Remove">\u00D7</button>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.cite-remove-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      const removed = citations.splice(idx, 1)[0];
+      editorEl?.querySelector(`.doc-cite-ref[data-cite-id="${removed.id}"]`)?.remove();
+      dirty = true;
+      renderCitationList(dialog);
+      dialog.querySelector('#cite-tab-list').textContent = `Manage (${citations.length})`;
+    });
+  });
+}
+
+function formatInlineCitation(c, idx, style) {
+  const surname = c.authors.split(',')[0].trim();
+  switch (style) {
+    case 'apa': return `(${surname}, ${c.year})`;
+    case 'mla': return `(${surname} ${c.pages || ''})`.replace(/ +\)/, ')');
+    case 'chicago': return `(${surname} ${c.year}, ${c.pages || ''})`.replace(/, \)/, ')');
+    case 'ieee': return `[${idx}]`;
+    default: return `(${surname}, ${c.year})`;
+  }
+}
+
+function formatFullReference(c, idx, style) {
+  const a = c.authors;
+  const t = c.title;
+  const y = c.year;
+  const s = c.source;
+  const v = c.volume;
+  const p = c.pages;
+  const u = c.url;
+
+  switch (style) {
+    case 'apa':
+      return `${a} (${y}). ${t}.${s ? ` <em>${s}</em>` : ''}${v ? `, <em>${v}</em>` : ''}${p ? `, ${p}` : ''}.${u ? ` <a href="${u}" style="color:var(--brand-color)">${u}</a>` : ''}`;
+    case 'mla':
+      return `${a}. \u201C${t}.\u201D${s ? ` <em>${s}</em>` : ''}${v ? `, vol. ${v}` : ''}${y ? `, ${y}` : ''}${p ? `, pp. ${p}` : ''}.${u ? ` <a href="${u}" style="color:var(--brand-color)">${u}</a>` : ''}`;
+    case 'chicago':
+      return `${a}. \u201C${t}.\u201D${s ? ` <em>${s}</em>` : ''}${v ? ` ${v}` : ''}${y ? ` (${y})` : ''}${p ? `: ${p}` : ''}.${u ? ` <a href="${u}" style="color:var(--brand-color)">${u}</a>` : ''}`;
+    case 'ieee':
+      return `[${idx + 1}] ${a}, \u201C${t},\u201D${s ? ` <em>${s}</em>` : ''}${v ? `, vol. ${v}` : ''}${p ? `, pp. ${p}` : ''}${y ? `, ${y}` : ''}.${u ? ` [Online]. Available: <a href="${u}" style="color:var(--brand-color)">${u}</a>` : ''}`;
+    default:
+      return `${a} (${y}). ${t}.${s ? ` ${s}` : ''}.`;
+  }
+}
+
+function updateReferencesSection(style) {
+  if (!editorEl || citations.length === 0) return;
+
+  editorEl.querySelector('.doc-references')?.remove();
+
+  const refDiv = document.createElement('div');
+  refDiv.className = 'doc-references';
+  refDiv.contentEditable = 'false';
+  refDiv.style.cssText = 'border-top:2px solid var(--border-color);margin-top:32px;padding-top:16px';
+
+  const title = style === 'ieee' ? 'References' : style === 'mla' ? 'Works Cited' : style === 'chicago' ? 'Bibliography' : 'References';
+
+  let html = `<h2 style="font-size:18px;font-weight:700;margin-bottom:16px">${title}</h2>`;
+  html += '<div style="font-size:14px;line-height:1.8">';
+  citations.forEach((c, i) => {
+    const indent = style === 'apa' || style === 'mla' ? 'padding-left:2em;text-indent:-2em' : '';
+    html += `<p style="margin-bottom:8px;${indent}">${formatFullReference(c, i, style)}</p>`;
+  });
+  html += '</div>';
+  refDiv.innerHTML = html;
+
+  editorEl.appendChild(refDiv);
+  dirty = true;
 }

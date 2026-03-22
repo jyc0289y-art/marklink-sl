@@ -51,6 +51,7 @@ const FORMULA_LIST = [
   'DATE','YEAR','MONTH','DAY','HOUR','MINUTE','SECOND','WEEKDAY','DATEDIF','EDATE',
   'LARGE','SMALL','RANK','ISBLANK','ISNUMBER','ISTEXT',
   'PERCENTILE','QUARTILE','STDEVP','VARP','CORREL','COVAR','MODE','COUNTBLANK','SUMIFS','COUNTIFS',
+  'SHEET','SHEETS',
 ];
 let acEl = null;
 let acIndex = -1;
@@ -147,6 +148,7 @@ function renderGrid() {
       const noteKey = `${r},${c}`;
       const hasNote = cellNotes[noteKey];
       const noteIndicator = hasNote ? '<span class="cell-note-indicator" title="' + escapeHTML(hasNote) + '"></span>' : '';
+      const commentIndicator = hasComment(r, c) ? `<span class="cell-comment-indicator" data-comment-row="${r}" data-comment-col="${c}" title="Click to view comments"></span>` : '';
       const sparkline = cell?.format?.sparkline;
       const hyperlink = cell?.format?.hyperlink;
       let cellContent;
@@ -167,7 +169,7 @@ function renderGrid() {
       const dvIndicator = validations[dvKey]?.type === 'list'
         ? `<span class="sheet-dv-btn" data-dv-row="${r}" data-dv-col="${c}" style="cursor:pointer;font-size:8px;float:right;color:var(--text-secondary);margin-left:1px" title="Dropdown">▾</span>`
         : '';
-      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="width:${w}px;min-width:${w}px;height:${rh}px;${style}"${spanAttrs}>${filterBtn}${dvIndicator}${cellContent}${noteIndicator}</td>`;
+      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="width:${w}px;min-width:${w}px;height:${rh}px;${style}"${spanAttrs}>${filterBtn}${dvIndicator}${cellContent}${noteIndicator}${commentIndicator}</td>`;
     }
     html += '</tr>';
   }
@@ -253,6 +255,15 @@ function bindEvents() {
     if (dvBtn) {
       showDvDropdown(parseInt(dvBtn.dataset.dvRow), parseInt(dvBtn.dataset.dvCol), dvBtn);
       e.stopPropagation();
+      return;
+    }
+    const commentBtn = e.target.closest('.cell-comment-indicator');
+    if (commentBtn) {
+      const cr = parseInt(commentBtn.dataset.commentRow);
+      const cc = parseInt(commentBtn.dataset.commentCol);
+      showCommentPanel(cr, cc);
+      e.stopPropagation();
+      return;
     }
   });
 
@@ -1008,6 +1019,10 @@ function bindEvents() {
   document.getElementById('sheet-export-csv')?.addEventListener('click', () => exportCSV());
   // XLSX Export
   document.getElementById('sheet-export-xlsx')?.addEventListener('click', () => exportXLSX());
+  // Enhanced Export Dialog
+  document.getElementById('sheet-export-dialog')?.addEventListener('click', () => showExportDialog());
+  // Slicer
+  document.getElementById('sheet-slicer')?.addEventListener('click', () => showSlicerDialog());
 
   // Data validation (right-click context menu)
   gridEl.addEventListener('contextmenu', (e) => {
@@ -2442,6 +2457,7 @@ function showCellContextMenu(x, y, r, c) {
     { divider: true },
     { label: '📋 Set Data Validation', action: () => showDataValidationDialog(r, c) },
     { label: '📝 Add/Edit Note', action: () => addCellNote(r, c) },
+    { label: '💬 Comments', action: () => showCommentPanel(r, c) },
     { label: '🔗 Insert Hyperlink', action: () => insertCellHyperlink(r, c) },
     { label: sheetProtected ? '🔓 Unlock Cells' : '🔒 Lock Cells', action: () => toggleCellLock(r, c) },
     { divider: true },
@@ -5699,6 +5715,485 @@ function clearTraceArrows() {
   if (traceArrowsSvg) {
     traceArrowsSvg.querySelectorAll('.trace-arrow-line').forEach(el => el.remove());
   }
+}
+
+/* ==================== Cell Comments with Threads ==================== */
+
+let cellComments = {}; // "r,c" → { threads: [{ author, text, timestamp, resolved }] }
+
+function showCommentPanel(r, c) {
+  document.querySelector('.sheet-comment-panel')?.remove();
+  const key = `${r},${c}`;
+  if (!cellComments[key]) cellComments[key] = { threads: [] };
+  const comment = cellComments[key];
+
+  const panel = document.createElement('div');
+  panel.className = 'sheet-comment-panel';
+  const td = gridEl.querySelector(`td[data-row="${r}"][data-col="${c}"]`);
+  const rect = td ? td.getBoundingClientRect() : { right: 300, top: 100 };
+  panel.style.cssText = `position:fixed;top:${Math.min(rect.top, window.innerHeight - 360)}px;left:${Math.min(rect.right + 4, window.innerWidth - 300)}px;width:280px;max-height:340px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.18);z-index:3000;display:flex;flex-direction:column;overflow:hidden`;
+
+  function renderThreads() {
+    const threadsHtml = comment.threads.length === 0
+      ? '<div style="padding:16px;text-align:center;color:var(--text-tertiary);font-size:12px">No comments yet</div>'
+      : comment.threads.map((t, i) => `
+        <div class="comment-thread-item" style="padding:8px 12px;border-bottom:1px solid var(--border-color);${t.resolved ? 'opacity:0.5' : ''}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span style="font-weight:600;font-size:11px;color:var(--text-primary)">${escapeHTML(t.author)}</span>
+            <span style="font-size:10px;color:var(--text-tertiary)">${new Date(t.timestamp).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
+          </div>
+          <div style="font-size:12px;color:var(--text-primary);line-height:1.4;white-space:pre-wrap">${escapeHTML(t.text)}</div>
+          <div style="display:flex;gap:6px;margin-top:4px">
+            <button class="comment-resolve-btn" data-idx="${i}" style="font-size:10px;color:var(--accent-color);background:none;border:none;cursor:pointer;padding:0">${t.resolved ? 'Reopen' : 'Resolve'}</button>
+            <button class="comment-delete-btn" data-idx="${i}" style="font-size:10px;color:#ef4444;background:none;border:none;cursor:pointer;padding:0">Delete</button>
+          </div>
+        </div>
+      `).join('');
+
+    panel.innerHTML = `
+      <div style="padding:8px 12px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;background:var(--pane-header-bg)">
+        <span style="font-weight:600;font-size:12px;color:var(--text-primary)">Comments — ${colToLetter(c)}${r + 1}</span>
+        <button class="comment-close-btn" style="background:none;border:none;font-size:16px;cursor:pointer;color:var(--text-secondary);line-height:1">&times;</button>
+      </div>
+      <div class="comment-threads-list" style="overflow-y:auto;flex:1;max-height:220px">${threadsHtml}</div>
+      <div style="padding:8px 12px;border-top:1px solid var(--border-color);display:flex;gap:6px">
+        <input type="text" class="comment-input" placeholder="Add a comment..." style="flex:1;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;background:var(--bg-primary);color:var(--text-primary);outline:none">
+        <button class="comment-send-btn" style="padding:4px 10px;background:var(--accent-color);color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer">Send</button>
+      </div>
+    `;
+
+    panel.querySelector('.comment-close-btn').addEventListener('click', () => {
+      panel.remove();
+      if (comment.threads.length === 0) delete cellComments[key];
+      renderGrid();
+      updateSelection();
+    });
+
+    panel.querySelector('.comment-send-btn').addEventListener('click', () => {
+      const input = panel.querySelector('.comment-input');
+      const text = input.value.trim();
+      if (!text) return;
+      comment.threads.push({ author: 'User', text, timestamp: Date.now(), resolved: false });
+      renderThreads();
+      renderGrid();
+      updateSelection();
+    });
+
+    panel.querySelector('.comment-input')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        panel.querySelector('.comment-send-btn').click();
+      }
+    });
+
+    panel.querySelectorAll('.comment-resolve-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx);
+        comment.threads[idx].resolved = !comment.threads[idx].resolved;
+        renderThreads();
+        renderGrid();
+        updateSelection();
+      });
+    });
+
+    panel.querySelectorAll('.comment-delete-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx);
+        comment.threads.splice(idx, 1);
+        renderThreads();
+        renderGrid();
+        updateSelection();
+      });
+    });
+  }
+
+  renderThreads();
+  document.body.appendChild(panel);
+
+  // Auto-focus input
+  setTimeout(() => panel.querySelector('.comment-input')?.focus(), 50);
+
+  // Close on click outside
+  const closeHandler = (e) => {
+    if (!panel.contains(e.target)) {
+      panel.remove();
+      if (comment.threads.length === 0) delete cellComments[key];
+      renderGrid();
+      updateSelection();
+      document.removeEventListener('mousedown', closeHandler);
+    }
+  };
+  setTimeout(() => document.addEventListener('mousedown', closeHandler), 100);
+}
+
+function hasComment(r, c) {
+  const key = `${r},${c}`;
+  return cellComments[key] && cellComments[key].threads.length > 0;
+}
+
+function getCommentIndicatorHTML(r, c) {
+  if (!hasComment(r, c)) return '';
+  const comment = cellComments[`${r},${c}`];
+  const unresolvedCount = comment.threads.filter(t => !t.resolved).length;
+  return `<span class="cell-comment-indicator" data-comment-row="${r}" data-comment-col="${c}" title="${unresolvedCount} unresolved comment(s)"></span>`;
+}
+
+/* ==================== Slicer Widget ==================== */
+
+let slicers = []; // [{ id, colIdx, x, y, width, height, selectedValues, title }]
+let slicerIdCounter = 0;
+
+function showSlicerDialog() {
+  const sheet = getSheet();
+  // Get header row values (row 0)
+  const headers = [];
+  for (let c = 0; c < sheet.cols; c++) {
+    const val = getDisplayValue(sheet, 0, c);
+    if (val) headers.push({ col: c, label: val });
+  }
+  if (headers.length === 0) {
+    alert('No column headers found in row 1. Add headers first.');
+    return;
+  }
+
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay';
+  dlg.innerHTML = `<div class="modal-content" style="width:360px">
+    <h3 style="margin:0 0 12px">Insert Slicer</h3>
+    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Select a column to create a slicer filter:</p>
+    <select id="slicer-col" style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:13px;margin-bottom:12px">
+      ${headers.map(h => `<option value="${h.col}">${escapeHTML(h.label)} (Col ${colToLetter(h.col)})</option>`).join('')}
+    </select>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="toolbar-btn" id="slicer-cancel" style="padding:6px 16px">Cancel</button>
+      <button class="toolbar-btn" id="slicer-create" style="padding:6px 16px;background:var(--accent-color);color:white;border-radius:6px">Create</button>
+    </div>
+  </div>`;
+
+  document.body.appendChild(dlg);
+  dlg.querySelector('#slicer-cancel').onclick = () => dlg.remove();
+  dlg.querySelector('#slicer-create').onclick = () => {
+    const colIdx = parseInt(dlg.querySelector('#slicer-col').value);
+    createSlicer(colIdx);
+    dlg.remove();
+  };
+}
+
+function createSlicer(colIdx) {
+  const sheet = getSheet();
+  const header = getDisplayValue(sheet, 0, colIdx) || colToLetter(colIdx);
+  const id = ++slicerIdCounter;
+
+  // Collect unique values from the column (skip header row 0)
+  const uniqueVals = new Set();
+  for (let r = 1; r < sheet.rows; r++) {
+    const v = getDisplayValue(sheet, r, colIdx);
+    if (v) uniqueVals.add(v);
+  }
+
+  const slicer = {
+    id,
+    colIdx,
+    title: header,
+    x: 100 + (slicers.length % 3) * 200,
+    y: 60 + Math.floor(slicers.length / 3) * 220,
+    width: 180,
+    height: 200,
+    selectedValues: new Set(uniqueVals), // all selected by default
+    allValues: [...uniqueVals].sort(),
+  };
+  slicers.push(slicer);
+  renderSlicerWidget(slicer);
+  applySlicerFilters();
+}
+
+function renderSlicerWidget(slicer) {
+  // Remove existing
+  document.getElementById(`slicer-${slicer.id}`)?.remove();
+
+  const widget = document.createElement('div');
+  widget.id = `slicer-${slicer.id}`;
+  widget.className = 'slicer-widget';
+  widget.style.cssText = `position:absolute;top:${slicer.y}px;left:${slicer.x}px;width:${slicer.width}px;height:${slicer.height}px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.1);z-index:100;display:flex;flex-direction:column;overflow:hidden;user-select:none`;
+
+  const allSelected = slicer.allValues.every(v => slicer.selectedValues.has(v));
+
+  widget.innerHTML = `
+    <div class="slicer-header" style="padding:6px 10px;background:var(--accent-color);color:white;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;cursor:move;border-radius:10px 10px 0 0">
+      <span>${escapeHTML(slicer.title)}</span>
+      <div style="display:flex;gap:4px">
+        <button class="slicer-toggle-all" title="${allSelected ? 'Clear All' : 'Select All'}" style="background:none;border:none;color:white;cursor:pointer;font-size:11px;padding:0 2px">${allSelected ? '☐' : '☑'}</button>
+        <button class="slicer-close" title="Remove slicer" style="background:none;border:none;color:white;cursor:pointer;font-size:14px;padding:0 2px;line-height:1">&times;</button>
+      </div>
+    </div>
+    <div class="slicer-items" style="overflow-y:auto;flex:1;padding:4px 0">
+      ${slicer.allValues.map(v => `
+        <label class="slicer-item" style="display:flex;align-items:center;gap:6px;padding:3px 10px;cursor:pointer;font-size:12px;color:var(--text-primary)">
+          <input type="checkbox" data-val="${escapeHTML(v)}" ${slicer.selectedValues.has(v) ? 'checked' : ''} style="margin:0">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHTML(v)}</span>
+        </label>
+      `).join('')}
+    </div>
+  `;
+
+  const container = document.getElementById('sheet-container');
+  if (container) {
+    container.style.position = 'relative';
+    container.appendChild(widget);
+  }
+
+  // Drag to move
+  let dragOffX = 0, dragOffY = 0, isDraggingSlicer = false;
+  const header = widget.querySelector('.slicer-header');
+  header.addEventListener('mousedown', (e) => {
+    if (e.target.closest('button')) return;
+    isDraggingSlicer = true;
+    dragOffX = e.clientX - widget.offsetLeft;
+    dragOffY = e.clientY - widget.offsetTop;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!isDraggingSlicer) return;
+    slicer.x = Math.max(0, e.clientX - dragOffX);
+    slicer.y = Math.max(0, e.clientY - dragOffY);
+    widget.style.left = slicer.x + 'px';
+    widget.style.top = slicer.y + 'px';
+  });
+  document.addEventListener('mouseup', () => { isDraggingSlicer = false; });
+
+  // Checkbox change
+  widget.querySelectorAll('.slicer-items input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const val = cb.dataset.val;
+      if (cb.checked) slicer.selectedValues.add(val);
+      else slicer.selectedValues.delete(val);
+      applySlicerFilters();
+      renderSlicerWidget(slicer);
+    });
+  });
+
+  // Toggle all
+  widget.querySelector('.slicer-toggle-all').addEventListener('click', () => {
+    if (allSelected) {
+      slicer.selectedValues.clear();
+    } else {
+      slicer.allValues.forEach(v => slicer.selectedValues.add(v));
+    }
+    applySlicerFilters();
+    renderSlicerWidget(slicer);
+  });
+
+  // Close/remove slicer
+  widget.querySelector('.slicer-close').addEventListener('click', () => {
+    slicers = slicers.filter(s => s.id !== slicer.id);
+    widget.remove();
+    applySlicerFilters();
+  });
+}
+
+function applySlicerFilters() {
+  // Build combined filter: a row is visible if it passes ALL slicers
+  // We use the existing filter mechanism but override for slicers
+  const sheet = getSheet();
+  // Clear slicer-hidden class
+  gridEl.querySelectorAll('tr[data-slicer-hidden]').forEach(tr => {
+    tr.style.display = '';
+    tr.removeAttribute('data-slicer-hidden');
+  });
+
+  if (slicers.length === 0) return;
+
+  for (let r = 1; r < sheet.rows; r++) {
+    let visible = true;
+    for (const slicer of slicers) {
+      const val = getDisplayValue(sheet, r, slicer.colIdx);
+      if (val && !slicer.selectedValues.has(val)) {
+        visible = false;
+        break;
+      }
+    }
+    if (!visible) {
+      const tr = gridEl.querySelector(`tr:has(td[data-row="${r}"])`);
+      if (tr) {
+        tr.style.display = 'none';
+        tr.setAttribute('data-slicer-hidden', '1');
+      }
+    }
+  }
+}
+
+/* ==================== Enhanced Export (CSV encoding + JSON) ==================== */
+
+function showExportDialog() {
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-overlay';
+  dlg.innerHTML = `<div class="modal-content" style="width:400px">
+    <h3 style="margin:0 0 12px">Export Spreadsheet</h3>
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Format</label>
+      <select id="export-format" style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+        <option value="csv">CSV (Comma-Separated Values)</option>
+        <option value="tsv">TSV (Tab-Separated Values)</option>
+        <option value="json">JSON (JavaScript Object Notation)</option>
+        <option value="json-records">JSON Records (array of objects)</option>
+      </select>
+    </div>
+    <div id="export-csv-options">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Encoding</label>
+      <select id="export-encoding" style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:13px;margin-bottom:8px">
+        <option value="utf-8">UTF-8</option>
+        <option value="utf-8-bom">UTF-8 with BOM (for Excel compatibility)</option>
+        <option value="euc-kr">EUC-KR (Korean)</option>
+        <option value="shift-jis">Shift-JIS (Japanese)</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer">
+        <input type="checkbox" id="export-headers" checked> Include header row
+      </label>
+    </div>
+    <div id="export-json-options" style="display:none">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer">
+        <input type="checkbox" id="export-pretty" checked> Pretty print (indented)
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer">
+        <input type="checkbox" id="export-all-sheets"> Export all sheets
+      </label>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+      <button class="toolbar-btn" id="export-cancel" style="padding:6px 16px">Cancel</button>
+      <button class="toolbar-btn" id="export-go" style="padding:6px 16px;background:var(--accent-color);color:white;border-radius:6px">Export</button>
+    </div>
+  </div>`;
+
+  document.body.appendChild(dlg);
+
+  const fmtEl = dlg.querySelector('#export-format');
+  const csvOpts = dlg.querySelector('#export-csv-options');
+  const jsonOpts = dlg.querySelector('#export-json-options');
+
+  fmtEl.addEventListener('change', () => {
+    const isJson = fmtEl.value.startsWith('json');
+    csvOpts.style.display = isJson ? 'none' : 'block';
+    jsonOpts.style.display = isJson ? 'block' : 'none';
+  });
+
+  dlg.querySelector('#export-cancel').onclick = () => dlg.remove();
+  dlg.querySelector('#export-go').onclick = () => {
+    const fmt = fmtEl.value;
+    if (fmt === 'csv' || fmt === 'tsv') {
+      exportDelimited(fmt, dlg);
+    } else {
+      exportJSON(fmt, dlg);
+    }
+    dlg.remove();
+  };
+}
+
+function getSheetDataMatrix(sheet) {
+  let maxR = 0, maxC = 0;
+  for (const key of Object.keys(sheet.cells)) {
+    const [r, c] = key.split(',').map(Number);
+    if (r > maxR) maxR = r;
+    if (c > maxC) maxC = c;
+  }
+  const rows = [];
+  for (let r = 0; r <= maxR; r++) {
+    const row = [];
+    for (let c = 0; c <= maxC; c++) {
+      row.push(getDisplayValue(sheet, r, c));
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+function exportDelimited(fmt, dlg) {
+  const delimiter = fmt === 'tsv' ? '\t' : ',';
+  const encoding = dlg.querySelector('#export-encoding').value;
+  const includeHeaders = dlg.querySelector('#export-headers').checked;
+  const matrix = getSheetDataMatrix(getSheet());
+  const startRow = includeHeaders ? 0 : 1;
+
+  const lines = [];
+  for (let r = startRow; r < matrix.length; r++) {
+    const cols = matrix[r].map(val => {
+      if (typeof val === 'string' && (val.includes(delimiter) || val.includes('"') || val.includes('\n'))) {
+        return '"' + val.replace(/"/g, '""') + '"';
+      }
+      return val;
+    });
+    lines.push(cols.join(delimiter));
+  }
+
+  let content = lines.join('\n');
+  let blob;
+
+  if (encoding === 'utf-8-bom') {
+    blob = new Blob(['\uFEFF' + content], { type: `text/${fmt === 'tsv' ? 'tab-separated-values' : 'csv'};charset=utf-8;` });
+  } else if (encoding === 'euc-kr' || encoding === 'shift-jis') {
+    // For non-UTF encodings, use TextEncoder if available, otherwise fallback
+    try {
+      const encoder = new TextEncoder(encoding);
+      blob = new Blob([encoder.encode(content)], { type: `text/${fmt === 'tsv' ? 'tab-separated-values' : 'csv'}` });
+    } catch {
+      // Fallback to UTF-8 with BOM for compatibility
+      blob = new Blob(['\uFEFF' + content], { type: `text/${fmt === 'tsv' ? 'tab-separated-values' : 'csv'};charset=utf-8;` });
+    }
+  } else {
+    blob = new Blob([content], { type: `text/${fmt === 'tsv' ? 'tab-separated-values' : 'csv'};charset=utf-8;` });
+  }
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `spreadsheet.${fmt}`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportJSON(fmt, dlg) {
+  const pretty = dlg.querySelector('#export-pretty').checked;
+  const allSheets = dlg.querySelector('#export-all-sheets').checked;
+
+  const sheetsToExport = allSheets ? sheets : [getSheet()];
+  const result = {};
+
+  sheetsToExport.forEach((sheet, idx) => {
+    const name = sheet.name || `Sheet${idx + 1}`;
+    const matrix = getSheetDataMatrix(sheet);
+
+    if (fmt === 'json-records' && matrix.length > 1) {
+      // First row as headers, rest as objects
+      const headers = matrix[0];
+      const records = [];
+      for (let r = 1; r < matrix.length; r++) {
+        const obj = {};
+        let hasData = false;
+        headers.forEach((h, c) => {
+          if (h) {
+            const val = matrix[r][c];
+            obj[h] = val;
+            if (val !== '') hasData = true;
+          }
+        });
+        if (hasData) records.push(obj);
+      }
+      result[name] = records;
+    } else {
+      result[name] = matrix;
+    }
+  });
+
+  // If single sheet, flatten
+  const output = allSheets ? result : Object.values(result)[0];
+  const jsonStr = pretty ? JSON.stringify(output, null, 2) : JSON.stringify(output);
+
+  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'spreadsheet.json';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /* ==================== Export ==================== */

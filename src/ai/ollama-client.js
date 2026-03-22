@@ -1,7 +1,26 @@
 // OfficeLink SL — Ollama Client (Local LLM Integration)
 // Adapted from T1.15wc security consultation agent architecture
 
-const OLLAMA_BASE = 'http://localhost:11434';
+const OLLAMA_DEFAULT = 'http://localhost:11434';
+const OLLAMA_URL_KEY = 'marklink-ollama-url';
+
+function getOllamaBase() {
+  return localStorage.getItem(OLLAMA_URL_KEY) || OLLAMA_DEFAULT;
+}
+
+export function setOllamaUrl(url) {
+  if (url && url.trim()) {
+    // Remove trailing slash
+    const cleaned = url.trim().replace(/\/+$/, '');
+    localStorage.setItem(OLLAMA_URL_KEY, cleaned);
+  } else {
+    localStorage.removeItem(OLLAMA_URL_KEY);
+  }
+}
+
+export function getOllamaUrl() {
+  return getOllamaBase();
+}
 
 // Model tiers matched to PC specs
 export const MODEL_TIERS = [
@@ -74,7 +93,7 @@ export function getRecommendedTier() {
  */
 export async function checkOllamaStatus() {
   try {
-    const res = await fetch(OLLAMA_BASE, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(getOllamaBase(), { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
       const text = await res.text();
       return { running: text.includes('Ollama'), version: text };
@@ -90,7 +109,7 @@ export async function checkOllamaStatus() {
  */
 export async function listModels() {
   try {
-    const res = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`${getOllamaBase()}/api/tags`, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return [];
     const data = await res.json();
     return data.models || [];
@@ -103,7 +122,7 @@ export async function listModels() {
  * Pull (download) a model — returns a ReadableStream for progress
  */
 export async function pullModel(modelName, onProgress) {
-  const res = await fetch(`${OLLAMA_BASE}/api/pull`, {
+  const res = await fetch(`${getOllamaBase()}/api/pull`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: modelName, stream: true }),
@@ -152,7 +171,7 @@ export async function chat(model, messages, systemPrompt, onToken) {
     stream: true,
   };
 
-  const res = await fetch(`${OLLAMA_BASE}/api/chat`, {
+  const res = await fetch(`${getOllamaBase()}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

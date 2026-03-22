@@ -3,7 +3,8 @@
 
 import {
   checkOllamaStatus, listModels, pullModel, chat,
-  MODEL_TIERS, getRecommendedTier, isVisionModel
+  MODEL_TIERS, getRecommendedTier, isVisionModel,
+  setOllamaUrl, getOllamaUrl
 } from './ollama-client.js';
 import { t } from '../ui/i18n.js';
 
@@ -116,14 +117,74 @@ export function initAiChat() {
     });
   }
 
+  // ─── URL Settings Panel ───────────────────────────────
+  initUrlSettings();
+
   // Check Ollama status & restore session
   checkStatus().then(() => restoreLastSession());
+}
+
+// ─── URL Settings ────────────────────────────────────────
+
+function initUrlSettings() {
+  const settingsBtn = document.getElementById('ai-url-settings-btn');
+  const settingsPanel = document.getElementById('ai-url-settings');
+  const urlInput = document.getElementById('ai-ollama-url-input');
+  const saveBtn = document.getElementById('ai-url-save-btn');
+  const resetBtn = document.getElementById('ai-url-reset-btn');
+
+  if (!settingsBtn || !settingsPanel) return;
+
+  // Populate current URL
+  if (urlInput) urlInput.value = getOllamaUrl();
+
+  // Toggle settings panel
+  settingsBtn.addEventListener('click', () => {
+    settingsPanel.classList.toggle('hidden');
+    if (!settingsPanel.classList.contains('hidden') && urlInput) {
+      urlInput.value = getOllamaUrl();
+      updateUrlStatusDot();
+    }
+  });
+
+  // Save URL
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      const newUrl = urlInput?.value?.trim();
+      if (!newUrl) return;
+      setOllamaUrl(newUrl);
+      addSystemMessage(`Ollama URL set to: ${newUrl}`);
+      // Re-check connection with new URL
+      await checkStatus();
+      updateUrlStatusDot();
+    });
+  }
+
+  // Reset to default
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async () => {
+      setOllamaUrl('');
+      if (urlInput) urlInput.value = 'http://localhost:11434';
+      addSystemMessage('Ollama URL reset to localhost:11434');
+      await checkStatus();
+      updateUrlStatusDot();
+    });
+  }
+}
+
+function updateUrlStatusDot() {
+  const dot = document.getElementById('ai-url-status-dot');
+  if (dot) {
+    dot.className = `ai-url-dot ${ollamaReady ? 'online' : 'offline'}`;
+    dot.title = ollamaReady ? 'Connected' : 'Not connected';
+  }
 }
 
 async function checkStatus() {
   const status = await checkOllamaStatus();
   ollamaReady = status.running;
   updateStatusUI(status.running);
+  updateUrlStatusDot();
 
   if (status.running) {
     const models = await listModels();

@@ -111,6 +111,8 @@ function updateInfoBar() {
 function render() {
   if (!engine) return;
   engine.render(currentParams);
+  if (histogramVisible) updateHistogram();
+  if (splitViewActive) updateSplitView();
 }
 
 function pushHistory() {
@@ -209,27 +211,27 @@ function bindToolbar() {
   });
 
   // Crop
-  document.getElementById('photo-crop')?.addEventListener('click', toggleCropMode);
-  document.getElementById('crop-apply')?.addEventListener('click', applyCrop);
-  document.getElementById('crop-cancel')?.addEventListener('click', cancelCrop);
+  document.getElementById('photo-crop')?.addEventListener('click', () => toggleCropMode());
+  document.getElementById('crop-apply')?.addEventListener('click', () => applyCrop());
+  document.getElementById('crop-cancel')?.addEventListener('click', () => cancelCrop());
 
   // Resize
-  document.getElementById('photo-resize')?.addEventListener('click', showResizeDialog);
+  document.getElementById('photo-resize')?.addEventListener('click', () => showResizeDialog());
 
   // Text Overlay
-  document.getElementById('photo-text')?.addEventListener('click', toggleTextMode);
+  document.getElementById('photo-text')?.addEventListener('click', () => toggleTextMode());
 
   // Draw
-  document.getElementById('photo-draw')?.addEventListener('click', toggleDrawMode);
+  document.getElementById('photo-draw')?.addEventListener('click', () => toggleDrawMode());
 
   // Filters
-  document.getElementById('photo-filters')?.addEventListener('click', showFiltersModal);
+  document.getElementById('photo-filters')?.addEventListener('click', () => showFiltersModal());
 
   // Batch
-  document.getElementById('photo-batch')?.addEventListener('click', showBatchModal);
+  document.getElementById('photo-batch')?.addEventListener('click', () => showBatchModal());
 
   // GIF
-  document.getElementById('photo-gif')?.addEventListener('click', showGifModal);
+  document.getElementById('photo-gif')?.addEventListener('click', () => showGifModal());
 
   // HSL tabs
   document.querySelectorAll('.photo-hsl-tab').forEach(tab => {
@@ -239,7 +241,7 @@ function bindToolbar() {
       buildHSLSliders(tab.dataset.hslMode);
     });
   });
-  buildHSLSliders('hue');
+  setTimeout(() => buildHSLSliders('hue'), 0);
 
   // Tone Curve tabs
   document.querySelectorAll('.photo-curve-tab').forEach(tab => {
@@ -250,7 +252,25 @@ function bindToolbar() {
       drawCurve();
     });
   });
-  initCurveCanvas();
+  setTimeout(() => initCurveCanvas(), 0);
+
+  // Split Toning
+  setTimeout(() => bindSplitToningUI(), 0);
+
+  // Selective Color / Color Splash
+  setTimeout(() => bindSelectiveColorUI(), 0);
+
+  // Before/After Split View
+  document.getElementById('photo-split-view')?.addEventListener('click', () => toggleSplitView());
+
+  // Histogram
+  document.getElementById('photo-histogram')?.addEventListener('click', () => toggleHistogram());
+
+  // Clone/Stamp
+  document.getElementById('photo-clone')?.addEventListener('click', () => toggleCloneMode());
+
+  // Spot Heal
+  document.getElementById('photo-spot-heal')?.addEventListener('click', () => toggleSpotHealMode());
 }
 
 function renderOriginal() {

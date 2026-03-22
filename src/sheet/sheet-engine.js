@@ -663,6 +663,21 @@ function evalFormula(sheet, expr) {
         return s && e ? Math.abs(e[1] - s[1]) + 1 : '#ERROR';
       }
 
+      // ─── Sheet Info Functions ───
+      case 'SHEET': {
+        // SHEET() returns current sheet name
+        if (_evalSheets) {
+          const idx = _evalSheets.indexOf(sheet);
+          return sheet.name || `Sheet${(idx >= 0 ? idx : 0) + 1}`;
+        }
+        return sheet.name || 'Sheet1';
+      }
+      case 'SHEETS': {
+        // SHEETS() returns total number of sheets
+        if (_evalSheets) return _evalSheets.length;
+        return 1;
+      }
+
       // ─── Text Functions ───
       case 'TEXTJOIN': {
         const args = splitArgs(argsStr);

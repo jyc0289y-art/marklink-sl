@@ -135,6 +135,15 @@
         <button id="btn-list" class="toolbar-btn" data-tip="tip.list" title="List"><span class="icon">☰</span></button>
         <button id="btn-link" class="toolbar-btn" data-tip="tip.link" title="Link"><span class="icon">🔗</span></button>
         <button id="btn-table" class="toolbar-btn" data-tip="tip.table" title="Table"><span class="icon">▦</span></button>
+        <span class="toolbar-sep"></span>
+        <button id="btn-task" class="toolbar-btn" title="Task List"><span class="icon">☑</span></button>
+        <button id="btn-blockquote" class="toolbar-btn" title="Blockquote"><span class="icon">❝</span></button>
+        <button id="btn-hr" class="toolbar-btn" title="Horizontal Rule"><span class="icon">—</span></button>
+        <button id="btn-image" class="toolbar-btn" title="Insert Image"><span class="icon">📷</span></button>
+        <button id="btn-emoji" class="toolbar-btn" title="Emoji"><span class="icon">🙂</span></button>
+        <span class="toolbar-sep"></span>
+        <button id="btn-md-import" class="toolbar-btn" title="Import .md file"><span class="icon">📂</span></button>
+        <button id="btn-md-export" class="toolbar-btn" title="Export .md file"><span class="icon">💾</span></button>
       </div>
       <div id="split-pane" class="split-pane">
         <!-- Editor -->
@@ -263,6 +272,12 @@
         <button class="toolbar-btn" id="doc-compare" title="Compare Documents" style="font-size:11px">⇔ Diff</button>
         <button class="toolbar-btn" id="doc-focus-mode" title="Focus Mode (Zen)" style="font-size:11px">🧘 Focus</button>
         <button class="toolbar-btn" id="doc-reading-mode" title="Reading Mode" style="font-size:11px">📖 Read</button>
+        <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" id="doc-multi-column" title="Multi-Column Layout" style="font-size:11px">⫟ Cols</button>
+        <button class="toolbar-btn" id="doc-drag-reorder" title="Toggle Paragraph Drag Reorder" style="font-size:11px">☰ Drag</button>
+        <button class="toolbar-btn" id="doc-table-ops" title="Smart Table Operations" style="font-size:11px">⊞ TblOps</button>
+        <button class="toolbar-btn" id="doc-templates" title="Document Templates" style="font-size:11px">📋 Templates</button>
+        <button class="toolbar-btn" id="doc-citation" title="Insert Citation" style="font-size:11px">📚 Cite</button>
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="doc-undo" title="Undo (⌘Z)">↩</button>
         <button class="toolbar-btn" id="doc-redo" title="Redo (⌘⇧Z)">↪</button>
@@ -407,6 +422,8 @@
         <button class="toolbar-btn" id="sheet-import-csv" title="Import CSV" style="font-size:11px">CSV↑</button>
         <button class="toolbar-btn" id="sheet-export-csv" title="Export CSV" style="font-size:11px">CSV↓</button>
         <button class="toolbar-btn" id="sheet-export-xlsx" title="Export XLSX" style="font-size:11px">XLSX↓</button>
+        <button class="toolbar-btn" id="sheet-export-dialog" title="Export (CSV/JSON with options)" style="font-size:11px">📤 Export</button>
+        <button class="toolbar-btn" id="sheet-slicer" title="Insert Slicer Filter" style="font-size:11px">🔘 Slicer</button>
         <button class="toolbar-btn" id="sheet-sparkline" title="Insert Sparkline" style="font-size:11px">📊</button>
         <button class="toolbar-btn" id="sheet-insert-chart" title="Insert Chart" style="font-size:11px">📈 Chart</button>
         <button class="toolbar-btn" id="sheet-pivot" title="Pivot Table" style="font-size:11px">📊 Pivot</button>
@@ -530,10 +547,65 @@
         <button class="toolbar-btn" id="slide-rehearse" title="Rehearse Timings" style="font-size:11px">⏱️</button>
         <button class="toolbar-btn" id="slide-pres-timer" title="Presentation Timer" style="font-size:11px">⏰ Timer</button>
         <button class="toolbar-btn" id="slide-toggle-grid" title="Toggle Grid" style="font-size:11px"># Grid</button>
+        <button class="toolbar-btn" id="slide-obj-group" title="Group Selected (Ctrl+G)" style="font-size:11px">Group</button>
+        <button class="toolbar-btn" id="slide-obj-ungroup" title="Ungroup (Ctrl+Shift+G)" style="font-size:11px">Ungroup</button>
+        <button class="toolbar-btn" id="slide-shape-lib" title="Shape Library" style="font-size:11px">Shapes+</button>
         <button class="toolbar-btn" id="slide-export-img" title="Export as Image" style="font-size:11px">📷</button>
         <button class="toolbar-btn" id="slide-export-pptx" title="Export as PPTX" style="font-size:11px">PPTX↓</button>
         <button class="toolbar-btn" id="slide-print-handout" title="Print Handout" style="font-size:11px">🖨</button>
         <label style="font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:4px" title="Auto-advance (seconds, 0=manual)">⏱<input type="number" id="slide-auto-advance" min="0" max="60" value="0" style="width:40px;padding:2px 4px;font-size:11px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">s</label>
+      </div>
+      <!-- Rich text formatting toolbar (shown when text selected in slide) -->
+      <div id="slide-text-format-bar" class="slide-text-format-bar" style="display:none">
+        <select id="slide-font-family" title="Font Family">
+          <option value="">Font...</option>
+          <option value="Arial, sans-serif">Arial</option>
+          <option value="'Helvetica Neue', Helvetica, sans-serif">Helvetica</option>
+          <option value="'Times New Roman', Times, serif">Times New Roman</option>
+          <option value="Georgia, serif">Georgia</option>
+          <option value="'Courier New', monospace">Courier New</option>
+          <option value="Verdana, sans-serif">Verdana</option>
+          <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+          <option value="Impact, sans-serif">Impact</option>
+          <option value="'Palatino Linotype', serif">Palatino</option>
+          <option value="'Lucida Console', monospace">Lucida Console</option>
+          <option value="'Segoe UI', system-ui, sans-serif">Segoe UI</option>
+          <option value="-apple-system, BlinkMacSystemFont, sans-serif">System Default</option>
+        </select>
+        <select id="slide-font-size" title="Font Size">
+          <option value="">Size...</option>
+          <option value="10px">10</option>
+          <option value="12px">12</option>
+          <option value="14px">14</option>
+          <option value="16px">16</option>
+          <option value="18px">18</option>
+          <option value="20px">20</option>
+          <option value="24px">24</option>
+          <option value="28px">28</option>
+          <option value="32px">32</option>
+          <option value="36px">36</option>
+          <option value="40px">40</option>
+          <option value="48px">48</option>
+          <option value="56px">56</option>
+          <option value="64px">64</option>
+          <option value="72px">72</option>
+          <option value="96px">96</option>
+        </select>
+        <label title="Line Height" style="font-size:10px;color:var(--text-secondary);display:flex;align-items:center;gap:2px">LH
+          <input type="number" id="slide-line-height" min="0.5" max="4" step="0.1" value="1.5" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+        </label>
+        <label title="Letter Spacing" style="font-size:10px;color:var(--text-secondary);display:flex;align-items:center;gap:2px">LS
+          <input type="number" id="slide-letter-spacing" min="-5" max="20" step="0.5" value="0" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">px
+        </label>
+        <button class="toolbar-btn slide-fmt2-cmd" data-cmd="bold" title="Bold" style="font-size:11px"><b>B</b></button>
+        <button class="toolbar-btn slide-fmt2-cmd" data-cmd="italic" title="Italic" style="font-size:11px"><i>I</i></button>
+        <button class="toolbar-btn slide-fmt2-cmd" data-cmd="underline" title="Underline" style="font-size:11px"><u>U</u></button>
+        <button class="toolbar-btn slide-fmt2-cmd" data-cmd="strikeThrough" title="Strikethrough" style="font-size:11px"><s>S</s></button>
+        <button class="toolbar-btn slide-fmt2-cmd" data-cmd="superscript" title="Superscript" style="font-size:10px">X<sup>2</sup></button>
+        <button class="toolbar-btn slide-fmt2-cmd" data-cmd="subscript" title="Subscript" style="font-size:10px">X<sub>2</sub></button>
+        <input type="color" id="slide-fmt-text-color" value="#333333" title="Text Color" style="width:24px;height:24px;border:1px solid var(--border-color);border-radius:4px;cursor:pointer">
+        <input type="color" id="slide-fmt-bg-color" value="#ffff00" title="Highlight Color" style="width:24px;height:24px;border:1px solid var(--border-color);border-radius:4px;cursor:pointer">
+        <button class="toolbar-btn" id="slide-fmt-clear" title="Clear Formatting" style="font-size:11px">T<sub>x</sub></button>
       </div>
       <div class="slide-workspace">
         <div class="slide-panel" id="slide-panel"></div>
@@ -546,8 +618,16 @@
           </div>
         </div>
         <div class="slide-notes-area">
-          <div class="slide-notes-header">Speaker Notes</div>
-          <textarea id="slide-notes" class="slide-notes" placeholder="Add speaker notes..."></textarea>
+          <div class="slide-notes-header">
+            <span>Speaker Notes</span>
+            <span class="slide-notes-toolbar" id="slide-notes-toolbar">
+              <button class="toolbar-btn slide-notes-fmt" data-cmd="bold" title="Bold" style="width:20px;height:20px;font-size:10px;padding:0"><b>B</b></button>
+              <button class="toolbar-btn slide-notes-fmt" data-cmd="italic" title="Italic" style="width:20px;height:20px;font-size:10px;padding:0"><i>I</i></button>
+              <button class="toolbar-btn slide-notes-fmt" data-cmd="insertUnorderedList" title="Bullet List" style="width:20px;height:20px;font-size:10px;padding:0">&#8226;</button>
+              <button class="toolbar-btn slide-notes-fmt" data-cmd="insertOrderedList" title="Numbered List" style="width:20px;height:20px;font-size:10px;padding:0">1.</button>
+            </span>
+          </div>
+          <div id="slide-notes" class="slide-notes" contenteditable="true"></div>
         </div>
       </div>
     </div>
@@ -567,13 +647,37 @@
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="pdf-convert-md" title="Convert Markdown to PDF">MD → PDF</button>
         <button class="toolbar-btn" id="pdf-convert-doc" title="Convert Document to PDF">Doc → PDF</button>
+        <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" id="pdf-rotate" title="Rotate Page 90°">⟳ Rotate</button>
+        <button class="toolbar-btn" id="pdf-deskew" title="Auto-straighten skewed page">⊿ Deskew</button>
+        <button class="toolbar-btn" id="pdf-delete-page" title="Delete Current Page">✕ Del</button>
+        <button class="toolbar-btn" id="pdf-insert-blank" title="Insert Blank Page after current">＋ Blank</button>
+        <button class="toolbar-btn" id="pdf-extract" title="Extract Current Page as PDF">⇥ Extract</button>
+        <div class="toolbar-divider"></div>
+        <button class="toolbar-btn pdf-annot-btn" id="pdf-highlight" title="Highlight Text" data-tool="highlight">🖍 Highlight</button>
+        <button class="toolbar-btn pdf-annot-btn" id="pdf-underline" title="Underline Text" data-tool="underline">U̲ Underline</button>
+        <button class="toolbar-btn pdf-annot-btn" id="pdf-strikethrough" title="Strikethrough Text" data-tool="strikethrough">S̶ Strike</button>
+        <button class="toolbar-btn pdf-annot-btn" id="pdf-sticky-note" title="Add Sticky Note" data-tool="sticky">📝 Note</button>
+        <button class="toolbar-btn pdf-annot-btn" id="pdf-freehand" title="Freehand Drawing" data-tool="freehand">✏ Draw</button>
+        <button class="toolbar-btn" id="pdf-clear-annot" title="Clear Annotations on Page">🗑 Clear</button>
+        <div class="toolbar-divider"></div>
+        <input type="text" id="pdf-search-input" class="pdf-search-input" placeholder="Search text…" />
+        <button class="toolbar-btn" id="pdf-search-prev" title="Previous Match">◀</button>
+        <button class="toolbar-btn" id="pdf-search-next" title="Next Match">▶</button>
+        <span class="pdf-search-info" id="pdf-search-info"></span>
       </div>
-      <div class="pdf-container" id="pdf-container">
-        <div class="pdf-empty" id="pdf-empty">
-          <span style="font-size:48px">📄</span>
-          <p>Open a PDF file or convert from Markdown/Document</p>
+      <div class="pdf-main-area">
+        <div class="pdf-thumb-sidebar" id="pdf-thumb-sidebar">
+          <div class="pdf-thumb-header">Pages</div>
+          <div class="pdf-thumb-list" id="pdf-thumb-list"></div>
         </div>
-        <div class="pdf-pages" id="pdf-pages"></div>
+        <div class="pdf-container" id="pdf-container">
+          <div class="pdf-empty" id="pdf-empty">
+            <span style="font-size:48px">📄</span>
+            <p>Open a PDF file or convert from Markdown/Document</p>
+          </div>
+          <div class="pdf-pages" id="pdf-pages"></div>
+        </div>
       </div>
     </div>
 
@@ -601,6 +705,12 @@
         <button class="toolbar-btn" id="photo-filters" title="Filters">🎨 Filters</button>
         <button class="toolbar-btn" id="photo-batch" title="Batch">📑 Batch</button>
         <button class="toolbar-btn" id="photo-gif" title="Create GIF">GIF</button>
+        <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" id="photo-clone" title="Clone/Stamp (Alt+click source)">🖌 Clone</button>
+        <button class="toolbar-btn" id="photo-spot-heal" title="Spot Healing">🩹 Heal</button>
+        <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" id="photo-split-view" title="Before/After Split View">◧ Split</button>
+        <button class="toolbar-btn" id="photo-histogram" title="Toggle Histogram">📊 Hist</button>
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="photo-export" title="Export" style="background:var(--brand-color);color:#fff;border-radius:6px">⬇ Export</button>
       </div>
@@ -647,8 +757,20 @@
             </div>
             <!-- Draw overlay -->
             <canvas id="photo-draw-canvas" style="display:none;position:absolute;top:0;left:0;cursor:crosshair"></canvas>
+            <!-- Clone/Stamp overlay -->
+            <canvas id="photo-clone-canvas" style="display:none;position:absolute;top:0;left:0;cursor:crosshair"></canvas>
+            <!-- Spot healing overlay -->
+            <canvas id="photo-heal-canvas" style="display:none;position:absolute;top:0;left:0;cursor:crosshair"></canvas>
             <!-- Text overlay layer -->
             <div id="photo-text-layer" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none"></div>
+            <!-- Before/After split view divider -->
+            <div id="photo-split-divider" style="display:none;position:absolute;top:0;width:3px;height:100%;background:#fff;cursor:ew-resize;z-index:15;box-shadow:0 0 6px rgba(0,0,0,0.5)">
+              <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:24px;height:24px;background:rgba(0,0,0,0.7);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px">⇔</div>
+            </div>
+            <!-- Before canvas (for split view) -->
+            <canvas id="photo-before-canvas" style="display:none;position:absolute;top:0;left:0"></canvas>
+            <!-- Histogram overlay -->
+            <canvas id="photo-histogram-canvas" width="256" height="120" style="display:none;position:absolute;top:8px;right:8px;z-index:15;border-radius:6px;background:rgba(0,0,0,0.6);pointer-events:none"></canvas>
           </div>
           <!-- Right adjustment panel -->
           <div class="photo-panel">
@@ -729,6 +851,45 @@
                 <div class="photo-slider-row"><span class="photo-slider-label">Size</span><input type="range" id="photo-grain-size" min="0" max="100" value="50"><span class="photo-slider-val" id="photo-grain-size-val">50</span></div>
               </div>
             </div>
+            <!-- Split Toning -->
+            <div class="photo-panel-section">
+              <button class="photo-panel-toggle" data-panel="photo-split-tone-panel">Split Toning</button>
+              <div class="photo-panel-content" id="photo-split-tone-panel">
+                <div style="display:flex;gap:12px;margin-bottom:8px">
+                  <div style="flex:1">
+                    <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Shadows</div>
+                    <input type="color" id="photo-st-shadow-color" value="#000000" style="width:100%;height:28px;border:1px solid var(--border-color);border-radius:4px;cursor:pointer;background:transparent">
+                  </div>
+                  <div style="flex:1">
+                    <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Highlights</div>
+                    <input type="color" id="photo-st-highlight-color" value="#000000" style="width:100%;height:28px;border:1px solid var(--border-color);border-radius:4px;cursor:pointer;background:transparent">
+                  </div>
+                </div>
+                <div class="photo-slider-row"><span class="photo-slider-label">Shadow Sat</span><input type="range" id="photo-st-shadow-sat" min="0" max="100" value="0"><span class="photo-slider-val" id="photo-st-shadow-sat-val">0</span></div>
+                <div class="photo-slider-row"><span class="photo-slider-label">Highlight Sat</span><input type="range" id="photo-st-highlight-sat" min="0" max="100" value="0"><span class="photo-slider-val" id="photo-st-highlight-sat-val">0</span></div>
+                <div class="photo-slider-row"><span class="photo-slider-label">Balance</span><input type="range" id="photo-st-balance" min="-100" max="100" value="0"><span class="photo-slider-val" id="photo-st-balance-val">0</span></div>
+              </div>
+            </div>
+            <!-- Selective Color / Color Splash -->
+            <div class="photo-panel-section">
+              <button class="photo-panel-toggle" data-panel="photo-selective-panel">Color Splash</button>
+              <div class="photo-panel-content" id="photo-selective-panel">
+                <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">Select colors to keep; rest becomes B&W</div>
+                <div id="photo-sc-hue-buttons" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
+                  <button class="photo-sc-hue-btn" data-hue="0" style="background:#e74c3c" title="Red">R</button>
+                  <button class="photo-sc-hue-btn" data-hue="30" style="background:#e67e22" title="Orange">O</button>
+                  <button class="photo-sc-hue-btn" data-hue="60" style="background:#f1c40f;color:#333" title="Yellow">Y</button>
+                  <button class="photo-sc-hue-btn" data-hue="120" style="background:#2ecc71" title="Green">G</button>
+                  <button class="photo-sc-hue-btn" data-hue="180" style="background:#1abc9c" title="Cyan">C</button>
+                  <button class="photo-sc-hue-btn" data-hue="210" style="background:#3498db" title="Blue">B</button>
+                  <button class="photo-sc-hue-btn" data-hue="270" style="background:#9b59b6" title="Purple">P</button>
+                  <button class="photo-sc-hue-btn" data-hue="330" style="background:#e91e63" title="Magenta">M</button>
+                </div>
+                <div class="photo-slider-row"><span class="photo-slider-label">Strength</span><input type="range" id="photo-sc-strength" min="0" max="100" value="100"><span class="photo-slider-val" id="photo-sc-strength-val">100</span></div>
+                <div class="photo-slider-row"><span class="photo-slider-label">Range</span><input type="range" id="photo-sc-range" min="10" max="90" value="30"><span class="photo-slider-val" id="photo-sc-range-val">30</span></div>
+                <button class="toolbar-btn" id="photo-sc-reset" style="font-size:11px;margin-top:4px">Reset Colors</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -745,6 +906,10 @@
           <button class="calc-tab" data-calc-tab="graph">Graph</button>
           <button class="calc-tab" data-calc-tab="convert">Unit Convert</button>
           <button class="calc-tab" data-calc-tab="saved">Saved</button>
+          <button class="calc-tab" data-calc-tab="matrix">Matrix</button>
+          <button class="calc-tab" data-calc-tab="stats">Statistics</button>
+          <button class="calc-tab" data-calc-tab="finance">Financial</button>
+          <button class="calc-tab" data-calc-tab="programmer">Programmer</button>
         </div>
         <div class="calc-toolbar-right">
           <button class="calc-toolbar-btn" id="calc-add-home" title="Add to Home Screen">📲</button>
@@ -835,19 +1000,40 @@
         </div>
       </div>
 
-      <!-- Panel: Graph -->
+      <!-- Panel: Graph (Enhanced with parametric, polar, trace) -->
       <div class="calc-panel" id="calc-panel-graph">
         <div class="calc-graph-container">
           <div class="calc-graph-controls">
-            <label>y =</label>
+            <select id="calc-graph-mode" class="calc-graph-mode-select">
+              <option value="cartesian">y = f(x)</option>
+              <option value="parametric">Parametric</option>
+              <option value="polar">Polar r(θ)</option>
+            </select>
             <input type="text" id="calc-graph-expr" class="calc-graph-input" placeholder="sin(x), x^2, log(x)..." value="sin(x)" />
             <button class="calc-graph-plot-btn" id="calc-graph-plot">Plot</button>
             <button class="calc-graph-plot-btn calc-graph-add-btn" id="calc-graph-add">+ Add</button>
+          </div>
+          <!-- Parametric inputs (hidden by default) -->
+          <div id="calc-graph-parametric-inputs" style="display:none;" class="calc-graph-controls">
+            <label>x(t) =</label>
+            <input type="text" id="calc-graph-xt" class="calc-graph-input" placeholder="cos(t)" value="cos(t)" style="flex:1" />
+            <label>y(t) =</label>
+            <input type="text" id="calc-graph-yt" class="calc-graph-input" placeholder="sin(t)" value="sin(t)" style="flex:1" />
+            <label>t:</label>
+            <input type="number" id="calc-graph-tmin" value="0" style="width:50px" class="calc-graph-input" />
+            <label>to</label>
+            <input type="number" id="calc-graph-tmax" value="6.28" step="0.01" style="width:60px" class="calc-graph-input" />
+          </div>
+          <div class="calc-graph-toolbar">
+            <label class="calc-graph-check"><input type="checkbox" id="calc-graph-trace" /> Trace</label>
+            <label class="calc-graph-check"><input type="checkbox" id="calc-graph-snap" /> Snap to curve</label>
+            <label class="calc-graph-check"><input type="checkbox" id="calc-graph-grid-toggle" checked /> Grid</label>
           </div>
           <div class="calc-graph-func-list" id="calc-graph-func-list"></div>
           <div class="calc-graph-view">
             <canvas id="calc-graph-canvas" width="800" height="500"></canvas>
             <div class="calc-graph-info" id="calc-graph-info"></div>
+            <div class="calc-graph-trace-info" id="calc-graph-trace-info" style="display:none;"></div>
           </div>
           <div class="calc-graph-range">
             <label>x: <input type="number" id="calc-graph-xmin" value="-10" step="1" /></label>
@@ -890,6 +1076,199 @@
             <button class="calc-saved-add-btn" id="calc-saved-add">+ New</button>
           </div>
           <div class="calc-saved-list" id="calc-saved-list"></div>
+        </div>
+      </div>
+
+      <!-- Panel: Matrix Calculator -->
+      <div class="calc-panel" id="calc-panel-matrix">
+        <div class="calc-adv-container">
+          <div class="calc-adv-card">
+            <h3>Matrix Calculator</h3>
+            <div class="calc-matrix-controls">
+              <label>Size:
+                <select id="calc-matrix-size" class="calc-adv-select">
+                  <option value="2">2 x 2</option>
+                  <option value="3" selected>3 x 3</option>
+                  <option value="4">4 x 4</option>
+                </select>
+              </label>
+              <label>Operation:
+                <select id="calc-matrix-op" class="calc-adv-select">
+                  <option value="det">Determinant</option>
+                  <option value="inv">Inverse</option>
+                  <option value="mul">A x B</option>
+                  <option value="add">A + B</option>
+                  <option value="sub">A - B</option>
+                  <option value="transpose">Transpose</option>
+                  <option value="eigen">Eigenvalues</option>
+                  <option value="trace">Trace</option>
+                  <option value="rank">Rank</option>
+                </select>
+              </label>
+            </div>
+            <div class="calc-matrix-area">
+              <div>
+                <h4>Matrix A</h4>
+                <div id="calc-matrix-a" class="calc-matrix-grid"></div>
+              </div>
+              <div id="calc-matrix-b-wrap">
+                <h4>Matrix B</h4>
+                <div id="calc-matrix-b" class="calc-matrix-grid"></div>
+              </div>
+            </div>
+            <div class="calc-matrix-actions">
+              <button class="calc-adv-btn calc-adv-primary" id="calc-matrix-compute">Compute</button>
+              <button class="calc-adv-btn" id="calc-matrix-clear">Clear</button>
+              <button class="calc-adv-btn" id="calc-matrix-random">Random</button>
+              <button class="calc-adv-btn" id="calc-matrix-identity">Identity</button>
+            </div>
+            <div class="calc-adv-result" id="calc-matrix-result">
+              <div class="calc-adv-result-label">Result</div>
+              <div class="calc-adv-result-content" id="calc-matrix-result-content"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Statistics Calculator -->
+      <div class="calc-panel" id="calc-panel-stats">
+        <div class="calc-adv-container">
+          <div class="calc-adv-card" style="max-width:700px;">
+            <h3>Statistics Calculator</h3>
+            <div class="calc-stats-input-area">
+              <label>Dataset (comma-separated values):</label>
+              <textarea id="calc-stats-data" class="calc-stats-textarea" rows="3" placeholder="e.g. 12, 15, 18, 22, 25, 30, 35, 18, 22, 28"></textarea>
+              <div class="calc-stats-actions">
+                <button class="calc-adv-btn calc-adv-primary" id="calc-stats-compute">Analyze</button>
+                <button class="calc-adv-btn" id="calc-stats-clear">Clear</button>
+                <button class="calc-adv-btn" id="calc-stats-sample">Sample Data</button>
+              </div>
+            </div>
+            <div class="calc-stats-results" id="calc-stats-results" style="display:none;">
+              <div class="calc-stats-grid" id="calc-stats-grid"></div>
+              <h4>Distribution</h4>
+              <canvas id="calc-stats-histogram" width="600" height="250"></canvas>
+              <h4>Box Plot</h4>
+              <canvas id="calc-stats-boxplot" width="600" height="100"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Financial Calculator -->
+      <div class="calc-panel" id="calc-panel-finance">
+        <div class="calc-adv-container">
+          <div class="calc-adv-card" style="max-width:700px;">
+            <h3>Financial Calculator</h3>
+            <div class="calc-finance-tabs">
+              <button class="calc-finance-tab active" data-finance-tab="compound">Compound Interest</button>
+              <button class="calc-finance-tab" data-finance-tab="loan">Loan (PMT)</button>
+              <button class="calc-finance-tab" data-finance-tab="npv">NPV / IRR</button>
+              <button class="calc-finance-tab" data-finance-tab="amort">Amortization</button>
+            </div>
+            <div class="calc-finance-panel active" id="calc-finance-compound">
+              <div class="calc-finance-form">
+                <label>Principal ($):<input type="number" id="calc-fin-principal" value="10000" /></label>
+                <label>Annual Rate (%):<input type="number" id="calc-fin-rate" value="5" step="0.01" /></label>
+                <label>Years:<input type="number" id="calc-fin-years" value="10" /></label>
+                <label>Compound per year:<select id="calc-fin-compound"><option value="1">Annually</option><option value="2">Semi-annually</option><option value="4">Quarterly</option><option value="12" selected>Monthly</option><option value="365">Daily</option></select></label>
+                <label>Monthly Addition ($):<input type="number" id="calc-fin-addition" value="100" /></label>
+              </div>
+              <button class="calc-adv-btn calc-adv-primary" id="calc-fin-ci-compute">Calculate</button>
+              <div class="calc-adv-result" id="calc-fin-ci-result"></div>
+            </div>
+            <div class="calc-finance-panel" id="calc-finance-loan">
+              <div class="calc-finance-form">
+                <label>Loan Amount ($):<input type="number" id="calc-fin-loan-amt" value="250000" /></label>
+                <label>Annual Rate (%):<input type="number" id="calc-fin-loan-rate" value="6.5" step="0.01" /></label>
+                <label>Term (years):<input type="number" id="calc-fin-loan-term" value="30" /></label>
+              </div>
+              <button class="calc-adv-btn calc-adv-primary" id="calc-fin-loan-compute">Calculate</button>
+              <div class="calc-adv-result" id="calc-fin-loan-result"></div>
+            </div>
+            <div class="calc-finance-panel" id="calc-finance-npv">
+              <div class="calc-finance-form">
+                <label>Discount Rate (%):<input type="number" id="calc-fin-npv-rate" value="10" step="0.1" /></label>
+                <label>Initial Investment ($):<input type="number" id="calc-fin-npv-invest" value="100000" /></label>
+                <label>Cash Flows (comma-separated):<input type="text" id="calc-fin-npv-flows" value="30000, 35000, 40000, 45000" /></label>
+              </div>
+              <button class="calc-adv-btn calc-adv-primary" id="calc-fin-npv-compute">Calculate</button>
+              <div class="calc-adv-result" id="calc-fin-npv-result"></div>
+            </div>
+            <div class="calc-finance-panel" id="calc-finance-amort">
+              <div class="calc-finance-form">
+                <label>Loan Amount ($):<input type="number" id="calc-fin-amort-amt" value="200000" /></label>
+                <label>Annual Rate (%):<input type="number" id="calc-fin-amort-rate" value="5" step="0.01" /></label>
+                <label>Term (years):<input type="number" id="calc-fin-amort-term" value="30" /></label>
+              </div>
+              <button class="calc-adv-btn calc-adv-primary" id="calc-fin-amort-compute">Generate Schedule</button>
+              <div class="calc-fin-amort-table-wrap" id="calc-fin-amort-result"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Programmer Calculator -->
+      <div class="calc-panel" id="calc-panel-programmer">
+        <div class="calc-adv-container">
+          <div class="calc-adv-card" style="max-width:650px;">
+            <h3>Programmer Calculator</h3>
+            <div class="calc-prog-display">
+              <div class="calc-prog-row"><span class="calc-prog-label">DEC</span><input type="text" id="calc-prog-dec" class="calc-prog-input" value="0" /></div>
+              <div class="calc-prog-row"><span class="calc-prog-label">HEX</span><input type="text" id="calc-prog-hex" class="calc-prog-input" value="0" /></div>
+              <div class="calc-prog-row"><span class="calc-prog-label">OCT</span><input type="text" id="calc-prog-oct" class="calc-prog-input" value="0" /></div>
+              <div class="calc-prog-row"><span class="calc-prog-label">BIN</span><input type="text" id="calc-prog-bin" class="calc-prog-input calc-prog-bin-input" value="0" /></div>
+            </div>
+            <div class="calc-prog-bit-display" id="calc-prog-bits"></div>
+            <div class="calc-prog-controls">
+              <label>Word Size:
+                <select id="calc-prog-word" class="calc-adv-select">
+                  <option value="8">8-bit</option>
+                  <option value="16">16-bit</option>
+                  <option value="32" selected>32-bit</option>
+                  <option value="64">64-bit</option>
+                </select>
+              </label>
+            </div>
+            <div class="calc-prog-keypad">
+              <div class="calc-prog-hex-keys">
+                <button class="calc-btn calc-prog-key" data-prog-val="A">A</button>
+                <button class="calc-btn calc-prog-key" data-prog-val="B">B</button>
+                <button class="calc-btn calc-prog-key" data-prog-val="C">C</button>
+                <button class="calc-btn calc-prog-key" data-prog-val="D">D</button>
+                <button class="calc-btn calc-prog-key" data-prog-val="E">E</button>
+                <button class="calc-btn calc-prog-key" data-prog-val="F">F</button>
+              </div>
+              <div class="calc-prog-ops">
+                <button class="calc-btn calc-prog-op" data-prog-op="AND">AND</button>
+                <button class="calc-btn calc-prog-op" data-prog-op="OR">OR</button>
+                <button class="calc-btn calc-prog-op" data-prog-op="XOR">XOR</button>
+                <button class="calc-btn calc-prog-op" data-prog-op="NOT">NOT</button>
+                <button class="calc-btn calc-prog-op" data-prog-op="SHL">SHL</button>
+                <button class="calc-btn calc-prog-op" data-prog-op="SHR">SHR</button>
+                <button class="calc-btn calc-prog-op" data-prog-op="ROL">ROL</button>
+                <button class="calc-btn calc-prog-op" data-prog-op="ROR">ROR</button>
+              </div>
+            </div>
+            <div class="calc-prog-num-grid">
+              <button class="calc-btn calc-digit" data-prog-val="7">7</button>
+              <button class="calc-btn calc-digit" data-prog-val="8">8</button>
+              <button class="calc-btn calc-digit" data-prog-val="9">9</button>
+              <button class="calc-btn calc-clear" data-prog-action="clear">C</button>
+              <button class="calc-btn calc-digit" data-prog-val="4">4</button>
+              <button class="calc-btn calc-digit" data-prog-val="5">5</button>
+              <button class="calc-btn calc-digit" data-prog-val="6">6</button>
+              <button class="calc-btn calc-clear" data-prog-action="backspace">&#9003;</button>
+              <button class="calc-btn calc-digit" data-prog-val="1">1</button>
+              <button class="calc-btn calc-digit" data-prog-val="2">2</button>
+              <button class="calc-btn calc-digit" data-prog-val="3">3</button>
+              <button class="calc-btn calc-equals" data-prog-action="negate">&#177;</button>
+              <button class="calc-btn calc-digit" data-prog-val="0">0</button>
+              <button class="calc-btn calc-op calc-op-highlight" data-prog-op="ADD">+</button>
+              <button class="calc-btn calc-op calc-op-highlight" data-prog-op="SUB">-</button>
+              <button class="calc-btn calc-op calc-op-highlight" data-prog-op="MUL">x</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -987,7 +1366,19 @@
       <select id="ai-model-select" title="AI Model">
         <option value="">Checking...</option>
       </select>
+      <button id="ai-url-settings-btn" class="toolbar-btn" title="Ollama URL Settings" style="font-size:14px">&#9881;</button>
       <button id="ai-panel-close" class="toolbar-btn" title="Close">&times;</button>
+    </div>
+    <div id="ai-url-settings" class="ai-url-settings hidden">
+      <div class="ai-url-settings-row">
+        <label style="font-size:11px;color:var(--text-secondary)">Ollama URL:</label>
+        <div style="display:flex;gap:4px;align-items:center;flex:1">
+          <span id="ai-url-status-dot" class="ai-url-dot offline" title="Not connected"></span>
+          <input id="ai-ollama-url-input" type="text" class="ai-url-input" placeholder="http://localhost:11434" />
+          <button id="ai-url-save-btn" class="ai-url-save-btn">Save</button>
+          <button id="ai-url-reset-btn" class="ai-url-reset-btn" title="Reset to localhost">Reset</button>
+        </div>
+      </div>
     </div>
     <div id="ai-chat-list" class="ai-chat-list">
       <div class="ai-msg ai-msg-system">

@@ -340,3 +340,42 @@
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* Cell comment indicator (red triangle, top-right corner) */
+.cell-comment-indicator {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-right: 8px solid #ef4444;
+  border-bottom: 8px solid transparent;
+  cursor: pointer;
+  z-index: 2;
+}
+.cell-comment-indicator:hover {
+  border-right-color: #dc2626;
+}
+
+/* Slicer widget */
+.slicer-widget {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  transition: box-shadow 0.2s;
+}
+.slicer-widget:hover {
+  box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+}
+.slicer-item:hover {
+  background: var(--hover-bg);
+}
+.slicer-item input[type="checkbox"] {
+  accent-color: var(--accent-color);
+}
+
+/* Comment panel */
+.sheet-comment-panel {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.comment-thread-item:hover {
+  background: var(--hover-bg);
+}
