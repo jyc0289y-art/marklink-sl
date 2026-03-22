@@ -352,6 +352,10 @@
       <div class="sheet-container" id="sheet-container">
         <table class="sheet-grid" id="sheet-grid"></table>
       </div>
+      <div class="sheet-status-bar" id="sheet-status-bar" style="display:flex;justify-content:space-between;padding:2px 12px;font-size:11px;color:var(--text-secondary);background:var(--pane-header-bg);border-top:1px solid var(--border-color)">
+        <span id="sheet-status-left">Ready</span>
+        <span id="sheet-status-right"></span>
+      </div>
       <div class="sheet-tabs" id="sheet-tabs">
         <button class="sheet-tab active" data-sheet="0">Sheet1</button>
         <button class="sheet-tab-add" id="sheet-add-tab" title="Add Sheet">+</button>
@@ -426,6 +430,7 @@
         </select>
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="slide-present" title="Present (F5)">▶ Present</button>
+        <button class="toolbar-btn" id="slide-sorter" title="Slide Sorter View" style="font-size:11px">⊞ Sorter</button>
         <button class="toolbar-btn" id="slide-speaker-view" title="Speaker View" style="font-size:11px">🎤</button>
         <button class="toolbar-btn" id="slide-export-img" title="Export as Image" style="font-size:11px">📷</button>
         <button class="toolbar-btn" id="slide-export-pptx" title="Export as PPTX" style="font-size:11px">PPTX↓</button>

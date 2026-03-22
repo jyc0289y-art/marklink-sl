@@ -150,7 +150,12 @@ function renderGrid() {
       const filterBtn = (filterRow === r)
         ? `<span class="sheet-filter-btn" data-filter-col="${c}" style="cursor:pointer;font-size:9px;float:right;color:${filterValues[c] ? 'var(--accent-color)' : 'var(--text-secondary)'};margin-left:2px" title="Filter">▼</span>`
         : '';
-      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="width:${w}px;min-width:${w}px;height:${rh}px;${style}"${spanAttrs}>${filterBtn}${cellContent}${noteIndicator}</td>`;
+      // Data validation dropdown indicator
+      const dvKey = `${r},${c}`;
+      const dvIndicator = validations[dvKey]?.type === 'list'
+        ? `<span class="sheet-dv-btn" data-dv-row="${r}" data-dv-col="${c}" style="cursor:pointer;font-size:8px;float:right;color:var(--text-secondary);margin-left:1px" title="Dropdown">▾</span>`
+        : '';
+      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="width:${w}px;min-width:${w}px;height:${rh}px;${style}"${spanAttrs}>${filterBtn}${dvIndicator}${cellContent}${noteIndicator}</td>`;
     }
     html += '</tr>';
   }
@@ -207,6 +212,12 @@ function bindEvents() {
     const filterBtn = e.target.closest('.sheet-filter-btn');
     if (filterBtn) {
       showFilterDropdown(parseInt(filterBtn.dataset.filterCol), filterBtn);
+      e.stopPropagation();
+      return;
+    }
+    const dvBtn = e.target.closest('.sheet-dv-btn');
+    if (dvBtn) {
+      showDvDropdown(parseInt(dvBtn.dataset.dvRow), parseInt(dvBtn.dataset.dvCol), dvBtn);
       e.stopPropagation();
     }
   });
@@ -708,6 +719,45 @@ function updateSelection() {
 
   if (formulaBarEl && document.activeElement !== formulaBarEl && !isEditing) {
     formulaBarEl.value = getRawValue(getSheet(), selectedRow, selectedCol);
+  }
+
+  // Update status bar
+  updateStatusBar();
+}
+
+function updateStatusBar() {
+  const sheet = getSheet();
+  const { r1, r2, c1, c2 } = getSelectionRange();
+  const leftEl = document.getElementById('sheet-status-left');
+  const rightEl = document.getElementById('sheet-status-right');
+  if (!leftEl || !rightEl) return;
+
+  const isRange = r1 !== r2 || c1 !== c2;
+  if (!isRange) {
+    leftEl.textContent = 'Ready';
+    rightEl.textContent = '';
+    return;
+  }
+
+  const vals = [];
+  let count = 0;
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      const v = parseFloat(getDisplayValue(sheet, r, c));
+      if (!isNaN(v)) vals.push(v);
+      count++;
+    }
+  }
+
+  leftEl.textContent = `${count} cells selected`;
+  if (vals.length > 0) {
+    const sum = vals.reduce((a, b) => a + b, 0);
+    const avg = sum / vals.length;
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    rightEl.textContent = `Sum: ${sum.toLocaleString()} | Avg: ${avg.toFixed(2)} | Count: ${vals.length} | Min: ${min} | Max: ${max}`;
+  } else {
+    rightEl.textContent = `Count: ${count}`;
   }
 }
 
@@ -1905,6 +1955,41 @@ function showCellContextMenu(x, y, r, c) {
 /* ==================== Data Validation ==================== */
 
 let validations = {}; // "r,c" → { type, values }
+
+function showDvDropdown(r, c, anchorEl) {
+  document.querySelector('.sheet-dv-dropdown')?.remove();
+  const key = `${r},${c}`;
+  const dv = validations[key];
+  if (!dv || dv.type !== 'list') return;
+
+  const rect = anchorEl.getBoundingClientRect();
+  const dd = document.createElement('div');
+  dd.className = 'sheet-dv-dropdown';
+  dd.style.cssText = `position:fixed;top:${rect.bottom + 2}px;left:${rect.left - 60}px;min-width:120px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.12);z-index:2000;padding:4px;font-size:12px`;
+
+  dv.values.forEach(v => {
+    const item = document.createElement('div');
+    item.style.cssText = 'padding:6px 10px;cursor:pointer;border-radius:4px;transition:background 0.1s';
+    item.textContent = v;
+    item.onmouseenter = () => item.style.background = 'var(--hover-bg)';
+    item.onmouseleave = () => item.style.background = '';
+    item.onclick = () => {
+      setCell(getSheet(), r, c, v);
+      recalcAll(getSheet());
+      renderGrid();
+      updateSelection();
+      dd.remove();
+    };
+    dd.appendChild(item);
+  });
+
+  document.body.appendChild(dd);
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!dd.contains(e.target)) { dd.remove(); document.removeEventListener('click', close); }
+    });
+  }, 50);
+}
 
 function showDataValidationDialog(r, c) {
   const existing = document.querySelector('.sheet-dv-dialog');

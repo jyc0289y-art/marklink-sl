@@ -192,6 +192,8 @@ function bindEvents() {
     changeSlideSize(e.target.value);
   });
 
+  // Slide Sorter
+  document.getElementById('slide-sorter')?.addEventListener('click', showSlideSorter);
   // Speaker view
   document.getElementById('slide-speaker-view')?.addEventListener('click', openSpeakerView);
 
@@ -1048,6 +1050,89 @@ function printHandout() {
   win.document.write(html);
   win.document.close();
   setTimeout(() => win.print(), 300);
+}
+
+/* ==================== Slide Sorter ==================== */
+
+function showSlideSorter() {
+  const existing = document.querySelector('.slide-sorter-overlay');
+  if (existing) { existing.remove(); return; }
+
+  saveCurrentSlide();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'slide-sorter-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:5000;background:var(--bg-primary);overflow:auto;padding:24px';
+
+  let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <h2 style="margin:0;font-size:20px;font-weight:700">Slide Sorter</h2>
+    <button id="sorter-close" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--text-primary)">&times;</button>
+  </div>
+  <p style="font-size:12px;color:var(--text-secondary);margin-bottom:16px">Drag and drop to reorder slides. Click to select.</p>
+  <div id="sorter-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:16px">`;
+
+  slides.forEach((slide, i) => {
+    const bgStyle = slide.theme === 'dark' ? 'background:#1a1a2e;color:#eee' :
+                    slide.theme === 'blue' ? 'background:#0f3460;color:#eee' :
+                    slide.theme === 'gradient' ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff' :
+                    'background:#fff;color:#333';
+    html += `<div class="sorter-card" draggable="true" data-idx="${i}" style="cursor:grab;border:2px solid ${i === activeSlideIdx ? 'var(--accent-color)' : 'var(--border-color)'};border-radius:8px;overflow:hidden;transition:all 0.2s">
+      <div style="aspect-ratio:16/9;${bgStyle};padding:12px;font-size:9px;line-height:1.3;overflow:hidden;pointer-events:none">${slide.content}</div>
+      <div style="padding:6px 8px;font-size:11px;display:flex;justify-content:space-between;align-items:center;background:var(--hover-bg)">
+        <span style="font-weight:600">Slide ${i + 1}</span>
+        <span style="font-size:10px;color:var(--text-secondary)">${slide.transition !== 'none' ? slide.transition : ''}</span>
+      </div>
+    </div>`;
+  });
+
+  html += '</div>';
+  overlay.innerHTML = html;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#sorter-close').onclick = () => overlay.remove();
+
+  // Drag and drop reordering
+  const grid = overlay.querySelector('#sorter-grid');
+  let dragIdx = -1;
+
+  grid.querySelectorAll('.sorter-card').forEach(card => {
+    card.addEventListener('dragstart', (e) => {
+      dragIdx = parseInt(card.dataset.idx);
+      card.style.opacity = '0.5';
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      card.style.opacity = '1';
+    });
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      card.style.borderColor = 'var(--accent-color)';
+    });
+    card.addEventListener('dragleave', () => {
+      card.style.borderColor = 'var(--border-color)';
+    });
+    card.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const dropIdx = parseInt(card.dataset.idx);
+      if (dragIdx >= 0 && dragIdx !== dropIdx) {
+        const [moved] = slides.splice(dragIdx, 1);
+        slides.splice(dropIdx, 0, moved);
+        if (activeSlideIdx === dragIdx) activeSlideIdx = dropIdx;
+        else if (dragIdx < activeSlideIdx && dropIdx >= activeSlideIdx) activeSlideIdx--;
+        else if (dragIdx > activeSlideIdx && dropIdx <= activeSlideIdx) activeSlideIdx++;
+        overlay.remove();
+        showSlideSorter(); // Re-render
+        renderPanel();
+      }
+    });
+    card.addEventListener('click', () => {
+      activeSlideIdx = parseInt(card.dataset.idx);
+      renderPanel();
+      loadSlide(activeSlideIdx);
+      overlay.remove();
+    });
+  });
 }
 
 /* ==================== PPTX Export ==================== */
