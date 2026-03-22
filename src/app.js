@@ -30,6 +30,7 @@ import { initPhotoEditor, getPhotoFileName, openPhotoFile } from './photo/photo-
 import { initAdBanners } from './ui/ad-banner.js';
 import { initCalculator } from './calculator/calculator.js';
 import { initSnippetLibrary, initZenMode, updateEnhancedStatusBar, initShortcutOverlay, initMarkdownKeyboardShortcuts, initAutocomplete } from './editor/md-enhance.js';
+import { initDocAiContextMenu, initSheetAi, initSlideAi, initMarkdownAi, initPdfAi, initPhotoAi } from './ai/ai-cowork.js';
 
 // Default welcome content
 const WELCOME_MD = `# Welcome to OfficeLink SL ✦
@@ -378,6 +379,18 @@ export async function initApp() {
 
   // 18. AI Chat (Local LLM)
   initAiChat();
+
+  // 18b. AI Co-work — deep AI integration in each editor
+  initDocAiContextMenu();
+  initSheetAi();
+  initSlideAi();
+  initMarkdownAi(
+    () => getContent(),
+    (text) => { setContent(text); },
+    (text) => { updatePreviewImmediate(text); }
+  );
+  initPdfAi(() => getPdfText());
+  initPhotoAi();
 
   // 19. Ad Banners (PC only, non-intrusive)
   initAdBanners();

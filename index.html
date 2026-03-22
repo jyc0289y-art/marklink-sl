@@ -24,6 +24,7 @@
   <link rel="stylesheet" href="/src/styles/ai-chat.css" />
   <link rel="stylesheet" href="/src/styles/photo.css" />
   <link rel="stylesheet" href="/src/styles/calculator.css" />
+  <link rel="stylesheet" href="/src/styles/ai-cowork.css" />
 
   <!-- Tesseract.js OCR -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -139,22 +140,22 @@
         <button id="btn-link" class="toolbar-btn" data-tip="tip.link" title="Link"><span class="icon">🔗</span></button>
         <button id="btn-table" class="toolbar-btn" data-tip="tip.table" title="Table"><span class="icon">▦</span></button>
         <span class="toolbar-sep"></span>
-        <button id="btn-task" class="toolbar-btn" title="Task List"><span class="icon">☑</span></button>
-        <button id="btn-blockquote" class="toolbar-btn" title="Blockquote"><span class="icon">❝</span></button>
-        <button id="btn-hr" class="toolbar-btn" title="Horizontal Rule"><span class="icon">—</span></button>
-        <button id="btn-image" class="toolbar-btn" title="Insert Image"><span class="icon">📷</span></button>
-        <button id="btn-emoji" class="toolbar-btn" title="Emoji"><span class="icon">🙂</span></button>
+        <button id="btn-task" class="toolbar-btn" data-i18n-title="tip.taskList" title="Task List"><span class="icon">☑</span></button>
+        <button id="btn-blockquote" class="toolbar-btn" data-i18n-title="tip.blockquote" title="Blockquote"><span class="icon">❝</span></button>
+        <button id="btn-hr" class="toolbar-btn" data-i18n-title="tip.hr" title="Horizontal Rule"><span class="icon">—</span></button>
+        <button id="btn-image" class="toolbar-btn" data-i18n-title="tip.insertImage" title="Insert Image"><span class="icon">📷</span></button>
+        <button id="btn-emoji" class="toolbar-btn" data-i18n-title="tip.emoji" title="Emoji"><span class="icon">🙂</span></button>
         <span class="toolbar-sep"></span>
-        <button id="btn-md-import" class="toolbar-btn" title="Import .md file"><span class="icon">📂</span></button>
-        <button id="btn-md-export" class="toolbar-btn" title="Export .md file"><span class="icon">💾</span></button>
+        <button id="btn-md-import" class="toolbar-btn" data-i18n-title="tip.mdImport" title="Import .md file"><span class="icon">📂</span></button>
+        <button id="btn-md-export" class="toolbar-btn" data-i18n-title="tip.mdExport" title="Export .md file"><span class="icon">💾</span></button>
         <span class="toolbar-sep"></span>
-        <button id="btn-math-inline" class="toolbar-btn" title="Inline Math ($...$)"><span class="icon" style="font-style:italic">x<sup>2</sup></span></button>
-        <button id="btn-math-block" class="toolbar-btn" title="Block Math ($$...$$)"><span class="icon">∑</span></button>
-        <button id="btn-mermaid" class="toolbar-btn" title="Mermaid Diagram"><span class="icon">⬡</span></button>
+        <button id="btn-math-inline" class="toolbar-btn" data-i18n-title="tip.mathInline" title="Inline Math ($...$)"><span class="icon" style="font-style:italic">x<sup>2</sup></span></button>
+        <button id="btn-math-block" class="toolbar-btn" data-i18n-title="tip.mathBlock" title="Block Math ($$...$$)"><span class="icon">∑</span></button>
+        <button id="btn-mermaid" class="toolbar-btn" data-i18n-title="tip.mermaid" title="Mermaid Diagram"><span class="icon">⬡</span></button>
         <span class="toolbar-sep"></span>
-        <button id="btn-toggle-preview" class="toolbar-btn active" title="Toggle Preview"><span class="icon">👁</span></button>
-        <button id="btn-toggle-outline" class="toolbar-btn" title="Toggle Outline (TOC)"><span class="icon">📑</span></button>
-        <button id="btn-copy-richtext" class="toolbar-btn" title="Copy as Rich Text"><span class="icon">📋</span></button>
+        <button id="btn-toggle-preview" class="toolbar-btn active" data-i18n-title="tip.togglePreview" title="Toggle Preview"><span class="icon">👁</span></button>
+        <button id="btn-toggle-outline" class="toolbar-btn" data-i18n-title="tip.toggleOutline" title="Toggle Outline (TOC)"><span class="icon">📑</span></button>
+        <button id="btn-copy-richtext" class="toolbar-btn" data-i18n-title="tip.copyRichText" title="Copy as Rich Text"><span class="icon">📋</span></button>
         <span class="toolbar-sep"></span>
         <button id="btn-snippets" class="toolbar-btn" title="Snippet Library"><span class="icon">🧩</span></button>
         <button id="btn-zen" class="toolbar-btn" title="Zen/Focus Mode (Ctrl+Shift+Z)"><span class="icon">🧘</span></button>
@@ -164,7 +165,7 @@
         <!-- Outline / TOC Panel -->
         <aside id="md-outline-panel" class="md-outline-panel hidden">
           <div class="md-outline-header">
-            <span>Outline</span>
+            <span data-i18n="md.outline">Outline</span>
             <button id="md-outline-close" class="toolbar-btn" style="font-size:12px">&times;</button>
           </div>
           <div id="md-outline-list" class="md-outline-list"></div>
@@ -173,7 +174,7 @@
           <!-- Editor -->
           <div id="editor-pane" class="pane editor-pane">
             <div class="pane-header">
-              <span>Editor</span>
+              <span data-i18n="md.editor">Editor</span>
             </div>
             <div id="editor-container" class="editor-container"></div>
           </div>
@@ -184,7 +185,7 @@
           <!-- Preview -->
           <div id="preview-pane" class="pane preview-pane">
             <div class="pane-header">
-              <span>Preview</span>
+              <span data-i18n="md.preview">Preview</span>
             </div>
             <div id="preview-container" class="preview-container">
               <div id="preview-content" class="markdown-body"></div>
@@ -198,7 +199,7 @@
     <!-- Document View -->
     <div id="view-document" class="app-view active">
       <div class="doc-toolbar">
-        <select id="doc-font-family" title="Font">
+        <select id="doc-font-family" data-i18n-title="doc.font" title="Font">
           <option value="sans-serif">Sans-serif</option>
           <option value="serif">Serif</option>
           <option value="monospace">Monospace</option>
@@ -211,7 +212,7 @@
           <option value="'나눔고딕', sans-serif">나눔고딕</option>
           <option value="'바탕', serif">바탕</option>
         </select>
-        <select id="doc-font-size" title="Font Size">
+        <select id="doc-font-size" data-i18n-title="doc.fontSize" title="Font Size">
           <option value="9px">9</option>
           <option value="10px">10</option>
           <option value="11px">11</option>
@@ -228,12 +229,12 @@
           <option value="72px">72</option>
         </select>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn doc-cmd" data-cmd="bold" title="Bold (⌘B)"><b>B</b></button>
-        <button class="toolbar-btn doc-cmd" data-cmd="italic" title="Italic (⌘I)"><i>I</i></button>
-        <button class="toolbar-btn doc-cmd" data-cmd="underline" title="Underline (⌘U)"><u>U</u></button>
-        <button class="toolbar-btn doc-cmd" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
-        <button class="toolbar-btn doc-cmd" data-cmd="superscript" title="Superscript">X<sup>2</sup></button>
-        <button class="toolbar-btn doc-cmd" data-cmd="subscript" title="Subscript">X<sub>2</sub></button>
+        <button class="toolbar-btn doc-cmd" data-cmd="bold" data-i18n-title="doc.bold" title="Bold (⌘B)"><b>B</b></button>
+        <button class="toolbar-btn doc-cmd" data-cmd="italic" data-i18n-title="doc.italic" title="Italic (⌘I)"><i>I</i></button>
+        <button class="toolbar-btn doc-cmd" data-cmd="underline" data-i18n-title="doc.underline" title="Underline (⌘U)"><u>U</u></button>
+        <button class="toolbar-btn doc-cmd" data-cmd="strikeThrough" data-i18n-title="doc.strikethrough" title="Strikethrough"><s>S</s></button>
+        <button class="toolbar-btn doc-cmd" data-cmd="superscript" data-i18n-title="doc.superscript" title="Superscript">X<sup>2</sup></button>
+        <button class="toolbar-btn doc-cmd" data-cmd="subscript" data-i18n-title="doc.subscript" title="Subscript">X<sub>2</sub></button>
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn doc-cmd" data-cmd="justifyLeft" title="Align Left" style="font-size:13px">≡◁</button>
         <button class="toolbar-btn doc-cmd" data-cmd="justifyCenter" title="Align Center" style="font-size:13px">≡◇</button>
@@ -327,7 +328,7 @@
       <!-- Find/Replace Bar -->
       <div id="doc-find-bar" class="doc-find-bar hidden">
         <div class="doc-find-row">
-          <input type="text" id="doc-find-input" class="doc-find-input" placeholder="Find...">
+          <input type="text" id="doc-find-input" class="doc-find-input" data-i18n-placeholder="doc.find" placeholder="Find...">
           <button class="toolbar-btn" id="doc-find-regex" title="Use Regular Expression" style="font-size:10px;opacity:0.6">.*</button>
           <button class="toolbar-btn" id="doc-find-case" title="Match Case" style="font-size:10px;opacity:0.6">Aa</button>
           <button class="toolbar-btn" id="doc-find-prev" title="Previous">&#9650;</button>
@@ -336,7 +337,7 @@
           <button class="toolbar-btn" id="doc-find-close" title="Close">&times;</button>
         </div>
         <div class="doc-replace-row">
-          <input type="text" id="doc-replace-input" class="doc-find-input" placeholder="Replace with...">
+          <input type="text" id="doc-replace-input" class="doc-find-input" data-i18n-placeholder="doc.replaceWith" placeholder="Replace with...">
           <button class="toolbar-btn" id="doc-replace-btn" title="Replace">Replace</button>
           <button class="toolbar-btn" id="doc-replace-all" title="Replace All">All</button>
         </div>
@@ -344,7 +345,7 @@
       <div class="doc-main-wrapper">
         <aside id="doc-outline" class="doc-outline hidden">
           <div class="doc-outline-header">
-            <span>Outline</span>
+            <span data-i18n="doc.outlineTitle">Outline</span>
             <button id="doc-outline-close" class="toolbar-btn" style="font-size:12px">&times;</button>
           </div>
           <div id="doc-outline-list" class="doc-outline-list"></div>
@@ -352,14 +353,14 @@
         <div class="doc-page-wrapper">
           <div id="doc-ruler" class="doc-ruler" style="height:20px;background:var(--sidebar-bg);border-bottom:1px solid var(--border-color);position:relative;user-select:none;cursor:default;overflow:hidden;font-size:9px;color:var(--text-tertiary)"></div>
           <div id="doc-editor" class="doc-editor" contenteditable="true" spellcheck="true">
-            <h1>Untitled Document</h1>
-            <p>Start typing here...</p>
+            <h1 data-i18n="doc.untitled">Untitled Document</h1>
+            <p data-i18n="doc.startTyping">Start typing here...</p>
           </div>
         </div>
         <!-- Track Changes Panel (right sidebar) -->
         <aside id="doc-changes-panel" class="doc-side-panel hidden">
           <div class="doc-side-panel-header">
-            <span>Track Changes</span>
+            <span data-i18n="doc.trackChangesTitle">Track Changes</span>
             <button id="doc-changes-panel-close" class="toolbar-btn" style="font-size:12px">&times;</button>
           </div>
           <div id="doc-changes-list" class="doc-side-panel-list"></div>
@@ -367,7 +368,7 @@
         <!-- Comments Panel (right sidebar) -->
         <aside id="doc-comments-sidebar" class="doc-side-panel hidden">
           <div class="doc-side-panel-header">
-            <span>Comments</span>
+            <span data-i18n="doc.commentsTitle">Comments</span>
             <button id="doc-comments-sidebar-close" class="toolbar-btn" style="font-size:12px">&times;</button>
           </div>
           <div id="doc-comments-list" class="doc-side-panel-list"></div>
@@ -381,7 +382,7 @@
           <div id="doc-outline-nav-list" class="doc-side-panel-list doc-outline-nav-list"></div>
         </aside>
       </div>
-      <div id="doc-status-bar" class="doc-status-bar">Words: 0  |  Characters: 0  |  Paragraphs: 0</div>
+      <div id="doc-status-bar" class="doc-status-bar" data-i18n="doc.statusBar">Words: 0  |  Characters: 0  |  Paragraphs: 0</div>
     </div>
     <!-- Sheet View -->
     <div id="view-sheet" class="app-view">
@@ -389,7 +390,7 @@
         <div class="sheet-cell-ref" id="sheet-cell-ref">A1</div>
         <div class="toolbar-divider"></div>
         <span class="sheet-fx-label">fx</span>
-        <input type="text" id="sheet-formula-bar" class="sheet-formula-bar" placeholder="Enter value or formula (e.g. =SUM(A1:A10))">
+        <input type="text" id="sheet-formula-bar" class="sheet-formula-bar" data-i18n-placeholder="sheet.formulaPlaceholder" placeholder="Enter value or formula (e.g. =SUM(A1:A10))">
         <div class="toolbar-divider"></div>
         <select id="sheet-font-family" title="Font" style="padding:2px;font-size:11px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);width:100px">
           <option value="">Default</option>
@@ -512,13 +513,13 @@
       <!-- Sheet Find/Replace Bar -->
       <div id="sheet-find-bar" class="doc-find-bar hidden" style="padding:6px 12px;background:var(--pane-header-bg);border-bottom:1px solid var(--border-color)">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <input type="text" id="sheet-find-input" placeholder="Find in sheet..." style="padding:4px 8px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;width:160px;background:var(--bg-primary);color:var(--text-primary)">
+          <input type="text" id="sheet-find-input" data-i18n-placeholder="sheet.find" placeholder="Find in sheet..." style="padding:4px 8px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;width:160px;background:var(--bg-primary);color:var(--text-primary)">
           <button class="toolbar-btn" id="sheet-find-regex" title="Regex" style="font-size:10px;opacity:0.6">.*</button>
           <button class="toolbar-btn" id="sheet-find-case" title="Match Case" style="font-size:10px;opacity:0.6">Aa</button>
           <button class="toolbar-btn" id="sheet-find-prev" title="Previous">&#9650;</button>
           <button class="toolbar-btn" id="sheet-find-next" title="Next">&#9660;</button>
           <span id="sheet-find-count" style="font-size:11px;color:var(--text-secondary);min-width:30px">0</span>
-          <input type="text" id="sheet-replace-input" placeholder="Replace with..." style="padding:4px 8px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;width:140px;background:var(--bg-primary);color:var(--text-primary)">
+          <input type="text" id="sheet-replace-input" data-i18n-placeholder="sheet.replaceWith" placeholder="Replace with..." style="padding:4px 8px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;width:140px;background:var(--bg-primary);color:var(--text-primary)">
           <button class="toolbar-btn" id="sheet-replace-btn" style="font-size:11px">Replace</button>
           <button class="toolbar-btn" id="sheet-replace-all" style="font-size:11px">All</button>
           <button class="toolbar-btn" id="sheet-find-close" style="font-size:14px">&times;</button>
@@ -528,7 +529,7 @@
         <table class="sheet-grid" id="sheet-grid"></table>
       </div>
       <div class="sheet-status-bar" id="sheet-status-bar" style="display:flex;justify-content:space-between;padding:2px 12px;font-size:11px;color:var(--text-secondary);background:var(--pane-header-bg);border-top:1px solid var(--border-color)">
-        <span id="sheet-status-left">Ready</span>
+        <span id="sheet-status-left" data-i18n="sheet.ready">Ready</span>
         <span id="sheet-status-right"></span>
       </div>
       <div class="sheet-tabs" id="sheet-tabs">
@@ -703,14 +704,14 @@
         <div class="slide-editor-area">
           <div class="slide-canvas-wrapper">
             <div id="slide-canvas" class="slide-canvas" contenteditable="true">
-              <h1 class="slide-title">Untitled Presentation</h1>
-              <p class="slide-subtitle">Click to add subtitle</p>
+              <h1 class="slide-title" data-i18n="slide.untitledPresentation">Untitled Presentation</h1>
+              <p class="slide-subtitle" data-i18n="slide.clickToAddSubtitle">Click to add subtitle</p>
             </div>
           </div>
         </div>
         <div class="slide-notes-area">
           <div class="slide-notes-header">
-            <span>Speaker Notes</span>
+            <span data-i18n="slide.speakerNotes">Speaker Notes</span>
             <span class="slide-notes-toolbar" id="slide-notes-toolbar">
               <button class="toolbar-btn slide-notes-fmt" data-cmd="bold" title="Bold" style="width:20px;height:20px;font-size:10px;padding:0"><b>B</b></button>
               <button class="toolbar-btn slide-notes-fmt" data-cmd="italic" title="Italic" style="width:20px;height:20px;font-size:10px;padding:0"><i>I</i></button>
@@ -725,7 +726,7 @@
     <!-- PDF View -->
     <div id="view-pdf" class="app-view">
       <div class="pdf-toolbar">
-        <button class="toolbar-btn" id="pdf-open" title="Open PDF">Open PDF</button>
+        <button class="toolbar-btn" id="pdf-open" data-i18n-title="pdf.openPdf" title="Open PDF"><span data-i18n="pdf.openPdf">Open PDF</span></button>
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="pdf-prev" title="Previous Page">&larr;</button>
         <span class="pdf-page-info"><span id="pdf-page-num">0</span> / <span id="pdf-page-count">0</span></span>
@@ -783,7 +784,7 @@
         <button class="toolbar-btn" id="pdf-split" title="Split PDF">✂ Split</button>
         <button class="toolbar-btn" id="pdf-compare" title="Compare PDFs">⇄ Compare</button>
         <div class="toolbar-divider"></div>
-        <input type="text" id="pdf-search-input" class="pdf-search-input" placeholder="Search text…" />
+        <input type="text" id="pdf-search-input" class="pdf-search-input" data-i18n-placeholder="pdf.searchText" placeholder="Search text…" />
         <button class="toolbar-btn" id="pdf-search-prev" title="Previous Match">◀</button>
         <button class="toolbar-btn" id="pdf-search-next" title="Next Match">▶</button>
         <span class="pdf-search-info" id="pdf-search-info"></span>
@@ -791,22 +792,22 @@
       <!-- OCR Progress -->
       <div id="pdf-ocr-progress" class="pdf-ocr-progress" style="display:none">
         <div class="pdf-ocr-progress-bar"><div class="pdf-ocr-progress-fill" id="pdf-ocr-progress-fill"></div></div>
-        <span id="pdf-ocr-progress-text" class="pdf-ocr-progress-text">Recognizing text…</span>
+        <span id="pdf-ocr-progress-text" class="pdf-ocr-progress-text" data-i18n="pdf.ocrProgress">Recognizing text…</span>
       </div>
       <div class="pdf-main-area">
         <!-- Bookmarks sidebar -->
         <div class="pdf-bookmark-sidebar" id="pdf-bookmark-sidebar" style="display:none">
-          <div class="pdf-thumb-header">Bookmarks</div>
+          <div class="pdf-thumb-header" data-i18n="pdf.bookmarks">Bookmarks</div>
           <div class="pdf-bookmark-list" id="pdf-bookmark-list"></div>
         </div>
         <div class="pdf-thumb-sidebar" id="pdf-thumb-sidebar">
-          <div class="pdf-thumb-header">Pages</div>
+          <div class="pdf-thumb-header" data-i18n="pdf.pages">Pages</div>
           <div class="pdf-thumb-list" id="pdf-thumb-list"></div>
         </div>
         <div class="pdf-container" id="pdf-container">
           <div class="pdf-empty" id="pdf-empty">
             <span style="font-size:48px">📄</span>
-            <p>Open a PDF file or convert from Markdown/Document</p>
+            <p data-i18n="pdf.emptyMessage">Open a PDF file or convert from Markdown/Document</p>
           </div>
           <div class="pdf-pages" id="pdf-pages"></div>
         </div>
@@ -815,7 +816,7 @@
       <div id="pdf-sig-modal" class="pdf-modal-overlay" style="display:none">
         <div class="pdf-modal">
           <div class="pdf-modal-header">
-            <span>Digital Signature</span>
+            <span data-i18n="pdf.signature">Digital Signature</span>
             <button class="pdf-modal-close" id="pdf-sig-close">&times;</button>
           </div>
           <div class="pdf-sig-tabs">
@@ -843,7 +844,7 @@
               <div id="pdf-sig-upload-preview" style="margin-top:8px"></div>
             </div>
             <div class="pdf-sig-panel" id="pdf-sig-saved-panel" style="display:none">
-              <div id="pdf-sig-saved-list" class="pdf-sig-saved-list">No saved signatures</div>
+              <div id="pdf-sig-saved-list" class="pdf-sig-saved-list" data-i18n="pdf.noSavedSignatures">No saved signatures</div>
             </div>
           </div>
           <div class="pdf-modal-footer">
@@ -862,7 +863,7 @@
         <div class="pdf-stamp-option" data-stamp="COPY" style="color:#6a1b9a">COPY</div>
         <div class="pdf-stamp-divider"></div>
         <div class="pdf-stamp-custom">
-          <input type="text" id="pdf-stamp-custom-text" placeholder="Custom stamp…" class="pdf-search-input" style="width:100%" />
+          <input type="text" id="pdf-stamp-custom-text" data-i18n-placeholder="pdf.customStamp" placeholder="Custom stamp…" class="pdf-search-input" style="width:100%" />
           <button class="toolbar-btn" id="pdf-stamp-custom-btn" style="margin-top:4px;width:100%">Add Custom</button>
         </div>
       </div>
@@ -994,8 +995,8 @@
         <div class="photo-empty" id="photo-empty">
           <div class="photo-drop-zone" id="photo-drop-zone">
             <span style="font-size:64px">📷</span>
-            <p style="font-size:16px;margin:8px 0">Drop an image here or click to open</p>
-            <p style="font-size:12px">Supports JPEG, PNG, WebP, HEIC</p>
+            <p style="font-size:16px;margin:8px 0" data-i18n="photo.dropHere">Drop an image here or click to open</p>
+            <p style="font-size:12px" data-i18n="photo.supportedFormats">Supports JPEG, PNG, WebP, HEIC</p>
           </div>
         </div>
         <!-- Editor area (shown after image loads) -->
@@ -1051,7 +1052,7 @@
           <div class="photo-panel">
             <!-- Layers Panel -->
             <div class="photo-panel-section">
-              <button class="photo-panel-toggle active" data-panel="photo-layers-panel">Layers</button>
+              <button class="photo-panel-toggle active" data-panel="photo-layers-panel" data-i18n="photo.layers">Layers</button>
               <div class="photo-panel-content open" id="photo-layers-panel">
                 <div class="photo-layers-toolbar">
                   <button class="toolbar-btn photo-layer-action-btn" id="photo-layer-add" title="Add Layer">+ Add</button>
@@ -1086,14 +1087,14 @@
             </div>
             <!-- History Panel -->
             <div class="photo-panel-section">
-              <button class="photo-panel-toggle" data-panel="photo-history-panel">History</button>
+              <button class="photo-panel-toggle" data-panel="photo-history-panel" data-i18n="photo.history">History</button>
               <div class="photo-panel-content" id="photo-history-panel">
                 <div id="photo-history-list" class="photo-history-list"></div>
               </div>
             </div>
             <!-- Adjustment Layers -->
             <div class="photo-panel-section">
-              <button class="photo-panel-toggle" data-panel="photo-adj-layer-panel">+ Adjustment Layer</button>
+              <button class="photo-panel-toggle" data-panel="photo-adj-layer-panel" data-i18n="photo.adjustmentLayer">+ Adjustment Layer</button>
               <div class="photo-panel-content" id="photo-adj-layer-panel">
                 <div class="photo-adj-layer-buttons">
                   <button class="photo-auto-btn" data-adj-type="brightness-contrast">☀ Brightness/Contrast</button>
@@ -1107,7 +1108,7 @@
             </div>
             <!-- AI Auto-Edit -->
             <div class="photo-panel-section">
-              <button class="photo-panel-toggle active" data-panel="photo-ai-panel">✦ AI Auto-Edit</button>
+              <button class="photo-panel-toggle active" data-panel="photo-ai-panel">✦ <span data-i18n="photo.aiAutoEdit">AI Auto-Edit</span></button>
               <div class="photo-panel-content open" id="photo-ai-panel">
                 <div class="photo-auto-section">
                   <button class="photo-auto-btn" id="photo-auto-local"><span class="auto-icon">⚡</span>Local Auto (instant)</button>
@@ -1119,7 +1120,7 @@
             </div>
             <!-- Basic Adjustments -->
             <div class="photo-panel-section">
-              <button class="photo-panel-toggle active" data-panel="photo-basic-panel">Basic</button>
+              <button class="photo-panel-toggle active" data-panel="photo-basic-panel" data-i18n="photo.basic">Basic</button>
               <div class="photo-panel-content open" id="photo-basic-panel">
                 <div class="photo-slider-row"><span class="photo-slider-label">Exposure</span><input type="range" id="photo-exposure" min="-3" max="3" step="0.1" value="0"><span class="photo-slider-val" id="photo-exposure-val">0.0</span></div>
                 <div class="photo-slider-row"><span class="photo-slider-label">Contrast</span><input type="range" id="photo-contrast" min="-100" max="100" value="0"><span class="photo-slider-val" id="photo-contrast-val">0</span></div>
@@ -1133,7 +1134,7 @@
             </div>
             <!-- Vignette -->
             <div class="photo-panel-section">
-              <button class="photo-panel-toggle" data-panel="photo-vig-panel">Vignette</button>
+              <button class="photo-panel-toggle" data-panel="photo-vig-panel" data-i18n="photo.vignette">Vignette</button>
               <div class="photo-panel-content" id="photo-vig-panel">
                 <div class="photo-slider-row"><span class="photo-slider-label">Amount</span><input type="range" id="photo-vig-amount" min="0" max="100" value="0"><span class="photo-slider-val" id="photo-vig-amount-val">0</span></div>
                 <div class="photo-slider-row"><span class="photo-slider-label">Midpoint</span><input type="range" id="photo-vig-midpoint" min="0" max="100" value="50"><span class="photo-slider-val" id="photo-vig-midpoint-val">50</span></div>
@@ -1143,7 +1144,7 @@
             </div>
             <!-- HSL (Color Mixer) -->
             <div class="photo-panel-section">
-              <button class="photo-panel-toggle" data-panel="photo-hsl-panel">HSL / Color</button>
+              <button class="photo-panel-toggle" data-panel="photo-hsl-panel" data-i18n="photo.hslColor">HSL / Color</button>
               <div class="photo-panel-content" id="photo-hsl-panel">
                 <div class="photo-hsl-tabs">
                   <button class="photo-hsl-tab active" data-hsl-mode="hue">Hue</button>
@@ -1155,7 +1156,7 @@
             </div>
             <!-- Tone Curve -->
             <div class="photo-panel-section">
-              <button class="photo-panel-toggle" data-panel="photo-curve-panel">Tone Curve</button>
+              <button class="photo-panel-toggle" data-panel="photo-curve-panel" data-i18n="photo.toneCurve">Tone Curve</button>
               <div class="photo-panel-content" id="photo-curve-panel">
                 <div class="photo-curve-tabs">
                   <button class="photo-curve-tab active" data-curve="rgb">RGB</button>
@@ -1168,7 +1169,7 @@
             </div>
             <!-- Sharpen / Denoise -->
             <div class="photo-panel-section">
-              <button class="photo-panel-toggle" data-panel="photo-detail-panel">Detail</button>
+              <button class="photo-panel-toggle" data-panel="photo-detail-panel" data-i18n="photo.detail">Detail</button>
               <div class="photo-panel-content" id="photo-detail-panel">
                 <div class="photo-slider-row"><span class="photo-slider-label">Sharpen</span><input type="range" id="photo-sharpen" min="0" max="100" value="0"><span class="photo-slider-val" id="photo-sharpen-val">0</span></div>
                 <div class="photo-slider-row"><span class="photo-slider-label">Denoise</span><input type="range" id="photo-denoise" min="0" max="100" value="0"><span class="photo-slider-val" id="photo-denoise-val">0</span></div>
@@ -1176,7 +1177,7 @@
             </div>
             <!-- Lens Correction -->
             <div class="photo-panel-section">
-              <button class="photo-panel-toggle" data-panel="photo-lens-panel">Lens Correction</button>
+              <button class="photo-panel-toggle" data-panel="photo-lens-panel" data-i18n="photo.lensCorrection">Lens Correction</button>
               <div class="photo-panel-content" id="photo-lens-panel">
                 <div class="photo-slider-row"><span class="photo-slider-label">Distortion</span><input type="range" id="photo-lens-distortion" min="-100" max="100" value="0"><span class="photo-slider-val" id="photo-lens-distortion-val">0</span></div>
                 <div class="photo-slider-row"><span class="photo-slider-label">CA Red/Cyan</span><input type="range" id="photo-lens-ca-r" min="-100" max="100" value="0"><span class="photo-slider-val" id="photo-lens-ca-r-val">0</span></div>
@@ -1185,7 +1186,7 @@
             </div>
             <!-- Grain -->
             <div class="photo-panel-section">
-              <button class="photo-panel-toggle" data-panel="photo-grain-panel">Grain</button>
+              <button class="photo-panel-toggle" data-panel="photo-grain-panel" data-i18n="photo.grain">Grain</button>
               <div class="photo-panel-content" id="photo-grain-panel">
                 <div class="photo-slider-row"><span class="photo-slider-label">Amount</span><input type="range" id="photo-grain-amount" min="0" max="100" value="0"><span class="photo-slider-val" id="photo-grain-amount-val">0</span></div>
                 <div class="photo-slider-row"><span class="photo-slider-label">Size</span><input type="range" id="photo-grain-size" min="0" max="100" value="50"><span class="photo-slider-val" id="photo-grain-size-val">50</span></div>
@@ -1193,7 +1194,7 @@
             </div>
             <!-- Split Toning -->
             <div class="photo-panel-section">
-              <button class="photo-panel-toggle" data-panel="photo-split-tone-panel">Split Toning</button>
+              <button class="photo-panel-toggle" data-panel="photo-split-tone-panel" data-i18n="photo.splitToning">Split Toning</button>
               <div class="photo-panel-content" id="photo-split-tone-panel">
                 <div style="display:flex;gap:12px;margin-bottom:8px">
                   <div style="flex:1">
@@ -1212,7 +1213,7 @@
             </div>
             <!-- Selective Color / Color Splash -->
             <div class="photo-panel-section">
-              <button class="photo-panel-toggle" data-panel="photo-selective-panel">Color Splash</button>
+              <button class="photo-panel-toggle" data-panel="photo-selective-panel" data-i18n="photo.colorSplash">Color Splash</button>
               <div class="photo-panel-content" id="photo-selective-panel">
                 <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">Select colors to keep; rest becomes B&W</div>
                 <div id="photo-sc-hue-buttons" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
@@ -1233,7 +1234,7 @@
           </div>
         </div>
       </div>
-      <div class="photo-info-bar" id="photo-info-bar">Photo Editor — Open an image to start editing</div>
+      <div class="photo-info-bar" id="photo-info-bar" data-i18n="photo.infoBar">Photo Editor — Open an image to start editing</div>
       </div><!-- /photo-container -->
     </div>
 
@@ -1242,17 +1243,17 @@
       <!-- Calculator toolbar -->
       <div class="calc-toolbar">
         <div class="calc-tab-bar">
-          <button class="calc-tab active" data-calc-tab="calc">Calculator</button>
-          <button class="calc-tab" data-calc-tab="graph">Graph</button>
-          <button class="calc-tab" data-calc-tab="convert">Unit Convert</button>
-          <button class="calc-tab" data-calc-tab="saved">Saved</button>
-          <button class="calc-tab" data-calc-tab="matrix">Matrix</button>
-          <button class="calc-tab" data-calc-tab="stats">Statistics</button>
-          <button class="calc-tab" data-calc-tab="finance">Financial</button>
-          <button class="calc-tab" data-calc-tab="programmer">Programmer</button>
-          <button class="calc-tab" data-calc-tab="date">Date</button>
-          <button class="calc-tab" data-calc-tab="equation">Equation</button>
-          <button class="calc-tab" data-calc-tab="constants">Constants</button>
+          <button class="calc-tab active" data-calc-tab="calc" data-i18n="calc.calculator">Calculator</button>
+          <button class="calc-tab" data-calc-tab="graph" data-i18n="calc.graph">Graph</button>
+          <button class="calc-tab" data-calc-tab="convert" data-i18n="calc.unitConvert">Unit Convert</button>
+          <button class="calc-tab" data-calc-tab="saved" data-i18n="calc.saved">Saved</button>
+          <button class="calc-tab" data-calc-tab="matrix" data-i18n="calc.matrix">Matrix</button>
+          <button class="calc-tab" data-calc-tab="stats" data-i18n="calc.statistics">Statistics</button>
+          <button class="calc-tab" data-calc-tab="finance" data-i18n="calc.financial">Financial</button>
+          <button class="calc-tab" data-calc-tab="programmer" data-i18n="calc.programmer">Programmer</button>
+          <button class="calc-tab" data-calc-tab="date" data-i18n="calc.date">Date</button>
+          <button class="calc-tab" data-calc-tab="equation" data-i18n="calc.equation">Equation</button>
+          <button class="calc-tab" data-calc-tab="constants" data-i18n="calc.constants">Constants</button>
           <button class="calc-tab" data-calc-tab="surface3d">3D Surface</button>
           <button class="calc-tab" data-calc-tab="complex">Complex</button>
           <button class="calc-tab" data-calc-tab="baseconv">Base Conv</button>
@@ -1272,7 +1273,7 @@
             <div class="calc-left">
               <!-- History panel -->
               <div class="calc-history" id="calc-history">
-                <div class="calc-history-header">History</div>
+                <div class="calc-history-header" data-i18n="calc.history">History</div>
                 <div class="calc-history-list" id="calc-history-list"></div>
               </div>
               <!-- Display -->
@@ -1419,7 +1420,7 @@
       <div class="calc-panel" id="calc-panel-saved">
         <div class="calc-saved-container">
           <div class="calc-saved-header">
-            <h3>Saved Formulas</h3>
+            <h3 data-i18n="calc.savedFormulas">Saved Formulas</h3>
             <button class="calc-saved-add-btn" id="calc-saved-add">+ New</button>
           </div>
           <div class="calc-saved-list" id="calc-saved-list"></div>
@@ -1430,7 +1431,7 @@
       <div class="calc-panel" id="calc-panel-matrix">
         <div class="calc-adv-container">
           <div class="calc-adv-card">
-            <h3>Matrix Calculator</h3>
+            <h3 data-i18n="calc.matrixCalc">Matrix Calculator</h3>
             <div class="calc-matrix-controls">
               <label>Size:
                 <select id="calc-matrix-size" class="calc-adv-select">
@@ -1481,7 +1482,7 @@
       <div class="calc-panel" id="calc-panel-stats">
         <div class="calc-adv-container">
           <div class="calc-adv-card" style="max-width:700px;">
-            <h3>Statistics Calculator</h3>
+            <h3 data-i18n="calc.statsCalc">Statistics Calculator</h3>
             <div class="calc-stats-input-area">
               <label>Dataset (comma-separated values):</label>
               <textarea id="calc-stats-data" class="calc-stats-textarea" rows="3" placeholder="e.g. 12, 15, 18, 22, 25, 30, 35, 18, 22, 28"></textarea>
@@ -1506,7 +1507,7 @@
       <div class="calc-panel" id="calc-panel-finance">
         <div class="calc-adv-container">
           <div class="calc-adv-card" style="max-width:700px;">
-            <h3>Financial Calculator</h3>
+            <h3 data-i18n="calc.finCalc">Financial Calculator</h3>
             <div class="calc-finance-tabs">
               <button class="calc-finance-tab active" data-finance-tab="compound">Compound Interest</button>
               <button class="calc-finance-tab" data-finance-tab="loan">Loan (PMT)</button>
@@ -1559,7 +1560,7 @@
       <div class="calc-panel" id="calc-panel-programmer">
         <div class="calc-adv-container">
           <div class="calc-adv-card" style="max-width:650px;">
-            <h3>Programmer Calculator</h3>
+            <h3 data-i18n="calc.progCalc">Programmer Calculator</h3>
             <div class="calc-prog-display">
               <div class="calc-prog-row"><span class="calc-prog-label">DEC</span><input type="text" id="calc-prog-dec" class="calc-prog-input" value="0" /></div>
               <div class="calc-prog-row"><span class="calc-prog-label">HEX</span><input type="text" id="calc-prog-hex" class="calc-prog-input" value="0" /></div>
@@ -1623,7 +1624,7 @@
       <div class="calc-panel" id="calc-panel-date">
         <div class="calc-adv-container">
           <div class="calc-adv-card" style="max-width:600px;">
-            <h3>Date Calculator</h3>
+            <h3 data-i18n="calc.dateCalc">Date Calculator</h3>
             <div class="calc-finance-tabs">
               <button class="calc-date-tab active" data-date-tab="diff">Date Difference</button>
               <button class="calc-date-tab" data-date-tab="add">Add/Subtract Days</button>
@@ -1851,7 +1852,7 @@
       <div class="calc-panel" id="calc-panel-equation">
         <div class="calc-adv-container">
           <div class="calc-adv-card" style="max-width:650px;">
-            <h3>Equation Solver</h3>
+            <h3 data-i18n="calc.eqSolver">Equation Solver</h3>
             <div class="calc-finance-tabs">
               <button class="calc-eq-tab active" data-eq-tab="linear">Linear</button>
               <button class="calc-eq-tab" data-eq-tab="quadratic">Quadratic</button>
@@ -1914,8 +1915,8 @@
       <div class="calc-panel" id="calc-panel-constants">
         <div class="calc-adv-container">
           <div class="calc-adv-card" style="max-width:600px;">
-            <h3>Constants Library</h3>
-            <input type="text" id="calc-const-search" class="calc-const-search" placeholder="Search constants (e.g. speed of light, pi, Planck)..." />
+            <h3 data-i18n="calc.constLib">Constants Library</h3>
+            <input type="text" id="calc-const-search" class="calc-const-search" data-i18n-placeholder="calc.searchConstants" placeholder="Search constants (e.g. speed of light, pi, Planck)..." />
             <div class="calc-const-categories" id="calc-const-categories"></div>
             <div class="calc-const-list" id="calc-const-list"></div>
           </div>
@@ -1932,14 +1933,14 @@
           <div class="ai-full-brand">
             <span class="ai-full-logo">✦</span>
             <div>
-              <h2>OfficeLink AI</h2>
-              <p>Free AI on your PC — no cloud, no subscription</p>
+              <h2 data-i18n="ai.title">OfficeLink AI</h2>
+              <p data-i18n="ai.subtitle">Free AI on your PC — no cloud, no subscription</p>
             </div>
           </div>
           <div class="ai-full-status-area">
             <div id="ai-full-status" class="ai-full-status">
               <span id="ai-full-status-dot" class="ai-status-dot offline"></span>
-              <span id="ai-full-status-text">Checking Ollama...</span>
+              <span id="ai-full-status-text" data-i18n="ai.checkingOllama">Checking Ollama...</span>
             </div>
             <select id="ai-full-model-select" class="ai-full-model-select" title="AI Model">
               <option value="">Checking...</option>
@@ -1995,9 +1996,9 @@
             <h4>vs ChatGPT / Claude</h4>
             <table class="ai-compare-table">
               <tr><td>Monthly cost</td><td class="win">Free</td><td>$20-25/mo</td></tr>
-              <tr><td>Your data</td><td class="win">Stays on PC</td><td>Sent to servers</td></tr>
-              <tr><td>Offline use</td><td class="win">Yes</td><td>No</td></tr>
-              <tr><td>Setup time</td><td>~5 min install</td><td>Sign up + pay</td></tr>
+              <tr><td data-i18n="ai.yourData">Your data</td><td class="win" data-i18n="ai.staysOnPc">Stays on PC</td><td data-i18n="ai.sentToServers">Sent to servers</td></tr>
+              <tr><td data-i18n="ai.offlineUse">Offline use</td><td class="win" data-i18n="ai.yes">Yes</td><td data-i18n="ai.no">No</td></tr>
+              <tr><td data-i18n="ai.setupTime">Setup time</td><td data-i18n="ai.fiveMinInstall">~5 min install</td><td data-i18n="ai.signUpPay">Sign up + pay</td></tr>
             </table>
           </div>
         </div>
@@ -2013,7 +2014,7 @@
   <aside id="ai-panel" class="ai-panel">
     <div class="ai-panel-header">
       <span id="ai-status-dot" class="ai-status-dot offline" title="Checking..."></span>
-      <h3>OfficeLink AI</h3>
+      <h3 data-i18n="ai.title">OfficeLink AI</h3>
       <select id="ai-model-select" title="AI Model">
         <option value="">Checking...</option>
       </select>
@@ -2037,15 +2038,15 @@
     </div>
     <div id="ai-chat-list" class="ai-chat-list">
       <div class="ai-msg ai-msg-system">
-        AI assistant powered by local LLM. Your data stays on your device.
+        <span data-i18n="ai.systemMsg">AI assistant powered by local LLM. Your data stays on your device.</span>
       </div>
     </div>
     <div class="ai-input-area">
       <div class="ai-context-btns">
-        <button class="ai-ctx-btn" id="ai-ctx-doc" data-tip="ai.ctx.doc">+ Document</button>
-        <button class="ai-ctx-btn" id="ai-ctx-sheet" data-tip="ai.ctx.sheet">+ Sheet</button>
-        <button class="ai-ctx-btn" id="ai-ctx-pdf" data-tip="ai.ctx.pdf">+ PDF</button>
-        <button class="ai-ctx-btn" id="ai-ctx-selection" data-tip="ai.ctx.selection">+ Selection</button>
+        <button class="ai-ctx-btn" id="ai-ctx-doc" data-tip="ai.ctx.doc" data-i18n="ai.ctx.doc">+ Document</button>
+        <button class="ai-ctx-btn" id="ai-ctx-sheet" data-tip="ai.ctx.sheet" data-i18n="ai.ctx.sheet">+ Sheet</button>
+        <button class="ai-ctx-btn" id="ai-ctx-pdf" data-tip="ai.ctx.pdf" data-i18n="ai.ctx.pdf">+ PDF</button>
+        <button class="ai-ctx-btn" id="ai-ctx-selection" data-tip="ai.ctx.selection" data-i18n="ai.ctx.selection">+ Selection</button>
       </div>
       <div class="ai-input-row">
         <textarea id="ai-chat-input" class="ai-chat-input" rows="1" data-placeholder="ai.input.placeholder" placeholder="AI에게 질문하세요 — 문서 분석, 번역, 요약, 수식 등"></textarea>
@@ -2053,10 +2054,10 @@
       </div>
     </div>
     <div class="ai-bottom-actions">
-      <button class="ai-action-btn" id="ai-insert-btn" data-tip="ai.insert">Insert</button>
-      <button class="ai-action-btn" id="ai-sessions-btn" data-tip="ai.sessions">Sessions</button>
-      <button class="ai-action-btn" id="ai-setup-btn" data-tip="ai.setup">Setup</button>
-      <button class="ai-action-btn" id="ai-clear-btn" data-tip="ai.clear">Clear</button>
+      <button class="ai-action-btn" id="ai-insert-btn" data-tip="ai.insert" data-i18n="ai.insert">Insert</button>
+      <button class="ai-action-btn" id="ai-sessions-btn" data-tip="ai.sessions" data-i18n="ai.sessions">Sessions</button>
+      <button class="ai-action-btn" id="ai-setup-btn" data-tip="ai.setup" data-i18n="ai.setup">Setup</button>
+      <button class="ai-action-btn" id="ai-clear-btn" data-tip="ai.clear" data-i18n="ai.clearChat">Clear</button>
     </div>
   </aside>
 
@@ -2071,7 +2072,7 @@
   <div id="drop-overlay" class="drop-overlay hidden">
     <div class="drop-message">
       <span class="drop-icon">📄</span>
-      <span>Drop .md file here</span>
+      <span data-i18n="drop.message">Drop .md file here</span>
     </div>
   </div>
 

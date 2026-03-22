@@ -3,6 +3,7 @@
 // 4. Markdown Shortcuts Overlay  5. Auto-complete (slash, emoji, wiki-link)
 
 import { insertAtCursor, wrapSelection, getContent, getEditorView } from './editor.js';
+import { AI_SLASH_COMMANDS, handleAiSlashCommand } from '../ai/ai-cowork.js';
 
 /* ════════════════════════════════════════════════════════════════
    1. SNIPPET LIBRARY
@@ -574,6 +575,7 @@ const SLASH_COMMANDS = [
   { name: 'Mermaid Diagram', icon: '⬡', text: '```mermaid\ngraph LR\n    A --> B\n```\n' },
   { name: 'Collapsible', icon: '📁', text: '<details>\n<summary>Title</summary>\n\nContent\n\n</details>\n' },
   { name: 'Frontmatter', icon: '📄', text: '---\ntitle: \ndate: \n---\n' },
+  ...AI_SLASH_COMMANDS,
 ];
 
 const EMOJI_LIST = [
