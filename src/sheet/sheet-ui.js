@@ -175,6 +175,7 @@ function renderGrid() {
   gridEl.innerHTML = html;
   applyFreezeStyles();
   if (condFormats.length > 0) applyConditionalFormatting();
+  applyIconSets();
 }
 
 function renderCell(r, c) {
@@ -200,6 +201,7 @@ function cellStyle(cell, r, c) {
     if (f.align) parts.push(`text-align:${f.align}`);
     if (f.valign) parts.push(`vertical-align:${f.valign}`);
     if (f.bg) parts.push(`background:${f.bg}`);
+    else if (bandedRowsEnabled) parts.push(`background:${r % 2 === 0 ? bandedColor1 : bandedColor2}`);
     if (f.color) parts.push(`color:${f.color}`);
     if (f.fontSize) parts.push(`font-size:${f.fontSize}px`);
     if (f.fontFamily) parts.push(`font-family:${f.fontFamily}`);
@@ -214,6 +216,8 @@ function cellStyle(cell, r, c) {
     if (f.borderBottom) parts.push(`border-bottom:${f.borderBottom}`);
     if (f.borderLeft) parts.push(`border-left:${f.borderLeft}`);
     if (f.borderRight) parts.push(`border-right:${f.borderRight}`);
+  } else if (bandedRowsEnabled && r !== undefined) {
+    parts.push(`background:${r % 2 === 0 ? bandedColor1 : bandedColor2}`);
   }
   // Conditional formatting
   if (r !== undefined && c !== undefined) {
@@ -848,6 +852,11 @@ function bindEvents() {
   // Merge cells
   document.getElementById('sheet-merge')?.addEventListener('click', () => {
     toggleMerge();
+  });
+
+  // Banded rows (alternating row colors)
+  document.getElementById('sheet-banded-rows')?.addEventListener('click', () => {
+    toggleBandedRows();
   });
 
   // Conditional formatting
@@ -1890,13 +1899,23 @@ function showCondFmtDialog() {
             <option value="notempty">Is not empty</option>
             <option value="color_scale">Color Scale (min→max)</option>
             <option value="data_bars">Data Bars</option>
+            <option value="icon_set">Icon Set</option>
           </select>
         </div>
         <div id="cf-value-row" style="display:flex;gap:8px;margin-bottom:10px">
           <input type="text" id="cf-val1" placeholder="Value" style="flex:1;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
           <input type="text" id="cf-val2" placeholder="Max" style="flex:1;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);display:none">
         </div>
-        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+        <div id="cf-icon-set-row" style="display:none;margin-bottom:10px">
+          <select id="cf-icon-set" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+            <option value="traffic">🔴🟡🟢 Traffic Lights</option>
+            <option value="arrows">⬇️➡️⬆️ Arrows</option>
+            <option value="stars">☆☆★ Stars</option>
+            <option value="flags">🏳️🟨🟩 Flags</option>
+            <option value="rating">1️⃣2️⃣3️⃣ Rating</option>
+          </select>
+        </div>
+        <div id="cf-color-row" style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
           <label style="font-size:12px;color:var(--text-secondary)">Highlight color:</label>
           <input type="color" id="cf-color" value="#fde68a" style="width:40px;height:28px;border:1px solid var(--border-color);border-radius:4px">
           <label style="font-size:12px;color:var(--text-secondary);margin-left:8px">Text:</label>
@@ -1917,8 +1936,9 @@ function showCondFmtDialog() {
   typeSelect.addEventListener('change', () => {
     const t = typeSelect.value;
     val2Input.style.display = t === 'between' ? '' : 'none';
-    dialog.querySelector('#cf-val1').style.display = ['empty', 'notempty', 'color_scale', 'data_bars'].includes(t) ? 'none' : '';
-    dialog.querySelector('#cf-color').parentElement.style.display = ['color_scale', 'data_bars'].includes(t) ? 'none' : '';
+    dialog.querySelector('#cf-val1').style.display = ['empty', 'notempty', 'color_scale', 'data_bars', 'icon_set'].includes(t) ? 'none' : '';
+    dialog.querySelector('#cf-color-row').style.display = ['color_scale', 'data_bars', 'icon_set'].includes(t) ? 'none' : '';
+    dialog.querySelector('#cf-icon-set-row').style.display = t === 'icon_set' ? '' : 'none';
   });
 
   dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
@@ -1939,9 +1959,10 @@ function showCondFmtDialog() {
     const bgColor = dialog.querySelector('#cf-color').value;
     const textColor = dialog.querySelector('#cf-text-color').value;
 
+    const iconSet = dialog.querySelector('#cf-icon-set')?.value || 'traffic';
     condFormats.push({
       range: { r1, r2, c1, c2 },
-      type, val1, val2, bgColor, textColor,
+      type, val1, val2, bgColor, textColor, iconSet,
     });
     renderGrid(); updateSelection();
     dialog.remove();
@@ -1955,6 +1976,9 @@ function getCondFmtStyle(r, c) {
 
   for (const cf of condFormats) {
     if (r < cf.range.r1 || r > cf.range.r2 || c < cf.range.c1 || c > cf.range.c2) continue;
+
+    // Icon set — handled in applyIconSets() after render
+    if (cf.type === 'icon_set') continue;
 
     // Color scale / data bars — compute range min/max
     if (cf.type === 'color_scale' || cf.type === 'data_bars') {
@@ -5235,6 +5259,131 @@ function initSheetFindReplace() {
   });
 }
 
+
+/* ==================== Icon Set CF (simple condFormats) ==================== */
+
+function applyIconSets() {
+  const sheet = getSheet();
+  const iconCFs = condFormats.filter(cf => cf.type === 'icon_set');
+  if (iconCFs.length === 0) return;
+
+  const iconSets = {
+    traffic: ['🔴', '🟡', '🟢'],
+    arrows: ['⬇️', '➡️', '⬆️'],
+    stars: ['☆', '★', '★★'],
+    flags: ['🚩', '🟨', '🟩'],
+    rating: ['1️⃣', '2️⃣', '3️⃣'],
+  };
+
+  for (const cf of iconCFs) {
+    const { r1, c1, r2, c2 } = cf.range;
+    let min = Infinity, max = -Infinity;
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        const v = parseFloat(getDisplayValue(sheet, r, c));
+        if (!isNaN(v)) { min = Math.min(min, v); max = Math.max(max, v); }
+      }
+    }
+    const range = max - min || 1;
+    const icons = iconSets[cf.iconSet] || iconSets.traffic;
+
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        const td = gridEl?.querySelector(`td[data-row="${r}"][data-col="${c}"]`);
+        if (!td) continue;
+        const v = parseFloat(getDisplayValue(sheet, r, c));
+        if (isNaN(v)) continue;
+        const pct = (v - min) / range;
+        const iconIdx = pct < 0.33 ? 0 : pct < 0.67 ? 1 : 2;
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'cf-icon';
+        iconSpan.style.cssText = 'margin-right:4px;font-size:11px';
+        iconSpan.textContent = icons[iconIdx];
+        td.insertBefore(iconSpan, td.firstChild);
+      }
+    }
+  }
+}
+
+/* ==================== Banded Rows ==================== */
+
+let bandedRowsEnabled = false;
+let bandedColor1 = '#ffffff';
+let bandedColor2 = '#f3f4f6';
+
+function toggleBandedRows() {
+  const existing = document.querySelector('.sheet-banded-dialog');
+  if (existing) { existing.remove(); return; }
+
+  const dlg = document.createElement('div');
+  dlg.className = 'ai-setup-modal sheet-banded-dialog';
+  dlg.innerHTML = `
+    <div class="ai-setup-content" style="width:320px">
+      <div class="ai-setup-header">
+        <h3>Alternating Row Colors</h3>
+        <button class="ai-setup-close">&times;</button>
+      </div>
+      <div class="ai-setup-body">
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer;font-size:13px;color:var(--text-primary)">
+          <input type="checkbox" id="banded-enable" ${bandedRowsEnabled ? 'checked' : ''}>
+          Enable alternating colors
+        </label>
+        <div style="display:flex;gap:12px;margin-bottom:16px">
+          <label style="flex:1;font-size:12px;color:var(--text-secondary)">
+            Even rows
+            <input type="color" id="banded-c1" value="${bandedColor1}" style="display:block;width:100%;height:28px;margin-top:4px;border:1px solid var(--border-color);border-radius:4px;cursor:pointer">
+          </label>
+          <label style="flex:1;font-size:12px;color:var(--text-secondary)">
+            Odd rows
+            <input type="color" id="banded-c2" value="${bandedColor2}" style="display:block;width:100%;height:28px;margin-top:4px;border:1px solid var(--border-color);border-radius:4px;cursor:pointer">
+          </label>
+        </div>
+        <div style="margin-bottom:12px">
+          <span style="font-size:11px;color:var(--text-tertiary)">Presets:</span>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            ${[
+              ['#fff','#f3f4f6','Gray'],
+              ['#fff','#dbeafe','Blue'],
+              ['#fff','#dcfce7','Green'],
+              ['#fff','#fef3c7','Yellow'],
+              ['#fff','#fce7f3','Pink'],
+            ].map(([c1,c2,n]) => `
+              <button class="banded-preset" data-c1="${c1}" data-c2="${c2}" style="width:32px;height:20px;border:1px solid var(--border-color);border-radius:4px;cursor:pointer;background:linear-gradient(to bottom, ${c1} 50%, ${c2} 50%)" title="${n}"></button>
+            `).join('')}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="ai-pull-btn" id="banded-cancel">Cancel</button>
+          <button class="ai-pull-btn" id="banded-apply" style="background:#0071e3;color:#fff">Apply</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(dlg);
+
+  dlg.querySelector('.ai-setup-close')?.addEventListener('click', () => dlg.remove());
+  dlg.querySelector('#banded-cancel')?.addEventListener('click', () => dlg.remove());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.remove(); });
+
+  dlg.querySelectorAll('.banded-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      dlg.querySelector('#banded-c1').value = btn.dataset.c1;
+      dlg.querySelector('#banded-c2').value = btn.dataset.c2;
+      dlg.querySelector('#banded-enable').checked = true;
+    });
+  });
+
+  dlg.querySelector('#banded-apply')?.addEventListener('click', () => {
+    bandedRowsEnabled = dlg.querySelector('#banded-enable').checked;
+    bandedColor1 = dlg.querySelector('#banded-c1').value;
+    bandedColor2 = dlg.querySelector('#banded-c2').value;
+    renderGrid();
+    const btn = document.getElementById('sheet-banded-rows');
+    if (btn) btn.classList.toggle('active', bandedRowsEnabled);
+    dlg.remove();
+  });
+}
 
 /* ==================== Export ==================== */
 

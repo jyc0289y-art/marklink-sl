@@ -507,6 +507,7 @@ function startPresentation() {
 
     counter.textContent = `${idx + 1} / ${slides.length}`;
     if (slideCounter) slideCounter.textContent = `${idx + 1}/${slides.length}`;
+    if (notesPanel?.style.display !== 'none') updatePresNotes(idx);
 
     // Apply custom background in presentation
     if (slide.customBg) {
@@ -660,6 +661,35 @@ function startPresentation() {
   slideCounter.style.cssText = 'color:rgba(255,255,255,0.7);font-size:12px;padding:0 8px;display:flex;align-items:center';
   slideCounter.textContent = `${presIdx + 1}/${slides.length}`;
   presToolbar.appendChild(slideCounter);
+
+  // Notes toggle button
+  const notesToggle = document.createElement('button');
+  notesToggle.style.cssText = 'width:32px;height:32px;border:none;border-radius:50%;cursor:pointer;font-size:14px;background:transparent;display:flex;align-items:center;justify-content:center';
+  notesToggle.title = 'Toggle Notes';
+  notesToggle.textContent = '📝';
+  presToolbar.appendChild(notesToggle);
+
+  // Notes panel (hidden by default)
+  const notesPanel = document.createElement('div');
+  notesPanel.style.cssText = 'position:fixed;bottom:52px;left:50%;transform:translateX(-50%);width:60%;max-width:600px;max-height:120px;overflow-y:auto;background:rgba(0,0,0,0.8);color:rgba(255,255,255,0.85);padding:12px 16px;border-radius:12px;font-size:14px;line-height:1.5;z-index:10002;display:none;font-family:sans-serif;backdrop-filter:blur(8px)';
+  overlay.appendChild(notesPanel);
+
+  function updatePresNotes(idx) {
+    const notes = slides[idx]?.notes || '';
+    if (notes) {
+      notesPanel.textContent = notes;
+    } else {
+      notesPanel.innerHTML = '<em style="color:rgba(255,255,255,0.4)">No notes for this slide</em>';
+    }
+  }
+
+  notesToggle.onclick = (e) => {
+    e.stopPropagation();
+    const isHidden = notesPanel.style.display === 'none';
+    notesPanel.style.display = isHidden ? 'block' : 'none';
+    notesToggle.style.background = isHidden ? 'rgba(255,255,255,0.2)' : 'transparent';
+    if (isHidden) updatePresNotes(presIdx);
+  };
 
   // Pen canvas overlay
   const penCanvas = document.createElement('canvas');

@@ -559,7 +559,11 @@ function updateWordCount() {
     goalStr = `  |  Goal: ${pct}% (${words}/${wordGoal})`;
   }
 
-  statusEl.innerHTML = `Words: ${words.toLocaleString()}  |  Chars: ${chars.toLocaleString()} (${charsNoSpace.toLocaleString()})  |  ¶${paras}  |  ~${readingTime} min read  |  ~${pages} pg${fkGrade > 0 ? `  |  Grade ${fkGrade} ${readLevel}` : ''}${goalStr}  <button id="doc-word-goal-btn" style="border:none;background:none;cursor:pointer;font-size:11px;color:var(--text-tertiary);text-decoration:underline">${wordGoal > 0 ? 'Edit Goal' : 'Set Goal'}</button>`;
+  statusEl.innerHTML = `<span id="doc-stats-clickable" style="cursor:pointer" title="Click for detailed statistics">Words: ${words.toLocaleString()}  |  Chars: ${chars.toLocaleString()} (${charsNoSpace.toLocaleString()})  |  ¶${paras}  |  ~${readingTime} min read  |  ~${pages} pg${fkGrade > 0 ? `  |  Grade ${fkGrade} ${readLevel}` : ''}${goalStr}</span>  <button id="doc-word-goal-btn" style="border:none;background:none;cursor:pointer;font-size:11px;color:var(--text-tertiary);text-decoration:underline">${wordGoal > 0 ? 'Edit Goal' : 'Set Goal'}</button>`;
+
+  document.getElementById('doc-stats-clickable')?.addEventListener('click', () => {
+    showDocStatsDialog(words, chars, charsNoSpace, paras, readingTime, pages, sentences, fkGrade, readLevel, syllables);
+  });
 
   // Update progress bar if goal is set
   let bar = document.getElementById('doc-goal-progress');
@@ -583,6 +587,96 @@ function updateWordCount() {
       updateWordCount();
     }
   });
+}
+
+function showDocStatsDialog(words, chars, charsNoSpace, paras, readingTime, pages, sentences, fkGrade, readLevel, syllables) {
+  document.querySelector('.doc-stats-dialog')?.remove();
+
+  // Selection stats
+  const sel = window.getSelection();
+  let selWords = 0, selChars = 0;
+  if (sel && !sel.isCollapsed) {
+    const selText = sel.toString();
+    selWords = selText.trim() ? selText.trim().split(/\s+/).length : 0;
+    selChars = selText.length;
+  }
+
+  // Count specific elements
+  const headings = editorEl.querySelectorAll('h1, h2, h3, h4, h5, h6').length;
+  const images = editorEl.querySelectorAll('img').length;
+  const links = editorEl.querySelectorAll('a').length;
+  const tables = editorEl.querySelectorAll('table').length;
+  const lists = editorEl.querySelectorAll('ul, ol').length;
+
+  const avgWordLen = words > 0 ? (charsNoSpace / words).toFixed(1) : 0;
+  const avgSentLen = sentences > 0 ? (words / sentences).toFixed(1) : 0;
+  const speakingTime = Math.max(1, Math.ceil(words / 130));
+
+  const dlg = document.createElement('div');
+  dlg.className = 'ai-setup-modal doc-stats-dialog';
+  dlg.innerHTML = `
+    <div class="ai-setup-content" style="width:400px">
+      <div class="ai-setup-header">
+        <h3>Document Statistics</h3>
+        <button class="ai-setup-close">&times;</button>
+      </div>
+      <div class="ai-setup-body">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <tbody>
+            <tr><td style="padding:6px 8px;color:var(--text-secondary)">Words</td><td style="padding:6px 8px;font-weight:600;text-align:right">${words.toLocaleString()}</td></tr>
+            <tr style="background:var(--sidebar-bg)"><td style="padding:6px 8px;color:var(--text-secondary)">Characters (with spaces)</td><td style="padding:6px 8px;font-weight:600;text-align:right">${chars.toLocaleString()}</td></tr>
+            <tr><td style="padding:6px 8px;color:var(--text-secondary)">Characters (no spaces)</td><td style="padding:6px 8px;font-weight:600;text-align:right">${charsNoSpace.toLocaleString()}</td></tr>
+            <tr style="background:var(--sidebar-bg)"><td style="padding:6px 8px;color:var(--text-secondary)">Sentences</td><td style="padding:6px 8px;font-weight:600;text-align:right">${sentences}</td></tr>
+            <tr><td style="padding:6px 8px;color:var(--text-secondary)">Paragraphs</td><td style="padding:6px 8px;font-weight:600;text-align:right">${paras}</td></tr>
+            <tr style="background:var(--sidebar-bg)"><td style="padding:6px 8px;color:var(--text-secondary)">Pages (est.)</td><td style="padding:6px 8px;font-weight:600;text-align:right">${pages}</td></tr>
+            <tr><td style="padding:6px 8px;color:var(--text-secondary)">Syllables</td><td style="padding:6px 8px;font-weight:600;text-align:right">${syllables.toLocaleString()}</td></tr>
+            <tr style="background:var(--sidebar-bg)"><td style="padding:6px 8px;color:var(--text-secondary)">Avg word length</td><td style="padding:6px 8px;font-weight:600;text-align:right">${avgWordLen} chars</td></tr>
+            <tr><td style="padding:6px 8px;color:var(--text-secondary)">Avg sentence length</td><td style="padding:6px 8px;font-weight:600;text-align:right">${avgSentLen} words</td></tr>
+          </tbody>
+        </table>
+
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-color)">
+          <div style="font-size:12px;font-weight:700;color:var(--brand-color,#0071e3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Time Estimates</div>
+          <div style="display:flex;gap:12px;font-size:13px">
+            <div style="flex:1;padding:8px;background:var(--sidebar-bg);border-radius:6px;text-align:center">
+              <div style="font-size:18px;font-weight:700;color:var(--text-primary)">${readingTime}</div>
+              <div style="font-size:10px;color:var(--text-secondary)">min reading</div>
+            </div>
+            <div style="flex:1;padding:8px;background:var(--sidebar-bg);border-radius:6px;text-align:center">
+              <div style="font-size:18px;font-weight:700;color:var(--text-primary)">${speakingTime}</div>
+              <div style="font-size:10px;color:var(--text-secondary)">min speaking</div>
+            </div>
+            <div style="flex:1;padding:8px;background:var(--sidebar-bg);border-radius:6px;text-align:center">
+              <div style="font-size:18px;font-weight:700;color:var(--text-primary)">${fkGrade || '-'}</div>
+              <div style="font-size:10px;color:var(--text-secondary)">FK Grade ${readLevel}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-color)">
+          <div style="font-size:12px;font-weight:700;color:var(--brand-color,#0071e3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Elements</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px">
+            <span style="padding:3px 8px;background:var(--sidebar-bg);border-radius:4px">Headings: ${headings}</span>
+            <span style="padding:3px 8px;background:var(--sidebar-bg);border-radius:4px">Images: ${images}</span>
+            <span style="padding:3px 8px;background:var(--sidebar-bg);border-radius:4px">Links: ${links}</span>
+            <span style="padding:3px 8px;background:var(--sidebar-bg);border-radius:4px">Tables: ${tables}</span>
+            <span style="padding:3px 8px;background:var(--sidebar-bg);border-radius:4px">Lists: ${lists}</span>
+          </div>
+        </div>
+
+        ${selWords > 0 ? `
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-color)">
+          <div style="font-size:12px;font-weight:700;color:var(--brand-color,#0071e3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Selection</div>
+          <div style="font-size:13px;color:var(--text-secondary)">${selWords} words, ${selChars} characters selected</div>
+        </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(dlg);
+  dlg.querySelector('.ai-setup-close')?.addEventListener('click', () => dlg.remove());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.remove(); });
 }
 
 // ─── Helpers ────────────────────────────────────────────────
