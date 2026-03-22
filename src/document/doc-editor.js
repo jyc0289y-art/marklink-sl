@@ -130,6 +130,36 @@ export function initDocEditor() {
     showPageSetupDialog();
   });
 
+  // Line spacing
+  const lineSpacing = document.getElementById('doc-line-spacing');
+  if (lineSpacing) {
+    lineSpacing.addEventListener('change', () => {
+      if (editorEl) {
+        editorEl.style.lineHeight = lineSpacing.value;
+      }
+    });
+  }
+
+  // Columns layout
+  document.getElementById('doc-insert-columns')?.addEventListener('click', () => {
+    showColumnsDialog();
+  });
+
+  // Footnote
+  document.getElementById('doc-insert-footnote')?.addEventListener('click', () => {
+    insertFootnote();
+  });
+
+  // Watermark
+  document.getElementById('doc-watermark')?.addEventListener('click', () => {
+    showWatermarkDialog();
+  });
+
+  // Print
+  document.getElementById('doc-print')?.addEventListener('click', () => {
+    printDocument();
+  });
+
   // HWPX import
   document.getElementById('doc-import-hwpx')?.addEventListener('click', async () => {
     const { importHwpx } = await import('./hwpx.js');
@@ -199,6 +229,7 @@ export function initDocEditor() {
         case 'u': e.preventDefault(); document.execCommand('underline'); break;
         case 'z': e.preventDefault(); document.execCommand('undo'); break;
         case 'f': e.preventDefault(); toggleFindBar(); break;
+        case 'p': e.preventDefault(); printDocument(); break;
       }
     }
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
@@ -664,6 +695,207 @@ function applyPageLayout() {
   editorEl.style.width = ps.w;
   editorEl.style.minHeight = ps.h;
   editorEl.style.padding = `${currentMargins.top}mm ${currentMargins.right}mm ${currentMargins.bottom}mm ${currentMargins.left}mm`;
+}
+
+// ─── Columns Layout ─────────────────────────────────────────
+function showColumnsDialog() {
+  document.querySelector('.doc-cols-dialog')?.remove();
+
+  const dialog = document.createElement('div');
+  dialog.className = 'ai-setup-modal doc-cols-dialog';
+  dialog.innerHTML = `
+    <div class="ai-setup-content" style="width:320px">
+      <div class="ai-setup-header">
+        <h3>Columns Layout / 단 나누기</h3>
+        <button class="ai-setup-close">&times;</button>
+      </div>
+      <div class="ai-setup-body">
+        <div style="display:flex;gap:12px;margin-bottom:16px">
+          ${[1, 2, 3].map(n => `
+            <button class="doc-col-opt" data-cols="${n}" style="flex:1;padding:16px 8px;border:2px solid var(--border-color);border-radius:8px;background:var(--bg-primary);cursor:pointer;text-align:center;color:var(--text-primary)">
+              <div style="display:flex;gap:3px;justify-content:center;margin-bottom:6px">
+                ${Array(n).fill('<div style="width:20px;height:28px;border:1px solid var(--text-secondary);border-radius:2px"></div>').join('')}
+              </div>
+              <span style="font-size:12px;font-weight:600">${n === 1 ? 'One' : n === 2 ? 'Two' : 'Three'}</span>
+            </button>
+          `).join('')}
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="ai-pull-btn" id="cols-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(dialog);
+
+  dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
+  dialog.querySelector('#cols-cancel')?.addEventListener('click', () => dialog.remove());
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
+
+  dialog.querySelectorAll('.doc-col-opt').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cols = parseInt(btn.dataset.cols);
+      if (editorEl) {
+        if (cols === 1) {
+          editorEl.style.columnCount = '';
+          editorEl.style.columnGap = '';
+          editorEl.style.columnRule = '';
+        } else {
+          editorEl.style.columnCount = cols;
+          editorEl.style.columnGap = '24px';
+          editorEl.style.columnRule = '1px solid var(--border-color)';
+        }
+      }
+      dialog.remove();
+    });
+  });
+}
+
+// ─── Footnotes ──────────────────────────────────────────────
+let footnoteCounter = 0;
+
+function insertFootnote() {
+  if (!editorEl) return;
+
+  footnoteCounter++;
+  const id = `fn-${footnoteCounter}`;
+
+  // Insert superscript reference at cursor
+  const refHtml = `<sup class="doc-fn-ref" data-fn="${id}" style="color:var(--brand-color);cursor:pointer;font-weight:700">[${footnoteCounter}]</sup>`;
+  insertHTMLAtCursor(refHtml);
+
+  // Add/update footnote section at the bottom
+  let fnSection = editorEl.querySelector('.doc-footnotes');
+  if (!fnSection) {
+    fnSection = document.createElement('div');
+    fnSection.className = 'doc-footnotes';
+    fnSection.contentEditable = 'false';
+    fnSection.innerHTML = '<hr style="margin-top:32px"><div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:4px">Footnotes</div>';
+    editorEl.appendChild(fnSection);
+  }
+
+  const fnItem = document.createElement('div');
+  fnItem.className = 'doc-fn-item';
+  fnItem.contentEditable = 'true';
+  fnItem.id = id;
+  fnItem.style.cssText = 'font-size:12px;color:var(--text-secondary);padding:2px 0;margin-left:16px;text-indent:-16px';
+  fnItem.innerHTML = `<sup style="color:var(--brand-color);font-weight:700">[${footnoteCounter}]</sup> <span>Enter footnote text...</span>`;
+  fnSection.appendChild(fnItem);
+
+  // Focus on the footnote text
+  fnItem.focus();
+  dirty = true;
+}
+
+// ─── Watermark ──────────────────────────────────────────────
+function showWatermarkDialog() {
+  document.querySelector('.doc-wm-dialog')?.remove();
+
+  const wrapper = editorEl?.closest('.doc-page-wrapper');
+  const existingWm = wrapper?.querySelector('.doc-watermark');
+
+  const dialog = document.createElement('div');
+  dialog.className = 'ai-setup-modal doc-wm-dialog';
+  dialog.innerHTML = `
+    <div class="ai-setup-content" style="width:380px">
+      <div class="ai-setup-header">
+        <h3>Watermark / 워터마크</h3>
+        <button class="ai-setup-close">&times;</button>
+      </div>
+      <div class="ai-setup-body">
+        <div style="margin-bottom:12px">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Text</label>
+          <input type="text" id="wm-text" class="doc-find-input" style="width:100%" placeholder="e.g. DRAFT, CONFIDENTIAL" value="${existingWm?.textContent || ''}">
+        </div>
+        <div style="display:flex;gap:12px;margin-bottom:12px">
+          <div style="flex:1">
+            <label style="display:block;font-size:12px;color:var(--text-secondary);margin-bottom:2px">Color</label>
+            <input type="color" id="wm-color" value="#cccccc" style="width:100%;height:32px;border:1px solid var(--border-color);border-radius:4px">
+          </div>
+          <div style="flex:1">
+            <label style="display:block;font-size:12px;color:var(--text-secondary);margin-bottom:2px">Opacity</label>
+            <input type="range" id="wm-opacity" min="5" max="50" value="15" style="width:100%">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="ai-pull-btn" id="wm-remove">Remove</button>
+          <button class="ai-pull-btn" id="wm-apply" style="background:var(--brand-color);color:#fff">Apply</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(dialog);
+
+  dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
+
+  dialog.querySelector('#wm-remove')?.addEventListener('click', () => {
+    wrapper?.querySelector('.doc-watermark')?.remove();
+    dialog.remove();
+  });
+
+  dialog.querySelector('#wm-apply')?.addEventListener('click', () => {
+    const text = dialog.querySelector('#wm-text').value.trim();
+    if (!text) return;
+    const color = dialog.querySelector('#wm-color').value;
+    const opacity = parseInt(dialog.querySelector('#wm-opacity').value) / 100;
+
+    wrapper?.querySelector('.doc-watermark')?.remove();
+
+    const wm = document.createElement('div');
+    wm.className = 'doc-watermark';
+    wm.textContent = text;
+    wm.style.cssText = `
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%) rotate(-45deg);
+      font-size: 80px; font-weight: 900;
+      color: ${color}; opacity: ${opacity};
+      pointer-events: none; white-space: nowrap;
+      z-index: 0; user-select: none;
+    `;
+    if (wrapper) {
+      wrapper.style.position = 'relative';
+      wrapper.appendChild(wm);
+    }
+    dialog.remove();
+  });
+}
+
+// ─── Print ──────────────────────────────────────────────────
+function printDocument() {
+  if (!editorEl) return;
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) { alert('Please allow pop-ups to print.'); return; }
+
+  const ps = PAGE_SIZES[currentPageSize];
+  const wrapper = editorEl.closest('.doc-page-wrapper');
+  const header = wrapper?.querySelector('.doc-page-header')?.textContent || '';
+  const footer = wrapper?.querySelector('.doc-page-footer')?.textContent || '';
+
+  printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>Print — OfficeLink SL</title>
+    <style>
+      @page { size: ${ps.w} ${ps.h}; margin: ${currentMargins.top}mm ${currentMargins.right}mm ${currentMargins.bottom}mm ${currentMargins.left}mm; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; line-height: ${editorEl.style.lineHeight || '1.6'}; color: #222; margin: 0; padding: 0; }
+      ${header ? `.print-header { text-align: center; font-size: 11px; color: #888; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 16px; }` : ''}
+      ${footer ? `.print-footer { text-align: center; font-size: 11px; color: #888; border-top: 1px solid #ddd; padding-top: 4px; margin-top: 16px; position: fixed; bottom: 0; left: 0; right: 0; }` : ''}
+      table { border-collapse: collapse; width: 100%; } td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; } th { background: #f5f5f5; font-weight: 600; }
+      img { max-width: 100%; height: auto; }
+      h1 { font-size: 2em; } h2 { font-size: 1.5em; } h3 { font-size: 1.17em; }
+      .doc-footnotes { margin-top: 24px; }
+      .doc-toc { border: 1px solid #ccc; padding: 16px; margin-bottom: 24px; border-radius: 8px; }
+    </style>
+  </head><body>
+    ${header ? `<div class="print-header">${header}</div>` : ''}
+    ${editorEl.innerHTML}
+    ${footer ? `<div class="print-footer">${footer}</div>` : ''}
+  </body></html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => { printWindow.print(); printWindow.close(); }, 300);
 }
 
 // ─── Image Insert Dialog ────────────────────────────────────

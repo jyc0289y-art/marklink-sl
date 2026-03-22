@@ -240,6 +240,42 @@ mark.doc-find-highlight.doc-find-current {
   border-top: 1px solid var(--border-color);
 }
 
+/* Headings H4-H6 */
+.doc-editor h4 { font-size: 1em; font-weight: 700; margin: 0.83em 0; }
+.doc-editor h5 { font-size: 0.83em; font-weight: 700; margin: 0.83em 0; }
+.doc-editor h6 { font-size: 0.75em; font-weight: 700; margin: 0.83em 0; color: var(--text-secondary); }
+
+/* Footnotes */
+.doc-footnotes {
+  border-top: 1px solid var(--border-color);
+  margin-top: 32px;
+  padding-top: 8px;
+}
+.doc-fn-ref {
+  color: var(--brand-color);
+  cursor: pointer;
+  font-weight: 700;
+}
+.doc-fn-item:focus {
+  outline: none;
+  background: var(--hover-bg);
+  border-radius: 4px;
+}
+
+/* Superscript/Subscript buttons */
+.doc-toolbar .toolbar-btn sup,
+.doc-toolbar .toolbar-btn sub {
+  font-size: 8px;
+}
+
+/* Print button active state */
+@media print {
+  .doc-toolbar, .doc-find-bar, .doc-status-bar, .doc-page-header, .doc-page-footer,
+  header, nav, .ai-panel, .doc-footnotes [contenteditable] { display: none !important; }
+  .doc-page-wrapper { padding: 0 !important; background: none !important; }
+  .doc-editor { border: none !important; box-shadow: none !important; width: 100% !important; padding: 0 !important; }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .doc-page-wrapper {

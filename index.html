@@ -160,8 +160,19 @@
           <option value="sans-serif">Sans-serif</option>
           <option value="serif">Serif</option>
           <option value="monospace">Monospace</option>
+          <option value="'Georgia', serif">Georgia</option>
+          <option value="'Times New Roman', serif">Times New Roman</option>
+          <option value="'Arial', sans-serif">Arial</option>
+          <option value="'Helvetica Neue', sans-serif">Helvetica</option>
+          <option value="'Courier New', monospace">Courier New</option>
+          <option value="'맑은 고딕', sans-serif">맑은 고딕</option>
+          <option value="'나눔고딕', sans-serif">나눔고딕</option>
+          <option value="'바탕', serif">바탕</option>
         </select>
         <select id="doc-font-size" title="Font Size">
+          <option value="9px">9</option>
+          <option value="10px">10</option>
+          <option value="11px">11</option>
           <option value="12px">12</option>
           <option value="14px">14</option>
           <option value="16px" selected>16</option>
@@ -170,16 +181,25 @@
           <option value="24px">24</option>
           <option value="28px">28</option>
           <option value="32px">32</option>
+          <option value="36px">36</option>
+          <option value="48px">48</option>
+          <option value="72px">72</option>
         </select>
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn doc-cmd" data-cmd="bold" title="Bold (⌘B)"><b>B</b></button>
         <button class="toolbar-btn doc-cmd" data-cmd="italic" title="Italic (⌘I)"><i>I</i></button>
         <button class="toolbar-btn doc-cmd" data-cmd="underline" title="Underline (⌘U)"><u>U</u></button>
         <button class="toolbar-btn doc-cmd" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+        <button class="toolbar-btn doc-cmd" data-cmd="superscript" title="Superscript">X<sup>2</sup></button>
+        <button class="toolbar-btn doc-cmd" data-cmd="subscript" title="Subscript">X<sub>2</sub></button>
         <div class="toolbar-divider"></div>
-        <button class="toolbar-btn doc-cmd" data-cmd="justifyLeft" title="Align Left">&#9776;</button>
-        <button class="toolbar-btn doc-cmd" data-cmd="justifyCenter" title="Align Center">&#9776;</button>
-        <button class="toolbar-btn doc-cmd" data-cmd="justifyRight" title="Align Right">&#9776;</button>
+        <button class="toolbar-btn doc-cmd" data-cmd="justifyLeft" title="Align Left" style="font-size:13px">≡◁</button>
+        <button class="toolbar-btn doc-cmd" data-cmd="justifyCenter" title="Align Center" style="font-size:13px">≡◇</button>
+        <button class="toolbar-btn doc-cmd" data-cmd="justifyRight" title="Align Right" style="font-size:13px">▷≡</button>
+        <button class="toolbar-btn doc-cmd" data-cmd="justifyFull" title="Justify" style="font-size:13px">≡≡</button>
+        <div class="toolbar-divider"></div>
+        <button class="toolbar-btn doc-cmd" data-cmd="indent" title="Increase Indent">⇥</button>
+        <button class="toolbar-btn doc-cmd" data-cmd="outdent" title="Decrease Indent">⇤</button>
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn doc-cmd" data-cmd="insertUnorderedList" title="Bullet List">&#8226;</button>
         <button class="toolbar-btn doc-cmd" data-cmd="insertOrderedList" title="Numbered List">1.</button>
@@ -189,6 +209,18 @@
           <option value="H1">Heading 1</option>
           <option value="H2">Heading 2</option>
           <option value="H3">Heading 3</option>
+          <option value="H4">Heading 4</option>
+          <option value="H5">Heading 5</option>
+          <option value="H6">Heading 6</option>
+        </select>
+        <select id="doc-line-spacing" title="Line Spacing">
+          <option value="1">1.0</option>
+          <option value="1.15">1.15</option>
+          <option value="1.5">1.5</option>
+          <option value="1.6" selected>1.6</option>
+          <option value="2">2.0</option>
+          <option value="2.5">2.5</option>
+          <option value="3">3.0</option>
         </select>
         <div class="toolbar-divider"></div>
         <input type="color" id="doc-color" value="#000000" title="Text Color">
@@ -198,10 +230,14 @@
         <button class="toolbar-btn doc-insert-btn" id="doc-insert-image" title="Insert Image">🖼️ Image</button>
         <button class="toolbar-btn doc-insert-btn" id="doc-insert-table" title="Insert Table">📊 Table</button>
         <button class="toolbar-btn doc-insert-btn" id="doc-insert-hr" title="Horizontal Rule">― Line</button>
-        <button class="toolbar-btn" id="doc-insert-toc" title="Insert Table of Contents" style="font-size:11px">TOC</button>
+        <button class="toolbar-btn" id="doc-insert-toc" title="Table of Contents" style="font-size:11px">TOC</button>
         <button class="toolbar-btn" id="doc-page-numbers" title="Toggle Page Numbers" style="font-size:11px">pg#</button>
         <button class="toolbar-btn" id="doc-header-footer" title="Header & Footer" style="font-size:11px">H/F</button>
         <button class="toolbar-btn" id="doc-page-setup" title="Page Layout" style="font-size:11px">📄</button>
+        <button class="toolbar-btn" id="doc-insert-columns" title="Columns Layout" style="font-size:11px">❙❙</button>
+        <button class="toolbar-btn" id="doc-insert-footnote" title="Insert Footnote" style="font-size:11px">fn</button>
+        <button class="toolbar-btn" id="doc-watermark" title="Watermark" style="font-size:11px">💧</button>
+        <button class="toolbar-btn" id="doc-print" title="Print (⌘P)" style="font-size:11px">🖨</button>
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="doc-undo" title="Undo (⌘Z)">↩</button>
         <button class="toolbar-btn" id="doc-redo" title="Redo (⌘⇧Z)">↪</button>
