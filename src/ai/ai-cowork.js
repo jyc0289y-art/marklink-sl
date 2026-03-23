@@ -2,12 +2,73 @@
 // Deep AI integration for each editor: Document, Sheet, Slide, Markdown, PDF, Photo
 // Uses Ollama local LLM via ollama-client.js
 
-import { chat, checkOllamaStatus, listModels } from './ollama-client.js';
+import { chat, streamChat, checkOllamaStatus, listModels } from './ollama-client.js';
 
 // ─── State ───────────────────────────────────────────────
 let ollamaOk = false;
 let selectedModel = '';
 let activeOverlay = null; // currently visible AI overlay element
+let currentAbortController = null; // for cancelling streaming
+
+// ─── Per-editor Prompt Templates ─────────────────────────
+const EDITOR_PROMPT_TEMPLATES = {
+  document: [
+    { id: 'proofread', label: 'Proofread', icon: '✓', prompt: 'Proofread the following text. Fix grammar, spelling, and punctuation errors. Return only the corrected text.' },
+    { id: 'expand', label: 'Expand', icon: '📐', prompt: 'Expand the following text with more detail, examples, and elaboration while keeping the same tone. Return only the expanded text.' },
+    { id: 'summarize', label: 'Summarize', icon: '📋', prompt: 'Summarize the following text into clear, concise key points. Return only the summary.' },
+  ],
+  sheet: [
+    { id: 'formula', label: 'Suggest Formula', icon: '=', prompt: 'You are a spreadsheet formula expert. Generate an Excel-compatible formula for the user\'s description. Return ONLY the formula starting with =, nothing else.' },
+    { id: 'chart', label: 'Chart Advice', icon: '📊', prompt: 'Based on this spreadsheet data, recommend the best chart type and explain why. Describe axes, labels, and any data transformations needed. Be concise.' },
+  ],
+  slide: [
+    { id: 'outline', label: 'Create Outline', icon: '📑', prompt: 'Create a presentation outline with slide titles and 3-4 bullet points per slide. Format with "Slide N: Title" headers.' },
+    { id: 'notes', label: 'Speaker Notes', icon: '🎤', prompt: 'Write speaker notes for this slide content. 2-3 sentences per point to help the presenter explain clearly.' },
+  ],
+  markdown: [
+    { id: 'format', label: 'Format & Clean', icon: '✨', prompt: 'Clean up and reformat this markdown. Fix headings, lists, links, and code blocks. Improve readability. Return only the reformatted markdown.' },
+    { id: 'document', label: 'Document It', icon: '📝', prompt: 'Generate proper documentation for this content in markdown. Add section headings, descriptions, and formatting. Return only the documentation.' },
+  ],
+  photo: [
+    { id: 'describe', label: 'Describe Image', icon: '🔍', prompt: 'Generate a detailed description of this image including composition, colors, subjects, mood, and technical quality. Suitable for accessibility alt text.' },
+    { id: 'caption', label: 'Generate Caption', icon: '📝', prompt: 'Generate 3 caption options: 1) Short (under 10 words), 2) Medium (1-2 sentences), 3) Detailed description.' },
+  ],
+  pdf: [
+    { id: 'summarize', label: 'Summarize PDF', icon: '📋', prompt: 'Summarize this PDF document. Provide: 1) Main topic/purpose 2) Key points (5-7 bullets) 3) Conclusions.' },
+    { id: 'extract', label: 'Extract Data', icon: '📊', prompt: 'Extract structured data from this PDF text. Look for tables, lists, key-value pairs, dates, numbers, names. Format as markdown.' },
+  ],
+  calculator: [
+    { id: 'explain', label: 'Explain Calculation', icon: '🔍', prompt: 'Explain this mathematical calculation step by step. Describe what each operation does and the final result.' },
+    { id: 'check', label: 'Check Work', icon: '✓', prompt: 'Verify this calculation. Check for errors, confirm the result, and suggest any simplifications.' },
+  ],
+};
+
+// ─── Chat History Persistence per Editor ─────────────────
+const COWORK_HISTORY_KEY = 'marklink-cowork-history';
+
+const getCoworkHistory = (editorType) => {
+  try {
+    const all = JSON.parse(localStorage.getItem(COWORK_HISTORY_KEY) || '{}');
+    return all[editorType] || [];
+  } catch { return []; }
+};
+
+const saveCoworkHistory = (editorType, history) => {
+  try {
+    const all = JSON.parse(localStorage.getItem(COWORK_HISTORY_KEY) || '{}');
+    all[editorType] = history.slice(-50); // keep last 50 entries
+    localStorage.setItem(COWORK_HISTORY_KEY, JSON.stringify(all));
+  } catch { /* silent */ }
+};
+
+const addToCoworkHistory = (editorType, role, content) => {
+  const hist = getCoworkHistory(editorType);
+  hist.push({ role, content: content.substring(0, 500), ts: Date.now() });
+  saveCoworkHistory(editorType, hist);
+};
+
+/** Export prompt templates for external use */
+export { EDITOR_PROMPT_TEMPLATES };
 
 // ─── Init / Status ──────────────────────────────────────
 async function ensureReady() {
@@ -53,6 +114,91 @@ async function aiCall(systemPrompt, userContent) {
   }
 }
 
+/** Streaming AI call — shows tokens as they arrive in a target element */
+async function aiCallStreaming(systemPrompt, userContent, targetEl, editorType) {
+  const ready = await ensureReady();
+  if (!ready) { showToast('AI unavailable — check Ollama is running'); return null; }
+
+  if (currentAbortController) currentAbortController.abort();
+  currentAbortController = new AbortController();
+
+  if (editorType) addToCoworkHistory(editorType, 'user', userContent);
+
+  targetEl.innerHTML = '<span class="ai-cowork-spinner"></span> ';
+  targetEl.classList.add('ai-streaming');
+
+  try {
+    const result = await streamChat(
+      selectedModel,
+      [{ role: 'user', content: userContent }],
+      systemPrompt,
+      (token, full) => {
+        targetEl.innerHTML = escapeHtml(full) + '<span class="ai-stream-cursor">|</span>';
+      },
+      currentAbortController.signal
+    );
+
+    targetEl.classList.remove('ai-streaming');
+    targetEl.innerHTML = escapeHtml(result.content);
+
+    if (result.tokenStats) {
+      const statsSpan = document.createElement('div');
+      statsSpan.className = 'ai-cowork-token-stats';
+      statsSpan.textContent = `${result.tokenStats.promptTokens + result.tokenStats.completionTokens} tokens · ${result.tokenStats.totalDurationMs}ms`;
+      targetEl.appendChild(statsSpan);
+    }
+
+    if (editorType) addToCoworkHistory(editorType, 'assistant', result.content);
+
+    currentAbortController = null;
+    return result.content;
+  } catch (e) {
+    targetEl.classList.remove('ai-streaming');
+    if (e.name === 'AbortError') {
+      targetEl.innerHTML += '<br><em style="color:var(--text-secondary)">(cancelled)</em>';
+      return null;
+    }
+    showToast('AI error: ' + e.message);
+    return null;
+  }
+}
+
+/** Create an "Apply suggestion" button that inserts AI response at cursor */
+function createApplyButton(content, targetEditorEl) {
+  const btn = document.createElement('button');
+  btn.className = 'ai-cowork-btn accent small';
+  btn.textContent = 'Apply to Editor';
+  btn.addEventListener('click', () => {
+    if (targetEditorEl) {
+      // Try to insert at cursor
+      targetEditorEl.focus();
+      if (targetEditorEl.tagName === 'TEXTAREA' || targetEditorEl.tagName === 'INPUT') {
+        const start = targetEditorEl.selectionStart;
+        const end = targetEditorEl.selectionEnd;
+        const val = targetEditorEl.value;
+        targetEditorEl.value = val.substring(0, start) + content + val.substring(end);
+        targetEditorEl.selectionStart = targetEditorEl.selectionEnd = start + content.length;
+        targetEditorEl.dispatchEvent(new Event('input'));
+      } else {
+        // contentEditable
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          const frag = document.createRange().createContextualFragment(content.replace(/\n/g, '<br>'));
+          range.insertNode(frag);
+        } else {
+          document.execCommand('insertHTML', false, content.replace(/\n/g, '<br>'));
+        }
+      }
+      showToast('AI suggestion applied');
+    } else {
+      navigator.clipboard.writeText(content).then(() => showToast('Copied to clipboard'));
+    }
+  });
+  return btn;
+}
+
 /** Show a loading spinner overlay anchored near pos */
 function showLoading(anchorEl) {
   removeOverlay();
@@ -70,18 +216,20 @@ function showLoading(anchorEl) {
   return el;
 }
 
-/** Show diff approval overlay */
-function showDiffApproval(original, result, onAccept, onReject, anchorEl) {
+/** Show diff approval overlay with streaming support */
+function showDiffApproval(original, result, onAccept, onReject, anchorEl, streamMode = false) {
   removeOverlay();
   const el = document.createElement('div');
   el.className = 'ai-cowork-diff';
+  const bodyId = 'ai-diff-body-' + Date.now();
   el.innerHTML = `
-    <div class="ai-cowork-diff-header">AI Result</div>
-    <div class="ai-cowork-diff-body">${escapeHtml(result)}</div>
+    <div class="ai-cowork-diff-header">AI Result${streamMode ? ' <span class="ai-stream-badge">STREAMING</span>' : ''}</div>
+    <div class="ai-cowork-diff-body" id="${bodyId}">${streamMode ? '<span class="ai-cowork-spinner"></span>' : escapeHtml(result)}</div>
     <div class="ai-cowork-diff-actions">
       <button class="ai-cowork-btn accept">Accept</button>
       <button class="ai-cowork-btn reject">Reject</button>
       <button class="ai-cowork-btn copy">Copy</button>
+      ${streamMode ? '<button class="ai-cowork-btn" style="color:#f44336;border-color:#f44336" id="ai-stop-stream">Stop</button>' : ''}
     </div>`;
   if (anchorEl) {
     const rect = anchorEl.getBoundingClientRect();
@@ -99,8 +247,17 @@ function showDiffApproval(original, result, onAccept, onReject, anchorEl) {
   el.querySelector('.accept').addEventListener('click', () => { removeOverlay(); onAccept(result); });
   el.querySelector('.reject').addEventListener('click', () => { removeOverlay(); if (onReject) onReject(); });
   el.querySelector('.copy').addEventListener('click', () => {
-    navigator.clipboard.writeText(result).then(() => showToast('Copied to clipboard'));
+    const bodyEl = el.querySelector('.ai-cowork-diff-body');
+    const textToCopy = bodyEl ? bodyEl.textContent : result;
+    navigator.clipboard.writeText(textToCopy).then(() => showToast('Copied to clipboard'));
   });
+  el.querySelector('#ai-stop-stream')?.addEventListener('click', () => {
+    if (currentAbortController) { currentAbortController.abort(); currentAbortController = null; }
+  });
+
+  // Return body element ref for streaming updates
+  el._bodyEl = el.querySelector(`#${bodyId}`);
+  return el;
 }
 
 /** Show a panel dialog (for multi-field AI features) */
@@ -728,14 +885,24 @@ export async function handleAiSlashCommand(command) {
 }
 
 function showMarkdownAiPanel() {
+  const templates = EDITOR_PROMPT_TEMPLATES.markdown || [];
+  const historyItems = getCoworkHistory('markdown');
   const html = `
     <div class="ai-cowork-md-actions">
       <button class="ai-cowork-btn accent wide" id="ai-md-continue">➡ Continue Writing</button>
       <button class="ai-cowork-btn accent wide" id="ai-md-summarize">📋 Summarize</button>
       <button class="ai-cowork-btn accent wide" id="ai-md-toc">📑 Generate TOC</button>
       <button class="ai-cowork-btn accent wide" id="ai-md-code">💻 Explain Code</button>
+      ${templates.map((t) => `<button class="ai-cowork-btn wide ai-tpl-btn" data-tpl="${t.id}">${t.icon} ${t.label}</button>`).join('')}
     </div>
-    <div id="ai-md-result" class="ai-cowork-result" style="margin-top:12px"></div>`;
+    <div id="ai-md-result" class="ai-cowork-result" style="margin-top:12px"></div>
+    ${historyItems.length > 0 ? `
+    <details style="margin-top:12px">
+      <summary style="font-size:11px;color:var(--text-secondary);cursor:pointer">Recent AI History (${historyItems.length})</summary>
+      <div class="ai-cowork-history-list">${historyItems.slice(-10).reverse().map((h) =>
+        `<div class="ai-cowork-history-item"><span class="ai-hist-role">${h.role}</span> ${escapeHtml(h.content.substring(0, 80))}...</div>`
+      ).join('')}</div>
+    </details>` : ''}`;
 
   showAiPanel('Markdown AI Assistant', html, (el) => {
     const { getContent, setContent, updatePreview } = window._mdAi || {};
@@ -757,6 +924,20 @@ function showMarkdownAiPanel() {
     el.querySelector('#ai-md-code')?.addEventListener('click', () => {
       removeOverlay();
       mdAiCodeExplain(content, setContent, updatePreview);
+    });
+
+    // Template buttons with streaming
+    el.querySelectorAll('.ai-tpl-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const tpl = templates.find((t) => t.id === btn.dataset.tpl);
+        if (!tpl) return;
+        const resultEl = el.querySelector('#ai-md-result');
+        const result = await aiCallStreaming(tpl.prompt, content.substring(0, 4000), resultEl, 'markdown');
+        if (result) {
+          const editorEl = document.getElementById('editor') || document.querySelector('.CodeMirror textarea');
+          resultEl.appendChild(createApplyButton(result, editorEl));
+        }
+      });
     });
   });
 }
@@ -1030,11 +1211,13 @@ export function initPhotoAi() {
 }
 
 function showPhotoAiPanel() {
+  const templates = EDITOR_PROMPT_TEMPLATES.photo || [];
   const html = `
     <div class="ai-cowork-md-actions">
       <button class="ai-cowork-btn accent wide" id="ai-photo-suggest">🎨 Suggest Adjustments</button>
       <button class="ai-cowork-btn accent wide" id="ai-photo-caption">📝 Generate Caption</button>
       <button class="ai-cowork-btn accent wide" id="ai-photo-describe">🔍 Describe Image</button>
+      ${templates.map((t) => `<button class="ai-cowork-btn wide ai-photo-tpl-btn" data-tpl="${t.id}">${t.icon} ${t.label}</button>`).join('')}
     </div>
     <div id="ai-photo-result" class="ai-cowork-result" style="margin-top:12px"></div>`;
 
@@ -1101,6 +1284,81 @@ function showPhotoAiPanel() {
       } else {
         resultEl.innerHTML = '<span style="color:#e74c3c">Failed.</span>';
       }
+    });
+
+    // Photo template buttons
+    el.querySelectorAll('.ai-photo-tpl-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const tpl = templates.find((t) => t.id === btn.dataset.tpl);
+        if (!tpl) return;
+        const resultEl = el.querySelector('#ai-photo-result');
+        await aiCallStreaming(tpl.prompt, getImageDesc(), resultEl, 'photo');
+      });
+    });
+  });
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// 7. CALCULATOR AI HELPER
+// ═══════════════════════════════════════════════════════════════
+
+export function initCalculatorAi() {
+  const container = document.getElementById('calc-container');
+  if (!container) return;
+
+  const toolbar = container.querySelector('.calc-toolbar');
+  if (toolbar) {
+    const btn = document.createElement('button');
+    btn.className = 'ai-cowork-toolbar-btn';
+    btn.innerHTML = '✦ AI';
+    btn.title = 'Calculator AI Helper';
+    btn.addEventListener('click', () => showCalculatorAiPanel());
+    toolbar.appendChild(btn);
+  } else {
+    const btn = document.createElement('button');
+    btn.className = 'ai-cowork-fab';
+    btn.id = 'calc-ai-fab';
+    btn.innerHTML = '✦';
+    btn.title = 'Calculator AI Helper';
+    btn.addEventListener('click', () => showCalculatorAiPanel());
+    container.appendChild(btn);
+  }
+}
+
+function showCalculatorAiPanel() {
+  const templates = EDITOR_PROMPT_TEMPLATES.calculator || [];
+  const calcDisplay = document.querySelector('.calc-display, #calc-display, .calc-result');
+  const calcContent = calcDisplay ? calcDisplay.textContent : '';
+
+  const html = `
+    <div class="ai-cowork-md-actions">
+      ${templates.map((t) => `<button class="ai-cowork-btn accent wide ai-calc-tpl-btn" data-tpl="${t.id}">${t.icon} ${t.label}</button>`).join('')}
+    </div>
+    <label style="margin-top:12px">Or describe your question:</label>
+    <textarea id="ai-calc-custom" rows="2" placeholder="e.g., How do I calculate compound interest?">${escapeHtml(calcContent)}</textarea>
+    <button class="ai-cowork-btn accent" id="ai-calc-ask">Ask AI</button>
+    <div id="ai-calc-result" class="ai-cowork-result" style="margin-top:12px"></div>`;
+
+  showAiPanel('Calculator AI Helper', html, (el) => {
+    el.querySelectorAll('.ai-calc-tpl-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const tpl = templates.find((t) => t.id === btn.dataset.tpl);
+        if (!tpl) return;
+        const input = el.querySelector('#ai-calc-custom')?.value || calcContent;
+        const resultEl = el.querySelector('#ai-calc-result');
+        await aiCallStreaming(tpl.prompt, input, resultEl, 'calculator');
+      });
+    });
+
+    el.querySelector('#ai-calc-ask')?.addEventListener('click', async () => {
+      const input = el.querySelector('#ai-calc-custom')?.value;
+      if (!input) return;
+      const resultEl = el.querySelector('#ai-calc-result');
+      await aiCallStreaming(
+        'You are a math assistant. Answer the question clearly with step-by-step working. Use plain text formatting.',
+        input, resultEl, 'calculator'
+      );
     });
   });
 }

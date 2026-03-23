@@ -1428,8 +1428,15 @@ function showTextToolbar(item, layer) {
       <option value="monospace">Monospace</option>
       <option value="'Impact',sans-serif">Impact</option>
       <option value="cursive">Cursive</option>
+      <option value="'Georgia',serif">Georgia</option>
+      <option value="'Courier New',monospace">Courier New</option>
     </select>
     <button class="toolbar-btn" title="Bold" id="text-bold-btn"><b>B</b></button>
+    <button class="toolbar-btn" title="Italic" id="text-italic-btn"><i>I</i></button>
+    <input type="color" value="#000000" title="Stroke Color" id="text-stroke-input" style="width:28px;">
+    <button class="toolbar-btn" title="Toggle Shadow" id="text-shadow-btn">🌑</button>
+    <input type="range" min="0" max="360" value="0" title="Rotate" id="text-rotate-input" style="width:60px;">
+    <input type="range" min="10" max="100" value="100" title="Opacity" id="text-opacity-input" style="width:50px;">
     <button class="toolbar-btn" title="Add Another" id="text-add-btn">+</button>
     <button class="toolbar-btn" title="Flatten to image" id="text-flatten-btn">✓ Flatten</button>
   `;
@@ -1445,6 +1452,25 @@ function showTextToolbar(item, layer) {
   };
   bar.querySelector('#text-add-btn').onclick = () => addTextItem(layer);
   bar.querySelector('#text-flatten-btn').onclick = () => flattenText();
+  bar.querySelector('#text-stroke-input')?.addEventListener('input', (e) => {
+    const c = e.target.value;
+    item.style.webkitTextStroke = `1px ${c}`;
+  });
+  bar.querySelector('#text-shadow-btn')?.addEventListener('click', () => {
+    const hasShadow = item.style.textShadow && item.style.textShadow !== 'none';
+    item.style.textShadow = hasShadow ? 'none' : '2px 2px 6px rgba(0,0,0,0.7)';
+  });
+  bar.querySelector('#text-rotate-input')?.addEventListener('input', (e) => {
+    const deg = e.target.value;
+    const existing = item.style.transform.replace(/rotate\([^)]*\)/g, '').trim();
+    item.style.transform = `${existing} rotate(${deg}deg)`.trim();
+  });
+  bar.querySelector('#text-italic-btn')?.addEventListener('click', () => {
+    item.style.fontStyle = item.style.fontStyle === 'italic' ? 'normal' : 'italic';
+  });
+  bar.querySelector('#text-opacity-input')?.addEventListener('input', (e) => {
+    item.style.opacity = e.target.value / 100;
+  });
 }
 
 function flattenText() {
@@ -3394,4 +3420,285 @@ function showWatermarkModal() {
   };
 
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+/* ==================== Batch Resize Dialog ==================== */
+
+function showBatchResizeDialog() {
+  const existing = document.querySelector('.photo-batch-resize-modal');
+  if (existing) { existing.remove(); return; }
+
+  const modal = document.createElement('div');
+  modal.className = 'photo-batch-resize-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:var(--bg-primary,#fff);color:var(--text-primary,#222);border-radius:12px;padding:20px 24px;max-width:480px;width:95%;box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+      <h3 style="margin:0 0 12px;font-size:16px;">Batch Resize</h3>
+      <p style="font-size:12px;color:var(--text-secondary);margin:0 0 12px;">Resize multiple images to specified dimensions and download.</p>
+      <div style="margin-bottom:12px;">
+        <button class="toolbar-btn" id="br-add">+ Add Images</button>
+        <span id="br-count" style="font-size:12px;color:var(--text-secondary);margin-left:8px;">0 images</span>
+      </div>
+      <div id="br-file-list" style="max-height:100px;overflow:auto;margin-bottom:12px;"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+        <label style="font-size:13px;">Width: <input type="number" id="br-width" value="1920" min="1" max="10000" style="width:80px;padding:4px;border:1px solid var(--border-color);border-radius:4px;"></label>
+        <label style="font-size:13px;">Height: <input type="number" id="br-height" value="1080" min="1" max="10000" style="width:80px;padding:4px;border:1px solid var(--border-color);border-radius:4px;"></label>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:13px;"><input type="checkbox" id="br-lock" checked> Lock aspect ratio (fit within bounds)</label>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+        <button class="toolbar-btn br-preset" data-w="3840" data-h="2160">4K</button>
+        <button class="toolbar-btn br-preset" data-w="1920" data-h="1080">1080p</button>
+        <button class="toolbar-btn br-preset" data-w="1280" data-h="720">720p</button>
+        <button class="toolbar-btn br-preset" data-w="800" data-h="600">800x600</button>
+        <button class="toolbar-btn br-preset" data-w="512" data-h="512">512x512</button>
+        <button class="toolbar-btn br-preset" data-w="256" data-h="256">256x256</button>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:13px;">Format: <select id="br-format" style="padding:4px;border:1px solid var(--border-color);border-radius:4px;">
+          <option value="image/jpeg">JPEG</option><option value="image/png">PNG</option><option value="image/webp">WebP</option>
+        </select></label>
+        <label style="font-size:13px;margin-left:12px;">Quality: <input type="range" id="br-quality" min="10" max="100" value="90" style="width:80px;vertical-align:middle;"> <span id="br-quality-val">90</span>%</label>
+      </div>
+      <div id="br-progress" style="display:none;height:4px;background:var(--border-color);border-radius:2px;margin-bottom:8px;overflow:hidden;">
+        <div id="br-progress-fill" style="height:100%;background:var(--brand-color,#0071e3);width:0;transition:width 0.2s;"></div>
+      </div>
+      <div id="br-status" style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="toolbar-btn" id="br-process" style="background:var(--brand-color,#0071e3);color:#fff;border-radius:6px;padding:8px 16px;">Resize & Download</button>
+        <button class="toolbar-btn" id="br-close" style="padding:8px 16px;">Close</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+  let brFiles = [];
+
+  modal.querySelector('#br-close').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  modal.querySelector('#br-quality').addEventListener('input', (e) => {
+    modal.querySelector('#br-quality-val').textContent = e.target.value;
+  });
+  modal.querySelectorAll('.br-preset').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      modal.querySelector('#br-width').value = btn.dataset.w;
+      modal.querySelector('#br-height').value = btn.dataset.h;
+    });
+  });
+  modal.querySelector('#br-add').addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*'; input.multiple = true;
+    input.style.display = 'none'; document.body.appendChild(input);
+    input.addEventListener('change', (e) => {
+      const list = modal.querySelector('#br-file-list');
+      Array.from(e.target.files).forEach((f) => {
+        brFiles.push(f);
+        const item = document.createElement('div');
+        item.style.cssText = 'display:flex;justify-content:space-between;padding:4px 8px;font-size:12px;border-bottom:1px solid var(--border-color,#eee);';
+        item.innerHTML = `<span>${f.name}</span><span>${(f.size / 1024).toFixed(0)} KB</span>`;
+        list.appendChild(item);
+      });
+      modal.querySelector('#br-count').textContent = `${brFiles.length} images`;
+      input.remove();
+    });
+    input.click();
+  });
+  modal.querySelector('#br-process').addEventListener('click', async () => {
+    if (brFiles.length === 0) { alert('Add images first'); return; }
+    const targetW = parseInt(modal.querySelector('#br-width').value) || 1920;
+    const targetH = parseInt(modal.querySelector('#br-height').value) || 1080;
+    const lock = modal.querySelector('#br-lock').checked;
+    const format = modal.querySelector('#br-format').value;
+    const quality = parseInt(modal.querySelector('#br-quality').value) / 100;
+    const progress = modal.querySelector('#br-progress');
+    const progressFill = modal.querySelector('#br-progress-fill');
+    const status = modal.querySelector('#br-status');
+    progress.style.display = 'block';
+    for (let i = 0; i < brFiles.length; i++) {
+      status.textContent = `Resizing ${i + 1} / ${brFiles.length}...`;
+      progressFill.style.width = ((i + 1) / brFiles.length * 100) + '%';
+      await _resizeAndDownload(brFiles[i], targetW, targetH, lock, format, quality);
+    }
+    status.textContent = `Done! ${brFiles.length} images resized.`;
+  });
+}
+
+const _resizeAndDownload = (file, targetW, targetH, lockAspect, format, quality) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = targetW, h = targetH;
+        if (lockAspect) {
+          const ratio = Math.min(targetW / img.width, targetH / img.height);
+          w = Math.round(img.width * ratio);
+          h = Math.round(img.height * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = file.name.replace(/\.[^.]+$/, '') + `_${w}x${h}.${format.split('/')[1]}`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+          resolve();
+        }, format, quality);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
+/* ==================== Enhanced Crop Presets Panel ==================== */
+
+function showCropPresetsPanel(anchorBtn) {
+  const existing = document.querySelector('.photo-crop-presets-panel');
+  if (existing) { existing.remove(); return; }
+
+  const presets = [
+    { label: 'Free', value: 'free' },
+    { label: '1:1 Square', value: '1:1' },
+    { label: '16:9 Widescreen', value: '16:9' },
+    { label: '4:3 Standard', value: '4:3' },
+    { label: '3:2 Photo', value: '3:2' },
+    { label: '2:3 Portrait', value: '2:3' },
+    { label: '9:16 Story', value: '9:16' },
+    { label: '5:4 Print', value: '5:4' },
+    { label: '21:9 Cinematic', value: '21:9' },
+    { label: '4:5 Instagram', value: '4:5' },
+    { label: '1.91:1 FB Cover', value: '1.91:1' },
+  ];
+
+  const panel = document.createElement('div');
+  panel.className = 'photo-crop-presets-panel';
+  panel.style.cssText = 'position:fixed;z-index:3000;background:var(--bg-primary,#fff);border:1px solid var(--border-color,#ddd);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:8px;min-width:160px;';
+  const rect = anchorBtn.getBoundingClientRect();
+  panel.style.top = (rect.bottom + 4) + 'px';
+  panel.style.left = rect.left + 'px';
+
+  panel.innerHTML = presets.map((p) =>
+    `<div class="crop-preset-item" data-val="${p.value}" style="padding:6px 12px;cursor:pointer;font-size:13px;border-radius:4px;transition:background 0.15s;" onmouseenter="this.style.background='var(--bg-secondary,#f5f5f5)'" onmouseleave="this.style.background=''">${p.label}</div>`
+  ).join('');
+
+  document.body.appendChild(panel);
+
+  panel.addEventListener('click', (e) => {
+    const item = e.target.closest('.crop-preset-item');
+    if (!item) return;
+    const val = item.dataset.val;
+    const sel = document.getElementById('crop-ratio');
+    if (sel) {
+      let optExists = Array.from(sel.options).some((o) => o.value === val);
+      if (!optExists) {
+        const opt = document.createElement('option');
+        opt.value = val; opt.textContent = val;
+        sel.appendChild(opt);
+      }
+      sel.value = val;
+    }
+    if (!cropActive) toggleCropMode();
+    if (val !== 'free') {
+      const parts = val.split(':').map(Number);
+      const ratio = parts[0] / parts[1];
+      const newH = cropRect.w / ratio;
+      cropRect.h = newH;
+      updateCropSelection();
+    }
+    panel.remove();
+  });
+
+  setTimeout(() => {
+    const close = (ev) => {
+      if (!panel.contains(ev.target) && ev.target !== anchorBtn) {
+        panel.remove(); document.removeEventListener('mousedown', close);
+      }
+    };
+    document.addEventListener('mousedown', close);
+  }, 0);
+}
+
+/* ==================== Before/After Comparison Modal ==================== */
+
+function showBeforeAfterModal() {
+  const existing = document.querySelector('.photo-ba-modal');
+  if (existing) { existing.remove(); return; }
+
+  const srcCanvas = engine.getCanvas();
+  engine.render(cloneParams(DEFAULT_PARAMS));
+  const beforeCanvas = document.createElement('canvas');
+  beforeCanvas.width = srcCanvas.width;
+  beforeCanvas.height = srcCanvas.height;
+  beforeCanvas.getContext('2d').drawImage(srcCanvas, 0, 0);
+  engine.render(currentParams);
+  const afterCanvas = document.createElement('canvas');
+  afterCanvas.width = srcCanvas.width;
+  afterCanvas.height = srcCanvas.height;
+  afterCanvas.getContext('2d').drawImage(srcCanvas, 0, 0);
+
+  const modal = document.createElement('div');
+  modal.className = 'photo-ba-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;flex-direction:column;';
+
+  const displayW = Math.min(window.innerWidth * 0.8, srcCanvas.width);
+  const ratio = displayW / srcCanvas.width;
+  const displayH = srcCanvas.height * ratio;
+
+  modal.innerHTML = `
+    <div style="position:relative;width:${displayW}px;height:${displayH}px;overflow:hidden;border-radius:8px;">
+      <canvas id="ba-before" width="${srcCanvas.width}" height="${srcCanvas.height}" style="position:absolute;top:0;left:0;width:100%;height:100%;"></canvas>
+      <canvas id="ba-after" width="${srcCanvas.width}" height="${srcCanvas.height}" style="position:absolute;top:0;left:0;width:100%;height:100%;clip-path:inset(0 50% 0 0);"></canvas>
+      <div id="ba-slider" style="position:absolute;top:0;left:50%;width:3px;height:100%;background:#fff;cursor:ew-resize;z-index:10;box-shadow:0 0 8px rgba(0,0,0,0.5);">
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:32px;height:32px;background:rgba(0,0,0,0.7);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;">&#x21D4;</div>
+      </div>
+      <div style="position:absolute;top:8px;left:12px;padding:4px 8px;background:rgba(0,0,0,0.6);color:#fff;font-size:12px;border-radius:4px;">Before</div>
+      <div style="position:absolute;top:8px;right:12px;padding:4px 8px;background:rgba(0,0,0,0.6);color:#fff;font-size:12px;border-radius:4px;">After</div>
+    </div>
+    <button style="margin-top:16px;padding:8px 24px;border:none;border-radius:8px;background:#fff;color:#222;font-size:14px;cursor:pointer;">Close</button>`;
+
+  document.body.appendChild(modal);
+  modal.querySelector('#ba-before').getContext('2d').drawImage(beforeCanvas, 0, 0);
+  modal.querySelector('#ba-after').getContext('2d').drawImage(afterCanvas, 0, 0);
+
+  const slider = modal.querySelector('#ba-slider');
+  const afterEl = modal.querySelector('#ba-after');
+  const container = slider.parentElement;
+
+  const updateSlider = (clientX) => {
+    const rect = container.getBoundingClientRect();
+    let pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    slider.style.left = (pct * 100) + '%';
+    afterEl.style.clipPath = `inset(0 ${(1 - pct) * 100}% 0 0)`;
+  };
+
+  let sliderDragging = false;
+  slider.addEventListener('mousedown', () => { sliderDragging = true; });
+  window.addEventListener('mousemove', (e) => { if (sliderDragging) updateSlider(e.clientX); });
+  window.addEventListener('mouseup', () => { sliderDragging = false; });
+  container.addEventListener('click', (e) => updateSlider(e.clientX));
+  modal.querySelector('button').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+// Wire new photo buttons
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => _bindPhotoEnhancements());
+} else {
+  setTimeout(() => _bindPhotoEnhancements(), 0);
+}
+
+function _bindPhotoEnhancements() {
+  document.getElementById('photo-batch-resize')?.addEventListener('click', () => showBatchResizeDialog());
+  document.getElementById('photo-crop-presets')?.addEventListener('click', (e) => {
+    if (imageInfo) showCropPresetsPanel(e.currentTarget);
+  });
+  document.getElementById('photo-ba-compare')?.addEventListener('click', () => {
+    if (imageInfo && engine) showBeforeAfterModal();
+  });
 }

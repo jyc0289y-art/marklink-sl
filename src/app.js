@@ -29,8 +29,13 @@ import { initI18n, setLang, getLang, showLanguagePicker, onLangChange } from './
 import { initPhotoEditor, getPhotoFileName, openPhotoFile } from './photo/photo-editor.js';
 import { initAdBanners } from './ui/ad-banner.js';
 import { initCalculator } from './calculator/calculator.js';
-import { initSnippetLibrary, initZenMode, updateEnhancedStatusBar, initShortcutOverlay, initMarkdownKeyboardShortcuts, initAutocomplete } from './editor/md-enhance.js';
+// CAD and Drawing are loaded dynamically to avoid blocking app init
+// import { initCadEditor } from './cad/cad-editor.js';
+// import { initDrawEditor } from './draw/draw-editor.js';
+import { initSnippetLibrary, initZenMode, updateEnhancedStatusBar, initShortcutOverlay, initMarkdownKeyboardShortcuts, initAutocomplete, initFocusMode, initTableEditor, initVersionSnapshots, initExportHtml } from './editor/md-enhance.js';
 import { initDocAiContextMenu, initSheetAi, initSlideAi, initMarkdownAi, initPdfAi, initPhotoAi } from './ai/ai-cowork.js';
+import { initTutorial } from './ui/tutorial.js';
+import { initPwaInstallEnhanced } from './ui/pwa-install.js';
 
 // Default welcome content
 const WELCOME_MD = `# Welcome to OfficeLink SL ✦
@@ -163,6 +168,10 @@ export async function initApp() {
   initShortcutOverlay();
   initMarkdownKeyboardShortcuts();
   initAutocomplete();
+  initFocusMode();
+  initTableEditor();
+  initVersionSnapshots();
+  initExportHtml();
   updateEnhancedStatusBar(WELCOME_MD);
 
   // 6. Initialize split pane
@@ -361,6 +370,9 @@ export async function initApp() {
   initPdfViewer();
   initPhotoEditor();
   initCalculator();
+  // Lazy-load CAD & Drawing to avoid blocking main app
+  import('./cad/cad-editor.js').then(m => m.initCadEditor()).catch(e => console.warn('CAD init skipped:', e.message));
+  import('./draw/draw-editor.js').then(m => m.initDrawEditor()).catch(e => console.warn('Draw init skipped:', e.message));
 
   // Update filename display on tab switch + AI fullscreen mode
   onTabChange((tab, prevTab) => {
@@ -458,17 +470,11 @@ export async function initApp() {
     showTabFeatureTour(tab);
   });
 
-  // 22. Tutorial button — restart tour
-  const tutorialBtn = document.getElementById('btn-tutorial');
-  if (tutorialBtn) {
-    tutorialBtn.addEventListener('click', () => {
-      localStorage.removeItem('marklink-tour-done');
-      startOnboardingTour();
-    });
-  }
+  // 22. Tutorial & Help System (guided tours, help center, F1 contextual help)
+  initTutorial();
 
-  // 23. PWA Install (Add to Home Screen / Desktop shortcut)
-  initPwaInstall();
+  // 23. PWA Install Enhanced (custom banner, platform detection, install modal)
+  initPwaInstallEnhanced();
 
   // 24-b. Feedback button
   document.getElementById('btn-feedback')?.addEventListener('click', () => {

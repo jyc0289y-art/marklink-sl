@@ -4,6 +4,8 @@
 const OLLAMA_DEFAULT = 'http://localhost:11434';
 const OLLAMA_URL_KEY = 'marklink-ollama-url';
 const OLLAMA_MODEL_KEY = 'marklink-ai-model';
+const API_KEY_STORAGE_KEY = 'marklink-ai-apikey';
+const CLOUD_ENDPOINT_KEY = 'marklink-ai-cloud-endpoint';
 
 function getOllamaBase() {
   return localStorage.getItem(OLLAMA_URL_KEY) || OLLAMA_DEFAULT;
@@ -272,4 +274,184 @@ export async function chat(model, messages, systemPrompt, onToken) {
   }
 
   return { content: fullContent, tokenStats };
+}
+
+/**
+ * Get detailed info for a specific model
+ */
+export async function getModelInfo(modelName) {
+  try {
+    const res = await fetch(`${getOllamaBase()}/api/show`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: modelName }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stream chat — yields tokens via callback, supports abort
+ * Returns { content, tokenStats, aborted }
+ */
+export async function streamChat(model, messages, systemPrompt, onToken, abortSignal) {
+  const body = {
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      ...messages,
+    ],
+    stream: true,
+  };
+
+  const headers = { 'Content-Type': 'application/json' };
+  const apiKey = getApiKey();
+  const cloudEndpoint = getCloudEndpoint();
+  const baseUrl = cloudEndpoint || getOllamaBase();
+
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
+
+  const fetchOpts = {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(cloudEndpoint ? { ...body, model } : body),
+  };
+  if (abortSignal) fetchOpts.signal = abortSignal;
+
+  const endpoint = cloudEndpoint
+    ? `${cloudEndpoint}/chat/completions`
+    : `${baseUrl}/api/chat`;
+
+  const res = await fetch(endpoint, fetchOpts);
+
+  if (!res.ok) {
+    throw new Error(`LLM error: ${res.status} ${res.statusText}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let fullContent = '';
+  let tokenStats = null;
+  let aborted = false;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const text = decoder.decode(value, { stream: true });
+
+      if (cloudEndpoint) {
+        // OpenAI-compatible SSE format
+        for (const line of text.split('\n').filter(Boolean)) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') break;
+            try {
+              const parsed = JSON.parse(data);
+              const delta = parsed.choices?.[0]?.delta?.content || '';
+              if (delta) {
+                fullContent += delta;
+                if (onToken) onToken(delta, fullContent);
+              }
+              if (parsed.usage) {
+                tokenStats = {
+                  promptTokens: parsed.usage.prompt_tokens || 0,
+                  completionTokens: parsed.usage.completion_tokens || 0,
+                  totalDurationMs: 0,
+                  model,
+                };
+              }
+            } catch { /* skip partial */ }
+          }
+        }
+      } else {
+        // Ollama format
+        for (const line of text.split('\n').filter(Boolean)) {
+          try {
+            const data = JSON.parse(line);
+            if (data.message?.content) {
+              fullContent += data.message.content;
+              if (onToken) onToken(data.message.content, fullContent);
+            }
+            if (data.done) {
+              tokenStats = {
+                promptTokens: data.prompt_eval_count || 0,
+                completionTokens: data.eval_count || 0,
+                totalDurationMs: Math.round((data.total_duration || 0) / 1_000_000),
+                model,
+              };
+            }
+          } catch { /* skip partial JSON */ }
+        }
+      }
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      aborted = true;
+    } else {
+      throw e;
+    }
+  }
+
+  return { content: fullContent, tokenStats, aborted };
+}
+
+// ─── API Key / Cloud Endpoint Support ───────────────────
+
+export function setApiKey(key) {
+  if (key && key.trim()) {
+    localStorage.setItem(API_KEY_STORAGE_KEY, key.trim());
+  } else {
+    localStorage.removeItem(API_KEY_STORAGE_KEY);
+  }
+}
+
+export function getApiKey() {
+  return localStorage.getItem(API_KEY_STORAGE_KEY) || '';
+}
+
+export function setCloudEndpoint(url) {
+  if (url && url.trim()) {
+    localStorage.setItem(CLOUD_ENDPOINT_KEY, url.trim().replace(/\/+$/, ''));
+  } else {
+    localStorage.removeItem(CLOUD_ENDPOINT_KEY);
+  }
+}
+
+export function getCloudEndpoint() {
+  return localStorage.getItem(CLOUD_ENDPOINT_KEY) || '';
+}
+
+/**
+ * Measure connection latency to Ollama
+ */
+export async function measureLatency() {
+  const base = getOllamaBase();
+  const start = performance.now();
+  try {
+    await fetch(base, { signal: AbortSignal.timeout(5000) });
+    return Math.round(performance.now() - start);
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * Get Ollama server version
+ */
+export async function getServerVersion() {
+  try {
+    const res = await fetch(`${getOllamaBase()}/api/version`, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.version || null;
+  } catch {
+    return null;
+  }
 }

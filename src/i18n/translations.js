@@ -11,6 +11,7 @@ export const TRANSLATIONS = {
   'tab.markdown': { en: 'Markdown', ko: '마크다운', ja: 'マークダウン', zh: 'Markdown', es: 'Markdown', fr: 'Markdown', de: 'Markdown' },
   'tab.photo': { en: 'Photo', ko: '사진', ja: '写真', zh: '照片', es: 'Foto', fr: 'Photo', de: 'Foto' },
   'tab.calc': { en: 'Calc', ko: '계산기', ja: '計算機', zh: '计算器', es: 'Calc', fr: 'Calc', de: 'Rechner' },
+  'tab.cad': { en: '3D CAD', ko: '3D CAD', ja: '3D CAD', zh: '3D CAD', es: '3D CAD', fr: '3D CAO', de: '3D CAD' },
   'tab.ai': { en: 'AI', ko: 'AI', ja: 'AI', zh: 'AI', es: 'IA', fr: 'IA', de: 'KI' },
 
   // ===== MAIN TOOLBAR =====

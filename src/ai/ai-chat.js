@@ -4,7 +4,9 @@
 import {
   checkOllamaStatus, listModels, pullModel, chat, testConnection,
   MODEL_TIERS, getRecommendedTier, isVisionModel, formatModelSize,
-  setOllamaUrl, getOllamaUrl, saveSelectedModel, getSavedModel
+  setOllamaUrl, getOllamaUrl, saveSelectedModel, getSavedModel,
+  setApiKey, getApiKey, setCloudEndpoint, getCloudEndpoint,
+  measureLatency, getServerVersion, getModelInfo, streamChat
 } from './ollama-client.js';
 import { t } from '../ui/i18n.js';
 
@@ -17,6 +19,8 @@ let selectedModel = '';
 let ollamaReady = false;
 let isSending = false; // prevent duplicate sends
 let pendingImages = []; // base64 images to attach to next message (for vision models)
+let isOffline = false; // offline mode tracking
+let offlineQueue = []; // queued messages when offline
 
 // ─── Office context providers (set by app.js) ──────────
 let contextProviders = {};
@@ -119,6 +123,15 @@ export function initAiChat() {
 
   // ─── URL Settings Panel ───────────────────────────────
   initUrlSettings();
+
+  // ─── API Key / Cloud Endpoint Settings ─────────────────
+  initApiKeySettings();
+
+  // ─── Offline Mode Detection ────────────────────────────
+  initOfflineDetection();
+
+  // ─── Diagnostics Panel ─────────────────────────────────
+  document.getElementById('ai-diagnostics-btn')?.addEventListener('click', () => showDiagnosticsPanel());
 
   // Check Ollama status & restore session
   checkStatus().then(() => restoreLastSession());
@@ -315,12 +328,244 @@ function showCorsHelp() {
   });
 }
 
+// ─── API Key / Cloud Endpoint Settings ────────────────────
+
+function initApiKeySettings() {
+  const apiKeyInput = document.getElementById('ai-apikey-input');
+  const cloudInput = document.getElementById('ai-cloud-endpoint-input');
+  const saveApiBtn = document.getElementById('ai-apikey-save-btn');
+  const clearApiBtn = document.getElementById('ai-apikey-clear-btn');
+
+  if (apiKeyInput) apiKeyInput.value = getApiKey() ? '••••••••' : '';
+  if (cloudInput) cloudInput.value = getCloudEndpoint();
+
+  if (saveApiBtn) {
+    saveApiBtn.addEventListener('click', () => {
+      const key = apiKeyInput?.value?.trim();
+      const endpoint = cloudInput?.value?.trim();
+      if (key && key !== '••••••••') setApiKey(key);
+      if (endpoint) setCloudEndpoint(endpoint);
+      addSystemMessage('Cloud LLM settings saved.');
+      showToast('API key and endpoint saved');
+    });
+  }
+
+  if (clearApiBtn) {
+    clearApiBtn.addEventListener('click', () => {
+      setApiKey('');
+      setCloudEndpoint('');
+      if (apiKeyInput) apiKeyInput.value = '';
+      if (cloudInput) cloudInput.value = '';
+      addSystemMessage('Cloud LLM settings cleared. Using local Ollama.');
+      showToast('Cloud settings cleared');
+    });
+  }
+}
+
+// ─── Offline Mode Detection ──────────────────────────────
+
+function initOfflineDetection() {
+  const updateOfflineStatus = () => {
+    isOffline = !navigator.onLine && !ollamaReady;
+    updateOfflineIndicator();
+  };
+
+  window.addEventListener('online', () => {
+    isOffline = false;
+    updateOfflineIndicator();
+    // Try to send queued messages
+    if (offlineQueue.length > 0) {
+      addSystemMessage(`Back online. ${offlineQueue.length} queued message(s) will be sent.`);
+      processOfflineQueue();
+    }
+    checkStatus();
+  });
+
+  window.addEventListener('offline', () => {
+    if (!ollamaReady) {
+      isOffline = true;
+      updateOfflineIndicator();
+    }
+  });
+
+  updateOfflineStatus();
+}
+
+function updateOfflineIndicator() {
+  let indicator = document.getElementById('ai-offline-indicator');
+  if (isOffline) {
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.id = 'ai-offline-indicator';
+      indicator.className = 'ai-offline-indicator';
+      indicator.innerHTML = `<span class="ai-offline-dot"></span> Offline${offlineQueue.length > 0 ? ` (${offlineQueue.length} queued)` : ''}`;
+      const header = document.querySelector('.ai-panel-header');
+      if (header) header.after(indicator);
+    } else {
+      indicator.innerHTML = `<span class="ai-offline-dot"></span> Offline${offlineQueue.length > 0 ? ` (${offlineQueue.length} queued)` : ''}`;
+    }
+  } else {
+    indicator?.remove();
+  }
+}
+
+const processOfflineQueue = async () => {
+  while (offlineQueue.length > 0) {
+    const msg = offlineQueue.shift();
+    updateOfflineIndicator();
+    chatInputEl.value = msg;
+    await sendMessage();
+  }
+};
+
+// ─── Diagnostics Panel ───────────────────────────────────
+
+async function showDiagnosticsPanel() {
+  document.querySelector('.ai-diagnostics-modal')?.remove();
+
+  const modal = document.createElement('div');
+  modal.className = 'ai-setup-modal ai-diagnostics-modal';
+  modal.innerHTML = `
+    <div class="ai-setup-content" style="max-width:480px">
+      <div class="ai-setup-header">
+        <h3>AI Connection Diagnostics</h3>
+        <button class="ai-setup-close">&times;</button>
+      </div>
+      <div class="ai-setup-body">
+        <div class="ai-diag-section">
+          <h4 style="font-size:13px;margin:0 0 8px">System</h4>
+          <div class="ai-diag-row"><span>Platform</span><span id="diag-platform">Detecting...</span></div>
+          <div class="ai-diag-row"><span>Browser</span><span id="diag-browser">${navigator.userAgent.split(' ').pop()}</span></div>
+          <div class="ai-diag-row"><span>Online</span><span id="diag-online">${navigator.onLine ? 'Yes' : 'No'}</span></div>
+        </div>
+        <div class="ai-diag-section">
+          <h4 style="font-size:13px;margin:0 0 8px">Ollama Connection</h4>
+          <div class="ai-diag-row"><span>URL</span><span id="diag-url">${getOllamaUrl()}</span></div>
+          <div class="ai-diag-row"><span>Status</span><span id="diag-status">Testing...</span></div>
+          <div class="ai-diag-row"><span>Latency</span><span id="diag-latency">Measuring...</span></div>
+          <div class="ai-diag-row"><span>Version</span><span id="diag-version">Checking...</span></div>
+        </div>
+        <div class="ai-diag-section">
+          <h4 style="font-size:13px;margin:0 0 8px">Models</h4>
+          <div id="diag-models" style="font-size:12px;color:var(--text-secondary)">Loading...</div>
+        </div>
+        <div class="ai-diag-section">
+          <h4 style="font-size:13px;margin:0 0 8px">Cloud Endpoint</h4>
+          <div class="ai-diag-row"><span>Endpoint</span><span id="diag-cloud">${getCloudEndpoint() || 'Not configured'}</span></div>
+          <div class="ai-diag-row"><span>API Key</span><span id="diag-apikey">${getApiKey() ? 'Set' : 'Not set'}</span></div>
+        </div>
+        <button class="ai-pull-btn" id="diag-refresh" style="margin-top:12px;width:100%">Refresh Diagnostics</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+  modal.querySelector('.ai-setup-close')?.addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+  const runDiagnostics = async () => {
+    // Platform
+    const platform = detectPlatform();
+    const platformEl = modal.querySelector('#diag-platform');
+    if (platformEl) platformEl.textContent = `${platform.os} (${platform.arch})`;
+
+    // Status
+    const status = await checkOllamaStatus();
+    const statusEl = modal.querySelector('#diag-status');
+    if (statusEl) {
+      statusEl.textContent = status.running ? 'Connected' : (status.corsError ? 'CORS Error' : 'Not Connected');
+      statusEl.style.color = status.running ? '#4caf50' : '#f44336';
+    }
+
+    // Latency
+    const latency = await measureLatency();
+    const latencyEl = modal.querySelector('#diag-latency');
+    if (latencyEl) {
+      latencyEl.textContent = latency >= 0 ? `${latency}ms` : 'Unreachable';
+      latencyEl.style.color = latency >= 0 ? (latency < 100 ? '#4caf50' : latency < 500 ? '#ff9800' : '#f44336') : '#f44336';
+    }
+
+    // Version
+    const version = await getServerVersion();
+    const versionEl = modal.querySelector('#diag-version');
+    if (versionEl) versionEl.textContent = version || 'Unknown';
+
+    // Models
+    if (status.running) {
+      const models = await listModels();
+      const modelsEl = modal.querySelector('#diag-models');
+      if (modelsEl) {
+        modelsEl.innerHTML = models.length === 0
+          ? 'No models installed'
+          : models.map((m) => `<div style="padding:2px 0"><strong>${m.name}</strong> <span style="opacity:0.6">${formatModelSize(m.size)}</span></div>`).join('');
+      }
+    }
+  };
+
+  runDiagnostics();
+  modal.querySelector('#diag-refresh')?.addEventListener('click', () => runDiagnostics());
+}
+
+// ─── Enhanced Platform Detection ─────────────────────────
+
+function detectPlatform() {
+  const ua = navigator.userAgent.toLowerCase();
+  const platform = navigator.platform?.toLowerCase() || '';
+
+  let os = 'Unknown';
+  if (ua.includes('mac') || platform.includes('mac')) os = 'macOS';
+  else if (ua.includes('win') || platform.includes('win')) os = 'Windows';
+  else if (ua.includes('linux') || platform.includes('linux')) os = 'Linux';
+  else if (ua.includes('android')) os = 'Android';
+  else if (ua.includes('iphone') || ua.includes('ipad')) os = 'iOS';
+
+  let arch = 'x86_64';
+  if (ua.includes('arm') || ua.includes('aarch64') || (os === 'macOS' && !ua.includes('intel'))) arch = 'ARM64';
+
+  return { os, arch, ua };
+}
+
+function getInstallCommands() {
+  const { os } = detectPlatform();
+  const commands = {
+    macOS: {
+      download: 'https://ollama.com/download/Ollama-darwin.zip',
+      install: 'Open Ollama.app from Applications',
+      pull: 'ollama pull qwen2.5:7b',
+      cors: 'launchctl setenv OLLAMA_ORIGINS "*"',
+      terminal: 'Press Cmd+Space, type "Terminal", press Enter',
+    },
+    Windows: {
+      download: 'https://ollama.com/download/OllamaSetup.exe',
+      install: 'Double-click OllamaSetup.exe and follow prompts',
+      pull: 'ollama pull qwen2.5:7b',
+      cors: 'setx OLLAMA_ORIGINS "*"',
+      terminal: 'Press Win+R, type "cmd", press Enter',
+    },
+    Linux: {
+      download: 'curl -fsSL https://ollama.com/install.sh | sh',
+      install: 'Run the install script above, then: ollama serve',
+      pull: 'ollama pull qwen2.5:7b',
+      cors: 'OLLAMA_ORIGINS="*" ollama serve',
+      terminal: 'Open your terminal emulator',
+    },
+  };
+  return commands[os] || commands.Linux;
+}
+
 async function checkStatus() {
   const status = await checkOllamaStatus();
   ollamaReady = status.running;
   updateStatusUI(status.running, status.corsError);
   updateUrlStatusDot();
   updateStatusBarWidget(status.running);
+
+  // Check if cloud endpoint is configured as fallback
+  if (!status.running && getCloudEndpoint() && getApiKey()) {
+    ollamaReady = true;
+    updateStatusUI(true, false);
+    updateStatusBarWidget(true);
+    addSystemMessage('Using cloud LLM endpoint.');
+  }
 
   if (status.running) {
     const models = await listModels();
@@ -481,6 +726,15 @@ async function sendMessage() {
   if (isSending) return; // prevent duplicate sends
   const text = chatInputEl?.value?.trim();
   if (!text) return;
+
+  if (isOffline) {
+    offlineQueue.push(text);
+    chatInputEl.value = '';
+    addUserMessage(text);
+    addSystemMessage(`Message queued (${offlineQueue.length} pending). Will send when back online.`);
+    updateOfflineIndicator();
+    return;
+  }
 
   if (!ollamaReady) {
     addSystemMessage('Ollama is not running. Click "AI Setup" to install and start.');
@@ -1317,4 +1571,8 @@ function exitAiFullscreen() {
 }
 
 // Export for external use
-export { togglePanel as toggleAiPanel, showSessionsModal, enterAiFullscreen, exitAiFullscreen };
+export {
+  togglePanel as toggleAiPanel, showSessionsModal,
+  enterAiFullscreen, exitAiFullscreen,
+  showDiagnosticsPanel, detectPlatform, getInstallCommands
+};

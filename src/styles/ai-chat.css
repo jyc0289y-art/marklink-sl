@@ -830,6 +830,54 @@ kbd {
   box-shadow: 0 1px 0 var(--border-color);
 }
 
+/* ─── Offline Indicator ─── */
+.ai-offline-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 152, 0, 0.1);
+  border-bottom: 1px solid rgba(255, 152, 0, 0.3);
+  font-size: 12px;
+  color: #ff9800;
+}
+.ai-offline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff9800;
+  animation: ai-offline-pulse 2s ease-in-out infinite;
+}
+@keyframes ai-offline-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ─── Diagnostics Panel ─── */
+.ai-diag-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--sidebar-bg);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+.ai-diag-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+.ai-diag-row:last-child { border-bottom: none; }
+.ai-diag-row span:first-child {
+  color: var(--text-secondary);
+}
+.ai-diag-row span:last-child {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .ai-panel {

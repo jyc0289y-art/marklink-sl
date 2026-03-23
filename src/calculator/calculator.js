@@ -2916,3 +2916,441 @@ function modPow(base, exp, mod) {
   }
   return result;
 }
+
+/* ==================== Physics Calculator ==================== */
+
+const PHYSICS_FORMULAS = {
+  kinematics: [
+    { name: 'Velocity', formula: 'v = v0 + a*t', inputs: ['v0|Initial velocity (m/s)', 'a|Acceleration (m/s²)', 't|Time (s)'], calc: (v) => ({ result: v.v0 + v.a * v.t, label: 'Final velocity', unit: 'm/s' }) },
+    { name: 'Displacement', formula: 's = v0*t + ½a*t²', inputs: ['v0|Initial velocity (m/s)', 'a|Acceleration (m/s²)', 't|Time (s)'], calc: (v) => ({ result: v.v0 * v.t + 0.5 * v.a * v.t * v.t, label: 'Displacement', unit: 'm' }) },
+    { name: 'v² = v0² + 2as', formula: 'v² = v0² + 2as', inputs: ['v0|Initial velocity (m/s)', 'a|Acceleration (m/s²)', 's|Displacement (m)'], calc: (v) => ({ result: Math.sqrt(v.v0 * v.v0 + 2 * v.a * v.s), label: 'Final velocity', unit: 'm/s' }) },
+    { name: 'Free Fall', formula: 'h = ½g*t² (g=9.81)', inputs: ['t|Time (s)'], calc: (v) => ({ result: 0.5 * 9.81 * v.t * v.t, label: 'Height fallen', unit: 'm' }) },
+    { name: 'Projectile Range', formula: 'R = v²sin(2θ)/g', inputs: ['v|Launch speed (m/s)', 'theta|Angle (°)'], calc: (v) => ({ result: (v.v * v.v * Math.sin(2 * v.theta * Math.PI / 180)) / 9.81, label: 'Range', unit: 'm' }) },
+  ],
+  forces: [
+    { name: "Newton's 2nd Law", formula: 'F = m*a', inputs: ['m|Mass (kg)', 'a|Acceleration (m/s²)'], calc: (v) => ({ result: v.m * v.a, label: 'Force', unit: 'N' }) },
+    { name: 'Weight', formula: 'W = m*g', inputs: ['m|Mass (kg)'], calc: (v) => ({ result: v.m * 9.81, label: 'Weight', unit: 'N' }) },
+    { name: 'Friction', formula: 'f = μ*N', inputs: ['mu|Coeff. of friction', 'N|Normal force (N)'], calc: (v) => ({ result: v.mu * v.N, label: 'Friction force', unit: 'N' }) },
+    { name: 'Centripetal Force', formula: 'F = mv²/r', inputs: ['m|Mass (kg)', 'v|Velocity (m/s)', 'r|Radius (m)'], calc: (v) => ({ result: v.m * v.v * v.v / v.r, label: 'Centripetal force', unit: 'N' }) },
+    { name: 'Gravitational Force', formula: 'F = G*m1*m2/r²', inputs: ['m1|Mass 1 (kg)', 'm2|Mass 2 (kg)', 'r|Distance (m)'], calc: (v) => ({ result: 6.674e-11 * v.m1 * v.m2 / (v.r * v.r), label: 'Gravitational force', unit: 'N' }) },
+  ],
+  electricity: [
+    { name: "Ohm's Law (V)", formula: 'V = I*R', inputs: ['I|Current (A)', 'R|Resistance (Ω)'], calc: (v) => ({ result: v.I * v.R, label: 'Voltage', unit: 'V' }) },
+    { name: "Ohm's Law (I)", formula: 'I = V/R', inputs: ['V|Voltage (V)', 'R|Resistance (Ω)'], calc: (v) => ({ result: v.V / v.R, label: 'Current', unit: 'A' }) },
+    { name: 'Power', formula: 'P = V*I', inputs: ['V|Voltage (V)', 'I|Current (A)'], calc: (v) => ({ result: v.V * v.I, label: 'Power', unit: 'W' }) },
+    { name: 'Power (R)', formula: 'P = I²R', inputs: ['I|Current (A)', 'R|Resistance (Ω)'], calc: (v) => ({ result: v.I * v.I * v.R, label: 'Power', unit: 'W' }) },
+    { name: "Coulomb's Law", formula: 'F = k*q1*q2/r²', inputs: ['q1|Charge 1 (C)', 'q2|Charge 2 (C)', 'r|Distance (m)'], calc: (v) => ({ result: 8.9875e9 * v.q1 * v.q2 / (v.r * v.r), label: 'Force', unit: 'N' }) },
+    { name: 'Capacitance Energy', formula: 'E = ½CV²', inputs: ['C|Capacitance (F)', 'V|Voltage (V)'], calc: (v) => ({ result: 0.5 * v.C * v.V * v.V, label: 'Energy', unit: 'J' }) },
+  ],
+  energy: [
+    { name: 'Kinetic Energy', formula: 'KE = ½mv²', inputs: ['m|Mass (kg)', 'v|Velocity (m/s)'], calc: (v) => ({ result: 0.5 * v.m * v.v * v.v, label: 'Kinetic energy', unit: 'J' }) },
+    { name: 'Potential Energy', formula: 'PE = mgh', inputs: ['m|Mass (kg)', 'h|Height (m)'], calc: (v) => ({ result: v.m * 9.81 * v.h, label: 'Potential energy', unit: 'J' }) },
+    { name: 'Work', formula: 'W = F*d*cos(θ)', inputs: ['F|Force (N)', 'd|Distance (m)', 'theta|Angle (°)'], calc: (v) => ({ result: v.F * v.d * Math.cos(v.theta * Math.PI / 180), label: 'Work done', unit: 'J' }) },
+    { name: 'Power (energy)', formula: 'P = W/t', inputs: ['W|Work/Energy (J)', 't|Time (s)'], calc: (v) => ({ result: v.W / v.t, label: 'Power', unit: 'W' }) },
+    { name: 'E = mc²', formula: 'E = mc²', inputs: ['m|Mass (kg)'], calc: (v) => ({ result: v.m * 299792458 * 299792458, label: 'Energy', unit: 'J' }) },
+  ],
+  waves: [
+    { name: 'Wave Speed', formula: 'v = f*λ', inputs: ['f|Frequency (Hz)', 'lambda|Wavelength (m)'], calc: (v) => ({ result: v.f * v.lambda, label: 'Wave speed', unit: 'm/s' }) },
+    { name: 'Period', formula: 'T = 1/f', inputs: ['f|Frequency (Hz)'], calc: (v) => ({ result: 1 / v.f, label: 'Period', unit: 's' }) },
+    { name: 'Photon Energy', formula: 'E = h*f', inputs: ['f|Frequency (Hz)'], calc: (v) => ({ result: 6.626e-34 * v.f, label: 'Energy', unit: 'J' }) },
+    { name: 'dB Level', formula: 'dB = 10*log10(P/P0)', inputs: ['P|Power (W)', 'P0|Reference Power (W)'], calc: (v) => ({ result: 10 * Math.log10(v.P / v.P0), label: 'Level', unit: 'dB' }) },
+    { name: 'Doppler (approaching)', formula: "f' = f*(v+vo)/(v-vs)", inputs: ['f|Source freq (Hz)', 'vs|Source speed (m/s)', 'vo|Observer speed (m/s)'], calc: (v) => ({ result: v.f * (343 + v.vo) / (343 - v.vs), label: 'Observed freq', unit: 'Hz' }) },
+  ],
+};
+
+let physicsSelectedCat = 'kinematics';
+let physicsSelectedFormula = 0;
+
+function initPhysicsCalc() {
+  document.querySelectorAll('.calc-physics-cat').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.calc-physics-cat').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      physicsSelectedCat = btn.dataset.cat;
+      physicsSelectedFormula = 0;
+      renderPhysicsFormulas();
+      renderPhysicsInputs();
+    });
+  });
+
+  document.getElementById('calc-physics-compute')?.addEventListener('click', () => computePhysics());
+
+  renderPhysicsFormulas();
+  renderPhysicsInputs();
+}
+
+function renderPhysicsFormulas() {
+  const container = document.getElementById('calc-physics-formulas');
+  if (!container) return;
+  const formulas = PHYSICS_FORMULAS[physicsSelectedCat] || [];
+  container.innerHTML = formulas.map((f, i) =>
+    `<button class="toolbar-btn calc-phys-formula${i === physicsSelectedFormula ? ' active' : ''}" data-idx="${i}" style="font-size:12px;margin:2px;">${f.name}: <code>${f.formula}</code></button>`
+  ).join('');
+
+  container.querySelectorAll('.calc-phys-formula').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      physicsSelectedFormula = parseInt(btn.dataset.idx);
+      renderPhysicsFormulas();
+      renderPhysicsInputs();
+    });
+  });
+}
+
+function renderPhysicsInputs() {
+  const container = document.getElementById('calc-physics-inputs');
+  if (!container) return;
+  const formulas = PHYSICS_FORMULAS[physicsSelectedCat] || [];
+  const formula = formulas[physicsSelectedFormula];
+  if (!formula) { container.innerHTML = ''; return; }
+
+  container.innerHTML = `
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${formula.name}: <code>${formula.formula}</code></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;">
+      ${formula.inputs.map((inp) => {
+        const [key, label] = inp.split('|');
+        return `<label style="font-size:12px;display:flex;flex-direction:column;gap:2px;">
+          ${label}
+          <input type="number" class="calc-physics-input" data-key="${key}" value="0" style="padding:6px 8px;border:1px solid var(--border-color,#ddd);border-radius:4px;font-size:13px;" step="any">
+        </label>`;
+      }).join('')}
+    </div>`;
+}
+
+function computePhysics() {
+  const formulas = PHYSICS_FORMULAS[physicsSelectedCat] || [];
+  const formula = formulas[physicsSelectedFormula];
+  if (!formula) return;
+
+  const values = {};
+  document.querySelectorAll('.calc-physics-input').forEach((inp) => {
+    values[inp.dataset.key] = parseFloat(inp.value) || 0;
+  });
+
+  try {
+    const res = formula.calc(values);
+    const resultEl = document.getElementById('calc-physics-result');
+    if (resultEl) {
+      resultEl.style.display = 'block';
+      resultEl.innerHTML = `
+        <div style="font-size:14px;font-weight:600;color:var(--brand-color,#0071e3);">${res.label}: ${res.result.toLocaleString('en-US', { maximumFractionDigits: 6 })} ${res.unit}</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">Formula: ${formula.formula}</div>`;
+    }
+  } catch (e) {
+    const resultEl = document.getElementById('calc-physics-result');
+    if (resultEl) {
+      resultEl.style.display = 'block';
+      resultEl.innerHTML = `<div style="color:#e74c3c;">Error: ${e.message}</div>`;
+    }
+  }
+}
+
+// Init physics on load
+setTimeout(() => initPhysicsCalc(), 0);
+
+/* ==================== Financial Calculator Chart Enhancement ==================== */
+
+function renderFinanceChart(type, data) {
+  const container = document.getElementById('calc-fin-chart');
+  if (!container) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 500;
+  canvas.height = 200;
+  container.innerHTML = '';
+  container.appendChild(canvas);
+
+  const ctx = canvas.getContext('2d');
+  const maxVal = Math.max(...data.map((d) => d.value));
+  const barW = (canvas.width - 40) / data.length;
+
+  // Background
+  ctx.fillStyle = 'var(--bg-secondary, #f5f5f5)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Bars
+  data.forEach((d, i) => {
+    const barH = (d.value / maxVal) * (canvas.height - 40);
+    const x = 20 + i * barW;
+    const y = canvas.height - 20 - barH;
+
+    ctx.fillStyle = d.color || '#0071e3';
+    ctx.fillRect(x + 2, y, barW - 4, barH);
+
+    // Label
+    if (data.length <= 20 || i % Math.ceil(data.length / 10) === 0) {
+      ctx.fillStyle = '#666';
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(d.label, x + barW / 2, canvas.height - 4);
+    }
+  });
+
+  // Title
+  ctx.fillStyle = '#333';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(type, 4, 14);
+}
+
+// Enhance existing compound interest with chart
+const _origCiCompute = document.getElementById('calc-fin-ci-compute');
+if (_origCiCompute) {
+  _origCiCompute.addEventListener('click', () => {
+    setTimeout(() => {
+      const P = parseFloat(document.getElementById('calc-fin-principal')?.value) || 0;
+      const r = (parseFloat(document.getElementById('calc-fin-rate')?.value) || 0) / 100;
+      const t = parseFloat(document.getElementById('calc-fin-years')?.value) || 0;
+      const n = parseInt(document.getElementById('calc-fin-compound')?.value) || 12;
+      const add = parseFloat(document.getElementById('calc-fin-addition')?.value) || 0;
+
+      if (t <= 0 || P <= 0) return;
+      const chartData = [];
+      for (let yr = 1; yr <= Math.min(t, 50); yr++) {
+        const rn = r / n;
+        const nt = n * yr;
+        const cf = Math.pow(1 + rn, nt);
+        const total = P * cf + (rn > 0 ? add * ((cf - 1) / rn) : add * nt);
+        chartData.push({ label: `Y${yr}`, value: total, color: '#0071e3' });
+      }
+
+      // Create chart container if missing
+      let chartEl = document.getElementById('calc-fin-chart');
+      if (!chartEl) {
+        chartEl = document.createElement('div');
+        chartEl.id = 'calc-fin-chart';
+        chartEl.style.cssText = 'margin-top:12px;border-radius:8px;overflow:hidden;';
+        document.getElementById('calc-fin-ci-result')?.after(chartEl);
+      }
+      renderFinanceChart('Compound Interest Growth', chartData);
+    }, 50);
+  });
+}
+
+// Enhance loan with amortization chart
+const _origLoanCompute = document.getElementById('calc-fin-loan-compute');
+if (_origLoanCompute) {
+  _origLoanCompute.addEventListener('click', () => {
+    setTimeout(() => {
+      const P = parseFloat(document.getElementById('calc-fin-loan-amt')?.value) || 0;
+      const rMonthly = (parseFloat(document.getElementById('calc-fin-loan-rate')?.value) || 0) / 100 / 12;
+      const nMonths = (parseFloat(document.getElementById('calc-fin-loan-term')?.value) || 0) * 12;
+
+      if (nMonths <= 0 || P <= 0) return;
+      const pmt = rMonthly > 0 ? (P * rMonthly * Math.pow(1 + rMonthly, nMonths)) / (Math.pow(1 + rMonthly, nMonths) - 1) : P / nMonths;
+      let balance = P;
+      const chartData = [];
+      for (let m = 1; m <= Math.min(nMonths, 360); m++) {
+        const interest = balance * rMonthly;
+        const principal = pmt - interest;
+        balance = Math.max(0, balance - principal);
+        if (m % 12 === 0 || m === 1) {
+          chartData.push({ label: `Y${Math.ceil(m / 12)}`, value: balance, color: '#e74c3c' });
+        }
+      }
+
+      let chartEl = document.getElementById('calc-fin-loan-chart');
+      if (!chartEl) {
+        chartEl = document.createElement('div');
+        chartEl.id = 'calc-fin-loan-chart';
+        chartEl.style.cssText = 'margin-top:12px;border-radius:8px;overflow:hidden;';
+        document.getElementById('calc-fin-loan-result')?.after(chartEl);
+      }
+
+      // Render amortization schedule chart
+      const canvas = document.createElement('canvas');
+      canvas.width = 500; canvas.height = 200;
+      chartEl.innerHTML = '';
+      chartEl.appendChild(canvas);
+      const ctx = canvas.getContext('2d');
+      const maxVal = P;
+      const barW = (canvas.width - 40) / chartData.length;
+      ctx.fillStyle = '#fafafa';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      chartData.forEach((d, i) => {
+        const barH = (d.value / maxVal) * (canvas.height - 40);
+        const x = 20 + i * barW;
+        ctx.fillStyle = '#e74c3c';
+        ctx.fillRect(x + 2, canvas.height - 20 - barH, barW - 4, barH);
+        ctx.fillStyle = '#666'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(d.label, x + barW / 2, canvas.height - 4);
+      });
+      ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText('Loan Balance Over Time', 4, 14);
+    }, 50);
+  });
+}
+
+/* ==================== Matrix Operations Enhancement ==================== */
+
+// Add visual grid improvements and new operations (already exists in initMatrixCalc)
+// We enhance by adding eigenvalue approximation and matrix info display
+
+function enhanceMatrixCalc() {
+  const computeBtn = document.getElementById('calc-matrix-compute');
+  if (!computeBtn) return;
+
+  // Add additional info after compute
+  computeBtn.addEventListener('click', () => {
+    setTimeout(() => {
+      const sizeSelect = document.getElementById('calc-matrix-size');
+      const opSelect = document.getElementById('calc-matrix-op');
+      if (!sizeSelect) return;
+      const n = parseInt(sizeSelect.value);
+      const op = opSelect?.value;
+
+      // Read matrix A
+      const aInputs = document.getElementById('calc-matrix-a')?.querySelectorAll('input');
+      if (!aInputs) return;
+      const matA = [];
+      for (let r = 0; r < n; r++) {
+        matA[r] = [];
+        for (let c = 0; c < n; c++) {
+          matA[r][c] = parseFloat(aInputs[r * n + c]?.value) || 0;
+        }
+      }
+
+      // Show matrix properties
+      let infoEl = document.getElementById('calc-matrix-info');
+      if (!infoEl) {
+        infoEl = document.createElement('div');
+        infoEl.id = 'calc-matrix-info';
+        infoEl.style.cssText = 'margin-top:12px;padding:12px;background:var(--bg-secondary,#f5f5f5);border-radius:8px;font-size:12px;';
+        document.getElementById('calc-matrix-result')?.after(infoEl);
+      }
+
+      const det = matrixDet(matA);
+      const trace = matA.reduce((s, row, i) => s + row[i], 0);
+      const isSymmetric = matA.every((row, r) => row.every((v, c) => Math.abs(v - matA[c][r]) < 1e-10));
+      const rank = estimateRank(matA);
+
+      infoEl.innerHTML = `
+        <div style="font-weight:600;margin-bottom:4px;">Matrix A Properties:</div>
+        <div>Determinant: <strong>${det.toFixed(6)}</strong></div>
+        <div>Trace: <strong>${trace.toFixed(6)}</strong></div>
+        <div>Rank: <strong>${rank}</strong></div>
+        <div>Symmetric: <strong>${isSymmetric ? 'Yes' : 'No'}</strong></div>
+        <div>Singular: <strong>${Math.abs(det) < 1e-10 ? 'Yes' : 'No'}</strong></div>
+        ${n <= 3 ? `<div>Frobenius Norm: <strong>${Math.sqrt(matA.flat().reduce((s, v) => s + v * v, 0)).toFixed(6)}</strong></div>` : ''}
+      `;
+    }, 50);
+  });
+}
+
+function matrixDet(m) {
+  const n = m.length;
+  if (n === 1) return m[0][0];
+  if (n === 2) return m[0][0] * m[1][1] - m[0][1] * m[1][0];
+  let det = 0;
+  for (let c = 0; c < n; c++) {
+    const sub = m.slice(1).map((row) => row.filter((_, j) => j !== c));
+    det += (c % 2 === 0 ? 1 : -1) * m[0][c] * matrixDet(sub);
+  }
+  return det;
+}
+
+function estimateRank(m) {
+  const n = m.length;
+  // Simple row echelon form rank estimate
+  const copy = m.map((r) => [...r]);
+  let rank = 0;
+  for (let col = 0; col < n && rank < n; col++) {
+    let pivot = -1;
+    for (let row = rank; row < n; row++) {
+      if (Math.abs(copy[row][col]) > 1e-10) { pivot = row; break; }
+    }
+    if (pivot === -1) continue;
+    [copy[rank], copy[pivot]] = [copy[pivot], copy[rank]];
+    const scale = copy[rank][col];
+    for (let row = rank + 1; row < n; row++) {
+      const factor = copy[row][col] / scale;
+      for (let c = col; c < n; c++) {
+        copy[row][c] -= factor * copy[rank][c];
+      }
+    }
+    rank++;
+  }
+  return rank;
+}
+
+setTimeout(() => enhanceMatrixCalc(), 100);
+
+/* ==================== History Tags and Search ==================== */
+
+function initHistorySearch() {
+  const searchInput = document.getElementById('calc-history-search');
+  if (!searchInput) return;
+
+  searchInput.addEventListener('input', () => {
+    const q = searchInput.value.toLowerCase();
+    const items = document.querySelectorAll('.calc-history-item');
+    items.forEach((item) => {
+      const text = item.textContent.toLowerCase();
+      item.style.display = text.includes(q) ? '' : 'none';
+    });
+  });
+}
+
+function initHistoryTags() {
+  // Auto-generate tags from history expressions
+  const tagsEl = document.getElementById('calc-history-tags');
+  if (!tagsEl) return;
+
+  const updateTags = () => {
+    const tagCounts = {};
+    history.forEach((h) => {
+      if (!h.tag) {
+        // Auto-tag based on expression content
+        if (/sin|cos|tan|asin|acos|atan/i.test(h.expr)) h.tag = 'trig';
+        else if (/log|ln|exp/i.test(h.expr)) h.tag = 'log';
+        else if (/sqrt|cbrt|pow|\^/i.test(h.expr)) h.tag = 'power';
+        else if (/[+\-]/.test(h.expr) && !/[*/^]/.test(h.expr)) h.tag = 'basic';
+        else if (/[*/]/.test(h.expr)) h.tag = 'arith';
+        else h.tag = 'other';
+      }
+      tagCounts[h.tag] = (tagCounts[h.tag] || 0) + 1;
+    });
+
+    const tags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
+    tagsEl.innerHTML = `<button class="calc-history-tag active" data-tag="all" style="font-size:10px;padding:2px 6px;border:1px solid var(--border-color,#ddd);border-radius:10px;background:var(--bg-secondary,#f5f5f5);cursor:pointer;">All</button>` +
+      tags.map(([tag, count]) =>
+        `<button class="calc-history-tag" data-tag="${tag}" style="font-size:10px;padding:2px 6px;border:1px solid var(--border-color,#ddd);border-radius:10px;background:transparent;cursor:pointer;">${tag} (${count})</button>`
+      ).join('');
+
+    tagsEl.querySelectorAll('.calc-history-tag').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        tagsEl.querySelectorAll('.calc-history-tag').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        btn.style.background = 'var(--bg-secondary,#f5f5f5)';
+        const tag = btn.dataset.tag;
+        const items = document.querySelectorAll('.calc-history-item');
+        items.forEach((item, i) => {
+          if (tag === 'all') { item.style.display = ''; return; }
+          const h = history[i];
+          item.style.display = (h && h.tag === tag) ? '' : 'none';
+        });
+      });
+    });
+  };
+
+  // Hook into history updates
+  const origRenderHistory = renderHistory;
+  // Override renderHistory to include tags
+  const _patchedRender = () => {
+    origRenderHistory();
+    updateTags();
+  };
+
+  // Patch addHistory to trigger tag update
+  const origAddHistory = addHistory;
+  // We observe the history list for changes instead
+  const observer = new MutationObserver(() => updateTags());
+  const listEl = document.getElementById('calc-history-list');
+  if (listEl) observer.observe(listEl, { childList: true });
+
+  updateTags();
+}
+
+setTimeout(() => {
+  initHistorySearch();
+  initHistoryTags();
+}, 200);

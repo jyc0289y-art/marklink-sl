@@ -786,3 +786,412 @@ function updateAutocompleteSelection() {
     el.classList.toggle('active', i === autocompleteIndex);
   });
 }
+
+/* ════════════════════════════════════════════════════════════════
+   6. FOCUS MODE — dim all paragraphs except current
+   ════════════════════════════════════════════════════════════════ */
+
+let focusModeActive = false;
+let focusStyleEl = null;
+
+export function initFocusMode() {
+  const btn = document.getElementById('btn-focus-mode');
+  if (btn) btn.addEventListener('click', () => toggleFocusMode());
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+      e.preventDefault();
+      toggleFocusMode();
+    }
+  });
+}
+
+function toggleFocusMode() {
+  focusModeActive = !focusModeActive;
+  const btn = document.getElementById('btn-focus-mode');
+  if (btn) btn.classList.toggle('active', focusModeActive);
+
+  if (focusModeActive) {
+    if (!focusStyleEl) {
+      focusStyleEl = document.createElement('style');
+      focusStyleEl.textContent = `
+        .cm-editor.focus-mode-active .cm-line { opacity: 0.3; transition: opacity 0.2s; }
+        .cm-editor.focus-mode-active .cm-line.cm-focus-line { opacity: 1; }
+        .cm-editor.focus-mode-active .cm-activeLine { opacity: 1 !important; }
+      `;
+      document.head.appendChild(focusStyleEl);
+    }
+    const view = getEditorView();
+    if (view) {
+      view.dom.querySelector('.cm-editor')?.classList.add('focus-mode-active');
+      view.dom.closest('.cm-editor')?.classList.add('focus-mode-active');
+    }
+    startFocusTracking();
+  } else {
+    document.querySelectorAll('.cm-editor').forEach((el) => el.classList.remove('focus-mode-active'));
+    stopFocusTracking();
+  }
+}
+
+let focusTrackInterval = null;
+
+const startFocusTracking = () => {
+  stopFocusTracking();
+  focusTrackInterval = setInterval(() => {
+    if (!focusModeActive) return;
+    const view = getEditorView();
+    if (!view) return;
+    const editor = view.dom.closest('.cm-editor') || view.dom.querySelector('.cm-editor');
+    if (!editor) return;
+    editor.classList.add('focus-mode-active');
+    // Active line is handled by CM6's activeLine decoration
+  }, 200);
+};
+
+const stopFocusTracking = () => {
+  if (focusTrackInterval) { clearInterval(focusTrackInterval); focusTrackInterval = null; }
+};
+
+/* ════════════════════════════════════════════════════════════════
+   7. TABLE EDITOR — visual grid modal to create/edit markdown tables
+   ════════════════════════════════════════════════════════════════ */
+
+export function initTableEditor() {
+  const btn = document.getElementById('btn-table-editor');
+  if (btn) btn.addEventListener('click', () => showTableEditorModal());
+}
+
+function showTableEditorModal() {
+  const existing = document.querySelector('.md-table-editor-overlay');
+  if (existing) { existing.remove(); return; }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'md-table-editor-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;';
+
+  let rows = 3, cols = 3;
+  let tableData = Array.from({ length: rows }, () => Array(cols).fill(''));
+
+  const renderModal = () => {
+    overlay.innerHTML = `
+      <div class="md-table-editor-modal" style="background:var(--bg-primary,#fff);color:var(--text-primary,#222);border-radius:12px;padding:20px 24px;max-width:600px;width:95%;max-height:80vh;overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h3 style="margin:0;font-size:16px;">Table Editor</h3>
+          <button class="te-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-primary);">&times;</button>
+        </div>
+        <div style="display:flex;gap:12px;margin-bottom:12px;align-items:center;">
+          <label style="font-size:13px;">Rows: <input type="number" class="te-rows" value="${rows}" min="1" max="20" style="width:50px;padding:4px;border:1px solid var(--border-color,#ccc);border-radius:4px;"></label>
+          <label style="font-size:13px;">Cols: <input type="number" class="te-cols" value="${cols}" min="1" max="10" style="width:50px;padding:4px;border:1px solid var(--border-color,#ccc);border-radius:4px;"></label>
+          <button class="te-resize toolbar-btn" style="font-size:12px;">Resize</button>
+          <select class="te-align" style="font-size:12px;padding:4px;border:1px solid var(--border-color,#ccc);border-radius:4px;">
+            <option value="left">Align Left</option>
+            <option value="center">Align Center</option>
+            <option value="right">Align Right</option>
+          </select>
+        </div>
+        <div style="overflow:auto;">
+          <table class="te-grid" style="border-collapse:collapse;width:100%;">
+            <thead><tr>${tableData[0].map((_, c) => `<th style="padding:0;"><input class="te-cell te-header" data-r="0" data-c="${c}" value="${escapeAttr(tableData[0][c])}" style="width:100%;padding:6px 8px;border:1px solid var(--border-color,#ccc);font-weight:bold;background:var(--bg-secondary,#f5f5f5);box-sizing:border-box;" placeholder="Header ${c + 1}"></th>`).join('')}</tr></thead>
+            <tbody>${tableData.slice(1).map((row, r) => `<tr>${row.map((cell, c) => `<td style="padding:0;"><input class="te-cell" data-r="${r + 1}" data-c="${c}" value="${escapeAttr(cell)}" style="width:100%;padding:6px 8px;border:1px solid var(--border-color,#ccc);box-sizing:border-box;" placeholder="..."></td>`).join('')}</tr>`).join('')}</tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+          <button class="te-insert toolbar-btn" style="background:var(--brand-color,#0071e3);color:#fff;border-radius:6px;padding:8px 16px;font-weight:600;">Insert Table</button>
+          <button class="te-cancel toolbar-btn" style="padding:8px 16px;">Cancel</button>
+        </div>
+      </div>`;
+  };
+
+  renderModal();
+  document.body.appendChild(overlay);
+
+  const bindEvents = () => {
+    overlay.querySelector('.te-close')?.addEventListener('click', () => overlay.remove());
+    overlay.querySelector('.te-cancel')?.addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    overlay.querySelector('.te-resize')?.addEventListener('click', () => {
+      const newRows = Math.max(1, Math.min(20, parseInt(overlay.querySelector('.te-rows').value) || 3));
+      const newCols = Math.max(1, Math.min(10, parseInt(overlay.querySelector('.te-cols').value) || 3));
+      saveCellData();
+      const newData = Array.from({ length: newRows }, (_, r) =>
+        Array.from({ length: newCols }, (_, c) => (tableData[r] && tableData[r][c]) || '')
+      );
+      rows = newRows; cols = newCols; tableData = newData;
+      renderModal();
+      bindEvents();
+    });
+
+    overlay.querySelectorAll('.te-cell').forEach((inp) => {
+      inp.addEventListener('input', () => {
+        const r = parseInt(inp.dataset.r);
+        const c = parseInt(inp.dataset.c);
+        if (tableData[r]) tableData[r][c] = inp.value;
+      });
+    });
+
+    overlay.querySelector('.te-insert')?.addEventListener('click', () => {
+      saveCellData();
+      const align = overlay.querySelector('.te-align')?.value || 'left';
+      const md = generateMarkdownTable(tableData, align);
+      insertAtCursor('\n' + md + '\n');
+      overlay.remove();
+    });
+  };
+
+  const saveCellData = () => {
+    overlay.querySelectorAll('.te-cell').forEach((inp) => {
+      const r = parseInt(inp.dataset.r);
+      const c = parseInt(inp.dataset.c);
+      if (tableData[r]) tableData[r][c] = inp.value;
+    });
+  };
+
+  bindEvents();
+}
+
+function generateMarkdownTable(data, align = 'left') {
+  if (!data.length || !data[0].length) return '';
+  const colWidths = data[0].map((_, c) => Math.max(3, ...data.map((row) => (row[c] || '').length)));
+  const pad = (s, w) => (s || '').padEnd(w);
+
+  const headerRow = '| ' + data[0].map((h, c) => pad(h || `Col ${c + 1}`, colWidths[c])).join(' | ') + ' |';
+  const sepChar = align === 'center' ? ':' : align === 'right' ? ' ' : '-';
+  const sepEnd = align === 'center' ? ':' : align === 'right' ? ':' : '-';
+  const sepRow = '|' + colWidths.map((w) => {
+    if (align === 'center') return ':' + '-'.repeat(w) + ':';
+    if (align === 'right') return '-'.repeat(w) + ':';
+    return '-'.repeat(w + 2);
+  }).join('|') + '|';
+
+  const bodyRows = data.slice(1).map((row) =>
+    '| ' + row.map((cell, c) => pad(cell, colWidths[c])).join(' | ') + ' |'
+  );
+
+  return [headerRow, sepRow, ...bodyRows].join('\n');
+}
+
+/* ════════════════════════════════════════════════════════════════
+   8. VERSION SNAPSHOTS — save/restore document versions in localStorage
+   ════════════════════════════════════════════════════════════════ */
+
+const VERSION_STORAGE_KEY = 'marklink-doc-versions';
+
+export function initVersionSnapshots() {
+  const saveBtn = document.getElementById('btn-version-save');
+  const listBtn = document.getElementById('btn-version-list');
+
+  if (saveBtn) saveBtn.addEventListener('click', () => saveVersionSnapshot());
+  if (listBtn) listBtn.addEventListener('click', () => showVersionListModal());
+}
+
+function getVersions() {
+  try { return JSON.parse(localStorage.getItem(VERSION_STORAGE_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveVersions(versions) {
+  localStorage.setItem(VERSION_STORAGE_KEY, JSON.stringify(versions));
+}
+
+function saveVersionSnapshot() {
+  const content = getContent();
+  if (!content.trim()) { alert('Document is empty'); return; }
+
+  const name = prompt('Version name:', `v${getVersions().length + 1} — ${new Date().toLocaleString()}`);
+  if (!name) return;
+
+  const versions = getVersions();
+  versions.unshift({
+    name,
+    content,
+    timestamp: Date.now(),
+    wordCount: content.split(/\s+/).filter(Boolean).length,
+  });
+  // Keep max 30 versions
+  if (versions.length > 30) versions.length = 30;
+  saveVersions(versions);
+  alert(`Snapshot "${name}" saved.`);
+}
+
+function showVersionListModal() {
+  const existing = document.querySelector('.md-version-overlay');
+  if (existing) { existing.remove(); return; }
+
+  const versions = getVersions();
+  const overlay = document.createElement('div');
+  overlay.className = 'md-version-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;';
+
+  overlay.innerHTML = `
+    <div style="background:var(--bg-primary,#fff);color:var(--text-primary,#222);border-radius:12px;padding:20px 24px;max-width:500px;width:95%;max-height:70vh;overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;font-size:16px;">Version Snapshots</h3>
+        <button class="ver-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-primary);">&times;</button>
+      </div>
+      ${versions.length === 0 ? '<p style="color:var(--text-secondary);font-size:13px;">No snapshots yet. Click the save button to create one.</p>' :
+      `<div class="ver-list" style="display:flex;flex-direction:column;gap:6px;">
+        ${versions.map((v, i) => `
+          <div class="ver-item" data-idx="${i}" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid var(--border-color,#ddd);border-radius:8px;cursor:pointer;transition:background 0.15s;" onmouseenter="this.style.background='var(--bg-secondary,#f5f5f5)'" onmouseleave="this.style.background=''">
+            <div>
+              <div style="font-weight:600;font-size:13px;">${escapeAttr(v.name)}</div>
+              <div style="font-size:11px;color:var(--text-secondary);">${new Date(v.timestamp).toLocaleString()} &mdash; ${v.wordCount} words</div>
+            </div>
+            <div style="display:flex;gap:4px;">
+              <button class="ver-restore toolbar-btn" data-idx="${i}" style="font-size:11px;" title="Restore">Restore</button>
+              <button class="ver-diff toolbar-btn" data-idx="${i}" style="font-size:11px;" title="Compare with current">Diff</button>
+              <button class="ver-delete toolbar-btn" data-idx="${i}" style="font-size:11px;color:#e74c3c;" title="Delete">&times;</button>
+            </div>
+          </div>`).join('')}
+      </div>`}
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('.ver-close')?.addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelectorAll('.ver-restore').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.idx);
+      const v = versions[idx];
+      if (v && confirm(`Restore "${v.name}"? Current content will be replaced.`)) {
+        const { setContent } = require_setContent();
+        setContent(v.content);
+        overlay.remove();
+      }
+    });
+  });
+
+  overlay.querySelectorAll('.ver-diff').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.idx);
+      const v = versions[idx];
+      if (v) showSimpleDiff(v.content, getContent(), v.name);
+    });
+  });
+
+  overlay.querySelectorAll('.ver-delete').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.idx);
+      if (confirm('Delete this snapshot?')) {
+        versions.splice(idx, 1);
+        saveVersions(versions);
+        overlay.remove();
+        showVersionListModal();
+      }
+    });
+  });
+}
+
+function require_setContent() {
+  // Dynamic import workaround — re-import editor functions
+  return { setContent: (text) => {
+    const view = getEditorView();
+    if (!view) return;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+  }};
+}
+
+function showSimpleDiff(oldText, newText, versionName) {
+  const oldLines = oldText.split('\n');
+  const newLines = newText.split('\n');
+  const maxLen = Math.max(oldLines.length, newLines.length);
+  let diffHtml = '';
+  for (let i = 0; i < maxLen; i++) {
+    const oLine = oldLines[i] ?? '';
+    const nLine = newLines[i] ?? '';
+    if (oLine === nLine) {
+      diffHtml += `<div style="padding:1px 8px;font-size:12px;font-family:monospace;white-space:pre-wrap;color:var(--text-secondary);">${escapeAttr(oLine) || '&nbsp;'}</div>`;
+    } else {
+      if (oLine) diffHtml += `<div style="padding:1px 8px;font-size:12px;font-family:monospace;white-space:pre-wrap;background:#fdd;color:#a00;">- ${escapeAttr(oLine)}</div>`;
+      if (nLine) diffHtml += `<div style="padding:1px 8px;font-size:12px;font-family:monospace;white-space:pre-wrap;background:#dfd;color:#0a0;">+ ${escapeAttr(nLine)}</div>`;
+    }
+  }
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;z-index:5500;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:var(--bg-primary,#fff);border-radius:12px;padding:20px;max-width:700px;width:95%;max-height:80vh;overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h3 style="margin:0;font-size:14px;">Diff: "${escapeAttr(versionName)}" vs Current</h3>
+        <button class="diff-close" style="background:none;border:none;font-size:20px;cursor:pointer;">&times;</button>
+      </div>
+      <div style="max-height:60vh;overflow:auto;border:1px solid var(--border-color,#ddd);border-radius:6px;">${diffHtml}</div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('.diff-close')?.addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+/* ════════════════════════════════════════════════════════════════
+   9. EXPORT TO HTML FILE (download)
+   ════════════════════════════════════════════════════════════════ */
+
+export function initExportHtml() {
+  const btn = document.getElementById('btn-export-html');
+  if (btn) btn.addEventListener('click', () => exportToHtml());
+}
+
+function exportToHtml() {
+  const content = getContent();
+  if (!content.trim()) { alert('Document is empty'); return; }
+
+  // Get the rendered preview HTML
+  const previewEl = document.getElementById('preview-pane') || document.getElementById('preview');
+  const previewHtml = previewEl ? previewEl.innerHTML : markdownToBasicHtml(content);
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exported Document</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.7; color: #333; }
+  h1, h2, h3, h4, h5, h6 { margin-top: 1.5em; margin-bottom: 0.5em; }
+  code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+  pre { background: #f4f4f4; padding: 16px; border-radius: 8px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+  th { background: #f8f8f8; font-weight: 600; }
+  blockquote { border-left: 4px solid #0071e3; margin: 16px 0; padding: 8px 16px; color: #555; background: #f9f9f9; }
+  img { max-width: 100%; height: auto; }
+  a { color: #0071e3; }
+  .task-list-item { list-style: none; }
+  .task-list-item input { margin-right: 6px; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 24px 0; }
+</style>
+</head>
+<body>
+${previewHtml}
+<footer style="margin-top:48px;padding-top:16px;border-top:1px solid #eee;font-size:12px;color:#999;">
+  Exported from OfficeLink SL &mdash; ${new Date().toLocaleString()}
+</footer>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'document.html';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function markdownToBasicHtml(md) {
+  // Basic fallback converter if preview pane not available
+  return md
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/\n/g, '<br>');
+}

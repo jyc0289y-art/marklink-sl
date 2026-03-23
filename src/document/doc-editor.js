@@ -1114,33 +1114,98 @@ function togglePageNumbers() {
 }
 
 // ─── Header & Footer ────────────────────────────────────────
+let hfConfig = {
+  headerText: '', footerText: '',
+  headerHeight: 28, footerHeight: 28,
+  differentFirstPage: false,
+  differentOddEven: false,
+  firstPageHeader: '', firstPageFooter: '',
+  oddHeader: '', oddFooter: '',
+  evenHeader: '', evenFooter: '',
+};
+
 function showHeaderFooterDialog() {
-  // Remove existing dialog
   document.querySelector('.doc-hf-dialog')?.remove();
 
   const wrapper = editorEl?.closest('.doc-page-wrapper');
   const existingHeader = wrapper?.querySelector('.doc-page-header');
   const existingFooter = wrapper?.querySelector('.doc-page-footer');
 
+  // Restore from existing
+  if (existingHeader && !hfConfig.headerText) hfConfig.headerText = existingHeader.innerHTML;
+  if (existingFooter && !hfConfig.footerText) hfConfig.footerText = existingFooter.innerHTML;
+
   const dialog = document.createElement('div');
   dialog.className = 'ai-setup-modal doc-hf-dialog';
   dialog.innerHTML = `
-    <div class="ai-setup-content" style="width:400px">
+    <div class="ai-setup-content" style="width:520px">
       <div class="ai-setup-header">
-        <h3>Header & Footer</h3>
+        <h3>Headers & Footers</h3>
         <button class="ai-setup-close">&times;</button>
       </div>
       <div class="ai-setup-body">
-        <div style="margin-bottom:16px">
-          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Header text</label>
-          <input type="text" id="hf-header" class="doc-find-input" style="width:100%" placeholder="e.g. Company Name" value="${existingHeader?.textContent || ''}">
+        <!-- Main header/footer -->
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Header</label>
+          <div id="hf-header-edit" contenteditable="true" style="width:100%;min-height:36px;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);outline:none">${hfConfig.headerText || ''}</div>
         </div>
-        <div style="margin-bottom:16px">
-          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Footer text</label>
-          <input type="text" id="hf-footer" class="doc-find-input" style="width:100%" placeholder="e.g. Confidential" value="${existingFooter?.textContent || ''}">
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Footer</label>
+          <div id="hf-footer-edit" contenteditable="true" style="width:100%;min-height:36px;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary);outline:none">${hfConfig.footerText || ''}</div>
         </div>
+
+        <!-- Insert fields -->
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Insert Field</label>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <button class="hf-field-btn toolbar-btn" data-field="pagenum" style="font-size:11px;padding:4px 8px">Page Number</button>
+            <button class="hf-field-btn toolbar-btn" data-field="date" style="font-size:11px;padding:4px 8px">Date</button>
+            <button class="hf-field-btn toolbar-btn" data-field="time" style="font-size:11px;padding:4px 8px">Time</button>
+            <button class="hf-field-btn toolbar-btn" data-field="title" style="font-size:11px;padding:4px 8px">Document Title</button>
+            <button class="hf-field-btn toolbar-btn" data-field="filename" style="font-size:11px;padding:4px 8px">File Name</button>
+          </div>
+        </div>
+
+        <!-- Options -->
+        <div style="margin-bottom:14px;border:1px solid var(--border-color);border-radius:8px;padding:12px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px">
+            <input type="checkbox" id="hf-diff-first" ${hfConfig.differentFirstPage ? 'checked' : ''}>
+            Different first page / 첫 페이지 다르게
+          </label>
+          <div id="hf-first-page-fields" style="display:${hfConfig.differentFirstPage ? 'block' : 'none'};padding-left:24px;margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:2px">First page header</label>
+            <input type="text" id="hf-first-header" class="doc-find-input" style="width:100%;margin-bottom:6px" value="${hfConfig.firstPageHeader}">
+            <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:2px">First page footer</label>
+            <input type="text" id="hf-first-footer" class="doc-find-input" style="width:100%" value="${hfConfig.firstPageFooter}">
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px">
+            <input type="checkbox" id="hf-diff-oddeven" ${hfConfig.differentOddEven ? 'checked' : ''}>
+            Different odd/even pages / 홀짝 페이지 다르게
+          </label>
+          <div id="hf-oddeven-fields" style="display:${hfConfig.differentOddEven ? 'block' : 'none'};padding-left:24px">
+            <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:2px">Odd page header</label>
+            <input type="text" id="hf-odd-header" class="doc-find-input" style="width:100%;margin-bottom:4px" value="${hfConfig.oddHeader}">
+            <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:2px">Even page header</label>
+            <input type="text" id="hf-even-header" class="doc-find-input" style="width:100%;margin-bottom:6px" value="${hfConfig.evenHeader}">
+            <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:2px">Odd page footer</label>
+            <input type="text" id="hf-odd-footer" class="doc-find-input" style="width:100%;margin-bottom:4px" value="${hfConfig.oddFooter}">
+            <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:2px">Even page footer</label>
+            <input type="text" id="hf-even-footer" class="doc-find-input" style="width:100%" value="${hfConfig.evenFooter}">
+          </div>
+        </div>
+
+        <!-- Height adjustment -->
+        <div style="margin-bottom:14px;display:flex;gap:16px">
+          <label style="flex:1;font-size:12px;color:var(--text-secondary)">Header height (px)
+            <input type="number" id="hf-header-height" value="${hfConfig.headerHeight}" min="16" max="100" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+          </label>
+          <label style="flex:1;font-size:12px;color:var(--text-secondary)">Footer height (px)
+            <input type="number" id="hf-footer-height" value="${hfConfig.footerHeight}" min="16" max="100" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+          </label>
+        </div>
+
         <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button class="ai-pull-btn" id="hf-remove">Remove</button>
+          <button class="ai-pull-btn" id="hf-remove">Remove All</button>
           <button class="ai-pull-btn" id="hf-apply" style="background:var(--brand-color);color:#fff">Apply</button>
         </div>
       </div>
@@ -1149,25 +1214,80 @@ function showHeaderFooterDialog() {
 
   document.body.appendChild(dialog);
 
+  // Toggle sections
+  dialog.querySelector('#hf-diff-first').addEventListener('change', (e) => {
+    dialog.querySelector('#hf-first-page-fields').style.display = e.target.checked ? 'block' : 'none';
+  });
+  dialog.querySelector('#hf-diff-oddeven').addEventListener('change', (e) => {
+    dialog.querySelector('#hf-oddeven-fields').style.display = e.target.checked ? 'block' : 'none';
+  });
+
+  // Insert field buttons
+  dialog.querySelectorAll('.hf-field-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const fieldMap = {
+        pagenum: '{{page}}',
+        date: '{{date}}',
+        time: '{{time}}',
+        title: '{{title}}',
+        filename: '{{filename}}',
+      };
+      const field = fieldMap[btn.dataset.field] || '';
+      // Insert into whichever header/footer field is focused
+      const active = document.activeElement;
+      if (active && (active.id === 'hf-header-edit' || active.id === 'hf-footer-edit')) {
+        document.execCommand('insertText', false, field);
+      } else {
+        // Default: append to header
+        const headerEdit = dialog.querySelector('#hf-header-edit');
+        headerEdit.focus();
+        document.execCommand('insertText', false, field);
+      }
+    });
+  });
+
   dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
   dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
 
   dialog.querySelector('#hf-apply')?.addEventListener('click', () => {
-    const headerText = dialog.querySelector('#hf-header').value;
-    const footerText = dialog.querySelector('#hf-footer').value;
-    applyHeaderFooter(headerText, footerText);
+    hfConfig.headerText = dialog.querySelector('#hf-header-edit').innerHTML;
+    hfConfig.footerText = dialog.querySelector('#hf-footer-edit').innerHTML;
+    hfConfig.headerHeight = parseInt(dialog.querySelector('#hf-header-height').value) || 28;
+    hfConfig.footerHeight = parseInt(dialog.querySelector('#hf-footer-height').value) || 28;
+    hfConfig.differentFirstPage = dialog.querySelector('#hf-diff-first').checked;
+    hfConfig.differentOddEven = dialog.querySelector('#hf-diff-oddeven').checked;
+    hfConfig.firstPageHeader = dialog.querySelector('#hf-first-header')?.value || '';
+    hfConfig.firstPageFooter = dialog.querySelector('#hf-first-footer')?.value || '';
+    hfConfig.oddHeader = dialog.querySelector('#hf-odd-header')?.value || '';
+    hfConfig.oddFooter = dialog.querySelector('#hf-odd-footer')?.value || '';
+    hfConfig.evenHeader = dialog.querySelector('#hf-even-header')?.value || '';
+    hfConfig.evenFooter = dialog.querySelector('#hf-even-footer')?.value || '';
+    applyHeaderFooter();
     dialog.remove();
   });
 
   dialog.querySelector('#hf-remove')?.addEventListener('click', () => {
-    const wrapper = editorEl?.closest('.doc-page-wrapper');
-    wrapper?.querySelector('.doc-page-header')?.remove();
-    wrapper?.querySelector('.doc-page-footer')?.remove();
+    hfConfig = { headerText: '', footerText: '', headerHeight: 28, footerHeight: 28, differentFirstPage: false, differentOddEven: false, firstPageHeader: '', firstPageFooter: '', oddHeader: '', oddFooter: '', evenHeader: '', evenFooter: '' };
+    const w = editorEl?.closest('.doc-page-wrapper');
+    w?.querySelector('.doc-page-header')?.remove();
+    w?.querySelector('.doc-page-footer')?.remove();
     dialog.remove();
   });
 }
 
-function applyHeaderFooter(headerText, footerText) {
+function resolveHFFields(text) {
+  const now = new Date();
+  const title = editorEl?.querySelector('h1')?.textContent || 'Untitled';
+  const fileName = document.getElementById('file-name')?.textContent || 'document';
+  return text
+    .replace(/\{\{page\}\}/g, '<span class="hf-page-num">1</span>')
+    .replace(/\{\{date\}\}/g, now.toLocaleDateString())
+    .replace(/\{\{time\}\}/g, now.toLocaleTimeString())
+    .replace(/\{\{title\}\}/g, title)
+    .replace(/\{\{filename\}\}/g, fileName);
+}
+
+function applyHeaderFooter() {
   const wrapper = editorEl?.closest('.doc-page-wrapper');
   if (!wrapper) return;
 
@@ -1175,82 +1295,203 @@ function applyHeaderFooter(headerText, footerText) {
   wrapper.querySelector('.doc-page-header')?.remove();
   wrapper.querySelector('.doc-page-footer')?.remove();
 
-  if (headerText) {
+  const headerContent = resolveHFFields(hfConfig.headerText);
+  const footerContent = resolveHFFields(hfConfig.footerText);
+
+  if (headerContent) {
     const header = document.createElement('div');
     header.className = 'doc-page-header';
     header.contentEditable = 'true';
-    header.textContent = headerText;
-    wrapper.insertBefore(header, wrapper.firstChild);
+    header.style.minHeight = hfConfig.headerHeight + 'px';
+    header.innerHTML = headerContent;
+    // Insert after ruler if exists, otherwise first
+    const ruler = wrapper.querySelector('.doc-ruler');
+    if (ruler) ruler.after(header);
+    else wrapper.insertBefore(header, wrapper.firstChild);
   }
 
-  if (footerText) {
+  if (footerContent) {
     const footer = document.createElement('div');
     footer.className = 'doc-page-footer';
     footer.contentEditable = 'true';
-    footer.textContent = footerText;
+    footer.style.minHeight = hfConfig.footerHeight + 'px';
+    footer.innerHTML = footerContent;
     wrapper.appendChild(footer);
   }
 }
 
 // ─── Page Setup Dialog ───────────────────────────────────────
 const PAGE_SIZES = {
-  'A4':      { w: '210mm',   h: '297mm',   label: 'A4 (210 × 297 mm)' },
-  'A3':      { w: '297mm',   h: '420mm',   label: 'A3 (297 × 420 mm)' },
-  'B5':      { w: '176mm',   h: '250mm',   label: 'B5 (176 × 250 mm)' },
-  'Letter':  { w: '8.5in',   h: '11in',    label: 'Letter (8.5 × 11 in)' },
-  'Legal':   { w: '8.5in',   h: '14in',    label: 'Legal (8.5 × 14 in)' },
-  '16K':     { w: '195mm',   h: '270mm',   label: '16절 (195 × 270 mm)' },
+  'A4':      { w: 210, h: 297, label: 'A4 (210 × 297 mm)' },
+  'A3':      { w: 297, h: 420, label: 'A3 (297 × 420 mm)' },
+  'B5':      { w: 176, h: 250, label: 'B5 (176 × 250 mm)' },
+  'Letter':  { w: 215.9, h: 279.4, label: 'Letter (8.5 × 11 in)' },
+  'Legal':   { w: 215.9, h: 355.6, label: 'Legal (8.5 × 14 in)' },
+  '16K':     { w: 195, h: 270, label: '16절 (195 × 270 mm)' },
+  'Custom':  { w: 210, h: 297, label: 'Custom' },
 };
 
 let currentPageSize = 'A4';
+let currentOrientation = 'portrait'; // 'portrait' | 'landscape'
 let currentMargins = { top: 25.4, right: 25.4, bottom: 25.4, left: 25.4 }; // mm
+let currentApplyTo = 'whole'; // 'whole' | 'section'
 
 function showPageSetupDialog() {
   document.querySelector('.doc-ps-dialog')?.remove();
 
+  const curSize = PAGE_SIZES[currentPageSize];
+  const isCustom = currentPageSize === 'Custom';
+
   const dialog = document.createElement('div');
   dialog.className = 'ai-setup-modal doc-ps-dialog';
   dialog.innerHTML = `
-    <div class="ai-setup-content" style="width:400px">
+    <div class="ai-setup-content" style="width:560px">
       <div class="ai-setup-header">
-        <h3>Page Layout / 용지 설정</h3>
+        <h3>Page Setup / 용지 설정</h3>
         <button class="ai-setup-close">&times;</button>
       </div>
-      <div class="ai-setup-body">
-        <div style="margin-bottom:16px">
-          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Paper Size / 용지 크기</label>
-          <select id="ps-size" style="width:100%;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:14px;background:var(--bg-primary);color:var(--text-primary)">
-            ${Object.entries(PAGE_SIZES).map(([k, v]) =>
-              `<option value="${k}" ${k === currentPageSize ? 'selected' : ''}>${v.label}</option>`
-            ).join('')}
-          </select>
-        </div>
-        <div style="margin-bottom:16px">
-          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Margins (mm) / 여백</label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <label style="font-size:12px;color:var(--text-secondary)">Top / 위
-              <input type="number" id="ps-mt" value="${currentMargins.top}" min="0" max="100" step="1" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+      <div class="ai-setup-body" style="display:flex;gap:24px">
+        <div style="flex:1">
+          <div style="margin-bottom:14px">
+            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Paper Size / 용지 크기</label>
+            <select id="ps-size" style="width:100%;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+              ${Object.entries(PAGE_SIZES).map(([k, v]) =>
+                `<option value="${k}" ${k === currentPageSize ? 'selected' : ''}>${v.label}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div id="ps-custom-dims" style="margin-bottom:14px;display:${isCustom ? 'flex' : 'none'};gap:8px">
+            <label style="flex:1;font-size:12px;color:var(--text-secondary)">Width (mm)
+              <input type="number" id="ps-cw" value="${curSize.w}" min="50" max="600" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
             </label>
-            <label style="font-size:12px;color:var(--text-secondary)">Bottom / 아래
-              <input type="number" id="ps-mb" value="${currentMargins.bottom}" min="0" max="100" step="1" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
-            </label>
-            <label style="font-size:12px;color:var(--text-secondary)">Left / 왼쪽
-              <input type="number" id="ps-ml" value="${currentMargins.left}" min="0" max="100" step="1" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
-            </label>
-            <label style="font-size:12px;color:var(--text-secondary)">Right / 오른쪽
-              <input type="number" id="ps-mr" value="${currentMargins.right}" min="0" max="100" step="1" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+            <label style="flex:1;font-size:12px;color:var(--text-secondary)">Height (mm)
+              <input type="number" id="ps-ch" value="${curSize.h}" min="50" max="1000" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
             </label>
           </div>
+          <div style="margin-bottom:14px">
+            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px">Orientation / 방향</label>
+            <div style="display:flex;gap:8px">
+              <button id="ps-portrait" class="toolbar-btn" style="flex:1;padding:10px;border:2px solid ${currentOrientation === 'portrait' ? 'var(--brand-color)' : 'var(--border-color)'};border-radius:8px;display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--bg-primary);cursor:pointer">
+                <div style="width:24px;height:32px;border:2px solid currentColor;border-radius:2px"></div>
+                <span style="font-size:11px">Portrait</span>
+              </button>
+              <button id="ps-landscape" class="toolbar-btn" style="flex:1;padding:10px;border:2px solid ${currentOrientation === 'landscape' ? 'var(--brand-color)' : 'var(--border-color)'};border-radius:8px;display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--bg-primary);cursor:pointer">
+                <div style="width:32px;height:24px;border:2px solid currentColor;border-radius:2px"></div>
+                <span style="font-size:11px">Landscape</span>
+              </button>
+            </div>
+          </div>
+          <div style="margin-bottom:14px">
+            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Margins (mm) / 여백</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <label style="font-size:12px;color:var(--text-secondary)">Top / 위
+                <input type="number" id="ps-mt" value="${currentMargins.top}" min="0" max="100" step="1" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+              </label>
+              <label style="font-size:12px;color:var(--text-secondary)">Bottom / 아래
+                <input type="number" id="ps-mb" value="${currentMargins.bottom}" min="0" max="100" step="1" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+              </label>
+              <label style="font-size:12px;color:var(--text-secondary)">Left / 왼쪽
+                <input type="number" id="ps-ml" value="${currentMargins.left}" min="0" max="100" step="1" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+              </label>
+              <label style="font-size:12px;color:var(--text-secondary)">Right / 오른쪽
+                <input type="number" id="ps-mr" value="${currentMargins.right}" min="0" max="100" step="1" style="width:100%;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+              </label>
+            </div>
+          </div>
+          <div style="margin-bottom:14px">
+            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Apply to / 적용 대상</label>
+            <select id="ps-apply-to" style="width:100%;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:13px;background:var(--bg-primary);color:var(--text-primary)">
+              <option value="whole" ${currentApplyTo === 'whole' ? 'selected' : ''}>Whole document / 전체 문서</option>
+              <option value="section" ${currentApplyTo === 'section' ? 'selected' : ''}>Current section / 현재 구역</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="ai-pull-btn" id="ps-cancel">Cancel</button>
+            <button class="ai-pull-btn" id="ps-apply" style="background:var(--brand-color);color:#fff">Apply</button>
+          </div>
         </div>
-        <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button class="ai-pull-btn" id="ps-cancel">Cancel</button>
-          <button class="ai-pull-btn" id="ps-apply" style="background:var(--brand-color);color:#fff">Apply</button>
+        <div style="width:180px;display:flex;flex-direction:column;align-items:center;gap:8px">
+          <label style="font-size:12px;font-weight:600;color:var(--text-secondary)">Preview</label>
+          <div id="ps-preview-container" style="width:160px;height:220px;display:flex;align-items:center;justify-content:center;background:var(--sidebar-bg);border-radius:8px;border:1px solid var(--border-color)">
+            <div id="ps-preview-page" style="background:white;border:1px solid #ccc;box-shadow:0 2px 8px rgba(0,0,0,0.1);position:relative;transition:all 0.2s"></div>
+          </div>
+          <div id="ps-preview-dims" style="font-size:11px;color:var(--text-secondary);text-align:center"></div>
         </div>
       </div>
     </div>
   `;
 
   document.body.appendChild(dialog);
+
+  let selectedOrientation = currentOrientation;
+  let selectedSize = currentPageSize;
+
+  const updatePreview = () => {
+    const sizeKey = dialog.querySelector('#ps-size').value;
+    const sz = PAGE_SIZES[sizeKey];
+    let pw = sizeKey === 'Custom' ? (parseFloat(dialog.querySelector('#ps-cw')?.value) || 210) : sz.w;
+    let ph = sizeKey === 'Custom' ? (parseFloat(dialog.querySelector('#ps-ch')?.value) || 297) : sz.h;
+    if (selectedOrientation === 'landscape') { [pw, ph] = [ph, pw]; }
+
+    const mt = parseFloat(dialog.querySelector('#ps-mt').value) || 0;
+    const mb = parseFloat(dialog.querySelector('#ps-mb').value) || 0;
+    const ml = parseFloat(dialog.querySelector('#ps-ml').value) || 0;
+    const mr = parseFloat(dialog.querySelector('#ps-mr').value) || 0;
+
+    // Scale to fit within 140x200 preview area
+    const maxW = 140, maxH = 200;
+    const scale = Math.min(maxW / pw, maxH / ph);
+    const dispW = pw * scale;
+    const dispH = ph * scale;
+
+    const page = dialog.querySelector('#ps-preview-page');
+    page.style.width = dispW + 'px';
+    page.style.height = dispH + 'px';
+
+    // Draw margin lines inside the page
+    const mtS = mt * scale, mbS = mb * scale, mlS = ml * scale, mrS = mr * scale;
+    page.innerHTML = `<div style="position:absolute;top:${mtS}px;left:${mlS}px;right:${mrS}px;bottom:${mbS}px;border:1px dashed rgba(0,113,227,0.4);border-radius:1px"></div>
+      <div style="position:absolute;top:${mtS + 4}px;left:${mlS + 3}px;right:${mrS + 3}px">
+        <div style="height:2px;background:#ccc;margin-bottom:3px;width:80%"></div>
+        <div style="height:2px;background:#ddd;margin-bottom:3px;width:60%"></div>
+        <div style="height:2px;background:#ddd;margin-bottom:3px"></div>
+        <div style="height:2px;background:#ddd;margin-bottom:3px;width:90%"></div>
+        <div style="height:2px;background:#eee;width:40%"></div>
+      </div>`;
+
+    const dimsEl = dialog.querySelector('#ps-preview-dims');
+    dimsEl.textContent = `${Math.round(pw)} x ${Math.round(ph)} mm (${selectedOrientation})`;
+  };
+
+  // Orientation buttons
+  dialog.querySelector('#ps-portrait').addEventListener('click', () => {
+    selectedOrientation = 'portrait';
+    dialog.querySelector('#ps-portrait').style.borderColor = 'var(--brand-color)';
+    dialog.querySelector('#ps-landscape').style.borderColor = 'var(--border-color)';
+    updatePreview();
+  });
+  dialog.querySelector('#ps-landscape').addEventListener('click', () => {
+    selectedOrientation = 'landscape';
+    dialog.querySelector('#ps-landscape').style.borderColor = 'var(--brand-color)';
+    dialog.querySelector('#ps-portrait').style.borderColor = 'var(--border-color)';
+    updatePreview();
+  });
+
+  // Size change
+  dialog.querySelector('#ps-size').addEventListener('change', (e) => {
+    selectedSize = e.target.value;
+    const customDims = dialog.querySelector('#ps-custom-dims');
+    customDims.style.display = selectedSize === 'Custom' ? 'flex' : 'none';
+    updatePreview();
+  });
+
+  // Margin + custom dim changes update preview
+  ['#ps-mt','#ps-mb','#ps-ml','#ps-mr','#ps-cw','#ps-ch'].forEach(sel => {
+    dialog.querySelector(sel)?.addEventListener('input', () => updatePreview());
+  });
+
+  // Initial preview render
+  updatePreview();
 
   dialog.querySelector('.ai-setup-close')?.addEventListener('click', () => dialog.remove());
   dialog.querySelector('#ps-cancel')?.addEventListener('click', () => dialog.remove());
@@ -1264,7 +1505,15 @@ function showPageSetupDialog() {
     const mr = parseFloat(dialog.querySelector('#ps-mr').value) || 25.4;
 
     currentPageSize = size;
+    currentOrientation = selectedOrientation;
     currentMargins = { top: mt, right: mr, bottom: mb, left: ml };
+    currentApplyTo = dialog.querySelector('#ps-apply-to').value;
+
+    // Update custom dimensions if Custom selected
+    if (size === 'Custom') {
+      PAGE_SIZES.Custom.w = parseFloat(dialog.querySelector('#ps-cw').value) || 210;
+      PAGE_SIZES.Custom.h = parseFloat(dialog.querySelector('#ps-ch').value) || 297;
+    }
 
     applyPageLayout();
     dialog.remove();
@@ -1274,9 +1523,24 @@ function showPageSetupDialog() {
 function applyPageLayout() {
   if (!editorEl) return;
   const ps = PAGE_SIZES[currentPageSize];
-  editorEl.style.width = ps.w;
-  editorEl.style.minHeight = ps.h;
-  editorEl.style.padding = `${currentMargins.top}mm ${currentMargins.right}mm ${currentMargins.bottom}mm ${currentMargins.left}mm`;
+  let w = ps.w, h = ps.h;
+  if (currentOrientation === 'landscape') { [w, h] = [h, w]; }
+
+  if (currentApplyTo === 'section') {
+    // Apply to current section only: find nearest section break container
+    const sel = window.getSelection();
+    const node = sel?.anchorNode;
+    const section = node ? (node.nodeType === 3 ? node.parentElement : node)?.closest('.doc-section-content') : null;
+    if (section) {
+      section.style.width = w + 'mm';
+      section.style.minHeight = h + 'mm';
+      section.style.padding = `${currentMargins.top}mm ${currentMargins.right}mm ${currentMargins.bottom}mm ${currentMargins.left}mm`;
+    }
+  } else {
+    editorEl.style.width = w + 'mm';
+    editorEl.style.minHeight = h + 'mm';
+    editorEl.style.padding = `${currentMargins.top}mm ${currentMargins.right}mm ${currentMargins.bottom}mm ${currentMargins.left}mm`;
+  }
   renderRuler();
 }
 

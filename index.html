@@ -11,6 +11,14 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="OfficeLink SL" />
   <link rel="apple-touch-icon" href="/icon-192.png" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+    }
+  }
+  </script>
   <link rel="stylesheet" href="/src/styles/main.css" />
   <link rel="stylesheet" href="/src/styles/editor.css" />
   <link rel="stylesheet" href="/src/styles/preview.css" />
@@ -25,6 +33,8 @@
   <link rel="stylesheet" href="/src/styles/photo.css" />
   <link rel="stylesheet" href="/src/styles/calculator.css" />
   <link rel="stylesheet" href="/src/styles/ai-cowork.css" />
+  <link rel="stylesheet" href="/src/styles/cad.css" />
+  <link rel="stylesheet" href="/src/styles/tutorial.css" />
 
   <!-- Tesseract.js OCR -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -111,6 +121,8 @@
     <button class="tab-item" data-tab="markdown" data-i18n="tab.markdown">Markdown</button>
     <button class="tab-item" data-tab="photo">📷 <span data-i18n="tab.photo">Photo</span></button>
     <button class="tab-item" data-tab="calculator">🧮 <span data-i18n="tab.calc">Calc</span></button>
+    <button class="tab-item" data-tab="cad">🔧 <span data-i18n="tab.cad">3D CAD</span></button>
+    <button class="tab-item" data-tab="draw">🎨 <span data-i18n="tab.draw">Draw</span></button>
     <button class="tab-item" data-tab="ai">✦ <span data-i18n="tab.ai">AI</span></button>
   </nav>
 
@@ -160,6 +172,12 @@
         <button id="btn-snippets" class="toolbar-btn" data-i18n-title="tip.snippets" title="Snippet Library"><span class="icon">🧩</span></button>
         <button id="btn-zen" class="toolbar-btn" data-i18n-title="tip.zenMode" title="Zen/Focus Mode (Ctrl+Shift+Z)"><span class="icon">🧘</span></button>
         <button id="btn-shortcuts" class="toolbar-btn" data-i18n-title="tip.shortcuts" title="Keyboard Shortcuts (Ctrl+/)"><span class="icon">⌨</span></button>
+        <span class="toolbar-sep"></span>
+        <button id="btn-focus-mode" class="toolbar-btn" data-i18n-title="tip.focusMode" title="Focus Mode (Ctrl+Shift+F)"><span class="icon">🎯</span></button>
+        <button id="btn-table-editor" class="toolbar-btn" data-i18n-title="tip.tableEditor" title="Table Editor"><span class="icon">📊</span></button>
+        <button id="btn-version-save" class="toolbar-btn" data-i18n-title="tip.versionSave" title="Save Version Snapshot"><span class="icon">📸</span></button>
+        <button id="btn-version-list" class="toolbar-btn" data-i18n-title="tip.versionList" title="Version History"><span class="icon">🗂</span></button>
+        <button id="btn-export-html" class="toolbar-btn" data-i18n-title="tip.exportHtml" title="Export as HTML"><span class="icon">🌐</span></button>
       </div>
       <div class="md-main-area">
         <!-- Outline / TOC Panel -->
@@ -987,6 +1005,10 @@
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="photo-split-view" data-i18n-title="photo.splitView" title="Before/After Split View">◧ Split</button>
         <button class="toolbar-btn" id="photo-histogram" data-i18n-title="photo.histogram" title="Toggle Histogram">📊 Hist</button>
+        <button class="toolbar-btn" id="photo-ba-compare" data-i18n-title="photo.baCompare" title="Before/After Comparison">🔀 B/A</button>
+        <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" id="photo-batch-resize" data-i18n-title="photo.batchResize" title="Batch Resize">⤢ Resize</button>
+        <button class="toolbar-btn" id="photo-crop-presets" data-i18n-title="photo.cropPresets" title="Crop Presets">📐 Presets</button>
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="photo-export" data-i18n-title="tip.export" title="Export" style="background:var(--brand-color);color:#fff;border-radius:6px">⬇ Export</button>
       </div>
@@ -1258,6 +1280,7 @@
           <button class="calc-tab" data-calc-tab="complex">Complex</button>
           <button class="calc-tab" data-calc-tab="baseconv">Base Conv</button>
           <button class="calc-tab" data-calc-tab="numtheory">Num Theory</button>
+          <button class="calc-tab" data-calc-tab="physics">Physics</button>
         </div>
         <div class="calc-toolbar-right">
           <button class="calc-toolbar-btn" id="calc-add-home" title="Add to Home Screen">📲</button>
@@ -1274,6 +1297,8 @@
               <!-- History panel -->
               <div class="calc-history" id="calc-history">
                 <div class="calc-history-header" data-i18n="calc.history">History</div>
+                <input type="text" id="calc-history-search" placeholder="Search history..." style="width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--border-color,#ddd);border-radius:4px;margin-bottom:4px;box-sizing:border-box;">
+                <div id="calc-history-tags" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px;"></div>
                 <div class="calc-history-list" id="calc-history-list"></div>
               </div>
               <!-- Display -->
@@ -1923,6 +1948,220 @@
         </div>
       </div>
 
+      <!-- Panel: Physics Calculator -->
+      <div class="calc-panel" id="calc-panel-physics">
+        <div class="calc-adv-container">
+          <div class="calc-adv-card" style="max-width:650px;">
+            <h3>Physics Calculator</h3>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+              <button class="toolbar-btn calc-physics-cat active" data-cat="kinematics">Kinematics</button>
+              <button class="toolbar-btn calc-physics-cat" data-cat="forces">Forces</button>
+              <button class="toolbar-btn calc-physics-cat" data-cat="electricity">Electricity</button>
+              <button class="toolbar-btn calc-physics-cat" data-cat="energy">Energy</button>
+              <button class="toolbar-btn calc-physics-cat" data-cat="waves">Waves</button>
+            </div>
+            <div id="calc-physics-formulas"></div>
+            <div id="calc-physics-inputs" style="margin-top:12px;"></div>
+            <div style="margin-top:12px;">
+              <button class="toolbar-btn" id="calc-physics-compute" style="background:var(--brand-color,#0071e3);color:#fff;border-radius:6px;padding:8px 16px;">Calculate</button>
+            </div>
+            <div id="calc-physics-result" style="margin-top:12px;padding:12px;background:var(--bg-secondary,#f5f5f5);border-radius:8px;display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 3D CAD View -->
+    <div id="view-cad" class="app-view">
+      <!-- CAD Toolbar -->
+      <div class="cad-toolbar">
+        <div class="cad-toolbar-group">
+          <button id="cad-undo" class="cad-btn" title="Undo (Ctrl+Z)" disabled><span class="icon">↩</span></button>
+          <button id="cad-redo" class="cad-btn" title="Redo (Ctrl+Y)" disabled><span class="icon">↪</span></button>
+        </div>
+        <div class="cad-toolbar-group">
+          <label data-i18n="cad.transform">Transform:</label>
+          <button class="cad-btn cad-transform-btn active" data-mode="translate" title="Move (G)"><span class="icon">✥</span> Move</button>
+          <button class="cad-btn cad-transform-btn" data-mode="rotate" title="Rotate (R)"><span class="icon">↻</span> Rotate</button>
+          <button class="cad-btn cad-transform-btn" data-mode="scale" title="Scale (S)"><span class="icon">⤢</span> Scale</button>
+        </div>
+        <div class="cad-toolbar-group">
+          <button id="cad-snap" class="cad-btn active" title="Toggle Snap"><span class="icon">⊞</span> Snap</button>
+          <button id="cad-delete" class="cad-btn" title="Delete (Del)"><span class="icon">🗑</span></button>
+          <button id="cad-duplicate" class="cad-btn" title="Duplicate (Ctrl+D)"><span class="icon">📋</span></button>
+          <button id="cad-focus" class="cad-btn" title="Focus (F)"><span class="icon">◎</span></button>
+        </div>
+        <div class="cad-toolbar-group">
+          <label data-i18n="cad.shading">Shading:</label>
+          <button class="cad-btn cad-shading-btn active" data-shading="solid">Solid</button>
+          <button class="cad-btn cad-shading-btn" data-shading="wireframe">Wire</button>
+          <button class="cad-btn cad-shading-btn" data-shading="material">Material</button>
+        </div>
+        <div class="cad-toolbar-group">
+          <label data-i18n="cad.boolean">Boolean:</label>
+          <button id="cad-bool-union" class="cad-btn" title="Union">∪</button>
+          <button id="cad-bool-subtract" class="cad-btn" title="Subtract">∖</button>
+          <button id="cad-bool-intersect" class="cad-btn" title="Intersect">∩</button>
+        </div>
+        <div class="cad-toolbar-group">
+          <button id="cad-extrude" class="cad-btn" title="Extrude Shape"><span class="icon">⬆</span> Extrude</button>
+          <button id="cad-revolve" class="cad-btn" title="Revolve Shape"><span class="icon">🔄</span> Revolve</button>
+        </div>
+        <div class="cad-toolbar-group">
+          <button id="cad-import" class="cad-btn" title="Import STL/OBJ/GLTF"><span class="icon">📥</span> Import</button>
+          <input type="file" id="cad-import-input" accept=".stl,.obj,.gltf,.glb" style="display:none" />
+          <button id="cad-export-stl" class="cad-btn" title="Export STL">STL</button>
+          <button id="cad-export-obj" class="cad-btn" title="Export OBJ">OBJ</button>
+          <button id="cad-export-gltf" class="cad-btn" title="Export GLTF">GLTF</button>
+        </div>
+        <div class="cad-toolbar-group">
+          <button id="cad-clear-scene" class="cad-btn" title="Clear Scene"><span class="icon">🧹</span></button>
+        </div>
+      </div>
+
+      <!-- CAD Main Layout -->
+      <div class="cad-main">
+        <!-- Left Panel: Primitives + Scene Tree -->
+        <div class="cad-left-panel">
+          <div class="cad-panel-section">
+            <div class="cad-panel-title" data-i18n="cad.primitives">Primitives <span class="collapse-icon">▼</span></div>
+            <div class="cad-panel-content">
+              <button class="cad-prim-btn" data-prim="box"><span class="prim-icon">🟦</span><span class="prim-label">Box</span></button>
+              <button class="cad-prim-btn" data-prim="sphere"><span class="prim-icon">🔵</span><span class="prim-label">Sphere</span></button>
+              <button class="cad-prim-btn" data-prim="cylinder"><span class="prim-icon">🔷</span><span class="prim-label">Cylinder</span></button>
+              <button class="cad-prim-btn" data-prim="cone"><span class="prim-icon">🔺</span><span class="prim-label">Cone</span></button>
+              <button class="cad-prim-btn" data-prim="torus"><span class="prim-icon">⭕</span><span class="prim-label">Torus</span></button>
+              <button class="cad-prim-btn" data-prim="plane"><span class="prim-icon">⬜</span><span class="prim-label">Plane</span></button>
+              <button class="cad-prim-btn" data-prim="torusknot"><span class="prim-icon">🔗</span><span class="prim-label">Knot</span></button>
+              <button class="cad-prim-btn" data-prim="dodecahedron"><span class="prim-icon">🔶</span><span class="prim-label">Dodeca</span></button>
+              <button class="cad-prim-btn" data-prim="icosahedron"><span class="prim-icon">💎</span><span class="prim-label">Icosa</span></button>
+            </div>
+          </div>
+
+          <div class="cad-panel-section" style="flex:1;display:flex;flex-direction:column;min-height:0">
+            <div class="cad-panel-title" data-i18n="cad.sceneTree">Scene Tree <span class="collapse-icon">▼</span></div>
+            <div id="cad-scene-tree" class="cad-scene-tree"></div>
+          </div>
+
+          <div class="cad-panel-section">
+            <div class="cad-panel-title" data-i18n="cad.lights">Lights</div>
+            <div class="cad-prop-row-full">
+              <span class="cad-prop-label" style="width:auto;min-width:60px">Ambient</span>
+              <input type="range" id="cad-light-ambient" class="cad-prop-input" min="0" max="2" step="0.1" value="0.6" />
+            </div>
+            <div class="cad-prop-row-full">
+              <span class="cad-prop-label" style="width:auto;min-width:60px">Direct</span>
+              <input type="range" id="cad-light-directional" class="cad-prop-input" min="0" max="3" step="0.1" value="1.2" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Viewport -->
+        <div class="cad-viewport-container">
+          <div class="cad-viewport">
+            <!-- Camera view overlay -->
+            <div class="cad-viewport-overlay">
+              <button class="cad-view-btn active" data-view="perspective">Persp</button>
+              <button class="cad-view-btn" data-view="top">Top</button>
+              <button class="cad-view-btn" data-view="front">Front</button>
+              <button class="cad-view-btn" data-view="right">Right</button>
+            </div>
+            <div class="cad-viewport-info" id="cad-viewport-info">
+              <span id="cad-coords" class="cad-status-coord">X: 0.00  Y: 0.00  Z: 0.00</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Panel: Properties -->
+        <div class="cad-right-panel">
+          <div class="cad-prop-section">
+            <div class="cad-prop-title" data-i18n="cad.object">Object</div>
+            <div class="cad-prop-row-full">
+              <span class="cad-prop-label" style="width:auto;min-width:40px">Name</span>
+              <input type="text" id="cad-obj-name" class="cad-prop-input" placeholder="Object name" />
+            </div>
+          </div>
+
+          <div class="cad-prop-section">
+            <div class="cad-prop-title" data-i18n="cad.position">Position</div>
+            <div class="cad-prop-row"><span class="cad-prop-label" style="color:#ff6b6b">X</span><input type="number" id="cad-pos-x" class="cad-prop-input" step="0.1" value="0" /></div>
+            <div class="cad-prop-row"><span class="cad-prop-label" style="color:#51cf66">Y</span><input type="number" id="cad-pos-y" class="cad-prop-input" step="0.1" value="0" /></div>
+            <div class="cad-prop-row"><span class="cad-prop-label" style="color:#339af0">Z</span><input type="number" id="cad-pos-z" class="cad-prop-input" step="0.1" value="0" /></div>
+          </div>
+
+          <div class="cad-prop-section">
+            <div class="cad-prop-title" data-i18n="cad.rotation">Rotation</div>
+            <div class="cad-prop-row"><span class="cad-prop-label" style="color:#ff6b6b">X</span><input type="number" id="cad-rot-x" class="cad-prop-input" step="1" value="0" /></div>
+            <div class="cad-prop-row"><span class="cad-prop-label" style="color:#51cf66">Y</span><input type="number" id="cad-rot-y" class="cad-prop-input" step="1" value="0" /></div>
+            <div class="cad-prop-row"><span class="cad-prop-label" style="color:#339af0">Z</span><input type="number" id="cad-rot-z" class="cad-prop-input" step="1" value="0" /></div>
+          </div>
+
+          <div class="cad-prop-section">
+            <div class="cad-prop-title" data-i18n="cad.scale">Scale</div>
+            <div class="cad-prop-row"><span class="cad-prop-label" style="color:#ff6b6b">X</span><input type="number" id="cad-scl-x" class="cad-prop-input" step="0.1" value="1" /></div>
+            <div class="cad-prop-row"><span class="cad-prop-label" style="color:#51cf66">Y</span><input type="number" id="cad-scl-y" class="cad-prop-input" step="0.1" value="1" /></div>
+            <div class="cad-prop-row"><span class="cad-prop-label" style="color:#339af0">Z</span><input type="number" id="cad-scl-z" class="cad-prop-input" step="0.1" value="1" /></div>
+          </div>
+
+          <div class="cad-prop-section">
+            <div class="cad-prop-title" data-i18n="cad.material">Material</div>
+            <div class="cad-prop-row-full">
+              <span class="cad-prop-label" style="width:auto;min-width:50px">Color</span>
+              <input type="color" id="cad-mat-color" class="cad-prop-input" value="#6688aa" />
+            </div>
+            <div class="cad-prop-row-full">
+              <span class="cad-prop-label" style="width:auto;min-width:50px">Metal</span>
+              <input type="range" id="cad-mat-metalness" class="cad-prop-input" min="0" max="1" step="0.05" value="0.1" />
+            </div>
+            <div class="cad-prop-row-full">
+              <span class="cad-prop-label" style="width:auto;min-width:50px">Rough</span>
+              <input type="range" id="cad-mat-roughness" class="cad-prop-input" min="0" max="1" step="0.05" value="0.6" />
+            </div>
+            <div class="cad-prop-row-full">
+              <span class="cad-prop-label" style="width:auto;min-width:50px">Opacity</span>
+              <input type="range" id="cad-mat-opacity" class="cad-prop-input" min="0" max="1" step="0.05" value="1" />
+            </div>
+            <div class="cad-prop-row-full">
+              <span class="cad-prop-label" style="width:auto;min-width:50px">Wire</span>
+              <input type="checkbox" id="cad-mat-wireframe" />
+            </div>
+          </div>
+
+          <div class="cad-prop-section">
+            <div class="cad-prop-title" data-i18n="cad.measurements">Measurements</div>
+            <div id="cad-measurement" class="cad-measurement-display">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status Bar -->
+      <div class="cad-statusbar">
+        <div class="cad-status-left">
+          <span id="cad-status-msg">Ready</span>
+        </div>
+        <div class="cad-status-center">
+          <span id="cad-obj-count">Objects: 0</span>
+        </div>
+        <div class="cad-status-right">
+          <span>Snap: 0.5 | Shortcuts: G/R/S/F/Del</span>
+        </div>
+      </div>
+
+      <!-- Context Menu -->
+      <div id="cad-context-menu" class="cad-context-menu">
+        <div class="cad-context-item" data-action="move">✥ Move <span class="shortcut">G</span></div>
+        <div class="cad-context-item" data-action="rotate">↻ Rotate <span class="shortcut">R</span></div>
+        <div class="cad-context-item" data-action="scale">⤢ Scale <span class="shortcut">S</span></div>
+        <div class="cad-context-item separator" data-action="duplicate">📋 Duplicate <span class="shortcut">⌘D</span></div>
+        <div class="cad-context-item" data-action="delete">🗑 Delete <span class="shortcut">Del</span></div>
+        <div class="cad-context-item separator" data-action="focus">◎ Focus <span class="shortcut">F</span></div>
+      </div>
+    </div>
+
+    <!-- Drawing / Whiteboard View -->
+    <div id="view-draw" class="app-view">
+      <!-- Drawing editor builds its own UI dynamically via draw-editor.js -->
     </div>
 
     <!-- AI View (Full-screen AI tab) -->
@@ -2034,6 +2273,20 @@
           <button id="ai-url-reset-btn" class="ai-url-reset-btn" title="Reset to localhost">Reset</button>
         </div>
         <div id="ai-url-test-result" style="font-size:11px;margin-top:4px;min-height:14px"></div>
+        <!-- Cloud LLM / API Key Settings -->
+        <details style="margin-top:8px;border-top:1px solid var(--border-color);padding-top:6px">
+          <summary style="font-size:11px;color:var(--text-secondary);cursor:pointer">Cloud LLM (OpenAI-compatible)</summary>
+          <div style="margin-top:6px">
+            <label style="font-size:10px;color:var(--text-secondary)">API Endpoint:</label>
+            <input id="ai-cloud-endpoint-input" type="text" class="ai-url-input" placeholder="https://api.openai.com/v1" style="font-size:11px" />
+            <label style="font-size:10px;color:var(--text-secondary);margin-top:4px">API Key:</label>
+            <input id="ai-apikey-input" type="password" class="ai-url-input" placeholder="sk-..." style="font-size:11px" />
+            <div style="display:flex;gap:4px;margin-top:4px">
+              <button id="ai-apikey-save-btn" class="ai-url-save-btn">Save</button>
+              <button id="ai-apikey-clear-btn" class="ai-url-reset-btn">Clear</button>
+            </div>
+          </div>
+        </details>
       </div>
     </div>
     <div id="ai-chat-list" class="ai-chat-list">
@@ -2057,6 +2310,7 @@
       <button class="ai-action-btn" id="ai-insert-btn" data-tip="ai.insert" data-i18n="ai.insert">Insert</button>
       <button class="ai-action-btn" id="ai-sessions-btn" data-tip="ai.sessions" data-i18n="ai.sessions">Sessions</button>
       <button class="ai-action-btn" id="ai-setup-btn" data-tip="ai.setup" data-i18n="ai.setup">Setup</button>
+      <button class="ai-action-btn" id="ai-diagnostics-btn" title="Connection Diagnostics">Diag</button>
       <button class="ai-action-btn" id="ai-clear-btn" data-tip="ai.clear" data-i18n="ai.clearChat">Clear</button>
     </div>
   </aside>

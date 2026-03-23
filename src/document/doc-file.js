@@ -1,4 +1,4 @@
-// OfficeLink SL — Document File I/O (.html)
+// OfficeLink SL — Document File I/O (.html, .docx, .hwpx)
 
 import { getDocContent, setDocContent, markDocClean } from './doc-editor.js';
 import { generateTimestampFilename } from '../export/filename-utils.js';
@@ -7,37 +7,77 @@ let currentHandle = null;
 let currentName = 'untitled.html';
 
 /**
- * Open an HTML document file
+ * Check if a file is DOCX format (by extension or magic bytes)
+ */
+function isDocxFile(file) {
+  return /\.docx$/i.test(file.name) || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+}
+
+/**
+ * Check if a file is HWPX format
+ */
+function isHwpxFile(file) {
+  return /\.hwpx$/i.test(file.name);
+}
+
+/**
+ * Process a file — auto-detect format and convert to HTML
+ */
+async function processDocFile(file) {
+  if (isDocxFile(file)) {
+    // DOCX → HTML via mammoth
+    const { importDocx } = await import('./docx.js');
+    return await importDocx(file);
+  }
+  if (isHwpxFile(file)) {
+    // HWPX → HTML
+    const { importHwpx } = await import('./hwpx.js');
+    return await importHwpx(file);
+  }
+  // Default: treat as HTML
+  const text = await file.text();
+  const content = extractBody(text);
+  setDocContent(content);
+  return { name: file.name, content };
+}
+
+/**
+ * Open a document file (HTML, DOCX, HWPX — auto-detected)
  */
 export async function openDocFile() {
   if (window.showOpenFilePicker) {
     const [handle] = await window.showOpenFilePicker({
-      types: [{ description: 'HTML Files', accept: { 'text/html': ['.html', '.htm'] } }],
+      types: [
+        { description: 'Document Files', accept: {
+          'text/html': ['.html', '.htm'],
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+          'application/hwpx': ['.hwpx'],
+        }},
+      ],
     });
     const file = await handle.getFile();
-    const text = await file.text();
-    // Extract body content if full HTML document
-    const content = extractBody(text);
-    setDocContent(content);
-    currentHandle = handle;
+    const result = await processDocFile(file);
+    currentHandle = isDocxFile(file) || isHwpxFile(file) ? null : handle;
     currentName = file.name;
-    return { name: file.name, content };
+    return result;
   }
 
   // Fallback for Safari/Firefox
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.html,.htm';
+    input.accept = '.html,.htm,.docx,.hwpx';
     input.onchange = async () => {
       const file = input.files[0];
       if (!file) return resolve(null);
-      const text = await file.text();
-      const content = extractBody(text);
-      setDocContent(content);
-      currentHandle = null;
-      currentName = file.name;
-      resolve({ name: file.name, content });
+      try {
+        const result = await processDocFile(file);
+        currentHandle = null;
+        currentName = file.name;
+        resolve(result);
+      } catch (e) {
+        reject(e);
+      }
     };
     input.click();
   });

@@ -1,0 +1,472 @@
+/* OfficeLink SL — Tutorial & Help System Styles */
+
+/* ===================== Spotlight Overlay ===================== */
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  pointer-events: none;
+}
+
+.tutorial-overlay-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+}
+
+/* ===================== Tutorial Tooltip ===================== */
+.tutorial-tooltip {
+  position: fixed;
+  z-index: 10001;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #222);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  animation: tutorialFadeIn 0.25s ease-out;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+@keyframes tutorialFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.tutorial-tooltip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px 8px;
+}
+
+.tutorial-tooltip-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary, #111);
+}
+
+.tutorial-tooltip-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-secondary, #888);
+  padding: 0 4px;
+  line-height: 1;
+}
+.tutorial-tooltip-close:hover {
+  color: var(--text-primary, #333);
+}
+
+.tutorial-tooltip-body {
+  padding: 0 16px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary, #555);
+}
+
+.tutorial-tooltip-footer {
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--border-color, #eee);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tutorial-tooltip-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+}
+
+.tutorial-progress-bar {
+  flex: 1;
+  height: 3px;
+  background: var(--border-color, #e0e0e0);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.tutorial-progress-fill {
+  height: 100%;
+  background: #0071e3;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.tutorial-tooltip-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ===================== Tutorial Buttons ===================== */
+.tutorial-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #333);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.tutorial-btn:hover {
+  background: var(--hover-bg, #f5f5f5);
+}
+
+.tutorial-btn-primary {
+  background: #0071e3;
+  color: #fff;
+  border-color: #0071e3;
+}
+.tutorial-btn-primary:hover {
+  background: #0060c0;
+}
+
+/* ===================== First Visit Prompt ===================== */
+.tutorial-first-visit {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  animation: tutorialSlideUp 0.4s ease-out;
+}
+
+@keyframes tutorialSlideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.tutorial-first-visit-card {
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #222);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  max-width: 340px;
+  text-align: center;
+}
+
+.tutorial-fv-icon {
+  font-size: 40px;
+  margin-bottom: 8px;
+}
+
+.tutorial-fv-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.tutorial-fv-text {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary, #666);
+}
+
+.tutorial-fv-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tutorial-fv-start {
+  padding: 10px 20px !important;
+  font-size: 14px !important;
+}
+
+.tutorial-fv-later,
+.tutorial-fv-skip {
+  font-size: 12px !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-secondary, #888) !important;
+}
+.tutorial-fv-later:hover,
+.tutorial-fv-skip:hover {
+  color: var(--text-primary, #333) !important;
+}
+
+/* ===================== Help Center Modal ===================== */
+.help-center-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: tutorialFadeIn 0.2s ease-out;
+}
+
+.help-center-modal {
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #222);
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+  width: 680px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.help-center-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border-color, #eee);
+}
+
+.help-center-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.help-search-wrap {
+  flex: 1;
+}
+
+.help-search-input {
+  width: 100%;
+  padding: 8px 14px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 8px;
+  background: var(--sidebar-bg, #f5f5f7);
+  color: var(--text-primary, #222);
+  font-size: 13px;
+  outline: none;
+}
+.help-search-input:focus {
+  border-color: #0071e3;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
+}
+
+.help-center-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--text-secondary, #888);
+  padding: 0;
+  line-height: 1;
+}
+.help-center-close:hover {
+  color: var(--text-primary, #333);
+}
+
+.help-center-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 24px 24px;
+}
+
+/* ===================== Help Tabs ===================== */
+.help-center-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 16px 0 12px;
+  border-bottom: 1px solid var(--border-color, #eee);
+  margin-bottom: 16px;
+}
+
+.help-tab {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary, #666);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.help-tab:hover {
+  background: var(--hover-bg, #f5f5f5);
+}
+.help-tab.active {
+  background: #0071e3;
+  color: #fff;
+}
+
+.help-tab-content {
+  display: none;
+}
+.help-tab-content.active {
+  display: block;
+}
+
+.help-section-desc {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+}
+
+/* ===================== Tour Cards ===================== */
+.help-tour-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.help-tour-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 20px 12px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 12px;
+  background: var(--bg-primary, #fff);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+.help-tour-card:hover {
+  border-color: #0071e3;
+  box-shadow: 0 2px 12px rgba(0, 113, 227, 0.12);
+  transform: translateY(-2px);
+}
+
+.help-tour-icon {
+  font-size: 32px;
+}
+
+.help-tour-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #222);
+}
+
+.help-tour-steps {
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+}
+
+/* ===================== Shortcuts List ===================== */
+.help-shortcuts-list {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.help-shortcut-section {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0071e3;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 18px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-color, #eee);
+}
+.help-shortcut-section:first-child {
+  margin-top: 0;
+}
+
+.help-shortcut-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+}
+
+.help-shortcut-desc {
+  font-size: 13px;
+  color: var(--text-secondary, #555);
+}
+
+.help-shortcut-key {
+  background: var(--sidebar-bg, #f5f5f7);
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  white-space: nowrap;
+  color: var(--text-primary, #333);
+}
+
+/* ===================== FAQ ===================== */
+.help-faq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.help-faq-item {
+  border: 1px solid var(--border-color, #eee);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.help-faq-item[open] {
+  border-color: #0071e3;
+}
+
+.help-faq-item summary {
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text-primary, #222);
+}
+.help-faq-item summary:hover {
+  background: var(--hover-bg, #f5f5f5);
+}
+
+.help-faq-item p {
+  padding: 0 16px 12px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary, #555);
+}
+
+.help-faq-item kbd {
+  background: var(--sidebar-bg, #f5f5f7);
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-family: monospace;
+}
+
+/* ===================== Responsive ===================== */
+@media (max-width: 640px) {
+  .help-center-modal {
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .help-tour-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .tutorial-tooltip {
+    width: calc(100vw - 24px);
+  }
+
+  .tutorial-first-visit {
+    bottom: 12px;
+    right: 12px;
+    left: 12px;
+  }
+
+  .tutorial-first-visit-card {
+    max-width: 100%;
+  }
+}
