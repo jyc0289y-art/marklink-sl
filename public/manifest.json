@@ -11,10 +11,31 @@
   "categories": ["productivity", "utilities"],
   "shortcuts": [
     {
+      "name": "Document",
+      "short_name": "Doc",
+      "description": "Word processor with DOCX support",
+      "url": "./?tab=document",
+      "icons": [{ "src": "favicon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Spreadsheet",
+      "short_name": "Sheet",
+      "description": "Spreadsheet with 40+ formulas and charts",
+      "url": "./?tab=sheet",
+      "icons": [{ "src": "favicon.svg", "sizes": "any" }]
+    },
+    {
       "name": "Calculator",
       "short_name": "Calc",
       "description": "Scientific Calculator with Graph & Unit Converter",
       "url": "./?tab=calculator&fullscreen=1",
+      "icons": [{ "src": "favicon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "3D CAD",
+      "short_name": "CAD",
+      "description": "3D modeling with Three.js — primitives, boolean ops, export",
+      "url": "./?tab=cad",
       "icons": [{ "src": "favicon.svg", "sizes": "any" }]
     }
   ],
