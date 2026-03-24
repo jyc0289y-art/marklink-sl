@@ -259,6 +259,8 @@ export function recalcAll(sheet, allSheets) {
 // Module-level evaluation context for cross-sheet references
 let _evalSheets = null; // set during evaluation to enable Sheet2!A1 syntax
 let _evalStack = new Set(); // circular reference detection
+let _evalDepth = 0; // recursion depth guard
+const MAX_EVAL_DEPTH = 100;
 
 /**
  * Resolve a cross-sheet reference like "Sheet2!A1" or "'My Sheet'!A1:B3"
@@ -286,23 +288,31 @@ function resolveSheetRef(currentSheet, refStr) {
 /**
  * Evaluate a cell value — supports formulas starting with '='
  */
-function evaluate(sheet, raw, allSheets) {
+function evaluate(sheet, raw, allSheets, cellId) {
   if (!raw.startsWith('=')) {
     // Try number
     const num = Number(raw);
     return isNaN(num) ? raw : num;
   }
 
+  // Circular reference detection
+  if (cellId && _evalStack.has(cellId)) return '#CIRC!';
+  if (_evalDepth >= MAX_EVAL_DEPTH) return '#CIRC!';
+
+  if (cellId) _evalStack.add(cellId);
+  _evalDepth++;
+  const prevSheets = _evalSheets;
   try {
-    const prevSheets = _evalSheets;
     _evalSheets = allSheets || null;
     const expr = raw.substring(1).toUpperCase();
     const result = evalFormula(sheet, expr);
-    _evalSheets = prevSheets;
     return result;
   } catch (e) {
-    _evalSheets = null;
     return '#ERROR';
+  } finally {
+    _evalSheets = prevSheets;
+    _evalDepth--;
+    if (cellId) _evalStack.delete(cellId);
   }
 }
 

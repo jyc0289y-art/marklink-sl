@@ -72,7 +72,7 @@ function bindEvents() {
   // Duplicate slide
   document.getElementById('slide-dup')?.addEventListener('click', () => {
     saveCurrentSlide();
-    const clone = { ...slides[activeSlideIdx], notes: slides[activeSlideIdx].notes };
+    const clone = structuredClone(slides[activeSlideIdx]);
     slides.splice(activeSlideIdx + 1, 0, clone);
     activeSlideIdx++;
     renderPanel();

@@ -327,7 +327,8 @@ function bindEvents() {
         noteTooltip = document.createElement('div');
         noteTooltip.className = 'sheet-note-tooltip';
         noteTooltip.style.cssText = 'position:fixed;background:#fef2f2;color:#991b1b;padding:8px 12px;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.2);max-width:300px;font-size:12px;line-height:1.4;z-index:9999;border-left:3px solid #ef4444;';
-        noteTooltip.innerHTML = `<strong>${cellText}</strong><br>${errMsg}${raw ? `<br><code style="font-size:11px;color:#666;margin-top:4px;display:block">${raw}</code>` : ''}`;
+        const escHtml = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        noteTooltip.innerHTML = `<strong>${escHtml(cellText)}</strong><br>${escHtml(errMsg)}${raw ? `<br><code style="font-size:11px;color:#666;margin-top:4px;display:block">${escHtml(raw)}</code>` : ''}`;
         const rect = td.getBoundingClientRect();
         noteTooltip.style.left = rect.right + 4 + 'px';
         noteTooltip.style.top = rect.top + 'px';

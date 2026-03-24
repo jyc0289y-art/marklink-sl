@@ -427,7 +427,7 @@ export function initDocEditor() {
   // Smart paste: clean up external HTML
   editorEl.addEventListener('paste', (e) => {
     const html = e.clipboardData.getData('text/html');
-    if (html && html.includes('data-meta') || html.includes('MsoNormal') || html.includes('docs-internal')) {
+    if (html && (html.includes('data-meta') || html.includes('MsoNormal') || html.includes('docs-internal'))) {
       // Pasting from MS Office or Google Docs — clean it
       e.preventDefault();
       const cleaned = html
