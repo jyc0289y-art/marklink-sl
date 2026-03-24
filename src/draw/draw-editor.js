@@ -203,7 +203,7 @@ function initCanvas() {
   window.addEventListener('resize', () => resizeCanvas());
 }
 
-function resizeCanvas() {
+export function resizeCanvas() {
   const container = document.getElementById('draw-canvas-container');
   if (!container) return;
   const w = container.clientWidth;

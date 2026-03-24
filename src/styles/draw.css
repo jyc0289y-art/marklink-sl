@@ -5,6 +5,10 @@
   background: var(--sidebar-bg);
   overflow: hidden;
 }
+#view-draw.active {
+  display: flex;
+  height: 100%;
+}
 
 /* ===== Layout ===== */
 .draw-layout {

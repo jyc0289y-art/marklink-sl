@@ -384,6 +384,11 @@ export async function initApp() {
     else if (tab === 'ai') updateFileName('AI Assistant');
     else updateFileName(getCurrentFileName());
 
+    // Resize Draw canvas when switching to Draw tab
+    if (tab === 'draw') {
+      import('./draw/draw-editor.js').then(m => { if (m.resizeCanvas) setTimeout(() => m.resizeCanvas(), 50); }).catch(() => {});
+    }
+
     // AI fullscreen mode
     if (tab === 'ai') enterAiFullscreen();
     else if (prevTab === 'ai') exitAiFullscreen();
