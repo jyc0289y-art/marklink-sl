@@ -669,6 +669,7 @@ function startPresentation() {
       clearInterval(timerInterval);
       clearTimeout(autoAdvanceTimer);
       cancelAnimationFrame(autoAdvAnimFrame);
+      window.removeEventListener('resize', penResizeHandler);
       overlay.remove();
       document.removeEventListener('keydown', handler);
     } else if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') {
@@ -779,6 +780,15 @@ function startPresentation() {
   penCanvas.style.cssText = 'position:fixed;inset:0;z-index:10001;pointer-events:none';
   overlay.appendChild(penCanvas);
 
+  // Fix: resize pen canvas when window resizes during presentation
+  const penResizeHandler = () => {
+    const oldData = penCanvas.getContext('2d').getImageData(0, 0, penCanvas.width, penCanvas.height);
+    penCanvas.width = window.innerWidth;
+    penCanvas.height = window.innerHeight;
+    penCanvas.getContext('2d').putImageData(oldData, 0, 0);
+  };
+  window.addEventListener('resize', penResizeHandler);
+
   // Laser pointer element
   const laser = document.createElement('div');
   laser.style.cssText = 'position:fixed;width:12px;height:12px;background:red;border-radius:50%;box-shadow:0 0 16px 4px rgba(255,0,0,0.6);z-index:10003;pointer-events:none;display:none';
@@ -829,6 +839,7 @@ function startPresentation() {
       clearInterval(timerInterval);
       clearTimeout(autoAdvanceTimer);
       cancelAnimationFrame(autoAdvAnimFrame);
+      window.removeEventListener('resize', penResizeHandler);
       overlay.remove();
       document.removeEventListener('keydown', handler);
     }
@@ -4695,3 +4706,40 @@ const _origStartPresentation = startPresentation;
 // Since we can't directly patch inside a closure, we'll handle morph
 // by hooking into the transition mechanism via a flag
 let morphPreviousSlide = null;
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE: Resizable Notes Panel
+   ═══════════════════════════════════════════════════════════════ */
+
+function initNotesResize() {
+  const handle = document.getElementById('slide-notes-resize');
+  const notesArea = document.getElementById('slide-notes-area');
+  if (!handle || !notesArea) return;
+
+  let startY = 0;
+  let startH = 0;
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    startY = e.clientY;
+    startH = notesArea.offsetHeight;
+
+    const onMove = (ev) => {
+      const delta = startY - ev.clientY;
+      const newH = Math.max(40, Math.min(400, startH + delta));
+      notesArea.style.height = newH + 'px';
+    };
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+// Initialize notes resize after DOM is ready
+setTimeout(() => initNotesResize(), 0);

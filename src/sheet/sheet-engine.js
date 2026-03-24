@@ -320,7 +320,7 @@ function evaluate(sheet, raw, allSheets, cellId) {
  * Sort sheet rows by a column
  */
 export function sortByColumn(sheet, colIdx, ascending = true) {
-  // Gather all occupied rows
+  // Gather data for ALL rows (including empty ones) to preserve row positions
   const rowData = {};
   for (const [key, cell] of Object.entries(sheet.cells)) {
     const [r, c] = key.split(',').map(Number);
@@ -328,8 +328,9 @@ export function sortByColumn(sheet, colIdx, ascending = true) {
     rowData[r][c] = cell;
   }
 
-  const rowIndices = Object.keys(rowData).map(Number).sort((a, b) => a - b);
-  if (rowIndices.length === 0) return;
+  // Include all row indices from 0..sheet.rows-1, not just occupied ones
+  const rowIndices = [];
+  for (let i = 0; i < sheet.rows; i++) rowIndices.push(i);
 
   // Sort rows by the target column value
   rowIndices.sort((a, b) => {
@@ -343,7 +344,7 @@ export function sortByColumn(sheet, colIdx, ascending = true) {
     return ascending ? cmp : -cmp;
   });
 
-  // Rewrite cells with new row order
+  // Rewrite cells with new row order, preserving all rows
   const newCells = {};
   rowIndices.forEach((origRow, newRow) => {
     const row = rowData[origRow];
@@ -356,17 +357,67 @@ export function sortByColumn(sheet, colIdx, ascending = true) {
 }
 
 /**
+ * Parse top-level function call using balanced-parenthesis matching.
+ * Returns { fn, argsStr, rest } or null if expr doesn't start with FUNC(...).
+ * `rest` is everything after the closing paren (e.g. "+10" in "SUM(A1:A3)+10").
+ */
+function parseTopLevelCall(expr) {
+  const nameMatch = expr.match(/^([A-Z]+)\(/);
+  if (!nameMatch) return null;
+  const fn = nameMatch[1];
+  let depth = 0;
+  let i = fn.length; // points at the opening '('
+  for (; i < expr.length; i++) {
+    if (expr[i] === '(') depth++;
+    else if (expr[i] === ')') {
+      depth--;
+      if (depth === 0) break;
+    }
+  }
+  if (depth !== 0) return null; // unbalanced
+  const argsStr = expr.substring(fn.length + 1, i);
+  const rest = expr.substring(i + 1);
+  return { fn, argsStr, rest };
+}
+
+/**
  * Formula evaluator
  * Supports: SUM, AVERAGE, COUNT, COUNTA, MIN, MAX, IF, SUMIF, COUNTIF,
  *   VLOOKUP, CONCATENATE/CONCAT, LEFT, RIGHT, MID, LEN, TRIM,
  *   UPPER, LOWER, ROUND, ABS, TODAY, NOW, and basic arithmetic
  */
 function evalFormula(sheet, expr) {
-  // Match function pattern: FUNCNAME(args)
-  const fnMatch = expr.match(/^([A-Z]+)\((.+)\)$/);
-  if (fnMatch) {
-    const fn = fnMatch[1];
-    const argsStr = fnMatch[2];
+  // Parse top-level function call with balanced parentheses
+  const parsed = parseTopLevelCall(expr);
+  if (parsed && parsed.rest === '') {
+    // Pure function call like SUM(A1:A3)
+    return evalFunctionCall(sheet, parsed.fn, parsed.argsStr);
+  }
+  if (parsed && parsed.rest !== '') {
+    // Function call with trailing expression like SUM(A1:A3)+10
+    // Evaluate the function, substitute the result, then evaluate the rest as arithmetic
+    const fnResult = evalFunctionCall(sheet, parsed.fn, parsed.argsStr);
+    if (typeof fnResult === 'string' && fnResult.startsWith('#')) return fnResult;
+    const combined = String(fnResult) + parsed.rest;
+    return evalSimpleExpr(sheet, combined);
+  }
+
+  // Check if it's a named range reference
+  if (sheet.namedRanges && sheet.namedRanges[expr]) {
+    const rangeRef = sheet.namedRanges[expr];
+    const vals = resolveRange(sheet, rangeRef);
+    if (vals.length === 1) return vals[0];
+    return vals.join(', ');
+  }
+
+  // Basic arithmetic with cell references
+  return evalSimpleExpr(sheet, expr);
+}
+
+/**
+ * Evaluate a known function call — dispatches to the correct handler.
+ */
+function evalFunctionCall(sheet, fn, argsStr) {
 
     switch (fn) {
       case 'SUM': {
@@ -1218,19 +1269,7 @@ function evalFormula(sheet, expr) {
         return `__ARRAY__${JSON.stringify(result)}`;
       }
     }
-  }
-
-  // Check if it's a named range reference
-  if (sheet.namedRanges && sheet.namedRanges[expr]) {
-    const rangeRef = sheet.namedRanges[expr];
-    // Resolve the named range as a value
-    const vals = resolveRange(sheet, rangeRef);
-    if (vals.length === 1) return vals[0];
-    return vals.join(', ');
-  }
-
-  // Basic arithmetic with cell references
-  return evalSimpleExpr(sheet, expr);
+  return '#ERROR'; // unknown function
 }
 
 /** Split function arguments respecting nested parentheses */
@@ -1418,4 +1457,202 @@ function resolveRange(sheet, rangeStr) {
     }
   }
   return values;
+}
+
+// ─── Cell Merge ───
+
+/**
+ * Merge a rectangular selection of cells.
+ * Stores merge metadata on each cell; the top-left cell keeps combined content.
+ */
+export function mergeCells(sheet, r1, c1, r2, c2) {
+  if (!sheet.merges) sheet.merges = [];
+  const merge = { r1, c1, r2, c2 };
+  // Avoid duplicate merges
+  if (sheet.merges.some(m => m.r1 === r1 && m.c1 === c1 && m.r2 === r2 && m.c2 === c2)) return;
+  sheet.merges.push(merge);
+  // Keep top-left cell value; clear others
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      if (r === r1 && c === c1) continue;
+      const key = cellKey(r, c);
+      if (sheet.cells[key]) {
+        sheet.cells[key].raw = '';
+        sheet.cells[key].value = '';
+      }
+    }
+  }
+}
+
+/** Unmerge cells at the given anchor (top-left of a merge). */
+export function unmergeCells(sheet, r, c) {
+  if (!sheet.merges) return;
+  sheet.merges = sheet.merges.filter(m => !(m.r1 === r && m.c1 === c));
+}
+
+/** Find merge info for a cell. Returns the merge object or null. */
+export function getMerge(sheet, r, c) {
+  if (!sheet.merges) return null;
+  return sheet.merges.find(m => r >= m.r1 && r <= m.r2 && c >= m.c1 && c <= m.c2) || null;
+}
+
+// ─── Conditional Formatting ───
+
+/**
+ * Add a conditional formatting rule.
+ * rule: { range: "A1:B10", type: "gt"|"lt"|"eq"|"between"|"contains", value: ..., value2: ..., bgColor, textColor }
+ */
+export function addCondFormat(sheet, rule) {
+  if (!sheet.condFormats) sheet.condFormats = [];
+  rule.id = Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+  sheet.condFormats.push(rule);
+  return rule.id;
+}
+
+export function removeCondFormat(sheet, ruleId) {
+  if (!sheet.condFormats) return;
+  sheet.condFormats = sheet.condFormats.filter(r => r.id !== ruleId);
+}
+
+/** Evaluate conditional format rules for a cell. Returns { bg, color } or null. */
+export function evalCondFormat(sheet, r, c) {
+  if (!sheet.condFormats?.length) return null;
+  const ref = rcToRef(r, c);
+  for (const rule of sheet.condFormats) {
+    if (!isInRange(ref, rule.range)) continue;
+    const cell = getCell(sheet, r, c);
+    const val = cell?.value ?? '';
+    const num = typeof val === 'number' ? val : Number(val);
+    const ruleVal = Number(rule.value);
+    let match = false;
+    switch (rule.type) {
+      case 'gt': match = !isNaN(num) && num > ruleVal; break;
+      case 'lt': match = !isNaN(num) && num < ruleVal; break;
+      case 'eq': match = String(val) === String(rule.value) || (!isNaN(num) && num === ruleVal); break;
+      case 'neq': match = String(val) !== String(rule.value); break;
+      case 'gte': match = !isNaN(num) && num >= ruleVal; break;
+      case 'lte': match = !isNaN(num) && num <= ruleVal; break;
+      case 'between': match = !isNaN(num) && num >= ruleVal && num <= Number(rule.value2); break;
+      case 'contains': match = String(val).toLowerCase().includes(String(rule.value).toLowerCase()); break;
+    }
+    if (match) return { bg: rule.bgColor || null, color: rule.textColor || null };
+  }
+  return null;
+}
+
+function isInRange(ref, rangeStr) {
+  if (!rangeStr.includes(':')) return ref === rangeStr;
+  const [s, e] = rangeStr.split(':');
+  const sr = refToRC(s), er = refToRC(e), cr = refToRC(ref);
+  if (!sr || !er || !cr) return false;
+  return cr[0] >= sr[0] && cr[0] <= er[0] && cr[1] >= sr[1] && cr[1] <= er[1];
+}
+
+// ─── Auto-Fill ───
+
+const DAY_NAMES = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
+const DAY_SHORT = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+const MONTH_NAMES = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+const MONTH_SHORT = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+/**
+ * Auto-fill from source cells to target cells along a direction.
+ * sourceRange: [{r,c},...], direction: 'down'|'right'|'up'|'left', count: how many cells to fill
+ */
+export function autoFillRange(sheet, sourceRange, direction, count, allSheets) {
+  if (!sourceRange.length || count <= 0) return;
+  const srcVals = sourceRange.map(({r, c}) => {
+    const cell = getCell(sheet, r, c);
+    return { raw: cell?.raw ?? '', value: cell?.value ?? '' };
+  });
+
+  // Detect pattern
+  const pattern = detectPattern(srcVals);
+
+  for (let i = 0; i < count; i++) {
+    const srcIdx = i % sourceRange.length;
+    const base = sourceRange[srcIdx];
+    const step = Math.floor(i / sourceRange.length) + 1;
+    let targetR = base.r, targetC = base.c;
+    const offset = sourceRange.length * step + (i % sourceRange.length) - (sourceRange.length - 1) + (i % sourceRange.length);
+    // Compute target position
+    const totalOff = sourceRange.length + i;
+    if (direction === 'down') { targetR = sourceRange[0].r + totalOff; targetC = base.c; }
+    else if (direction === 'right') { targetR = base.r; targetC = sourceRange[0].c + totalOff; }
+    else if (direction === 'up') { targetR = sourceRange[0].r - (i + 1); targetC = base.c; }
+    else if (direction === 'left') { targetR = base.r; targetC = sourceRange[0].c - (i + 1); }
+
+    if (targetR < 0 || targetC < 0) continue;
+    // Expand sheet if needed
+    if (targetR >= sheet.rows) sheet.rows = targetR + 1;
+    if (targetC >= sheet.cols) sheet.cols = targetC + 1;
+
+    const newVal = generateFillValue(srcVals, pattern, srcIdx, i + 1);
+    setCell(sheet, targetR, targetC, newVal, allSheets);
+  }
+}
+
+function detectPattern(srcVals) {
+  // Check for series in list
+  if (srcVals.length >= 1) {
+    const upper = String(srcVals[0].value).toUpperCase();
+    if (DAY_NAMES.includes(upper) || DAY_SHORT.includes(upper)) return { type: 'day', short: DAY_SHORT.includes(upper) };
+    if (MONTH_NAMES.includes(upper) || MONTH_SHORT.includes(upper)) return { type: 'month', short: MONTH_SHORT.includes(upper) };
+  }
+  // Check for numeric series
+  const nums = srcVals.map(v => Number(v.value));
+  if (nums.every(n => !isNaN(n))) {
+    if (srcVals.length >= 2) {
+      const diff = nums[1] - nums[0];
+      const isArith = nums.every((n, i) => i === 0 || Math.abs(n - nums[i-1] - diff) < 1e-10);
+      if (isArith) return { type: 'number', step: diff };
+    }
+    return { type: 'number', step: 1 };
+  }
+  // Check for text+number pattern like "Item1", "Item2"
+  const m = String(srcVals[0].value).match(/^(.+?)(\d+)$/);
+  if (m) return { type: 'textnum', prefix: m[1], startNum: parseInt(m[2], 10) };
+  // Default: repeat
+  return { type: 'repeat' };
+}
+
+function generateFillValue(srcVals, pattern, srcIdx, step) {
+  switch (pattern.type) {
+    case 'number': {
+      const base = Number(srcVals[srcIdx].value);
+      return String(base + pattern.step * step);
+    }
+    case 'day': {
+      const list = pattern.short ? DAY_SHORT : DAY_NAMES;
+      const startIdx = list.indexOf(String(srcVals[srcIdx].value).toUpperCase());
+      const newIdx = (startIdx + step) % 7;
+      const result = list[newIdx];
+      // Preserve original casing
+      const orig = String(srcVals[0].value);
+      if (orig === orig.toLowerCase()) return result.toLowerCase();
+      if (orig[0] === orig[0].toUpperCase() && orig.slice(1) === orig.slice(1).toLowerCase()) {
+        return result[0] + result.slice(1).toLowerCase();
+      }
+      return result;
+    }
+    case 'month': {
+      const list = pattern.short ? MONTH_SHORT : MONTH_NAMES;
+      const startIdx = list.indexOf(String(srcVals[srcIdx].value).toUpperCase());
+      const newIdx = (startIdx + step) % 12;
+      const result = list[newIdx];
+      const orig = String(srcVals[0].value);
+      if (orig === orig.toLowerCase()) return result.toLowerCase();
+      if (orig[0] === orig[0].toUpperCase() && orig.slice(1) === orig.slice(1).toLowerCase()) {
+        return result[0] + result.slice(1).toLowerCase();
+      }
+      return result;
+    }
+    case 'textnum': {
+      return pattern.prefix + (pattern.startNum + step);
+    }
+    default: {
+      // Repeat pattern
+      return srcVals[srcIdx].raw || String(srcVals[srcIdx].value);
+    }
+  }
 }

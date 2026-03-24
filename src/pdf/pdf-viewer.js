@@ -89,7 +89,25 @@ function bindEvents() {
   document.getElementById('pdf-next')?.addEventListener('click', nextPage);
   document.getElementById('pdf-zoom-in')?.addEventListener('click', () => setZoom(scale + 0.25));
   document.getElementById('pdf-zoom-out')?.addEventListener('click', () => setZoom(scale - 0.25));
-  document.getElementById('pdf-fit')?.addEventListener('click', fitWidth);
+  document.getElementById('pdf-fit')?.addEventListener('click', () => fitWidth());
+  document.getElementById('pdf-fit-page')?.addEventListener('click', () => fitPage());
+  document.getElementById('pdf-actual-size')?.addEventListener('click', () => setZoom(1.0));
+
+  // Go-to-page input
+  const gotoInput = document.getElementById('pdf-goto-page');
+  gotoInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const pg = parseInt(gotoInput.value, 10);
+      if (pg >= 1 && pg <= getVisiblePageCount()) {
+        currentPage = pg;
+        scrollToPageIdx(currentPage - 1);
+        updatePageInfo();
+      }
+      gotoInput.value = '';
+      gotoInput.blur();
+    }
+  });
 
   // MD → PDF: switch to markdown tab's export
   document.getElementById('pdf-convert-md')?.addEventListener('click', () => {
@@ -168,17 +186,30 @@ function bindEvents() {
   document.getElementById('pdf-search-prev')?.addEventListener('click', searchPrev);
   document.getElementById('pdf-search-next')?.addEventListener('click', searchNext);
 
-  // Keyboard navigation
+  // Keyboard navigation (arrows + PageUp/Down + Home/End)
   document.addEventListener('keydown', (e) => {
     const pdfView = document.getElementById('view-pdf');
     if (!pdfView?.classList.contains('active') || !pdfDoc) return;
+    // Skip if user is typing in an input/textarea
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
-    if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === 'PageDown') {
       e.preventDefault();
       nextPage();
-    } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'PageUp') {
       e.preventDefault();
       prevPage();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      currentPage = 1;
+      scrollToPageIdx(0);
+      updatePageInfo();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      currentPage = getVisiblePageCount();
+      scrollToPageIdx(currentPage - 1);
+      updatePageInfo();
     }
   });
 }
@@ -543,6 +574,19 @@ async function fitWidth() {
   await renderAllPages();
 }
 
+async function fitPage() {
+  if (!pdfDoc || !containerEl) return;
+  const page = await pdfDoc.getPage(1);
+  const viewport = page.getViewport({ scale: 1 });
+  const containerWidth = containerEl.clientWidth - 48;
+  const containerHeight = containerEl.clientHeight - 48;
+  const scaleW = containerWidth / viewport.width;
+  const scaleH = containerHeight / viewport.height;
+  scale = Math.min(scaleW, scaleH);
+  updatePageInfo();
+  await renderAllPages();
+}
+
 // ─── Page Rotation ──────────────────────────────────────────
 async function rotatePage() {
   if (!pdfDoc) return;
@@ -738,13 +782,18 @@ function bindAnnotEvents(annotCanvas, pageNum, viewport) {
     if (activeAnnotTool === 'freehand') {
       isDrawing = true;
       const ctx = annotCanvas.getContext('2d');
+      const fhColor = document.getElementById('pdf-freehand-color')?.value || '#e53935';
+      const fhWidth = parseInt(document.getElementById('pdf-freehand-width')?.value, 10) || 2;
       ctx.beginPath();
       ctx.moveTo(startX, startY);
-      ctx.strokeStyle = '#e53935';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = fhColor;
+      ctx.lineWidth = fhWidth;
       ctx.lineCap = 'round';
       if (!freehandState[pageNum]) freehandState[pageNum] = [];
       freehandState[pageNum].push([{ x: startX, y: startY }]);
+      // Store color/width for this stroke
+      annotCanvas._fhColor = fhColor;
+      annotCanvas._fhWidth = fhWidth;
       return;
     }
 
@@ -775,7 +824,12 @@ function bindAnnotEvents(annotCanvas, pageNum, viewport) {
 
     if (activeAnnotTool === 'freehand') {
       // Already drawn via mousemove
-      saveAnnotation(pageNum, { type: 'freehand', points: freehandState[pageNum]?.[freehandState[pageNum].length - 1] || [] });
+      saveAnnotation(pageNum, {
+        type: 'freehand',
+        points: freehandState[pageNum]?.[freehandState[pageNum].length - 1] || [],
+        color: annotCanvas._fhColor || '#e53935',
+        lineWidth: annotCanvas._fhWidth || 2,
+      });
       return;
     }
 
@@ -818,9 +872,13 @@ function bindAnnotEvents(annotCanvas, pageNum, viewport) {
 }
 
 function addStickyNote(wrapper, x, y, pageNum) {
+  const stickyColor = document.getElementById('pdf-sticky-color')?.value || '#fff9c4';
+  const colorIcons = { '#fff9c4': '📌', '#c8e6c9': '📗', '#bbdefb': '📘', '#ffccbc': '📙', '#f8bbd0': '💗', '#e1bee7': '💜' };
+  const icon = colorIcons[stickyColor] || '📌';
+
   const note = document.createElement('div');
   note.className = 'pdf-sticky-note-el';
-  note.textContent = '📌';
+  note.textContent = icon;
   note.style.left = x + 'px';
   note.style.top = y + 'px';
 
@@ -829,9 +887,30 @@ function addStickyNote(wrapper, x, y, pageNum) {
   popup.style.left = (x + 28) + 'px';
   popup.style.top = y + 'px';
   popup.style.display = 'none';
+  popup.style.background = stickyColor;
+  popup.style.borderColor = adjustColor(stickyColor, -30);
+
+  // Header with close button
+  const header = document.createElement('div');
+  header.className = 'pdf-sticky-popup-header';
+  header.innerHTML = `<span>Note</span>`;
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'pdf-sticky-popup-close';
+  closeBtn.textContent = '\u00d7';
+  closeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    note.remove();
+    popup.remove();
+    // Remove from annotations
+    const annots = pageAnnotations[pageNum] || [];
+    const idx = annots.findIndex(a => a.type === 'sticky' && a.x === x && a.y === y);
+    if (idx !== -1) annots.splice(idx, 1);
+  });
+  header.appendChild(closeBtn);
+  popup.appendChild(header);
 
   const textarea = document.createElement('textarea');
-  textarea.placeholder = 'Add note…';
+  textarea.placeholder = 'Add note...';
   popup.appendChild(textarea);
 
   note.addEventListener('click', (e) => {
@@ -843,14 +922,22 @@ function addStickyNote(wrapper, x, y, pageNum) {
   wrapper.appendChild(note);
   wrapper.appendChild(popup);
 
-  saveAnnotation(pageNum, { type: 'sticky', x, y, text: '' });
-  // Update text on blur
+  saveAnnotation(pageNum, { type: 'sticky', x, y, text: '', color: stickyColor });
   textarea.addEventListener('blur', () => {
-    // Find and update last sticky
     const annots = pageAnnotations[pageNum] || [];
     const last = [...annots].reverse().find(a => a.type === 'sticky' && a.x === x && a.y === y);
     if (last) last.text = textarea.value;
   });
+}
+
+function adjustColor(hex, amount) {
+  let r = parseInt(hex.slice(1, 3), 16);
+  let g = parseInt(hex.slice(3, 5), 16);
+  let b = parseInt(hex.slice(5, 7), 16);
+  r = Math.max(0, Math.min(255, r + amount));
+  g = Math.max(0, Math.min(255, g + amount));
+  b = Math.max(0, Math.min(255, b + amount));
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
 function saveAnnotation(pageNum, data) {
@@ -882,8 +969,8 @@ function redrawAnnotations(annotCanvas, pageNum, viewport) {
       ctx.lineTo(a.x + a.w, a.y + a.h / 2);
       ctx.stroke();
     } else if (a.type === 'freehand' && a.points && a.points.length > 1) {
-      ctx.strokeStyle = '#e53935';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = a.color || '#e53935';
+      ctx.lineWidth = a.lineWidth || 2;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(a.points[0].x, a.points[0].y);

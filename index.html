@@ -3,7 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OfficeLink SL</title>
+  <title>OfficeLink SL — Free Web Office Suite</title>
+  <meta name="description" content="Free browser-based office suite: Document, Spreadsheet, Slide, PDF, Markdown, Photo Editor, 3D CAD, Drawing, Calculator & AI. No install needed." />
+  <meta name="keywords" content="office suite, web office, document editor, spreadsheet, presentation, PDF viewer, photo editor, 3D CAD, calculator, markdown, free, PWA, offline" />
+  <meta name="author" content="SeouLink (SL Corporation)" />
+  <meta property="og:title" content="OfficeLink SL — Free Web Office Suite" />
+  <meta property="og:description" content="10 editors in one browser tab: Document, Sheet, Slide, PDF, Photo, 3D CAD, Draw, Calc, Markdown & AI" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://jyc0289y-art.github.io/marklink-sl/" />
+  <meta property="og:image" content="https://jyc0289y-art.github.io/marklink-sl/icon-512.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="OfficeLink SL — Free Web Office Suite" />
+  <meta name="twitter:description" content="10 editors in one browser tab. Free, offline-capable, no signup." />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#0071e3" />
@@ -329,6 +340,7 @@
         <button class="toolbar-btn" id="doc-writing-stats" data-i18n-title="doc.writingStats" title="Writing Stats & Goals" style="font-size:11px">📊 Stats</button>
         <button class="toolbar-btn" id="doc-focus-mode" data-i18n-title="doc.focusMode" title="Focus Mode (Zen)" style="font-size:11px">🧘 Focus</button>
         <button class="toolbar-btn" id="doc-reading-mode" data-i18n-title="doc.readingMode" title="Reading Mode" style="font-size:11px">📖 Read</button>
+        <button class="toolbar-btn" id="doc-autocorrect" data-i18n-title="doc.autoCorrect" title="Auto-Correct (common typos)" style="font-size:11px;opacity:0.6">✓ AC</button>
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="doc-multi-column" data-i18n-title="doc.multiColumn" title="Multi-Column Layout" style="font-size:11px">⫟ Cols</button>
         <button class="toolbar-btn" id="doc-drag-reorder" data-i18n-title="doc.dragReorder" title="Toggle Paragraph Drag Reorder" style="font-size:11px">☰ Drag</button>
@@ -728,7 +740,8 @@
             </div>
           </div>
         </div>
-        <div class="slide-notes-area">
+        <div class="slide-notes-area" id="slide-notes-area">
+          <div class="slide-notes-resize-handle" id="slide-notes-resize" title="Drag to resize notes"></div>
           <div class="slide-notes-header">
             <span data-i18n="slide.speakerNotes">Speaker Notes</span>
             <span class="slide-notes-toolbar" id="slide-notes-toolbar">
@@ -750,11 +763,14 @@
         <button class="toolbar-btn" id="pdf-prev" data-i18n-title="pdf.prevPage" title="Previous Page">&larr;</button>
         <span class="pdf-page-info"><span id="pdf-page-num">0</span> / <span id="pdf-page-count">0</span></span>
         <button class="toolbar-btn" id="pdf-next" data-i18n-title="pdf.nextPage" title="Next Page">&rarr;</button>
+        <input type="number" id="pdf-goto-page" class="pdf-goto-input" min="1" placeholder="Go" title="Go to page number" />
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="pdf-zoom-out" data-i18n-title="tip.zoomOut" title="Zoom Out">-</button>
         <span class="pdf-zoom-info" id="pdf-zoom-info">100%</span>
         <button class="toolbar-btn" id="pdf-zoom-in" data-i18n-title="tip.zoomIn" title="Zoom In">+</button>
-        <button class="toolbar-btn" id="pdf-fit" data-i18n-title="pdf.fitWidth" title="Fit Width">Fit</button>
+        <button class="toolbar-btn" id="pdf-fit" data-i18n-title="pdf.fitWidth" title="Fit Width">Fit W</button>
+        <button class="toolbar-btn" id="pdf-fit-page" title="Fit to Page">Fit P</button>
+        <button class="toolbar-btn" id="pdf-actual-size" title="Actual Size (100%)">1:1</button>
         <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="pdf-convert-md" data-i18n-title="pdf.convertMd" title="Convert Markdown to PDF">MD → PDF</button>
         <button class="toolbar-btn" id="pdf-convert-doc" data-i18n-title="pdf.convertDoc" title="Convert Document to PDF">Doc → PDF</button>
@@ -769,7 +785,22 @@
         <button class="toolbar-btn pdf-annot-btn" id="pdf-underline" data-i18n-title="pdf.underline" title="Underline Text" data-tool="underline">U̲ Underline</button>
         <button class="toolbar-btn pdf-annot-btn" id="pdf-strikethrough" data-i18n-title="pdf.strikethrough" title="Strikethrough Text" data-tool="strikethrough">S̶ Strike</button>
         <button class="toolbar-btn pdf-annot-btn" id="pdf-sticky-note" data-i18n-title="pdf.stickyNote" title="Add Sticky Note" data-tool="sticky">📝 Note</button>
+        <select id="pdf-sticky-color" title="Sticky Note Color" style="font-size:11px;padding:2px 4px;border:1px solid var(--border-color);border-radius:4px;background:var(--editor-bg,#fff);color:var(--text-primary)">
+          <option value="#fff9c4" selected>Yellow</option>
+          <option value="#c8e6c9">Green</option>
+          <option value="#bbdefb">Blue</option>
+          <option value="#ffccbc">Orange</option>
+          <option value="#f8bbd0">Pink</option>
+          <option value="#e1bee7">Purple</option>
+        </select>
         <button class="toolbar-btn pdf-annot-btn" id="pdf-freehand" data-i18n-title="pdf.freehand" title="Freehand Drawing" data-tool="freehand">✏ Draw</button>
+        <input type="color" id="pdf-freehand-color" value="#e53935" title="Drawing Color" style="width:24px;height:24px;border:1px solid var(--border-color);border-radius:4px;cursor:pointer">
+        <select id="pdf-freehand-width" title="Pen Width" style="font-size:11px;padding:2px 4px;border:1px solid var(--border-color);border-radius:4px;background:var(--editor-bg,#fff);color:var(--text-primary)">
+          <option value="1">Thin</option>
+          <option value="2" selected>Medium</option>
+          <option value="4">Thick</option>
+          <option value="8">Extra Thick</option>
+        </select>
         <button class="toolbar-btn" id="pdf-clear-annot" data-i18n-title="pdf.clearAnnot" title="Clear Annotations on Page">🗑 Clear</button>
         <div class="toolbar-divider"></div>
         <!-- Form Filling -->

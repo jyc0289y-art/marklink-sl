@@ -538,6 +538,18 @@
   }
   .cad-toolbar {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+  }
+  .cad-toolbar::-webkit-scrollbar { display: none; }
+  .cad-btn {
+    flex-shrink: 0;
+    min-height: 44px;
+  }
+  .cad-statusbar {
+    font-size: 10px;
+    padding: 2px 6px;
   }
 }
 
@@ -627,4 +639,74 @@
   background: #fff;
   color: #333;
   border-color: #ccc;
+}
+[data-theme="light"] .cad-toolbar-group {
+  border-right-color: #ddd;
+}
+[data-theme="light"] .cad-toolbar-group label {
+  color: #666;
+}
+[data-theme="light"] .cad-panel-section {
+  border-bottom-color: #ddd;
+}
+[data-theme="light"] .cad-prop-title {
+  color: #0071e3;
+}
+[data-theme="light"] .cad-prop-label {
+  color: #666;
+}
+[data-theme="light"] .cad-prop-input:focus {
+  border-color: #0071e3;
+}
+[data-theme="light"] .cad-status-coord {
+  color: #0071e3;
+}
+[data-theme="light"] .cad-tree-item:hover {
+  background: rgba(0,0,0,0.05);
+}
+[data-theme="light"] .cad-view-btn {
+  background: rgba(255,255,255,0.9);
+  color: #555;
+  border-color: #ccc;
+}
+[data-theme="light"] .cad-view-btn:hover,
+[data-theme="light"] .cad-view-btn.active {
+  color: #0071e3;
+  border-color: #0071e3;
+}
+[data-theme="light"] .cad-viewport-info {
+  background: rgba(255,255,255,0.9);
+  color: #555;
+}
+[data-theme="light"] .cad-bool-dialog {
+  background: #fff;
+  border-color: #ddd;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+[data-theme="light"] .cad-bool-dialog h3 {
+  color: #0071e3;
+}
+[data-theme="light"] .cad-bool-dialog .bool-op-btn {
+  background: #f8f8f8;
+  color: #333;
+  border-color: #ccc;
+}
+[data-theme="light"] .cad-bool-dialog .bool-op-btn.selected {
+  background: #e0eef9;
+  border-color: #0071e3;
+  color: #0071e3;
+}
+[data-theme="light"] .cad-context-menu {
+  background: #fff;
+  border-color: #ddd;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+[data-theme="light"] .cad-context-item {
+  color: #333;
+}
+[data-theme="light"] .cad-context-item:hover {
+  background: rgba(0,0,0,0.05);
+}
+[data-theme="light"] .cad-context-item .shortcut {
+  color: #999;
 }

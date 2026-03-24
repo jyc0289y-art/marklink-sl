@@ -36,4 +36,16 @@
   --scrollbar-track: #2c2c2e;
   --scrollbar-thumb: #48484a;
   --scrollbar-thumb-hover: #636366;
+
+  /* Dark mode explicit overrides */
+  --icon-color: #e0e0e0;
+  --status-bar-bg: #2c2c2e;
+  --status-bar-text: #a1a1a6;
+  --select-bg: #2c2c2e;
+  --select-border: #48484a;
+  --select-text: #e0e0e0;
+  --modal-bg: #2c2c2e;
+  --modal-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  --editor-bg: #1c1c1e;
+  --sidebar-border: #38383a;
 }

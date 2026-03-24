@@ -353,3 +353,46 @@
     justify-content: center;
   }
 }
+
+/* ===== Light Mode Draw Fixes ===== */
+[data-theme="light"] .draw-toolbar-left {
+  background: #fafafa;
+  border-right-color: #e0e0e0;
+}
+[data-theme="light"] .draw-tool-btn {
+  color: #555;
+}
+[data-theme="light"] .draw-tool-btn:hover {
+  color: #111;
+  background: rgba(0,0,0,0.06);
+}
+[data-theme="light"] .draw-tool-btn.active {
+  background: var(--brand-color);
+  color: #fff;
+}
+[data-theme="light"] .draw-panel-right {
+  background: #fafafa;
+  border-left-color: #e0e0e0;
+}
+[data-theme="light"] .draw-panel-title {
+  color: #666;
+}
+[data-theme="light"] .draw-bottom-bar {
+  background: #f0f0f2;
+  color: #555;
+  border-top-color: #e0e0e0;
+}
+[data-theme="light"] .draw-sm-btn {
+  background: #fff;
+  color: #333;
+  border-color: #ccc;
+}
+[data-theme="light"] .draw-layer-item {
+  color: #333;
+  border-color: #ddd;
+}
+[data-theme="light"] .draw-ruler-h,
+[data-theme="light"] .draw-ruler-v {
+  background: #f0f0f2;
+  border-color: #e0e0e0;
+}

@@ -50,7 +50,7 @@ html, body {
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--icon-color, var(--text-secondary));
   cursor: pointer;
   font-size: 14px;
   transition: background 0.15s, color 0.15s;
@@ -409,10 +409,10 @@ html, body {
   justify-content: space-between;
   height: 22px;
   padding: 0 12px;
-  background: var(--toolbar-bg);
+  background: var(--status-bar-bg, var(--toolbar-bg));
   border-top: 1px solid var(--border-color);
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--status-bar-text, var(--text-tertiary));
   user-select: none;
   flex-shrink: 0;
 }
@@ -433,7 +433,7 @@ html, body {
   width: 240px;
   min-width: 200px;
   background: var(--sidebar-bg);
-  border-right: 1px solid var(--border-color);
+  border-right: 1px solid var(--sidebar-border, var(--border-color));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -790,8 +790,12 @@ html.rtl .lang-picker-grid {
   }
 
   /* Touch-friendly inputs */
-  input, select, textarea, button {
+  input, select, textarea {
     font-size: 16px !important; /* prevents iOS zoom on focus */
+  }
+  /* Ensure minimum touch target size */
+  button, .toolbar-btn, .tab-item, .calc-btn, .draw-tool-btn {
+    min-height: 44px;
   }
 
   /* Modal dialogs — full-width on mobile */
@@ -840,4 +844,121 @@ html.rtl .lang-picker-grid {
     font-size: 9px;
   }
   .status-bar #status-center { display: none; }
+}
+
+/* ========== Light Mode Explicit Fixes ========== */
+[data-theme="light"] .toolbar-btn {
+  color: #444;
+}
+[data-theme="light"] .toolbar-btn:hover {
+  color: #111;
+  background: rgba(0, 0, 0, 0.07);
+}
+[data-theme="light"] .toolbar-btn .icon {
+  color: inherit;
+}
+[data-theme="light"] .status-bar {
+  background: #eaeaea;
+  color: #555;
+  border-top-color: #ddd;
+}
+[data-theme="light"] .sidebar {
+  background: #f8f9fa;
+  border-right-color: #e0e0e0;
+}
+[data-theme="light"] .sidebar-header {
+  color: #444;
+  border-bottom-color: #e0e0e0;
+}
+[data-theme="light"] .sidebar-label {
+  color: #888;
+}
+[data-theme="light"] .pane-header {
+  background: #f0f0f2;
+  color: #666;
+  border-bottom-color: #ddd;
+}
+/* Modals and popups in light mode */
+[data-theme="light"] .lang-picker-modal,
+[data-theme="light"] .doc-dialog,
+[data-theme="light"] .doc-spell-menu,
+[data-theme="light"] .slide-shape-lib-panel,
+[data-theme="light"] .slide-layout-picker,
+[data-theme="light"] .slide-context-menu,
+[data-theme="light"] .shortcut-modal,
+[data-theme="light"] .md-snippet-panel,
+[data-theme="light"] .md-autocomplete {
+  background: #fff;
+  color: #333;
+  border-color: #ddd;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+/* Dropdowns / selects in light mode */
+[data-theme="light"] select,
+[data-theme="light"] .doc-toolbar select,
+[data-theme="light"] .slide-toolbar select,
+[data-theme="light"] .slide-text-format-bar select {
+  background: #fff;
+  color: #333;
+  border-color: #ccc;
+}
+/* Input fields in light mode */
+[data-theme="light"] .doc-find-input,
+[data-theme="light"] .sheet-formula-bar,
+[data-theme="light"] .sheet-cell-ref,
+[data-theme="light"] .calc-graph-input,
+[data-theme="light"] .snippet-filter,
+[data-theme="light"] .draw-hex-input {
+  background: #fff;
+  color: #333;
+  border-color: #ccc;
+}
+/* Editor areas in light mode */
+[data-theme="light"] .doc-editor {
+  background: #fff;
+  color: #1d1d1f;
+}
+[data-theme="light"] .doc-page-wrapper {
+  background: #f0f0f2;
+}
+[data-theme="light"] .preview-container {
+  background: #fff;
+}
+[data-theme="light"] .sheet-container {
+  background: #fff;
+}
+[data-theme="light"] .sheet-grid td {
+  background: #fff;
+  color: #1d1d1f;
+}
+/* Tab bar active tab in light mode */
+[data-theme="light"] .tab-item {
+  color: #888;
+}
+[data-theme="light"] .tab-item:hover {
+  color: #555;
+}
+[data-theme="light"] .tab-item.active {
+  color: var(--brand-color);
+  border-bottom-color: var(--brand-color);
+}
+
+/* ========== Mobile Sidebar Overlay ========== */
+@media (max-width: 768px) {
+  .sidebar:not(.hidden) {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 1500;
+    width: 280px;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.25);
+    display: flex !important;
+  }
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 1499;
+  }
 }

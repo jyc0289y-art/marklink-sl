@@ -48,10 +48,10 @@
 .doc-toolbar select {
   padding: 4px 6px;
   font-size: 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--select-border, var(--border-color));
   border-radius: 4px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: var(--select-bg, var(--bg-primary));
+  color: var(--select-text, var(--text-primary));
   cursor: pointer;
 }
 
@@ -763,9 +763,83 @@ mark.doc-find-highlight.doc-find-current {
   100% { color: var(--text-tertiary); }
 }
 
+/* ─── Ruler ─────────────────────────────────── */
+.doc-ruler {
+  height: 20px;
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border-color);
+  position: relative;
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+  font-size: 9px;
+  color: var(--text-tertiary);
+}
+
+/* ─── Word Count Goal Progress Bar ─────────── */
+#doc-goal-progress {
+  height: 3px;
+  background: var(--border-color);
+  position: relative;
+  transition: opacity 0.3s;
+}
+#doc-goal-progress > div {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* ─── Reading Mode Overlay ─────────────────── */
+.doc-reading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-primary);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  overflow-y: auto;
+}
+.doc-reading-overlay.sepia {
+  background: #f5e6c8;
+  color: #5b4636;
+}
+
+/* ─── Auto-Correct active indicator ────────── */
+#doc-autocorrect.active {
+  opacity: 1;
+  background: var(--accent-color);
+  color: #fff;
+}
+
+/* ─── Focus Mode Overlay ──────────────────── */
+.doc-focus-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-primary);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  overflow-y: auto;
+}
+
 @media (max-width: 768px) {
   .doc-side-panel {
-    width: 200px;
-    min-width: 160px;
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 260px;
+    min-width: 220px;
+    z-index: 1500;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.2);
+  }
+  .doc-main-wrapper {
+    flex-direction: column;
   }
 }

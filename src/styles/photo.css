@@ -921,6 +921,52 @@
   color: var(--text-secondary);
 }
 
+/* ===== Light Mode Photo Fixes ===== */
+[data-theme="light"] .photo-toolbar {
+  background: #f5f5f7;
+}
+[data-theme="light"] .photo-toolbar .toolbar-btn {
+  color: #444;
+}
+[data-theme="light"] .photo-toolbar .toolbar-btn:hover {
+  color: #111;
+}
+[data-theme="light"] .photo-panel {
+  background: #fafafa;
+}
+[data-theme="light"] .photo-panel-toggle {
+  color: #444;
+}
+[data-theme="light"] .photo-canvas-area {
+  background: #e8e8ec;
+}
+[data-theme="light"] .photo-info-bar {
+  background: #eaeaea;
+  color: #555;
+}
+[data-theme="light"] .photo-auto-btn {
+  background: #fff;
+  color: #333;
+  border-color: #ccc;
+}
+[data-theme="light"] .photo-filters-grid,
+[data-theme="light"] .photo-gif-panel,
+[data-theme="light"] .photo-batch-panel,
+[data-theme="light"] .photo-resize-panel,
+[data-theme="light"] .photo-watermark-panel,
+[data-theme="light"] .photo-perspective-panel {
+  background: #fff;
+  color: #333;
+}
+[data-theme="light"] .photo-layer-item {
+  background: #fff;
+  color: #333;
+  border-color: #ddd;
+}
+[data-theme="light"] .photo-history-item {
+  color: #333;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
   .photo-panel {
@@ -943,5 +989,6 @@
   .photo-toolbar::-webkit-scrollbar { display: none; }
   .photo-toolbar .toolbar-btn {
     flex-shrink: 0;
+    min-height: 44px;
   }
 }

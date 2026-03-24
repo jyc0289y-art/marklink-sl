@@ -16,10 +16,10 @@
 .slide-toolbar select {
   padding: 4px 6px;
   font-size: 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--select-border, var(--border-color));
   border-radius: 4px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: var(--select-bg, var(--bg-primary));
+  color: var(--select-text, var(--text-primary));
   cursor: pointer;
 }
 
@@ -189,9 +189,46 @@
 .slide-notes-area {
   border-top: 1px solid var(--border-color);
   height: 80px;
+  min-height: 40px;
+  max-height: 400px;
   display: flex;
   flex-direction: column;
   background: var(--pane-header-bg);
+  position: relative;
+}
+
+.slide-notes-resize-handle {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: ns-resize;
+  z-index: 10;
+  background: transparent;
+}
+
+.slide-notes-resize-handle:hover,
+.slide-notes-resize-handle:active {
+  background: linear-gradient(to bottom, transparent, rgba(0,120,255,0.15), transparent);
+}
+
+.slide-notes-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 30px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.slide-notes-resize-handle:hover::after {
+  opacity: 1;
 }
 
 .slide-notes-header {
@@ -337,10 +374,10 @@
 .slide-text-format-bar select {
   padding: 3px 6px;
   font-size: 11px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--select-border, var(--border-color));
   border-radius: 4px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: var(--select-bg, var(--bg-primary));
+  color: var(--select-text, var(--text-primary));
   cursor: pointer;
   max-width: 120px;
 }
@@ -918,4 +955,36 @@
   height: 1px;
   background: var(--border-color);
   margin: 4px 0;
+}
+
+/* Light mode slide fixes */
+[data-theme="light"] .slide-toolbar {
+  background: #f5f5f7;
+}
+[data-theme="light"] .slide-panel {
+  background: #f8f9fa;
+}
+[data-theme="light"] .slide-editor-area {
+  background: #eaeaee;
+}
+[data-theme="light"] .slide-notes-area {
+  background: #f5f5f7;
+}
+[data-theme="light"] .slide-toolbar .toolbar-btn {
+  color: #444;
+}
+[data-theme="light"] .slide-toolbar .toolbar-btn:hover {
+  color: #111;
+}
+[data-theme="light"] .anim-timeline-controls button {
+  background: #fff;
+  color: #333;
+  border-color: #ccc;
+}
+[data-theme="light"] .slide-master-props input,
+[data-theme="light"] .slide-master-props select,
+[data-theme="light"] .slide-master-props textarea {
+  background: #fff;
+  color: #333;
+  border-color: #ccc;
 }

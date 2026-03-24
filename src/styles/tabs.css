@@ -26,7 +26,7 @@
   border: none;
   border-bottom: 2px solid transparent;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
   letter-spacing: 0.3px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -34,11 +34,13 @@
 
 .tab-item:hover {
   color: var(--text-secondary);
+  background: var(--hover-bg);
 }
 
 .tab-item.active {
   color: var(--brand-color);
   border-bottom-color: var(--brand-color);
+  background: var(--brand-color-light);
 }
 
 /* App Views */

@@ -3,6 +3,7 @@
 let editorEl = null;
 let dirty = false;
 let outlineVisible = false;
+let docEditorInitialized = false;
 
 // Auto-save state
 let autoSaveInterval = null;
@@ -17,7 +18,39 @@ let sessionStartTime = Date.now();
 let sessionWordCountStart = 0;
 let wordsPerMinuteTracker = { lastCheck: Date.now(), lastWords: 0, wpm: 0 };
 
+// Auto-correct state
+let autoCorrectEnabled = false;
+const AUTO_CORRECT_MAP = {
+  'teh': 'the', 'adn': 'and', 'taht': 'that', 'wiht': 'with', 'hte': 'the',
+  'fo': 'of', 'ot': 'to', 'ti': 'it', 'si': 'is', 'nad': 'and',
+  'tahn': 'than', 'waht': 'what', 'htat': 'that', 'thier': 'their',
+  'recieve': 'receive', 'occurence': 'occurrence', 'seperate': 'separate',
+  'definately': 'definitely', 'accomodate': 'accommodate', 'occured': 'occurred',
+  'untill': 'until', 'wich': 'which', 'becuase': 'because', 'beacuse': 'because',
+  'dont': "don't", 'wont': "won't", 'cant': "can't", 'didnt': "didn't",
+  'doesnt': "doesn't", 'isnt': "isn't", 'wasnt': "wasn't", 'werent': "weren't",
+  'thats': "that's", 'whats': "what's", 'heres': "here's", 'theres': "there's",
+  'Im': "I'm", 'Ive': "I've", 'Id': "I'd", 'youre': "you're",
+  'theyre': "they're", 'weve': "we've", 'shouldve': "should've",
+  'couldve': "could've", 'wouldve': "would've",
+  'alot': 'a lot', 'noone': 'no one', 'eachother': 'each other',
+};
+const AUTO_CORRECT_KEY = 'doc-autocorrect-enabled';
+
+// Stored event handlers for cleanup
+const _docHandlers = [];
+const _docIntervals = [];
+
+function _addHandler(el, event, fn) {
+  if (!el) return;
+  el.addEventListener(event, fn);
+  _docHandlers.push({ el, event, fn });
+}
+
 export function initDocEditor() {
+  // Prevent duplicate initialization
+  if (docEditorInitialized) return;
+  docEditorInitialized = true;
   editorEl = document.getElementById('doc-editor');
   if (!editorEl) return;
 
@@ -112,11 +145,33 @@ export function initDocEditor() {
     });
   }
 
-  // Font size
+  // Font size — apply to selection, not entire editor
   const fontSize = document.getElementById('doc-font-size');
   if (fontSize) {
     fontSize.addEventListener('change', () => {
-      editorEl.style.fontSize = fontSize.value;
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && editorEl.contains(sel.anchorNode)) {
+        const range = sel.getRangeAt(0);
+        const span = document.createElement('span');
+        span.style.fontSize = fontSize.value;
+        try {
+          range.surroundContents(span);
+        } catch {
+          // If range crosses element boundaries, use execCommand fallback
+          const sizeMap = { '9px': 1, '10px': 1, '11px': 2, '12px': 3, '14px': 4, '16px': 4, '18px': 5, '20px': 5, '24px': 6, '28px': 6, '32px': 7, '36px': 7, '48px': 7, '72px': 7 };
+          document.execCommand('fontSize', false, sizeMap[fontSize.value] || 4);
+          // Override the font element size with actual px
+          editorEl.querySelectorAll('font[size]').forEach((f) => {
+            const s = document.createElement('span');
+            s.style.fontSize = fontSize.value;
+            s.innerHTML = f.innerHTML;
+            f.replaceWith(s);
+          });
+        }
+      } else {
+        // No selection — set as default for new text
+        editorEl.style.fontSize = fontSize.value;
+      }
       editorEl.focus();
     });
   }
@@ -480,6 +535,84 @@ export function initDocEditor() {
       hideTableToolbar();
     }
   });
+
+  // Auto-correct toggle
+  autoCorrectEnabled = localStorage.getItem(AUTO_CORRECT_KEY) === 'true';
+  const acBtn = document.getElementById('doc-autocorrect');
+  if (acBtn) {
+    acBtn.style.opacity = autoCorrectEnabled ? '1' : '0.6';
+    acBtn.style.background = autoCorrectEnabled ? 'var(--accent-color)' : '';
+    acBtn.style.color = autoCorrectEnabled ? '#fff' : '';
+    acBtn.addEventListener('click', () => toggleAutoCorrect());
+  }
+
+  // Auto-correct input handler — check on space/enter
+  const autoCorrectHandler = (e) => {
+    if (!autoCorrectEnabled) return;
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    const node = range.startContainer;
+    if (node.nodeType !== Node.TEXT_NODE) return;
+    const text = node.textContent.substring(0, range.startOffset);
+    const match = text.match(/(\S+)$/);
+    if (!match) return;
+    const word = match[1];
+    const replacement = AUTO_CORRECT_MAP[word] || AUTO_CORRECT_MAP[word.toLowerCase()];
+    if (!replacement) return;
+    // Preserve original case for first char
+    const corrected = word[0] === word[0].toUpperCase() && word[0] !== word[0].toLowerCase()
+      ? replacement.charAt(0).toUpperCase() + replacement.slice(1)
+      : replacement;
+    const wordStart = range.startOffset - word.length;
+    const r = document.createRange();
+    r.setStart(node, wordStart);
+    r.setEnd(node, range.startOffset);
+    r.deleteContents();
+    r.insertNode(document.createTextNode(corrected));
+    sel.collapseToEnd();
+    dirty = true;
+  };
+  editorEl.addEventListener('keydown', autoCorrectHandler);
+}
+
+/** Destroy doc editor: remove listeners, clear intervals, reset state */
+export function destroyDocEditor() {
+  // Remove all tracked handlers
+  for (const h of _docHandlers) {
+    h.el.removeEventListener(h.event, h.fn);
+  }
+  _docHandlers.length = 0;
+
+  // Clear intervals
+  if (autoSaveInterval) {
+    clearInterval(autoSaveInterval);
+    autoSaveInterval = null;
+  }
+  for (const id of _docIntervals) {
+    clearInterval(id);
+  }
+  _docIntervals.length = 0;
+
+  // Remove dynamic overlays
+  document.querySelector('.doc-focus-overlay')?.remove();
+  document.querySelector('.doc-reading-overlay')?.remove();
+  document.querySelector('.doc-highlight-palette')?.remove();
+  document.querySelector('.doc-table-color-picker')?.remove();
+  hideTableToolbar();
+
+  // Reset state
+  editorEl = null;
+  dirty = false;
+  docEditorInitialized = false;
+  highlightedNodes = [];
+  findBarEl = null;
+  findInput = null;
+  replaceInput = null;
+
+  // Remove goal progress bar
+  document.getElementById('doc-goal-progress')?.remove();
 }
 
 // ─── Table Context Toolbar ─────────────────────────────────
@@ -789,6 +922,7 @@ function doReplace() {
 
 function doReplaceAll() {
   if (!replaceInput || highlightedNodes.length === 0) return;
+  const count = highlightedNodes.length;
   for (const span of highlightedNodes) {
     span.replaceWith(document.createTextNode(replaceInput.value));
   }
@@ -796,6 +930,22 @@ function doReplaceAll() {
   highlightedNodes = [];
   dirty = true;
   updateFindCount(0, 0);
+  // Show replacement count notification
+  const countEl = document.getElementById('doc-find-count');
+  if (countEl) countEl.textContent = `Replaced ${count}`;
+  setTimeout(() => { if (countEl && countEl.textContent.startsWith('Replaced')) countEl.textContent = ''; }, 2500);
+}
+
+// ─── Auto-Correct ──────────────────────────────────────────
+function toggleAutoCorrect() {
+  autoCorrectEnabled = !autoCorrectEnabled;
+  localStorage.setItem(AUTO_CORRECT_KEY, String(autoCorrectEnabled));
+  const btn = document.getElementById('doc-autocorrect');
+  if (btn) {
+    btn.style.opacity = autoCorrectEnabled ? '1' : '0.6';
+    btn.style.background = autoCorrectEnabled ? 'var(--accent-color)' : '';
+    btn.style.color = autoCorrectEnabled ? '#fff' : '';
+  }
 }
 
 // ─── Word Count ────────────────────────────────────────────

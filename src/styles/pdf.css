@@ -220,8 +220,8 @@
 
 .pdf-sticky-popup {
   position: absolute;
-  width: 180px;
-  min-height: 60px;
+  width: 200px;
+  min-height: 70px;
   background: #fff9c4;
   border: 1px solid #f0e68c;
   border-radius: 6px;
@@ -229,6 +229,30 @@
   font-size: 12px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.18);
   z-index: 20;
+}
+
+.pdf-sticky-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(0,0,0,0.5);
+}
+
+.pdf-sticky-popup-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: rgba(0,0,0,0.4);
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.pdf-sticky-popup-close:hover {
+  color: rgba(0,0,0,0.8);
 }
 
 .pdf-sticky-popup textarea {
@@ -255,6 +279,30 @@
 
 .pdf-search-input:focus {
   border-color: var(--brand-color);
+}
+
+/* Go-to-page input */
+.pdf-goto-input {
+  width: 48px;
+  padding: 2px 6px;
+  font-size: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--editor-bg, #fff);
+  color: var(--text-primary);
+  outline: none;
+  text-align: center;
+}
+
+.pdf-goto-input:focus {
+  border-color: var(--brand-color);
+}
+
+/* Hide number input spinners */
+.pdf-goto-input::-webkit-outer-spin-button,
+.pdf-goto-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .pdf-search-info {

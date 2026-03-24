@@ -1380,3 +1380,87 @@
   padding: 6px 10px !important;
   min-width: 38px;
 }
+
+/* ===== Light Mode Calculator Fixes ===== */
+[data-theme="light"] .calc-toolbar {
+  background: #f5f5f7;
+  border-bottom-color: #e0e0e0;
+}
+[data-theme="light"] .calc-toolbar-btn {
+  color: #444;
+}
+[data-theme="light"] .calc-toolbar-btn:hover {
+  color: #111;
+}
+[data-theme="light"] .calc-main {
+  background: #fff;
+  border-color: #ddd;
+}
+[data-theme="light"] .calc-digit {
+  background: #f0f0f0;
+  color: #1d1d1f;
+}
+[data-theme="light"] .calc-digit:hover {
+  background: #e5e5e5;
+}
+[data-theme="light"] .calc-op {
+  background: #e8e8e8;
+  color: #333;
+}
+[data-theme="light"] .calc-fn {
+  color: #444;
+  border-color: #ddd;
+}
+[data-theme="light"] .calc-fn:hover {
+  color: var(--brand-color);
+  background: rgba(0,113,227,0.06);
+}
+[data-theme="light"] .calc-clear {
+  background: #f0f0f0;
+}
+[data-theme="light"] .calc-result {
+  color: #1d1d1f;
+}
+[data-theme="light"] .calc-expression {
+  color: #888;
+}
+[data-theme="light"] .calc-tab {
+  color: #666;
+}
+[data-theme="light"] .calc-tab:hover {
+  background: rgba(0,0,0,0.05);
+}
+[data-theme="light"] .calc-mode-btn {
+  color: #666;
+  border-color: #ccc;
+}
+[data-theme="light"] .calc-graph-view {
+  background: #fff;
+  border-color: #ddd;
+}
+[data-theme="light"] .calc-graph-input {
+  background: #fff;
+  color: #333;
+  border-color: #ccc;
+}
+
+/* ===== Mobile Calculator ===== */
+@media (max-width: 768px) {
+  .calc-container {
+    padding: 8px;
+  }
+  .calc-main {
+    width: 100%;
+    border-radius: 12px;
+  }
+  .calc-tab {
+    padding: 4px 10px;
+    font-size: 11px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+  .calc-btn {
+    min-height: 44px;
+  }
+}

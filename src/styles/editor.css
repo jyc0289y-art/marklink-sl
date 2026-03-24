@@ -680,3 +680,57 @@ body .status-bar {
   background: var(--scrollbar-thumb, #ccc);
   border-radius: 3px;
 }
+
+/* Light mode markdown editor fixes */
+[data-theme="light"] .md-toolbar {
+  background: #f5f5f7;
+}
+[data-theme="light"] .md-toolbar .toolbar-btn {
+  color: #444;
+}
+[data-theme="light"] .md-toolbar .toolbar-btn:hover {
+  color: #111;
+  background: rgba(0,0,0,0.07);
+}
+[data-theme="light"] .md-outline-panel {
+  background: #fafafa;
+  border-right-color: #e0e0e0;
+}
+[data-theme="light"] .editor-container .cm-gutters {
+  background: #f5f5f7;
+  border-right-color: #e0e0e0;
+  color: #aaa;
+}
+[data-theme="light"] .md-stats-bar {
+  background: #f0f0f2;
+  color: #666;
+  border-top-color: #e0e0e0;
+}
+[data-theme="light"] .shortcut-keys {
+  background: #f0f0f0;
+  color: #333;
+  border-color: #ddd;
+}
+
+/* Mobile markdown editor */
+@media (max-width: 768px) {
+  .md-outline-panel {
+    display: none !important;
+  }
+  .md-toolbar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .md-toolbar::-webkit-scrollbar { display: none; }
+  .md-toolbar .toolbar-btn {
+    flex-shrink: 0;
+    min-width: 28px;
+    height: 28px;
+    min-height: 44px;
+  }
+  .md-toolbar .toolbar-sep {
+    flex-shrink: 0;
+  }
+}

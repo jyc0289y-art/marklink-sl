@@ -5,6 +5,10 @@ import {
   getDisplayValue, getRawValue, colToLetter, letterToCol as engineLetterToCol, rcToRef, refToRC,
   addRows, addCols, deleteRow, deleteCol, recalcAll as _recalcAll,
   setCellArrayFormula as _setCellArrayFormula,
+  mergeCells as engineMergeCells, unmergeCells as engineUnmergeCells, getMerge,
+  addCondFormat as engineAddCondFormat, removeCondFormat as engineRemoveCondFormat, evalCondFormat,
+  autoFillRange,
+  sortByColumn,
 } from './sheet-engine.js';
 
 // Wrappers that pass all sheets for cross-sheet reference support
@@ -1760,38 +1764,7 @@ function applyFreezeStyles() {
 
 function sortColumn(ascending) {
   const sheet = getSheet();
-  const col = selectedCol;
-
-  // Gather all data rows (skip headers)
-  const rowData = [];
-  for (let r = 0; r < sheet.rows; r++) {
-    const row = {};
-    for (let c = 0; c < sheet.cols; c++) {
-      row[c] = { ...getCell(sheet, r, c) };
-    }
-    row._sortVal = getDisplayValue(sheet, r, col);
-    rowData.push(row);
-  }
-
-  rowData.sort((a, b) => {
-    const va = a._sortVal, vb = b._sortVal;
-    const na = parseFloat(va), nb = parseFloat(vb);
-    if (!isNaN(na) && !isNaN(nb)) return ascending ? na - nb : nb - na;
-    return ascending ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
-  });
-
-  // Write sorted data back
-  for (let r = 0; r < rowData.length; r++) {
-    for (let c = 0; c < sheet.cols; c++) {
-      const d = rowData[r][c];
-      if (d && d.raw != null) {
-        sheet.cells[`${r},${c}`] = d;
-      } else {
-        delete sheet.cells[`${r},${c}`];
-      }
-    }
-  }
-
+  sortByColumn(sheet, selectedCol, ascending);
   recalcAll(sheet);
   renderGrid();
   updateSelection();
@@ -1809,13 +1782,23 @@ function renderSheetTabs() {
   let html = '';
   sheets.forEach((s, i) => {
     const name = getSheetName(i);
-    html += `<button class="sheet-tab ${i === activeSheetIdx ? 'active' : ''}" data-sheet="${i}" title="Double-click to rename">${name}</button>`;
+    html += `<button class="sheet-tab ${i === activeSheetIdx ? 'active' : ''}" data-sheet="${i}" title="Double-click to rename, right-click for options">${name}</button>`;
   });
   html += `<button class="sheet-tab-add" id="sheet-add-tab" title="Add Sheet">+</button>`;
   tabsEl.innerHTML = html;
 
   // Tab click to switch
   tabsEl.querySelectorAll('.sheet-tab[data-sheet]').forEach(tab => {
+    // Click to switch
+    tab.addEventListener('click', (e) => {
+      const idx = parseInt(tab.dataset.sheet, 10);
+      if (idx !== activeSheetIdx) {
+        activeSheetIdx = idx;
+        renderSheetTabs(); renderGrid();
+        selectedRow = 0; selectedCol = 0;
+        updateSelection();
+      }
+    });
     // Double-click to rename
     tab.addEventListener('dblclick', (e) => {
       const idx = parseInt(tab.dataset.sheet, 10);
@@ -1825,6 +1808,12 @@ function renderSheetTabs() {
         sheets[idx].name = newName.trim();
         renderSheetTabs();
       }
+    });
+    // Right-click context menu
+    tab.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const idx = parseInt(tab.dataset.sheet, 10);
+      showTabContextMenu(e.clientX, e.clientY, idx);
     });
   });
 
@@ -1836,6 +1825,64 @@ function renderSheetTabs() {
     selectedRow = 0; selectedCol = 0;
     updateSelection();
   });
+}
+
+function showTabContextMenu(x, y, sheetIdx) {
+  // Remove old menus
+  document.querySelectorAll('.sheet-tab-context-menu').forEach(el => el.remove());
+  const menu = document.createElement('div');
+  menu.className = 'sheet-tab-context-menu';
+  menu.style.cssText = `position:fixed;left:${x}px;top:${y}px;z-index:9999;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;padding:4px 0;box-shadow:0 4px 12px rgba(0,0,0,.2);min-width:150px`;
+  const items = [
+    { label: 'Rename', action: () => {
+      const name = prompt('Rename sheet:', getSheetName(sheetIdx));
+      if (name?.trim()) { sheets[sheetIdx].name = name.trim(); renderSheetTabs(); }
+    }},
+    { label: 'Duplicate', action: () => {
+      const src = sheets[sheetIdx];
+      const dup = createSheetData(src.rows, src.cols, getSheetName(sheetIdx) + ' (copy)');
+      dup.cells = JSON.parse(JSON.stringify(src.cells));
+      dup.condFormats = JSON.parse(JSON.stringify(src.condFormats || []));
+      dup.merges = JSON.parse(JSON.stringify(src.merges || []));
+      sheets.splice(sheetIdx + 1, 0, dup);
+      activeSheetIdx = sheetIdx + 1;
+      renderSheetTabs(); renderGrid(); updateSelection();
+    }},
+    { label: 'Delete', action: () => {
+      if (sheets.length <= 1) { alert('Cannot delete the only sheet.'); return; }
+      if (!confirm(`Delete "${getSheetName(sheetIdx)}"?`)) return;
+      sheets.splice(sheetIdx, 1);
+      if (activeSheetIdx >= sheets.length) activeSheetIdx = sheets.length - 1;
+      renderSheetTabs(); renderGrid();
+      selectedRow = 0; selectedCol = 0; updateSelection();
+    }},
+    { label: 'Move Left', action: () => {
+      if (sheetIdx === 0) return;
+      [sheets[sheetIdx - 1], sheets[sheetIdx]] = [sheets[sheetIdx], sheets[sheetIdx - 1]];
+      if (activeSheetIdx === sheetIdx) activeSheetIdx--;
+      else if (activeSheetIdx === sheetIdx - 1) activeSheetIdx++;
+      renderSheetTabs();
+    }},
+    { label: 'Move Right', action: () => {
+      if (sheetIdx >= sheets.length - 1) return;
+      [sheets[sheetIdx], sheets[sheetIdx + 1]] = [sheets[sheetIdx + 1], sheets[sheetIdx]];
+      if (activeSheetIdx === sheetIdx) activeSheetIdx++;
+      else if (activeSheetIdx === sheetIdx + 1) activeSheetIdx--;
+      renderSheetTabs();
+    }},
+  ];
+  items.forEach(item => {
+    const btn = document.createElement('div');
+    btn.textContent = item.label;
+    btn.style.cssText = 'padding:6px 16px;cursor:pointer;font-size:12px;color:var(--text-primary)';
+    btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--hover-bg)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.background = 'none'; });
+    btn.addEventListener('click', () => { menu.remove(); item.action(); });
+    menu.appendChild(btn);
+  });
+  document.body.appendChild(menu);
+  const close = (e) => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('mousedown', close); } };
+  setTimeout(() => document.addEventListener('mousedown', close), 0);
 }
 
 /* ==================== Formula Autocomplete ==================== */
@@ -2160,10 +2207,54 @@ function executeFill(targetR, targetC) {
   updateSelection();
 }
 
+const _DAYS_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const _DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const _MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const _MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function matchSeriesList(val, list) {
+  const upper = val.toUpperCase();
+  const idx = list.findIndex(s => s.toUpperCase() === upper);
+  return idx >= 0 ? { list, idx } : null;
+}
+
+function preserveCase(template, result) {
+  if (template === template.toUpperCase()) return result.toUpperCase();
+  if (template === template.toLowerCase()) return result.toLowerCase();
+  // Title case
+  return result[0].toUpperCase() + result.slice(1).toLowerCase();
+}
+
 function smartFill(raw, displayVal, offset) {
   // If formula, adjust references
   if (raw.startsWith('=')) {
     return adjustFormulaReferences(raw, offset, 0);
+  }
+
+  // Day names series (Mon, Tue, Wed... or Monday, Tuesday...)
+  for (const list of [_DAYS_FULL, _DAYS_SHORT]) {
+    const m = matchSeriesList(displayVal.trim(), list);
+    if (m) {
+      const newIdx = ((m.idx + offset) % 7 + 7) % 7;
+      return preserveCase(displayVal.trim(), m.list[newIdx]);
+    }
+  }
+
+  // Month names series (Jan, Feb, Mar... or January, February...)
+  for (const list of [_MONTHS_FULL, _MONTHS_SHORT]) {
+    const m = matchSeriesList(displayVal.trim(), list);
+    if (m) {
+      const newIdx = ((m.idx + offset) % 12 + 12) % 12;
+      return preserveCase(displayVal.trim(), m.list[newIdx]);
+    }
+  }
+
+  // Text+number pattern (Item1 -> Item2, Q1 -> Q2)
+  const textNumMatch = displayVal.match(/^(.+?)(\d+)$/);
+  if (textNumMatch) {
+    const prefix = textNumMatch[1];
+    const num = parseInt(textNumMatch[2], 10);
+    return prefix + (num + offset);
   }
 
   // If number, increment
