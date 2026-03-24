@@ -114,21 +114,21 @@
   </header>
 
   <!-- Tab Bar -->
-  <nav id="tab-bar" class="tab-bar">
-    <button class="tab-item active" data-tab="document" data-i18n="tab.document">Document</button>
-    <button class="tab-item" data-tab="sheet" data-i18n="tab.sheet">Sheet</button>
-    <button class="tab-item" data-tab="slide" data-i18n="tab.slide">Slide</button>
-    <button class="tab-item" data-tab="pdf" data-i18n="tab.pdf">PDF</button>
-    <button class="tab-item" data-tab="markdown" data-i18n="tab.markdown">Markdown</button>
-    <button class="tab-item" data-tab="photo">📷 <span data-i18n="tab.photo">Photo</span></button>
-    <button class="tab-item" data-tab="calculator">🧮 <span data-i18n="tab.calc">Calc</span></button>
-    <button class="tab-item" data-tab="cad">🔧 <span data-i18n="tab.cad">3D CAD</span></button>
-    <button class="tab-item" data-tab="draw">🎨 <span data-i18n="tab.draw">Draw</span></button>
-    <button class="tab-item" data-tab="ai">✦ <span data-i18n="tab.ai">AI</span></button>
+  <nav id="tab-bar" class="tab-bar" role="tablist" aria-label="Editor tabs">
+    <button class="tab-item active" data-tab="document" data-i18n="tab.document" role="tab" aria-selected="true">Document</button>
+    <button class="tab-item" data-tab="sheet" data-i18n="tab.sheet" role="tab">Sheet</button>
+    <button class="tab-item" data-tab="slide" data-i18n="tab.slide" role="tab">Slide</button>
+    <button class="tab-item" data-tab="pdf" data-i18n="tab.pdf" role="tab">PDF</button>
+    <button class="tab-item" data-tab="markdown" data-i18n="tab.markdown" role="tab">Markdown</button>
+    <button class="tab-item" data-tab="photo" role="tab">📷 <span data-i18n="tab.photo">Photo</span></button>
+    <button class="tab-item" data-tab="calculator" role="tab">🧮 <span data-i18n="tab.calc">Calc</span></button>
+    <button class="tab-item" data-tab="cad" role="tab">🔧 <span data-i18n="tab.cad">3D CAD</span></button>
+    <button class="tab-item" data-tab="draw" role="tab">🎨 <span data-i18n="tab.draw">Draw</span></button>
+    <button class="tab-item" data-tab="ai" role="tab">✦ <span data-i18n="tab.ai">AI</span></button>
   </nav>
 
   <!-- Main Content -->
-  <main id="app" class="app-container">
+  <main id="app" class="app-container" role="main">
     <!-- Sidebar (hidden by default) -->
     <aside id="sidebar" class="sidebar hidden">
       <div class="sidebar-header">
