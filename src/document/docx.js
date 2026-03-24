@@ -1,7 +1,9 @@
 // OfficeLink SL — DOCX Import/Export
 // mammoth.js (MIT) for import, docx (MIT) for export
+// JSZip fallback for when mammoth fails
 
 import mammoth from 'mammoth';
+import JSZip from 'jszip';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
          Table, TableRow, TableCell, WidthType, BorderStyle } from 'docx';
 import { setDocContent, getDocContent, markDocClean } from './doc-editor.js';
@@ -9,15 +11,150 @@ import { generateTimestampFilename } from '../export/filename-utils.js';
 
 /**
  * Import a .docx file → Document editor
+ * Uses mammoth.js first, falls back to manual JSZip+DOMParser extraction
  */
 export async function importDocx(file) {
   const arrayBuffer = await file.arrayBuffer();
-  const result = await mammoth.convertToHtml({ arrayBuffer });
-  const html = result.value || '<p>(Empty document)</p>';
 
-  setDocContent(html);
-  markDocClean();
-  return { name: file.name, content: html };
+  // Try mammoth first (best quality conversion)
+  try {
+    const result = await mammoth.convertToHtml({ arrayBuffer });
+    const html = result.value || '';
+    if (html && html.trim().length > 0 && !looksLikeGarbage(html)) {
+      setDocContent(html);
+      markDocClean();
+      return { name: file.name, content: html };
+    }
+  } catch (e) {
+    console.warn('mammoth import failed, falling back to JSZip:', e);
+  }
+
+  // Fallback: manually extract from word/document.xml inside the ZIP
+  try {
+    const html = await extractDocxWithJSZip(arrayBuffer);
+    setDocContent(html);
+    markDocClean();
+    return { name: file.name, content: html };
+  } catch (e) {
+    console.error('DOCX fallback extraction failed:', e);
+    const errorHtml = '<p style="color:#c62828"><strong>Failed to import DOCX file.</strong> The file may be corrupted or in an unsupported format.</p>';
+    setDocContent(errorHtml);
+    return { name: file.name, content: errorHtml };
+  }
+}
+
+/**
+ * Check if HTML output looks like binary garbage
+ */
+function looksLikeGarbage(html) {
+  // Count non-printable or unusual characters
+  const nonPrintable = (html.match(/[\x00-\x08\x0E-\x1F]/g) || []).length;
+  return nonPrintable > html.length * 0.05;
+}
+
+/**
+ * Fallback: extract content from DOCX using JSZip + DOMParser
+ * Parses word/document.xml and converts w:p, w:r, w:t elements to HTML
+ */
+async function extractDocxWithJSZip(arrayBuffer) {
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const docXml = zip.file('word/document.xml');
+  if (!docXml) {
+    throw new Error('word/document.xml not found in ZIP');
+  }
+
+  const xmlText = await docXml.async('text');
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(xmlText, 'application/xml');
+
+  // Namespace-agnostic query helper
+  const ns = (tag) => {
+    const parts = tag.split(':');
+    return parts.length > 1 ? parts[1] : tag;
+  };
+  const queryAll = (parent, localName) => {
+    const results = [];
+    const walk = (node) => {
+      if (node.nodeType === 1) {
+        if (node.localName === localName) results.push(node);
+        for (const child of node.children) walk(child);
+      }
+    };
+    walk(parent);
+    return results;
+  };
+  const queryFirst = (parent, localName) => queryAll(parent, localName)[0] || null;
+
+  const body = queryFirst(xmlDoc, 'body');
+  if (!body) return '<p>(Empty document)</p>';
+
+  let html = '';
+  const paragraphs = queryAll(body, 'p');
+
+  for (const p of paragraphs) {
+    const pPr = queryFirst(p, 'pPr');
+    let tag = 'p';
+    let listType = null;
+
+    // Check for heading style
+    if (pPr) {
+      const pStyle = queryFirst(pPr, 'pStyle');
+      const styleVal = pStyle?.getAttribute('w:val') || pStyle?.getAttribute('val') || '';
+      if (/^Heading1|heading 1/i.test(styleVal)) tag = 'h1';
+      else if (/^Heading2|heading 2/i.test(styleVal)) tag = 'h2';
+      else if (/^Heading3|heading 3/i.test(styleVal)) tag = 'h3';
+      else if (/^Heading4|heading 4/i.test(styleVal)) tag = 'h4';
+      else if (/^Heading5|heading 5/i.test(styleVal)) tag = 'h5';
+      else if (/^Heading6|heading 6/i.test(styleVal)) tag = 'h6';
+
+      // Check for list
+      const numPr = queryFirst(pPr, 'numPr');
+      if (numPr) {
+        const numId = queryFirst(numPr, 'numId');
+        const idVal = numId?.getAttribute('w:val') || numId?.getAttribute('val') || '0';
+        listType = parseInt(idVal) > 0 ? 'li' : null;
+      }
+    }
+
+    // Extract runs
+    const runs = queryAll(p, 'r');
+    let paraContent = '';
+    for (const r of runs) {
+      const rPr = queryFirst(r, 'rPr');
+      const isBold = rPr && queryFirst(rPr, 'b') !== null;
+      const isItalic = rPr && queryFirst(rPr, 'i') !== null;
+      const isUnderline = rPr && queryFirst(rPr, 'u') !== null;
+      const isStrike = rPr && queryFirst(rPr, 'strike') !== null;
+
+      const textNodes = queryAll(r, 't');
+      let text = textNodes.map((t) => t.textContent).join('');
+
+      // Check for line breaks
+      const brs = queryAll(r, 'br');
+      if (brs.length > 0) text += '<br>';
+
+      if (text) {
+        // Escape HTML entities in text content
+        text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        if (isBold) text = `<strong>${text}</strong>`;
+        if (isItalic) text = `<em>${text}</em>`;
+        if (isUnderline) text = `<u>${text}</u>`;
+        if (isStrike) text = `<s>${text}</s>`;
+        paraContent += text;
+      }
+    }
+
+    if (listType === 'li') {
+      html += `<li>${paraContent}</li>\n`;
+    } else {
+      html += `<${tag}>${paraContent}</${tag}>\n`;
+    }
+  }
+
+  // Wrap consecutive <li> elements in <ul>
+  html = html.replace(/((?:<li>.*?<\/li>\n?)+)/g, '<ul>\n$1</ul>\n');
+
+  return html || '<p>(Empty document)</p>';
 }
 
 /**

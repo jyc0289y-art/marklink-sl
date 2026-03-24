@@ -7,7 +7,9 @@ import { initSplitPane } from './ui/split-pane.js';
 import { initTheme, toggleTheme, isDark } from './ui/theme-toggle.js';
 import { initToolbar } from './ui/toolbar.js';
 import { initSidebar, showSidebar } from './ui/sidebar.js';
-import { initShortcuts } from './ui/shortcuts.js';
+import { initShortcuts, applyToolbarShortcutHints } from './ui/shortcuts.js';
+import { initToast, toastSuccess, toastError, toastInfo } from './ui/toast.js';
+import { initContextMenus } from './ui/context-menu.js';
 import { openFile, saveFile, quickSave, getCurrentFileName, setFileName } from './file/file-manager.js';
 import { initDragDrop } from './file/drag-drop.js';
 import { renderRecentFiles } from './file/recent-files.js';
@@ -16,7 +18,7 @@ import { printDocument } from './export/print.js';
 import { exportHTML } from './export/html.js';
 import { exportPDF } from './export/pdf.js';
 import { trackFileOpen, trackFileSave, trackExport, trackThemeToggle, trackToolbarAction, trackFolderOpen, initSessionTracking } from './analytics.js';
-import { initTabs, onTabChange, getCurrentTab, switchTab } from './ui/tabs.js';
+import { initTabs, onTabChange, getCurrentTab, switchTab, switchNextTab, switchPrevTab, switchToTabN, setTabDirty } from './ui/tabs.js';
 import { initDocEditor, getDocContent } from './document/doc-editor.js';
 import { openDocFile, saveDocFile, quickSaveDoc, getDocFileName, setDocFileName } from './document/doc-file.js';
 import { initSheetEditor, getSheetsData } from './sheet/sheet-ui.js';
@@ -304,7 +306,10 @@ export async function initApp() {
     });
   }
 
-  // 14. Keyboard shortcuts
+  // 14. Toast notifications (init early — used by shortcuts + auto-save)
+  initToast();
+
+  // 14b. Keyboard shortcuts (unified system)
   initShortcuts({
     open: async () => {
       try {
@@ -316,7 +321,10 @@ export async function initApp() {
         else if (tab === 'pdf') { await openPdf(); return; }
         else if (tab === 'photo') { await openPhotoFile(); return; }
         else { result = await openFile(); if (result) loadFile(result); }
-        if (result) updateFileName(result.name);
+        if (result) {
+          updateFileName(result.name);
+          toastSuccess(`Opened: ${result.name}`);
+        }
       } catch (e) {
         if (e.name !== 'AbortError') console.error(e);
       }
@@ -330,7 +338,28 @@ export async function initApp() {
         else if (tab === 'sheet') result = await saveSheetFile();
         else if (tab === 'slide') result = await saveSlideFile();
         else { result = await quickSave(getContent()); }
-        if (result) updateFileName(result.name);
+        if (result) {
+          updateFileName(result.name);
+          setTabDirty(tab, false);
+          toastSuccess('File saved');
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    },
+    saveAs: async () => {
+      try {
+        const tab = getCurrentTab();
+        let result;
+        if (tab === 'document') result = await saveDocFile();
+        else if (tab === 'sheet') result = await saveSheetFile();
+        else if (tab === 'slide') result = await saveSlideFile();
+        else result = await saveFile(getContent());
+        if (result) {
+          updateFileName(result.name);
+          setTabDirty(tab, false);
+          toastSuccess(`Saved as: ${result.name}`);
+        }
       } catch (e) {
         console.error(e);
       }
@@ -343,16 +372,60 @@ export async function initApp() {
       if (getCurrentTab() === 'document') document.execCommand('italic');
       else wrapSelection('*');
     },
+    undo: () => {
+      document.execCommand('undo');
+      toastInfo('Undo', 1500);
+    },
+    redo: () => {
+      document.execCommand('redo');
+      toastInfo('Redo', 1500);
+    },
     print: () => printDocument(
       getCurrentTab() === 'document' ? getDocContent() : getContent(),
       getCurrentTab() === 'document' ? getDocFileName() : getCurrentFileName()
     ),
+    find: () => {
+      const tab = getCurrentTab();
+      if (tab === 'markdown') {
+        // Use CM6 built-in search
+        import('./ui/search.js').then((m) => m.openSearch()).catch(() => {});
+      } else {
+        // For other editors, try native browser find or sheet find
+        const sheetFind = document.getElementById('sheet-find-input');
+        if (tab === 'sheet' && sheetFind) {
+          sheetFind.focus();
+        } else {
+          // Trigger browser find as fallback (Cmd+F passthrough)
+          // For doc editor, try to focus and let browser handle
+        }
+      }
+    },
+    settings: () => {
+      // Open settings/preferences — show language picker as main settings
+      showLanguagePicker();
+    },
+    fullscreen: () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen();
+      }
+    },
+    nextTab: () => switchNextTab(),
+    prevTab: () => switchPrevTab(),
+    switchToTab: (n) => switchToTabN(n),
+    showShortcuts: () => showKeyboardShortcuts(),
     exitZen: () => {
-      // Handled by zen mode module — toggling off when body has zen-mode class
       document.body.classList.remove('zen-mode');
       document.getElementById('btn-zen')?.classList.remove('active');
     },
   });
+
+  // 14c. Context menus for editors
+  initContextMenus();
+
+  // 14d. Shortcut hints on toolbar buttons
+  applyToolbarShortcutHints();
 
   // 15. Render recent files
   renderRecentFiles(document.getElementById('recent-files'), (name) => {
@@ -503,21 +576,17 @@ export async function initApp() {
   // 29. Status bar
   initStatusBar();
 
-  // 28. Undo/Redo toolbar buttons
+  // 28. Undo/Redo toolbar buttons (with toast feedback)
   document.getElementById('btn-undo')?.addEventListener('click', () => {
     document.execCommand('undo');
+    toastInfo('Undo', 1500);
   });
   document.getElementById('btn-redo')?.addEventListener('click', () => {
     document.execCommand('redo');
+    toastInfo('Redo', 1500);
   });
 
-  // 26. Keyboard shortcuts help
-  document.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === '/') {
-      e.preventDefault();
-      showKeyboardShortcuts();
-    }
-  });
+  // 26. Keyboard shortcuts help (handled by unified shortcut system via showShortcuts action)
 
   // 24. URL query: auto-switch tab (for PWA shortcuts)
   const params = new URLSearchParams(window.location.search);
@@ -564,10 +633,10 @@ function showExportMenu(anchorBtn) {
   `;
 
   const items = [
-    { label: '🖨️ Print', action: () => { trackExport('print'); printDocument(getContent(), getCurrentFileName()); } },
-    { label: '📄 Export as PDF', action: () => { trackExport('pdf'); exportPDF(getContent(), getCurrentFileName()); } },
-    { label: '🌐 Export as HTML', action: () => { trackExport('html'); exportHTML(getContent(), getCurrentFileName()); } },
-    { label: '📋 Copy as Rich Text', action: () => { trackExport('richtext'); copyAsRichText(getContent()); } },
+    { label: '🖨️ Print', action: () => { trackExport('print'); printDocument(getContent(), getCurrentFileName()); toastSuccess('Print sent'); } },
+    { label: '📄 Export as PDF', action: () => { trackExport('pdf'); exportPDF(getContent(), getCurrentFileName()); toastSuccess('PDF exported'); } },
+    { label: '🌐 Export as HTML', action: () => { trackExport('html'); exportHTML(getContent(), getCurrentFileName()); toastSuccess('HTML exported'); } },
+    { label: '📋 Copy as Rich Text', action: () => { trackExport('richtext'); copyAsRichText(getContent()); toastSuccess('Copied as rich text'); } },
   ];
 
   items.forEach(({ label, action }) => {
@@ -1075,15 +1144,57 @@ function initAutoSave() {
     }
   } catch {}
 
+  // Auto-save indicator in status bar
+  const showAutoSaveIndicator = (status) => {
+    let indicator = document.getElementById('autosave-indicator');
+    if (!indicator) {
+      indicator = document.createElement('span');
+      indicator.id = 'autosave-indicator';
+      indicator.style.cssText = `
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        margin-left: 8px;
+        transition: opacity 0.3s ease;
+        opacity: 0;
+      `;
+      const statusRight = document.getElementById('status-right');
+      if (statusRight) statusRight.parentElement.insertBefore(indicator, statusRight);
+    }
+    if (status === 'saving') {
+      indicator.textContent = 'Saving...';
+      indicator.style.color = 'var(--brand-color, #0071e3)';
+      indicator.style.opacity = '1';
+    } else if (status === 'saved') {
+      indicator.textContent = 'Saved';
+      indicator.style.color = '#10b981';
+      indicator.style.opacity = '1';
+      setTimeout(() => { indicator.style.opacity = '0'; }, 2000);
+    }
+  };
+
+  // Track dirty state per editor
+  const markDirty = () => {
+    const tab = getCurrentTab();
+    setTabDirty(tab, true);
+  };
+
+  // Listen for input on doc editor
+  document.getElementById('doc-editor')?.addEventListener('input', markDirty);
+  // Listen for CM6 editor changes
+  onChange(() => { setTabDirty('markdown', true); });
+
   // Save periodically (every 30 seconds)
   setInterval(() => {
     try {
+      showAutoSaveIndicator('saving');
       const state = {
         markdown: getContent(),
         document: document.getElementById('doc-editor')?.innerHTML || '',
         timestamp: Date.now(),
       };
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state));
+      showAutoSaveIndicator('saved');
     } catch {}
   }, 30000);
 
@@ -1283,38 +1394,42 @@ function showKeyboardShortcuts() {
   const existing = document.querySelector('.kb-shortcuts-overlay');
   if (existing) { existing.remove(); return; }
 
+  const m = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '\u2318' : 'Ctrl';
   const shortcuts = [
     { section: 'General' },
-    { keys: '⌘ /', desc: 'Show keyboard shortcuts' },
-    { keys: '⌘ S', desc: 'Save file' },
-    { keys: '⌘ O', desc: 'Open file' },
-    { keys: '⌘ Z', desc: 'Undo' },
-    { keys: '⌘ ⇧ Z', desc: 'Redo' },
+    { keys: `${m} /`, desc: 'Show keyboard shortcuts' },
+    { keys: `${m} S`, desc: 'Save file' },
+    { keys: `${m} \u21e7 S`, desc: 'Save As' },
+    { keys: `${m} O`, desc: 'Open file' },
+    { keys: `${m} Z`, desc: 'Undo' },
+    { keys: `${m} \u21e7 Z`, desc: 'Redo' },
+    { keys: `${m} P`, desc: 'Print / Export PDF' },
+    { keys: `${m} F`, desc: 'Find' },
+    { keys: `${m} ,`, desc: 'Settings' },
+    { keys: 'Esc', desc: 'Close modal / Exit zen mode' },
+    { keys: 'F11', desc: 'Toggle fullscreen' },
 
-    { section: 'Document' },
-    { keys: '⌘ B', desc: 'Bold' },
-    { keys: '⌘ I', desc: 'Italic' },
-    { keys: '⌘ U', desc: 'Underline' },
-    { keys: '⌘ F', desc: 'Find' },
-    { keys: '⌘ H', desc: 'Find & Replace' },
-    { keys: '⌘ P', desc: 'Print' },
+    { section: 'Navigation' },
+    { keys: 'Ctrl Tab', desc: 'Next tab' },
+    { keys: 'Ctrl \u21e7 Tab', desc: 'Previous tab' },
+    { keys: `${m} \u2325 1\u20139`, desc: 'Switch to tab N' },
+
+    { section: 'Document / Markdown' },
+    { keys: `${m} B`, desc: 'Bold' },
+    { keys: `${m} I`, desc: 'Italic' },
+    { keys: `${m} U`, desc: 'Underline' },
 
     { section: 'Sheet' },
-    { keys: '⌘ C', desc: 'Copy cells' },
-    { keys: '⌘ V', desc: 'Paste cells' },
-    { keys: '⌘ X', desc: 'Cut cells' },
-    { keys: '⌘ F', desc: 'Find & Replace' },
+    { keys: `${m} C/X/V`, desc: 'Copy / Cut / Paste' },
     { keys: 'Enter', desc: 'Edit cell / Confirm' },
     { keys: 'Tab', desc: 'Move to next cell' },
     { keys: 'F2', desc: 'Edit cell' },
     { keys: 'Del', desc: 'Clear cell' },
-    { keys: '= + ...', desc: 'Start formula' },
 
     { section: 'Slide' },
     { keys: 'F5', desc: 'Start presentation' },
-    { keys: '⌘ ⇧ D', desc: 'Duplicate slide' },
-    { keys: '⌘ B / I / U', desc: 'Format text' },
-    { keys: '← →', desc: 'Navigate slides (presentation)' },
+    { keys: `${m} \u21e7 D`, desc: 'Duplicate slide' },
+    { keys: '\u2190 \u2192', desc: 'Navigate slides' },
     { keys: 'Esc', desc: 'Exit presentation' },
   ];
 

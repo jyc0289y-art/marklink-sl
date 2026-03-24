@@ -311,6 +311,7 @@ async function loadPdfData(data) {
   scale = 1.0;
 
   resetPageState();
+  loadAnnotationsFromStorage(); // Restore persisted annotations for this file
   buildPageOrder();
 
   emptyEl?.classList.add('hidden');
@@ -943,6 +944,66 @@ function adjustColor(hex, amount) {
 function saveAnnotation(pageNum, data) {
   if (!pageAnnotations[pageNum]) pageAnnotations[pageNum] = [];
   pageAnnotations[pageNum].push(data);
+  persistAnnotationsToStorage();
+}
+
+/**
+ * Generate a storage key for the current PDF's annotations
+ */
+function getAnnotStorageKey() {
+  if (!currentName) return null;
+  return `pdf_annot_${currentName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+}
+
+/**
+ * Persist all annotations (highlights, notes, freehand, stamps, signatures) to localStorage
+ */
+function persistAnnotationsToStorage() {
+  const key = getAnnotStorageKey();
+  if (!key) return;
+  try {
+    const payload = {
+      annotations: pageAnnotations,
+      stamps: stampPlacements,
+      signatures: signaturePlacements,
+      rotations: pageRotations,
+      formFields: formFieldValues,
+      savedAt: Date.now(),
+    };
+    localStorage.setItem(key, JSON.stringify(payload));
+  } catch (e) {
+    console.warn('Failed to persist PDF annotations:', e);
+  }
+}
+
+/**
+ * Load persisted annotations from localStorage for the current PDF
+ */
+function loadAnnotationsFromStorage() {
+  const key = getAnnotStorageKey();
+  if (!key) return;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+    const payload = JSON.parse(raw);
+    if (payload.annotations && typeof payload.annotations === 'object') {
+      pageAnnotations = payload.annotations;
+    }
+    if (payload.stamps && typeof payload.stamps === 'object') {
+      stampPlacements = payload.stamps;
+    }
+    if (payload.signatures && typeof payload.signatures === 'object') {
+      signaturePlacements = payload.signatures;
+    }
+    if (payload.rotations && typeof payload.rotations === 'object') {
+      pageRotations = payload.rotations;
+    }
+    if (payload.formFields && typeof payload.formFields === 'object') {
+      formFieldValues = payload.formFields;
+    }
+  } catch (e) {
+    console.warn('Failed to load PDF annotations from storage:', e);
+  }
 }
 
 function redrawAnnotations(annotCanvas, pageNum, viewport) {
@@ -990,6 +1051,7 @@ async function clearAnnotationsOnPage() {
 
   pageAnnotations[pageNum] = [];
   freehandState[pageNum] = [];
+  persistAnnotationsToStorage();
 
   // Remove sticky notes
   const wrapper = pagesEl.querySelector(`.pdf-page-wrapper[data-idx="${currentPage}"]`);
@@ -1369,6 +1431,7 @@ function handleSignaturePlacement(wrapper, pageNum, e) {
   placeSignatureOnPage(wrapper, pageNum, signatureImage, x, y);
   if (!signaturePlacements[pageNum]) signaturePlacements[pageNum] = [];
   signaturePlacements[pageNum].push({ dataUrl: signatureImage, x, y });
+  persistAnnotationsToStorage();
 
   placingSignature = false;
   signatureImage = null;
@@ -1505,6 +1568,7 @@ function handleStampPlacement(wrapper, pageNum, e) {
   placeStampOnPage(wrapper, activeStamp.text, activeStamp.color, x, y);
   if (!stampPlacements[pageNum]) stampPlacements[pageNum] = [];
   stampPlacements[pageNum].push({ text: activeStamp.text, color: activeStamp.color, x, y });
+  persistAnnotationsToStorage();
 
   activeStamp = null;
   return true;

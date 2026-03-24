@@ -58,3 +58,77 @@ export function onTabChange(fn) {
 export function getCurrentTab() {
   return currentTab;
 }
+
+/**
+ * Get ordered list of tab names from DOM
+ */
+export const getTabList = () => {
+  return Array.from(document.querySelectorAll('.tab-item')).map((el) => el.dataset.tab);
+};
+
+/**
+ * Switch to next tab (wrapping around)
+ */
+export const switchNextTab = () => {
+  const tabs = getTabList();
+  const idx = tabs.indexOf(currentTab);
+  if (idx < 0 || tabs.length < 2) return;
+  switchTab(tabs[(idx + 1) % tabs.length]);
+};
+
+/**
+ * Switch to previous tab (wrapping around)
+ */
+export const switchPrevTab = () => {
+  const tabs = getTabList();
+  const idx = tabs.indexOf(currentTab);
+  if (idx < 0 || tabs.length < 2) return;
+  switchTab(tabs[(idx - 1 + tabs.length) % tabs.length]);
+};
+
+/**
+ * Switch to tab by 1-based index number (1..9)
+ * @param {number} n - 1-based tab number
+ */
+export const switchToTabN = (n) => {
+  const tabs = getTabList();
+  if (n >= 1 && n <= tabs.length) {
+    switchTab(tabs[n - 1]);
+  }
+};
+
+/**
+ * Mark a tab as having unsaved changes (show dot indicator)
+ * @param {string} tabName
+ * @param {boolean} dirty
+ */
+export const setTabDirty = (tabName, dirty) => {
+  const tabBtn = document.querySelector(`.tab-item[data-tab="${tabName}"]`);
+  if (!tabBtn) return;
+  if (dirty) {
+    if (!tabBtn.querySelector('.unsaved-dot')) {
+      const dot = document.createElement('span');
+      dot.className = 'unsaved-dot';
+      dot.style.cssText = `
+        display: inline-block;
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: #ef4444;
+        margin-left: 4px;
+        vertical-align: middle;
+        animation: unsaved-pulse 2s ease-in-out infinite;
+      `;
+      tabBtn.appendChild(dot);
+
+      // Inject animation if not already present
+      if (!document.getElementById('unsaved-dot-style')) {
+        const style = document.createElement('style');
+        style.id = 'unsaved-dot-style';
+        style.textContent = `@keyframes unsaved-pulse { 0%,100% { opacity:1 } 50% { opacity:0.3 } }`;
+        document.head.appendChild(style);
+      }
+    }
+  } else {
+    tabBtn.querySelector('.unsaved-dot')?.remove();
+  }
+};

@@ -184,8 +184,12 @@ function buildUI(container) {
         <button id="draw-export-png" class="draw-sm-btn" title="Export PNG">PNG</button>
         <button id="draw-export-jpg" class="draw-sm-btn" title="Export JPEG">JPG</button>
         <button id="draw-export-svg" class="draw-sm-btn" title="Export SVG">SVG</button>
-        <button id="draw-import-img" class="draw-sm-btn" title="Import Image">📂</button>
-        <button id="draw-clear-btn" class="draw-sm-btn" title="Clear Canvas">🗑</button>
+        <span class="draw-bottom-sep">|</span>
+        <button id="draw-save-json" class="draw-sm-btn" title="Save Drawing (JSON)">Save</button>
+        <button id="draw-load-json" class="draw-sm-btn" title="Load Drawing (JSON)">Load</button>
+        <span class="draw-bottom-sep">|</span>
+        <button id="draw-import-img" class="draw-sm-btn" title="Import Image">Img</button>
+        <button id="draw-clear-btn" class="draw-sm-btn" title="Clear Canvas">Clear</button>
       </div>
     </div>
   `;
@@ -359,6 +363,8 @@ function bindEvents() {
   document.getElementById('draw-export-png')?.addEventListener('click', () => exportCanvas('png'));
   document.getElementById('draw-export-jpg')?.addEventListener('click', () => exportCanvas('jpeg'));
   document.getElementById('draw-export-svg')?.addEventListener('click', () => exportSVG());
+  document.getElementById('draw-save-json')?.addEventListener('click', () => saveDrawingJSON());
+  document.getElementById('draw-load-json')?.addEventListener('click', () => loadDrawingJSON());
   document.getElementById('draw-import-img')?.addEventListener('click', () => importImage());
   document.getElementById('draw-clear-btn')?.addEventListener('click', () => { if (confirm('Clear all objects on this layer?')) { pushUndo(); getActiveLayer().objects = []; render(); } });
 
@@ -1404,6 +1410,103 @@ function objectToSVG(obj) {
 
 function escapeXml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* ==================== JSON Save/Load ==================== */
+
+function saveDrawingJSON() {
+  const payload = {
+    version: 1,
+    generator: 'OfficeLink SL Draw',
+    canvasWidth,
+    canvasHeight,
+    layers: layers.map((layer) => ({
+      name: layer.name,
+      visible: layer.visible,
+      opacity: layer.opacity,
+      blendMode: layer.blendMode,
+      objects: layer.objects.map((obj) => {
+        // Clone object, exclude non-serializable properties (img element)
+        const clone = { ...obj };
+        delete clone.img; // Image elements can't be serialized; imgSrc is kept
+        return clone;
+      }),
+    })),
+  };
+
+  const json = JSON.stringify(payload, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'drawing.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function loadDrawingJSON() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+
+      // Validate structure
+      if (!data || !Array.isArray(data.layers) || data.layers.length === 0) {
+        alert('Invalid drawing file format. Expected { layers: [...] }.');
+        return;
+      }
+
+      // Restore canvas size
+      if (data.canvasWidth) canvasWidth = data.canvasWidth;
+      if (data.canvasHeight) canvasHeight = data.canvasHeight;
+
+      // Restore layers
+      layers = [];
+      for (const layerData of data.layers) {
+        const restoredObjects = [];
+        for (const obj of (layerData.objects || [])) {
+          // Restore Image elements from imgSrc
+          if (obj.type === 'image' && obj.imgSrc) {
+            const img = await loadImageFromSrc(obj.imgSrc);
+            restoredObjects.push({ ...obj, img });
+          } else {
+            restoredObjects.push(obj);
+          }
+        }
+        layers.push({
+          name: layerData.name || `Layer ${layers.length + 1}`,
+          visible: layerData.visible !== false,
+          opacity: typeof layerData.opacity === 'number' ? layerData.opacity : 1,
+          blendMode: layerData.blendMode || 'source-over',
+          objects: restoredObjects,
+        });
+      }
+
+      activeLayerIdx = 0;
+      undoStack = [];
+      redoStack = [];
+      renderLayerList();
+      render();
+    } catch (err) {
+      console.error('Failed to load drawing JSON:', err);
+      alert('Failed to load drawing file. The file may be corrupted.');
+    }
+  });
+  input.click();
+}
+
+function loadImageFromSrc(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
 }
 
 function getAllObjectsBounds() {

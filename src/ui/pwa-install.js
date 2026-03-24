@@ -1,6 +1,8 @@
 // OfficeLink SL — PWA Install Enhancement
 // Custom install banner, platform detection, install modal, post-install welcome
 
+import { t } from './i18n.js';
+
 const PWA_REMIND_KEY = 'officelink-pwa-remind';
 const PWA_DISMISSED_KEY = 'officelink-pwa-dismissed';
 const PWA_INSTALLED_KEY = 'officelink-pwa-installed';
@@ -144,25 +146,25 @@ const showInstallModal = () => {
         <div class="pwa-install-native">
           <button class="pwa-install-native-btn">
             <span class="pwa-install-native-icon">📲</span>
-            <span>Install OfficeLink SL Now</span>
+            <span>${t('pwa.installNow')}</span>
           </button>
         </div>
       ` : ''}
 
       <div class="pwa-install-section">
-        <h3>How to Install</h3>
+        <h3>${t('pwa.howToInstall')}</h3>
         <div class="pwa-steps">${stepsHtml}</div>
         ${instructions.note ? `<p class="pwa-install-note">${instructions.note}</p>` : ''}
       </div>
 
       <div class="pwa-install-section">
-        <h3>Why Install?</h3>
+        <h3>${t('pwa.whyInstall')}</h3>
         <div class="pwa-benefits">${benefitsHtml}</div>
       </div>
 
       <div class="pwa-install-footer">
-        <button class="pwa-install-remind">Remind Me Later</button>
-        <button class="pwa-install-dismiss">Don't Show Again</button>
+        <button class="pwa-install-remind">${t('pwa.remindLater')}</button>
+        <button class="pwa-install-dismiss">${t('pwa.dontShow')}</button>
       </div>
     </div>
   `;
@@ -226,11 +228,11 @@ const showInstallBanner = () => {
     <div class="pwa-banner-content">
       <span class="pwa-banner-icon">📲</span>
       <div class="pwa-banner-text">
-        <strong>Install OfficeLink SL</strong>
-        <span>for a faster, offline-ready experience</span>
+        <strong>${t('pwa.installBanner')}</strong>
+        <span>${t('pwa.offlineReady')}</span>
       </div>
       <div class="pwa-banner-actions">
-        <button class="pwa-banner-install">Install</button>
+        <button class="pwa-banner-install">${t('pwa.install')}</button>
         <button class="pwa-banner-close">&times;</button>
       </div>
     </div>
@@ -279,14 +281,14 @@ const showPostInstallWelcome = () => {
   welcome.innerHTML = `
     <div class="pwa-welcome-modal">
       <div class="pwa-welcome-icon">🎉</div>
-      <h2>Welcome to OfficeLink SL!</h2>
-      <p>The app has been installed successfully. You can now access it from your home screen or dock.</p>
+      <h2>${t('pwa.installed')}</h2>
+      <p>${t('pwa.installedText')}</p>
       <div class="pwa-welcome-features">
-        <div class="pwa-welcome-feature"><span>⚡</span> Instant launch</div>
-        <div class="pwa-welcome-feature"><span>📡</span> Works offline</div>
-        <div class="pwa-welcome-feature"><span>🖥️</span> Standalone window</div>
+        <div class="pwa-welcome-feature"><span>⚡</span> ${t('pwa.instantLaunch')}</div>
+        <div class="pwa-welcome-feature"><span>📡</span> ${t('pwa.worksOffline')}</div>
+        <div class="pwa-welcome-feature"><span>🖥️</span> ${t('pwa.standaloneWindow')}</div>
       </div>
-      <button class="pwa-welcome-close-btn">Get Started</button>
+      <button class="pwa-welcome-close-btn">${t('pwa.getStarted')}</button>
     </div>
   `;
 

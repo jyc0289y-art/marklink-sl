@@ -63,6 +63,11 @@ export async function initCadEditor() {
   isInitialized = true;
   updateStatusBar('Ready');
   updateSceneTree();
+
+  // Observe theme changes and update 3D scene colors
+  updateCadThemeColors();
+  const themeObserver = new MutationObserver(() => updateCadThemeColors());
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 }
 
 /* ===================== Scene Setup ===================== */
@@ -136,6 +141,37 @@ function setupGrid() {
   ground.receiveShadow = true;
   ground.userData.isGround = true;
   scene.add(ground);
+}
+
+/** Update 3D scene colors to match the current theme */
+function updateCadThemeColors() {
+  if (!scene || !THREE) return;
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  if (isLight) {
+    scene.background = new THREE.Color(0xe5e5ea);
+    if (gridHelper) {
+      gridHelper.material.color.set(0xbbbbcc);
+      if (gridHelper.material.uniforms) gridHelper.material.uniforms.diffuse?.value.set(0xbbbbcc);
+      // GridHelper uses two materials for the two colors
+      gridHelper.material = gridHelper.material; // force update
+    }
+  } else {
+    scene.background = new THREE.Color(0x1a1a2e);
+    if (gridHelper) {
+      gridHelper.material = gridHelper.material;
+    }
+  }
+  // Recreate grid with correct colors
+  if (gridHelper) {
+    scene.remove(gridHelper);
+    gridHelper.geometry.dispose();
+    if (gridHelper.material.dispose) gridHelper.material.dispose();
+  }
+  gridHelper = new THREE.GridHelper(40, 40,
+    isLight ? 0x999999 : 0x333366,
+    isLight ? 0xcccccc : 0x222244
+  );
+  scene.add(gridHelper);
 }
 
 function setupControls() {

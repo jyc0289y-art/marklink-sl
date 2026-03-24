@@ -13,6 +13,7 @@ export const TRANSLATIONS = {
   'tab.calc': { en: 'Calc', ko: '계산기', ja: '計算機', zh: '计算器', es: 'Calc', fr: 'Calc', de: 'Rechner' },
   'tab.cad': { en: '3D CAD', ko: '3D CAD', ja: '3D CAD', zh: '3D CAD', es: '3D CAD', fr: '3D CAO', de: '3D CAD' },
   'tab.ai': { en: 'AI', ko: 'AI', ja: 'AI', zh: 'AI', es: 'IA', fr: 'IA', de: 'KI' },
+  'tab.draw': { en: 'Draw', ko: '그리기', ja: 'ドロー', zh: '绘图', es: 'Dibujo', fr: 'Dessin', de: 'Zeichnen' },
 
   // ===== MAIN TOOLBAR =====
   'tip.open': {
@@ -1443,6 +1444,10 @@ export const TRANSLATIONS = {
     en: 'Writing Stats & Goals', ko: '글쓰기 통계 및 목표', ja: 'ライティング統計と目標', zh: '写作统计与目标',
     es: 'Estadísticas de escritura', fr: 'Statistiques d\'écriture', de: 'Schreibstatistiken & Ziele',
   },
+  'doc.autoCorrect': {
+    en: 'Auto Correct', ko: '자동 교정', ja: '自動修正', zh: '自动更正',
+    es: 'Autocorrección', fr: 'Correction automatique', de: 'Autokorrektur',
+  },
 
   // --- PDF (additional) ---
   'pdf.addSignature': {
@@ -1590,6 +1595,18 @@ export const TRANSLATIONS = {
   'photo.watermark': {
     en: 'Add Watermark', ko: '워터마크 추가', ja: '透かしを追加', zh: '添加水印',
     es: 'Añadir marca de agua', fr: 'Ajouter un filigrane', de: 'Wasserzeichen hinzufügen',
+  },
+  'photo.baCompare': {
+    en: 'Before/After Compare', ko: '전후 비교', ja: 'ビフォー・アフター比較', zh: '前后对比',
+    es: 'Comparación antes/después', fr: 'Comparaison avant/après', de: 'Vorher/Nachher-Vergleich',
+  },
+  'photo.batchResize': {
+    en: 'Batch Resize', ko: '일괄 크기 조정', ja: '一括リサイズ', zh: '批量调整大小',
+    es: 'Redimensionar en lote', fr: 'Redimensionner en lot', de: 'Stapel-Größenänderung',
+  },
+  'photo.cropPresets': {
+    en: 'Crop Presets', ko: '자르기 프리셋', ja: 'クロッププリセット', zh: '裁剪预设',
+    es: 'Preajustes de recorte', fr: 'Préréglages de recadrage', de: 'Zuschnitt-Voreinstellungen',
   },
 
   // --- Sheet (additional) ---
@@ -1816,5 +1833,329 @@ export const TRANSLATIONS = {
   'tip.shortcuts': {
     en: 'Keyboard Shortcuts', ko: '키보드 단축키', ja: 'キーボードショートカット', zh: '键盘快捷键',
     es: 'Atajos de teclado', fr: 'Raccourcis clavier', de: 'Tastaturkürzel',
+  },
+  'tip.exportHtml': {
+    en: 'Export HTML', ko: 'HTML 내보내기', ja: 'HTMLエクスポート', zh: '导出HTML',
+    es: 'Exportar HTML', fr: 'Exporter HTML', de: 'HTML exportieren',
+  },
+  'tip.focusMode': {
+    en: 'Focus Mode', ko: '집중 모드', ja: '集中モード', zh: '专注模式',
+    es: 'Modo enfoque', fr: 'Mode concentration', de: 'Fokusmodus',
+  },
+  'tip.tableEditor': {
+    en: 'Table Editor', ko: '표 편집기', ja: 'テーブルエディタ', zh: '表格编辑器',
+    es: 'Editor de tablas', fr: 'Éditeur de tableau', de: 'Tabelleneditor',
+  },
+  'tip.versionList': {
+    en: 'Version List', ko: '버전 목록', ja: 'バージョン一覧', zh: '版本列表',
+    es: 'Lista de versiones', fr: 'Liste des versions', de: 'Versionsliste',
+  },
+  'tip.versionSave': {
+    en: 'Save Version', ko: '버전 저장', ja: 'バージョンを保存', zh: '保存版本',
+    es: 'Guardar versión', fr: 'Enregistrer la version', de: 'Version speichern',
+  },
+
+  // ===== 3D CAD =====
+  'cad.sceneTree': {
+    en: 'Scene Tree', ko: '씬 트리', ja: 'シーンツリー', zh: '场景树',
+    es: 'Árbol de escena', fr: 'Arbre de scène', de: 'Szenenbaum',
+  },
+  'cad.primitives': {
+    en: 'Primitives', ko: '기본 도형', ja: 'プリミティブ', zh: '基本体',
+    es: 'Primitivas', fr: 'Primitives', de: 'Grundkörper',
+  },
+  'cad.boolean': {
+    en: 'Boolean', ko: '불리언', ja: 'ブーリアン', zh: '布尔运算',
+    es: 'Booleano', fr: 'Booléen', de: 'Boolean',
+  },
+  'cad.transform': {
+    en: 'Transform', ko: '변환', ja: 'トランスフォーム', zh: '变换',
+    es: 'Transformar', fr: 'Transformer', de: 'Transformieren',
+  },
+  'cad.position': {
+    en: 'Position', ko: '위치', ja: '位置', zh: '位置',
+    es: 'Posición', fr: 'Position', de: 'Position',
+  },
+  'cad.rotation': {
+    en: 'Rotation', ko: '회전', ja: '回転', zh: '旋转',
+    es: 'Rotación', fr: 'Rotation', de: 'Rotation',
+  },
+  'cad.scale': {
+    en: 'Scale', ko: '크기', ja: 'スケール', zh: '缩放',
+    es: 'Escala', fr: 'Échelle', de: 'Skalierung',
+  },
+  'cad.material': {
+    en: 'Material', ko: '재질', ja: 'マテリアル', zh: '材质',
+    es: 'Material', fr: 'Matériau', de: 'Material',
+  },
+  'cad.shading': {
+    en: 'Shading', ko: '셰이딩', ja: 'シェーディング', zh: '着色',
+    es: 'Sombreado', fr: 'Ombrage', de: 'Schattierung',
+  },
+  'cad.lights': {
+    en: 'Lights', ko: '조명', ja: 'ライト', zh: '灯光',
+    es: 'Luces', fr: 'Lumières', de: 'Beleuchtung',
+  },
+  'cad.measurements': {
+    en: 'Measurements', ko: '측정', ja: '測定', zh: '测量',
+    es: 'Mediciones', fr: 'Mesures', de: 'Maße',
+  },
+  'cad.object': {
+    en: 'Object', ko: '객체', ja: 'オブジェクト', zh: '对象',
+    es: 'Objeto', fr: 'Objet', de: 'Objekt',
+  },
+
+  // ===== TUTORIAL & HELP =====
+  'tutorial.welcome': {
+    en: 'Welcome to OfficeLink SL!', ko: 'OfficeLink SL에 오신 것을 환영합니다!',
+    ja: 'OfficeLink SLへようこそ！', zh: '欢迎使用 OfficeLink SL！',
+    es: '¡Bienvenido a OfficeLink SL!', fr: 'Bienvenue sur OfficeLink SL !', de: 'Willkommen bei OfficeLink SL!',
+  },
+  'tutorial.welcomeText': {
+    en: 'Would you like a quick guided tour? It takes about 2 minutes and shows you all the features.',
+    ko: '간단한 가이드 투어를 해보시겠어요? 약 2분이면 모든 기능을 확인할 수 있습니다.',
+    ja: 'クイックガイドツアーはいかがですか？約2分で全機能をご紹介します。',
+    zh: '要来一个快速导览吗？大约2分钟，为您展示所有功能。',
+    es: '¿Le gustaría un tour guiado rápido? Toma unos 2 minutos y muestra todas las funciones.',
+    fr: 'Souhaitez-vous un guide rapide ? Environ 2 minutes pour découvrir toutes les fonctionnalités.',
+    de: 'Möchten Sie eine kurze Führung? In ca. 2 Minuten lernen Sie alle Funktionen kennen.',
+  },
+  'tutorial.startTour': {
+    en: 'Start Tour', ko: '투어 시작', ja: 'ツアー開始', zh: '开始导览',
+    es: 'Iniciar tour', fr: 'Commencer le tour', de: 'Tour starten',
+  },
+  'tutorial.remindLater': {
+    en: 'Remind Later', ko: '나중에 알림', ja: '後で通知', zh: '稍后提醒',
+    es: 'Recordar más tarde', fr: 'Rappeler plus tard', de: 'Später erinnern',
+  },
+  'tutorial.dontShow': {
+    en: "Don't Show Again", ko: '다시 표시하지 않음', ja: '今後表示しない', zh: '不再显示',
+    es: 'No mostrar de nuevo', fr: 'Ne plus afficher', de: 'Nicht mehr anzeigen',
+  },
+  'tutorial.previous': {
+    en: 'Previous', ko: '이전', ja: '前へ', zh: '上一步',
+    es: 'Anterior', fr: 'Précédent', de: 'Zurück',
+  },
+  'tutorial.skip': {
+    en: 'Skip', ko: '건너뛰기', ja: 'スキップ', zh: '跳过',
+    es: 'Saltar', fr: 'Passer', de: 'Überspringen',
+  },
+  'tutorial.next': {
+    en: 'Next', ko: '다음', ja: '次へ', zh: '下一步',
+    es: 'Siguiente', fr: 'Suivant', de: 'Weiter',
+  },
+  'tutorial.finish': {
+    en: 'Finish', ko: '완료', ja: '完了', zh: '完成',
+    es: 'Finalizar', fr: 'Terminer', de: 'Fertig',
+  },
+  'tutorial.helpCenter': {
+    en: 'Help Center', ko: '도움말 센터', ja: 'ヘルプセンター', zh: '帮助中心',
+    es: 'Centro de ayuda', fr: "Centre d'aide", de: 'Hilfecenter',
+  },
+  'tutorial.searchHelp': {
+    en: 'Search help topics...', ko: '도움말 검색...', ja: 'ヘルプを検索...', zh: '搜索帮助...',
+    es: 'Buscar temas de ayuda...', fr: "Rechercher de l'aide...", de: 'Hilfe durchsuchen...',
+  },
+  'tutorial.guidedTours': {
+    en: 'Guided Tours', ko: '가이드 투어', ja: 'ガイドツアー', zh: '引导教程',
+    es: 'Tours guiados', fr: 'Visites guidées', de: 'Geführte Touren',
+  },
+  'tutorial.keyboardShortcuts': {
+    en: 'Keyboard Shortcuts', ko: '키보드 단축키', ja: 'キーボードショートカット', zh: '键盘快捷键',
+    es: 'Atajos de teclado', fr: 'Raccourcis clavier', de: 'Tastaturkürzel',
+  },
+  'tutorial.quickTips': {
+    en: 'Quick Tips', ko: '빠른 팁', ja: 'クイックヒント', zh: '快速提示',
+    es: 'Consejos rápidos', fr: 'Astuces rapides', de: 'Schnelltipps',
+  },
+  'tutorial.toursDesc': {
+    en: 'Interactive guided tours to learn each editor.', ko: '각 편집기를 배울 수 있는 대화형 가이드 투어입니다.',
+    ja: '各エディタを学ぶインタラクティブなガイドツアー。', zh: '互动引导教程，学习每个编辑器。',
+    es: 'Tours guiados interactivos para aprender cada editor.', fr: 'Tours guidés interactifs pour apprendre chaque éditeur.',
+    de: 'Interaktive geführte Touren zum Erlernen jedes Editors.',
+  },
+  'tutorial.steps': {
+    en: 'steps', ko: '단계', ja: 'ステップ', zh: '步骤',
+    es: 'pasos', fr: 'étapes', de: 'Schritte',
+  },
+
+  // ===== PWA INSTALL =====
+  'pwa.installNow': {
+    en: 'Install OfficeLink SL Now', ko: 'OfficeLink SL 지금 설치', ja: '今すぐOfficeLink SLをインストール',
+    zh: '立即安装 OfficeLink SL', es: 'Instalar OfficeLink SL ahora', fr: 'Installer OfficeLink SL maintenant',
+    de: 'OfficeLink SL jetzt installieren',
+  },
+  'pwa.howToInstall': {
+    en: 'How to Install', ko: '설치 방법', ja: 'インストール方法', zh: '安装方法',
+    es: 'Cómo instalar', fr: 'Comment installer', de: 'Installationsanleitung',
+  },
+  'pwa.whyInstall': {
+    en: 'Why Install?', ko: '왜 설치하나요?', ja: 'なぜインストール？', zh: '为什么要安装？',
+    es: '¿Por qué instalar?', fr: "Pourquoi installer ?", de: 'Warum installieren?',
+  },
+  'pwa.remindLater': {
+    en: 'Remind Me Later', ko: '나중에 알림', ja: '後で通知', zh: '稍后提醒',
+    es: 'Recordar más tarde', fr: 'Rappeler plus tard', de: 'Später erinnern',
+  },
+  'pwa.dontShow': {
+    en: "Don't Show Again", ko: '다시 표시하지 않음', ja: '今後表示しない', zh: '不再显示',
+    es: 'No mostrar de nuevo', fr: 'Ne plus afficher', de: 'Nicht mehr anzeigen',
+  },
+  'pwa.installed': {
+    en: 'Welcome to OfficeLink SL!', ko: 'OfficeLink SL에 오신 것을 환영합니다!',
+    ja: 'OfficeLink SLへようこそ！', zh: '欢迎使用 OfficeLink SL！',
+    es: '¡Bienvenido a OfficeLink SL!', fr: 'Bienvenue sur OfficeLink SL !', de: 'Willkommen bei OfficeLink SL!',
+  },
+  'pwa.installedText': {
+    en: 'The app has been installed successfully. You can now access it from your home screen or dock.',
+    ko: '앱이 성공적으로 설치되었습니다. 이제 홈 화면이나 독에서 실행할 수 있습니다.',
+    ja: 'アプリが正常にインストールされました。ホーム画面やDockからアクセスできます。',
+    zh: '应用已成功安装。您现在可以从主屏幕或程序坞访问它。',
+    es: 'La aplicación se ha instalado correctamente. Puede acceder desde su pantalla de inicio.',
+    fr: "L'application a été installée avec succès. Vous pouvez y accéder depuis votre écran d'accueil.",
+    de: 'Die App wurde erfolgreich installiert. Sie können sie jetzt von Ihrem Startbildschirm aus öffnen.',
+  },
+  'pwa.getStarted': {
+    en: 'Get Started', ko: '시작하기', ja: '始める', zh: '开始使用',
+    es: 'Comenzar', fr: 'Commencer', de: 'Loslegen',
+  },
+  'pwa.install': {
+    en: 'Install', ko: '설치', ja: 'インストール', zh: '安装',
+    es: 'Instalar', fr: 'Installer', de: 'Installieren',
+  },
+  'pwa.installBanner': {
+    en: 'Install OfficeLink SL', ko: 'OfficeLink SL 설치', ja: 'OfficeLink SLをインストール',
+    zh: '安装 OfficeLink SL', es: 'Instalar OfficeLink SL', fr: 'Installer OfficeLink SL',
+    de: 'OfficeLink SL installieren',
+  },
+  'pwa.offlineReady': {
+    en: 'for a faster, offline-ready experience', ko: '더 빠르고 오프라인에서도 사용 가능한 환경',
+    ja: 'より速く、オフラインでも使える体験を', zh: '获得更快、可离线使用的体验',
+    es: 'para una experiencia más rápida y sin conexión', fr: 'pour une expérience plus rapide et hors ligne',
+    de: 'für eine schnellere, offline-fähige Erfahrung',
+  },
+  'pwa.instantLaunch': {
+    en: 'Instant launch', ko: '즉시 실행', ja: '即座に起動', zh: '即时启动',
+    es: 'Inicio instantáneo', fr: 'Lancement instantané', de: 'Sofortstart',
+  },
+  'pwa.worksOffline': {
+    en: 'Works offline', ko: '오프라인 사용 가능', ja: 'オフラインで動作', zh: '离线可用',
+    es: 'Funciona sin conexión', fr: 'Fonctionne hors ligne', de: 'Funktioniert offline',
+  },
+  'pwa.standaloneWindow': {
+    en: 'Standalone window', ko: '독립 실행 창', ja: 'スタンドアロンウィンドウ', zh: '独立窗口',
+    es: 'Ventana independiente', fr: 'Fenêtre autonome', de: 'Eigenständiges Fenster',
+  },
+
+  // ===== DYNAMIC UI STRINGS =====
+  'ui.ready': {
+    en: 'Ready', ko: '준비됨', ja: '準備完了', zh: '就绪',
+    es: 'Listo', fr: 'Prêt', de: 'Bereit',
+  },
+  'ui.replacedAll': {
+    en: 'Replaced all', ko: '모두 교체됨', ja: 'すべて置換済み', zh: '全部已替换',
+    es: 'Todos reemplazados', fr: 'Tout remplacé', de: 'Alle ersetzt',
+  },
+  'ui.fillAllFields': {
+    en: 'Please fill in all fields.', ko: '모든 필드를 입력해주세요.', ja: 'すべてのフィールドを入力してください。',
+    zh: '请填写所有字段。', es: 'Por favor complete todos los campos.', fr: 'Veuillez remplir tous les champs.',
+    de: 'Bitte füllen Sie alle Felder aus.',
+  },
+  'ui.invalidCellRef': {
+    en: 'Invalid cell reference.', ko: '잘못된 셀 참조입니다.', ja: '無効なセル参照です。',
+    zh: '无效的单元格引用。', es: 'Referencia de celda no válida.', fr: 'Référence de cellule invalide.',
+    de: 'Ungültige Zellreferenz.',
+  },
+  'ui.protect': {
+    en: 'Protect', ko: '보호', ja: '保護', zh: '保护',
+    es: 'Proteger', fr: 'Protéger', de: 'Schützen',
+  },
+  'ui.unprotect': {
+    en: 'Unprotect', ko: '보호 해제', ja: '保護解除', zh: '取消保护',
+    es: 'Desproteger', fr: 'Déprotéger', de: 'Schutz aufheben',
+  },
+  'ui.noSavedSignatures': {
+    en: 'No saved signatures', ko: '저장된 서명이 없습니다', ja: '保存された署名がありません',
+    zh: '没有保存的签名', es: 'Sin firmas guardadas', fr: 'Aucune signature enregistrée',
+    de: 'Keine gespeicherten Unterschriften',
+  },
+  'ui.recognizingText': {
+    en: 'Recognizing text\u2026', ko: '텍스트 인식 중\u2026', ja: 'テキストを認識中\u2026',
+    zh: '正在识别文字\u2026', es: 'Reconociendo texto\u2026', fr: 'Reconnaissance du texte\u2026',
+    de: 'Text wird erkannt\u2026',
+  },
+  'ui.overlayingText': {
+    en: 'Overlaying text\u2026', ko: '텍스트 오버레이 중\u2026', ja: 'テキストをオーバーレイ中\u2026',
+    zh: '正在覆盖文字\u2026', es: 'Superponiendo texto\u2026', fr: 'Superposition du texte\u2026',
+    de: 'Text wird überlagert\u2026',
+  },
+  'ui.ocrFailed': {
+    en: 'OCR failed: ', ko: 'OCR 실패: ', ja: 'OCR失敗: ',
+    zh: 'OCR失败：', es: 'OCR fallido: ', fr: "Échec de l'OCR : ",
+    de: 'OCR fehlgeschlagen: ',
+  },
+  'ui.pressEscFocus': {
+    en: 'Press ESC to exit focus mode', ko: 'ESC를 눌러 집중 모드를 종료하세요',
+    ja: 'ESCキーで集中モードを終了', zh: '按ESC退出专注模式',
+    es: 'Presione ESC para salir del modo enfoque', fr: 'Appuyez sur ESC pour quitter le mode concentration',
+    de: 'ESC drücken zum Beenden des Fokusmodus',
+  },
+  'ui.replace': {
+    en: 'Replace', ko: '바꾸기', ja: '置換', zh: '替换',
+    es: 'Reemplazar', fr: 'Remplacer', de: 'Ersetzen',
+  },
+  'ui.replaceAll': {
+    en: 'Replace All', ko: '모두 바꾸기', ja: 'すべて置換', zh: '全部替换',
+    es: 'Reemplazar todo', fr: 'Tout remplacer', de: 'Alle ersetzen',
+  },
+  'ui.findNext': {
+    en: 'Find Next', ko: '다음 찾기', ja: '次を検索', zh: '查找下一个',
+    es: 'Buscar siguiente', fr: 'Suivant', de: 'Weitersuchen',
+  },
+  'ui.close': {
+    en: 'Close', ko: '닫기', ja: '閉じる', zh: '关闭',
+    es: 'Cerrar', fr: 'Fermer', de: 'Schließen',
+  },
+  'ui.addSheet': {
+    en: 'Add Sheet', ko: '시트 추가', ja: 'シートを追加', zh: '添加工作表',
+    es: 'Agregar hoja', fr: 'Ajouter une feuille', de: 'Blatt hinzufügen',
+  },
+  'ui.ok': {
+    en: 'OK', ko: '확인', ja: 'OK', zh: '确定',
+    es: 'Aceptar', fr: 'OK', de: 'OK',
+  },
+
+  // ===== DRAW EDITOR =====
+  'draw.select': {
+    en: 'Select', ko: '선택', ja: '選択', zh: '选择',
+    es: 'Seleccionar', fr: 'Sélectionner', de: 'Auswählen',
+  },
+  'draw.pen': {
+    en: 'Pen', ko: '펜', ja: 'ペン', zh: '钢笔',
+    es: 'Pluma', fr: 'Stylo', de: 'Stift',
+  },
+  'draw.line': {
+    en: 'Line', ko: '선', ja: '線', zh: '线条',
+    es: 'Línea', fr: 'Ligne', de: 'Linie',
+  },
+  'draw.rect': {
+    en: 'Rectangle', ko: '사각형', ja: '矩形', zh: '矩形',
+    es: 'Rectángulo', fr: 'Rectangle', de: 'Rechteck',
+  },
+  'draw.ellipse': {
+    en: 'Ellipse', ko: '타원', ja: '楕円', zh: '椭圆',
+    es: 'Elipse', fr: 'Ellipse', de: 'Ellipse',
+  },
+  'draw.text': {
+    en: 'Text', ko: '텍스트', ja: 'テキスト', zh: '文本',
+    es: 'Texto', fr: 'Texte', de: 'Text',
+  },
+  'draw.eraser': {
+    en: 'Eraser', ko: '지우개', ja: '消しゴム', zh: '橡皮擦',
+    es: 'Borrador', fr: 'Gomme', de: 'Radiergummi',
+  },
+  'draw.layers': {
+    en: 'Layers', ko: '레이어', ja: 'レイヤー', zh: '图层',
+    es: 'Capas', fr: 'Calques', de: 'Ebenen',
   },
 };

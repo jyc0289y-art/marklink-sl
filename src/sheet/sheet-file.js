@@ -137,32 +137,126 @@ export function setSheetFileName(name) {
  * Import file data into sheets
  */
 async function importFile(file) {
-  const data = await file.arrayBuffer();
-  const wb = XLSX.read(data);
-  const newSheets = [];
+  const ext = file.name.replace(/.*\./, '').toLowerCase();
 
-  for (const wsName of wb.SheetNames) {
-    const ws = wb.Sheets[wsName];
-    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-    const rows = Math.max(range.e.r + 1, 50);
-    const cols = Math.max(range.e.c + 1, 26);
+  // CSV/TSV: use our own robust parser for proper quoted field handling
+  if (ext === 'csv' || ext === 'tsv') {
+    const text = await file.text();
+    const delimiter = ext === 'tsv' ? '\t' : ',';
+    const parsed = parseDelimited(text, delimiter);
+    const rows = Math.max(parsed.length, 50);
+    const cols = Math.max(parsed.reduce((m, r) => Math.max(m, r.length), 0), 26);
     const sheetData = createSheetData(rows, cols);
 
-    for (let r = range.s.r; r <= range.e.r; r++) {
-      for (let c = range.s.c; c <= range.e.c; c++) {
-        const addr = XLSX.utils.encode_cell({ r, c });
-        const cell = ws[addr];
-        if (cell) {
-          setCell(sheetData, r, c, cell.v != null ? String(cell.v) : '');
-        }
+    for (let r = 0; r < parsed.length; r++) {
+      for (let c = 0; c < parsed[r].length; c++) {
+        const val = parsed[r][c];
+        if (val !== '') setCell(sheetData, r, c, val);
       }
     }
     recalcAll(sheetData);
-    newSheets.push(sheetData);
+    setSheetsData([sheetData]);
+    return;
   }
 
-  if (newSheets.length === 0) newSheets.push(createSheetData());
-  setSheetsData(newSheets);
+  // XLSX: use SheetJS XLSX library
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data);
+    const newSheets = [];
+
+    for (const wsName of wb.SheetNames) {
+      const ws = wb.Sheets[wsName];
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+      const rows = Math.max(range.e.r + 1, 50);
+      const cols = Math.max(range.e.c + 1, 26);
+      const sheetData = createSheetData(rows, cols);
+
+      for (let r = range.s.r; r <= range.e.r; r++) {
+        for (let c = range.s.c; c <= range.e.c; c++) {
+          const addr = XLSX.utils.encode_cell({ r, c });
+          const cell = ws[addr];
+          if (cell) {
+            setCell(sheetData, r, c, cell.v != null ? String(cell.v) : '');
+          }
+        }
+      }
+      recalcAll(sheetData);
+      newSheets.push(sheetData);
+    }
+
+    if (newSheets.length === 0) newSheets.push(createSheetData());
+    setSheetsData(newSheets);
+  } catch (e) {
+    console.error('XLSX import error:', e);
+    alert(`Failed to import "${file.name}". The file may be corrupted or in an unsupported format.`);
+  }
+}
+
+/**
+ * Parse CSV/TSV with proper RFC 4180 quoted field support
+ * Handles: commas inside quotes, escaped quotes (""), newlines inside quotes
+ */
+function parseDelimited(text, delimiter = ',') {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuote = false;
+  let i = 0;
+
+  while (i < text.length) {
+    const ch = text[i];
+
+    if (inQuote) {
+      if (ch === '"') {
+        // Check for escaped quote ("") vs end of quoted field
+        if (i + 1 < text.length && text[i + 1] === '"') {
+          field += '"';
+          i += 2;
+        } else {
+          inQuote = false;
+          i++;
+        }
+      } else {
+        field += ch;
+        i++;
+      }
+    } else {
+      if (ch === '"' && field === '') {
+        inQuote = true;
+        i++;
+      } else if (ch === delimiter) {
+        row.push(field);
+        field = '';
+        i++;
+      } else if (ch === '\r') {
+        // Handle \r\n or lone \r
+        row.push(field);
+        field = '';
+        rows.push(row);
+        row = [];
+        i++;
+        if (i < text.length && text[i] === '\n') i++;
+      } else if (ch === '\n') {
+        row.push(field);
+        field = '';
+        rows.push(row);
+        row = [];
+        i++;
+      } else {
+        field += ch;
+        i++;
+      }
+    }
+  }
+
+  // Last field/row
+  if (field !== '' || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  return rows;
 }
 
 /**

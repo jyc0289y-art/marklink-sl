@@ -7,10 +7,24 @@ let currentHandle = null;
 let currentName = 'untitled.html';
 
 /**
- * Check if a file is DOCX format (by extension or magic bytes)
+ * Check if a file is DOCX format (by extension or MIME type)
  */
 function isDocxFile(file) {
   return /\.docx$/i.test(file.name) || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+}
+
+/**
+ * Check magic bytes (PK header = ZIP = DOCX/XLSX/PPTX)
+ * Returns true if file starts with PK\x03\x04
+ */
+async function hasZipMagicBytes(file) {
+  try {
+    const header = await file.slice(0, 4).arrayBuffer();
+    const bytes = new Uint8Array(header);
+    return bytes[0] === 0x50 && bytes[1] === 0x4B && bytes[2] === 0x03 && bytes[3] === 0x04;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -24,8 +38,11 @@ function isHwpxFile(file) {
  * Process a file — auto-detect format and convert to HTML
  */
 async function processDocFile(file) {
-  if (isDocxFile(file)) {
-    // DOCX → HTML via mammoth
+  // Check magic bytes for ZIP-based formats (DOCX) even if extension is wrong
+  const isZip = await hasZipMagicBytes(file);
+
+  if (isDocxFile(file) || (isZip && !isHwpxFile(file))) {
+    // DOCX → HTML via mammoth (with JSZip fallback)
     const { importDocx } = await import('./docx.js');
     return await importDocx(file);
   }
@@ -34,7 +51,17 @@ async function processDocFile(file) {
     const { importHwpx } = await import('./hwpx.js');
     return await importHwpx(file);
   }
-  // Default: treat as HTML
+
+  // Check if file content looks like binary (not text/HTML)
+  const firstBytes = new Uint8Array(await file.slice(0, 512).arrayBuffer());
+  const nullCount = firstBytes.filter((b) => b === 0).length;
+  if (nullCount > 50) {
+    // Binary file detected — show helpful message instead of garbage
+    setDocContent('<p style="color:#c62828;text-align:center;padding:40px"><strong>This file appears to be in a binary format that cannot be displayed directly.</strong><br>Supported formats: HTML, DOCX, HWPX</p>');
+    return { name: file.name, content: '' };
+  }
+
+  // Default: treat as HTML/text
   const text = await file.text();
   const content = extractBody(text);
   setDocContent(content);

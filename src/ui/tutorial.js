@@ -1,6 +1,8 @@
 // OfficeLink SL — Tutorial & Help System
 // Interactive guided tours, spotlight overlay, help center, contextual help (F1)
 
+import { t } from './i18n.js';
+
 const STORAGE_KEY = 'officelink-tutorial';
 const FIRST_VISIT_KEY = 'officelink-first-visit-done';
 const REMIND_LATER_KEY = 'officelink-tutorial-remind';
@@ -216,9 +218,9 @@ const createTooltip = (step, index, total) => {
         </div>
       </div>
       <div class="tutorial-tooltip-actions">
-        ${index > 0 ? '<button class="tutorial-btn tutorial-btn-prev">Previous</button>' : ''}
-        <button class="tutorial-btn tutorial-btn-skip">Skip</button>
-        <button class="tutorial-btn tutorial-btn-next tutorial-btn-primary">${index >= total - 1 ? 'Finish' : 'Next'}</button>
+        ${index > 0 ? `<button class="tutorial-btn tutorial-btn-prev">${t('tutorial.previous')}</button>` : ''}
+        <button class="tutorial-btn tutorial-btn-skip">${t('tutorial.skip')}</button>
+        <button class="tutorial-btn tutorial-btn-next tutorial-btn-primary">${index >= total - 1 ? t('tutorial.finish') : t('tutorial.next')}</button>
       </div>
     </div>
   `;
@@ -342,7 +344,7 @@ const showHelpCenter = () => {
     <button class="help-tour-card" data-tour="${id}">
       <span class="help-tour-icon">${tour.icon}</span>
       <span class="help-tour-name">${tour.name}</span>
-      <span class="help-tour-steps">${tour.steps.length} steps</span>
+      <span class="help-tour-steps">${tour.steps.length} ${t('tutorial.steps')}</span>
     </button>
   `).join('');
 
@@ -362,21 +364,21 @@ const showHelpCenter = () => {
   overlay.innerHTML = `
     <div class="help-center-modal">
       <div class="help-center-header">
-        <h2>Help Center</h2>
+        <h2>${t('tutorial.helpCenter')}</h2>
         <div class="help-search-wrap">
-          <input type="text" class="help-search-input" placeholder="Search help topics..." />
+          <input type="text" class="help-search-input" placeholder="${t('tutorial.searchHelp')}" />
         </div>
         <button class="help-center-close">&times;</button>
       </div>
       <div class="help-center-body">
         <div class="help-center-tabs">
-          <button class="help-tab active" data-help-tab="tours">Guided Tours</button>
-          <button class="help-tab" data-help-tab="shortcuts">Keyboard Shortcuts</button>
-          <button class="help-tab" data-help-tab="faq">Quick Tips</button>
+          <button class="help-tab active" data-help-tab="tours">${t('tutorial.guidedTours')}</button>
+          <button class="help-tab" data-help-tab="shortcuts">${t('tutorial.keyboardShortcuts')}</button>
+          <button class="help-tab" data-help-tab="faq">${t('tutorial.quickTips')}</button>
         </div>
 
         <div class="help-tab-content active" data-help-panel="tours">
-          <p class="help-section-desc">Interactive guided tours to learn each editor.</p>
+          <p class="help-section-desc">${t('tutorial.toursDesc')}</p>
           <div class="help-tour-grid">${tourCards}</div>
         </div>
 
@@ -512,12 +514,12 @@ const showFirstVisitPrompt = () => {
   prompt.innerHTML = `
     <div class="tutorial-first-visit-card">
       <div class="tutorial-fv-icon">👋</div>
-      <h3 class="tutorial-fv-title">Welcome to OfficeLink SL!</h3>
-      <p class="tutorial-fv-text">Would you like a quick guided tour? It takes about 2 minutes and shows you all the features.</p>
+      <h3 class="tutorial-fv-title">${t('tutorial.welcome')}</h3>
+      <p class="tutorial-fv-text">${t('tutorial.welcomeText')}</p>
       <div class="tutorial-fv-actions">
-        <button class="tutorial-btn tutorial-btn-primary tutorial-fv-start">Start Tour</button>
-        <button class="tutorial-btn tutorial-fv-later">Remind Later</button>
-        <button class="tutorial-btn tutorial-fv-skip">Don't Show Again</button>
+        <button class="tutorial-btn tutorial-btn-primary tutorial-fv-start">${t('tutorial.startTour')}</button>
+        <button class="tutorial-btn tutorial-fv-later">${t('tutorial.remindLater')}</button>
+        <button class="tutorial-btn tutorial-fv-skip">${t('tutorial.dontShow')}</button>
       </div>
     </div>
   `;

@@ -2303,26 +2303,30 @@ function exportImage() {
   const canvas = engine.getCanvas();
 
   const modal = document.createElement('div');
-  modal.className = 'photo-resize-modal';
+  modal.className = 'photo-resize-modal photo-export-modal';
   modal.innerHTML = `
     <div class="photo-resize-panel">
       <h3>Export Image</h3>
       <div class="resize-row">
         <label>Format</label>
         <select id="export-format" style="flex:1;padding:6px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-color);color:var(--text-color)">
+          <option value="png">PNG (lossless)</option>
           <option value="jpeg">JPEG</option>
-          <option value="png">PNG</option>
           <option value="webp">WebP</option>
         </select>
       </div>
-      <div class="resize-row">
+      <div class="resize-row" id="export-quality-row">
         <label>Quality</label>
         <input type="range" id="export-quality" min="10" max="100" value="92" style="flex:1">
-        <span id="export-quality-val" style="width:30px;text-align:right">92%</span>
+        <span id="export-quality-val" style="width:36px;text-align:right">92%</span>
       </div>
       <div class="resize-row">
-        <label>Size</label>
-        <span>${canvas.width} × ${canvas.height}</span>
+        <label>Dimensions</label>
+        <span>${canvas.width} x ${canvas.height} px</span>
+      </div>
+      <div class="resize-row" id="export-size-est">
+        <label>Est. size</label>
+        <span id="export-size-val">calculating...</span>
       </div>
       <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
         <button class="toolbar-btn" id="export-cancel">Cancel</button>
@@ -2332,22 +2336,58 @@ function exportImage() {
 
   document.body.appendChild(modal);
 
-  modal.querySelector('#export-quality').oninput = (e) => {
-    modal.querySelector('#export-quality-val').textContent = e.target.value + '%';
+  const formatSelect = modal.querySelector('#export-format');
+  const qualityRow = modal.querySelector('#export-quality-row');
+  const qualityInput = modal.querySelector('#export-quality');
+  const qualityVal = modal.querySelector('#export-quality-val');
+  const sizeVal = modal.querySelector('#export-size-val');
+
+  const updateQualityVisibility = () => {
+    const fmt = formatSelect.value;
+    qualityRow.style.display = fmt === 'png' ? 'none' : '';
+    updateSizeEstimate();
   };
 
-  modal.querySelector('#export-cancel').onclick = () => modal.remove();
-  modal.querySelector('#export-save').onclick = () => {
-    const format = modal.querySelector('#export-format').value;
-    const quality = parseInt(modal.querySelector('#export-quality').value) / 100;
-    const mimeType = `image/${format}`;
-    const link = document.createElement('a');
-    const baseName = imageInfo ? imageInfo.name.replace(/\.[^.]+$/, '') : 'photo';
-    link.download = `${baseName}_edit.${format === 'jpeg' ? 'jpg' : format}`;
-    link.href = canvas.toDataURL(mimeType, quality);
-    link.click();
-    modal.remove();
+  const updateSizeEstimate = () => {
+    const fmt = formatSelect.value;
+    const quality = parseInt(qualityInput.value) / 100;
+    const mimeType = `image/${fmt}`;
+    canvas.toBlob((blob) => {
+      if (blob && sizeVal) {
+        const kb = (blob.size / 1024).toFixed(1);
+        sizeVal.textContent = kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`;
+      }
+    }, mimeType, fmt === 'png' ? undefined : quality);
   };
+
+  formatSelect.addEventListener('change', updateQualityVisibility);
+  qualityInput.addEventListener('input', (e) => {
+    qualityVal.textContent = e.target.value + '%';
+    updateSizeEstimate();
+  });
+
+  updateQualityVisibility();
+
+  modal.querySelector('#export-cancel').addEventListener('click', () => modal.remove());
+  modal.querySelector('#export-save').addEventListener('click', () => {
+    const format = formatSelect.value;
+    const quality = parseInt(qualityInput.value) / 100;
+    const mimeType = `image/${format}`;
+    const baseName = imageInfo ? imageInfo.name.replace(/\.[^.]+$/, '') : 'photo';
+    const ext = format === 'jpeg' ? 'jpg' : format;
+
+    // Use toBlob for proper full-resolution export
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = `${baseName}_edit.${ext}`;
+      link.href = url;
+      link.click();
+      URL.revokeObjectURL(url);
+      modal.remove();
+    }, mimeType, format === 'png' ? undefined : quality);
+  });
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 }
 

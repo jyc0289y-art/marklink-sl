@@ -13,16 +13,19 @@ const THEMES = {
 };
 
 /**
- * Open a slide presentation file (.html with embedded slide data)
+ * Open a slide presentation file (.html or .json)
  */
 export async function openSlideFile() {
   if (window.showOpenFilePicker) {
     const [handle] = await window.showOpenFilePicker({
-      types: [{ description: 'Presentation Files', accept: { 'text/html': ['.html'] } }],
+      types: [{ description: 'Presentation Files', accept: {
+        'text/html': ['.html'],
+        'application/json': ['.json'],
+      } }],
     });
     const file = await handle.getFile();
     const text = await file.text();
-    parsePresentation(text);
+    importSlideContent(file.name, text);
     currentName = file.name;
     return { name: file.name };
   }
@@ -30,17 +33,123 @@ export async function openSlideFile() {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.html';
+    input.accept = '.html,.json';
     input.onchange = async () => {
       const file = input.files[0];
       if (!file) return resolve(null);
       const text = await file.text();
-      parsePresentation(text);
+      importSlideContent(file.name, text);
       currentName = file.name;
       resolve({ name: file.name });
     };
     input.click();
   });
+}
+
+/**
+ * Route import by file type
+ */
+function importSlideContent(name, text) {
+  if (/\.json$/i.test(name)) {
+    parseSlideJSON(text);
+  } else {
+    parsePresentation(text);
+  }
+}
+
+/**
+ * Save slides as JSON (preserves all features: transitions, animations, notes, etc.)
+ */
+export async function saveSlideJSON() {
+  const slides = getSlidesData();
+  const payload = {
+    version: 1,
+    generator: 'OfficeLink SL',
+    created: new Date().toISOString(),
+    slides: slides.map((s) => ({
+      content: s.content || '',
+      notes: s.notes || '',
+      theme: s.theme || 'default',
+      transition: s.transition || 'none',
+      transitionDuration: s.transitionDuration || 0.5,
+      transitionEasing: s.transitionEasing || 'ease',
+      animations: s.animations || [],
+      layout: s.layout || null,
+      background: s.background || null,
+    })),
+  };
+
+  const json = JSON.stringify(payload, null, 2);
+  const tsName = generateTimestampFilename(currentName.replace(/\.html?$/i, ''), 'json');
+  const blob = new Blob([json], { type: 'application/json' });
+
+  if (window.showSaveFilePicker) {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: tsName,
+      types: [{ description: 'Slide JSON', accept: { 'application/json': ['.json'] } }],
+    });
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return { name: handle.name || tsName };
+  }
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = tsName;
+  a.click();
+  URL.revokeObjectURL(url);
+  return { name: tsName };
+}
+
+/**
+ * Parse JSON slide format with validation
+ */
+function parseSlideJSON(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    alert('Invalid JSON file. The file may be corrupted.');
+    console.error('Slide JSON parse error:', e);
+    return;
+  }
+
+  // Validate structure
+  if (!data || !Array.isArray(data.slides) || data.slides.length === 0) {
+    // Try bare array format
+    if (Array.isArray(data) && data.length > 0) {
+      const validated = validateSlides(data);
+      if (validated.length > 0) { setSlidesData(validated); return; }
+    }
+    alert('Invalid slide file format. Expected { slides: [...] } or an array of slides.');
+    return;
+  }
+
+  const validated = validateSlides(data.slides);
+  if (validated.length === 0) {
+    alert('No valid slides found in the file.');
+    return;
+  }
+  setSlidesData(validated);
+}
+
+/**
+ * Validate and sanitize slide data
+ */
+function validateSlides(slides) {
+  return slides.filter((s) => s && typeof s === 'object').map((s) => ({
+    content: typeof s.content === 'string' ? s.content : '',
+    notes: typeof s.notes === 'string' ? s.notes : '',
+    theme: typeof s.theme === 'string' ? s.theme : 'default',
+    transition: typeof s.transition === 'string' ? s.transition : 'none',
+    transitionDuration: typeof s.transitionDuration === 'number' ? s.transitionDuration : 0.5,
+    transitionEasing: typeof s.transitionEasing === 'string' ? s.transitionEasing : 'ease',
+    animations: Array.isArray(s.animations) ? s.animations : [],
+    layout: s.layout || null,
+    background: s.background || null,
+  }));
 }
 
 /**
@@ -85,7 +194,10 @@ function buildPresHTML() {
   let slidesHTML = '';
   slides.forEach((s, i) => {
     const themeStyle = THEMES[s.theme] || THEMES.default;
-    slidesHTML += `<section class="slide" style="${themeStyle}" data-notes="${escape(s.notes || '')}">${s.content}</section>\n`;
+    const transition = s.transition || 'none';
+    const transitionDuration = s.transitionDuration || 0.5;
+    const transitionEasing = s.transitionEasing || 'ease';
+    slidesHTML += `<section class="slide" style="${themeStyle}" data-notes="${escape(s.notes || '')}" data-transition="${transition}" data-transition-duration="${transitionDuration}" data-transition-easing="${transitionEasing}">${s.content}</section>\n`;
   });
 
   return `<!DOCTYPE html>
@@ -146,22 +258,36 @@ function parsePresentation(html) {
     try {
       const data = JSON.parse(atob(dataMatch[1]));
       if (Array.isArray(data) && data.length > 0) {
-        setSlidesData(data);
+        setSlidesData(validateSlides(data));
         return;
       }
-    } catch { /* fall through */ }
+    } catch (e) {
+      console.warn('Failed to parse embedded slide data:', e);
+      /* fall through to DOM parsing */
+    }
   }
 
   // Fallback: parse <section class="slide"> elements
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-  const sections = doc.querySelectorAll('.slide');
-  if (sections.length > 0) {
-    const slides = Array.from(sections).map(s => ({
-      content: s.innerHTML,
-      notes: decodeURIComponent(s.getAttribute('data-notes') || ''),
-      theme: 'default',
-    }));
-    setSlidesData(slides);
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const sections = doc.querySelectorAll('.slide');
+    if (sections.length > 0) {
+      const slides = Array.from(sections).map((s) => ({
+        content: s.innerHTML,
+        notes: decodeURIComponent(s.getAttribute('data-notes') || ''),
+        theme: 'default',
+        transition: s.getAttribute('data-transition') || 'none',
+        transitionDuration: parseFloat(s.getAttribute('data-transition-duration')) || 0.5,
+        transitionEasing: s.getAttribute('data-transition-easing') || 'ease',
+        animations: [],
+      }));
+      setSlidesData(validateSlides(slides));
+    } else {
+      alert('No slides found in the imported file.');
+    }
+  } catch (e) {
+    console.error('Presentation parse error:', e);
+    alert('Failed to parse presentation file. The file may be corrupted.');
   }
 }
