@@ -10,6 +10,7 @@ import {
   autoFillRange,
   sortByColumn,
 } from './sheet-engine.js';
+import { t } from '../ui/i18n.js';
 
 // Wrappers that pass all sheets for cross-sheet reference support
 function setCell(sheet, r, c, rawValue) { _setCell(sheet, r, c, rawValue, sheets); }
@@ -1216,7 +1217,7 @@ function updateStatusBar() {
 
   const isRange = r1 !== r2 || c1 !== c2;
   if (!isRange) {
-    leftEl.textContent = 'Ready';
+    leftEl.textContent = t('ui.ready');
     rightEl.textContent = '';
     return;
   }
@@ -2655,7 +2656,7 @@ function showSheetFindReplace() {
     recalcAll(sheet);
     renderGrid(); updateSelection();
     findResults = [];
-    bar.querySelector('#sf-count').textContent = 'Replaced all';
+    bar.querySelector('#sf-count').textContent = t('ui.replacedAll');
   });
 
   bar.querySelector('#sf-close')?.addEventListener('click', () => bar.remove());
@@ -4725,7 +4726,7 @@ function showGoalSeekDialog() {
     if (!setRef || isNaN(target) || !changeRef) {
       resultEl.style.display = 'block';
       resultEl.style.background = '#ffebee';
-      resultEl.textContent = 'Please fill in all fields.';
+      resultEl.textContent = t('ui.fillAllFields');
       return;
     }
 
@@ -4734,7 +4735,7 @@ function showGoalSeekDialog() {
     if (!setRC || !changeRC) {
       resultEl.style.display = 'block';
       resultEl.style.background = '#ffebee';
-      resultEl.textContent = 'Invalid cell reference.';
+      resultEl.textContent = t('ui.invalidCellRef');
       return;
     }
 
@@ -5666,7 +5667,7 @@ function toggleSheetProtection() {
       sheetProtected = false;
       protectedPassword = '';
       const btn = document.getElementById('sheet-protect');
-      if (btn) btn.textContent = '🔒 Protect';
+      if (btn) btn.textContent = '\uD83D\uDD12 ' + t('ui.protect');
       alert('Sheet is now unprotected.');
     } else {
       alert('Incorrect password.');
@@ -5715,7 +5716,7 @@ function toggleSheetProtection() {
     }
 
     const btn = document.getElementById('sheet-protect');
-    if (btn) btn.textContent = '🔓 Unprotect';
+    if (btn) btn.textContent = '\uD83D\uDD13 ' + t('ui.unprotect');
     dlg.remove();
     alert('Sheet is now protected.');
   });

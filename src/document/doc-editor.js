@@ -1,5 +1,7 @@
 // OfficeLink SL — Document Editor (WYSIWYG)
 
+import { t } from '../ui/i18n.js';
+
 let editorEl = null;
 let dirty = false;
 let outlineVisible = false;
@@ -932,8 +934,8 @@ function doReplaceAll() {
   updateFindCount(0, 0);
   // Show replacement count notification
   const countEl = document.getElementById('doc-find-count');
-  if (countEl) countEl.textContent = `Replaced ${count}`;
-  setTimeout(() => { if (countEl && countEl.textContent.startsWith('Replaced')) countEl.textContent = ''; }, 2500);
+  if (countEl) countEl.textContent = `${t('ui.replaced')} ${count}`;
+  setTimeout(() => { if (countEl && countEl.textContent.startsWith(t('ui.replaced'))) countEl.textContent = ''; }, 2500);
 }
 
 // ─── Auto-Correct ──────────────────────────────────────────
@@ -3604,7 +3606,7 @@ function toggleFocusMode() {
     // ESC to exit hint
     const hint = document.createElement('div');
     hint.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);color:white;padding:8px 20px;border-radius:20px;font-size:12px;opacity:0.6;z-index:10000';
-    hint.textContent = 'Press ESC to exit focus mode';
+    hint.textContent = t('ui.pressEscFocus');
     focusModeOverlay.appendChild(hint);
 
     // Word count in corner

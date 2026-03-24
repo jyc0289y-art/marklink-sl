@@ -2,6 +2,7 @@
 // Enhanced: page management, annotations, rotation, deskew, text selection & search
 
 import * as pdfjsLib from 'pdfjs-dist';
+import { t } from '../ui/i18n.js';
 
 // Set worker source
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -1392,7 +1393,7 @@ function loadSavedSignatures() {
   if (!list) return;
   try {
     const saved = JSON.parse(localStorage.getItem('pdf_signatures') || '[]');
-    if (saved.length === 0) { list.textContent = 'No saved signatures'; return; }
+    if (saved.length === 0) { list.textContent = t('ui.noSavedSignatures'); return; }
     list.innerHTML = '';
     saved.forEach((sig, i) => {
       const item = document.createElement('div');
@@ -1419,7 +1420,7 @@ function loadSavedSignatures() {
 
       list.appendChild(item);
     });
-  } catch (_e) { list.textContent = 'No saved signatures'; }
+  } catch (_e) { list.textContent = t('ui.noSavedSignatures'); }
 }
 
 function handleSignaturePlacement(wrapper, pageNum, e) {
@@ -1625,7 +1626,7 @@ const runOcr = async () => {
     const ctx = canvas.getContext('2d');
     await page.render({ canvasContext: ctx, viewport }).promise;
 
-    if (textEl) textEl.textContent = 'Recognizing text…';
+    if (textEl) textEl.textContent = t('ui.recognizingText');
     if (fillEl) fillEl.style.width = '15%';
 
     const result = await Tesseract.recognize(canvas, lang, {
@@ -1639,7 +1640,7 @@ const runOcr = async () => {
     });
 
     if (fillEl) fillEl.style.width = '95%';
-    if (textEl) textEl.textContent = 'Overlaying text…';
+    if (textEl) textEl.textContent = t('ui.overlayingText');
 
     // Find the page wrapper for the current page
     const wrapper = pagesEl.querySelector(`.pdf-page-wrapper[data-idx="${currentPage}"]`);
@@ -1679,7 +1680,7 @@ const runOcr = async () => {
 
   } catch (err) {
     console.error('OCR error:', err);
-    if (textEl) textEl.textContent = 'OCR failed: ' + err.message;
+    if (textEl) textEl.textContent = t('ui.ocrFailed') + err.message;
     setTimeout(() => {
       if (progressEl) progressEl.style.display = 'none';
     }, 5000);

@@ -2056,6 +2056,10 @@ export const TRANSLATIONS = {
     en: 'Replaced all', ko: '모두 교체됨', ja: 'すべて置換済み', zh: '全部已替换',
     es: 'Todos reemplazados', fr: 'Tout remplacé', de: 'Alle ersetzt',
   },
+  'ui.replaced': {
+    en: 'Replaced', ko: '교체됨', ja: '置換済み', zh: '已替换',
+    es: 'Reemplazado', fr: 'Remplacé', de: 'Ersetzt',
+  },
   'ui.fillAllFields': {
     en: 'Please fill in all fields.', ko: '모든 필드를 입력해주세요.', ja: 'すべてのフィールドを入力してください。',
     zh: '请填写所有字段。', es: 'Por favor complete todos los campos.', fr: 'Veuillez remplir tous les champs.',
