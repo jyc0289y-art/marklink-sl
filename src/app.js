@@ -39,6 +39,7 @@ import { initDocAiContextMenu, initSheetAi, initSlideAi, initMarkdownAi, initPdf
 import { initTutorial } from './ui/tutorial.js';
 import { initPwaInstallEnhanced } from './ui/pwa-install.js';
 import { initErrorBoundary, safeSetItem } from './ui/error-boundary.js';
+import { initTemplates, showTemplatePicker } from './ui/templates.js';
 
 // Default welcome content
 const WELCOME_MD = `# Welcome to OfficeLink SL ✦
@@ -607,10 +608,8 @@ export async function initApp() {
     showFeedbackDialog();
   });
 
-  // 24-c. Templates button
-  document.getElementById('btn-templates')?.addEventListener('click', () => {
-    showTemplateLibrary();
-  });
+  // 24-c. Templates button (unified template picker)
+  initTemplates();
 
   // 25. Auto-save to localStorage (legacy)
   initAutoSave();

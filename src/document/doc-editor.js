@@ -430,7 +430,7 @@ export function initDocEditor() {
   });
 
   // Document Templates
-  document.getElementById('doc-templates')?.addEventListener('click', () => {
+  document.getElementById('doc-templates-btn')?.addEventListener('click', () => {
     showTemplateLibrary();
   });
 
