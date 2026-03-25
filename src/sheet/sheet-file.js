@@ -1,11 +1,17 @@
 // OfficeLink SL — Sheet File I/O (CSV + XLSX)
 
-import * as XLSX from 'xlsx';
+// XLSX (~1MB) loaded dynamically to reduce initial bundle
 import {
   createSheetData, setCell, colToLetter, getDisplayValue, recalcAll,
 } from './sheet-engine.js';
 import { getSheetsData, setSheetsData } from './sheet-ui.js';
 import { generateTimestampFilename } from '../export/filename-utils.js';
+
+let _XLSX = null;
+async function getXLSX() {
+  if (!_XLSX) _XLSX = await import('xlsx');
+  return _XLSX;
+}
 
 let currentName = 'untitled.xlsx';
 
@@ -50,7 +56,8 @@ export async function openSheetFile() {
  * Save as XLSX
  */
 export async function saveSheetFile() {
-  const wb = exportToWorkbook();
+  const XLSX = await getXLSX();
+  const wb = await exportToWorkbook();
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const tsName = generateTimestampFilename(currentName, 'xlsx');
@@ -161,6 +168,7 @@ async function importFile(file) {
 
   // XLSX: use SheetJS XLSX library
   try {
+    const XLSX = await getXLSX();
     const data = await file.arrayBuffer();
     const wb = XLSX.read(data);
     const newSheets = [];
@@ -262,13 +270,13 @@ function parseDelimited(text, delimiter = ',') {
 /**
  * Export sheets to XLSX workbook
  */
-function exportToWorkbook() {
+async function exportToWorkbook() {
+  const XLSX = await getXLSX();
   const wb = XLSX.utils.book_new();
   const sheetsData = getSheetsData();
 
   sheetsData.forEach((sheet, idx) => {
     const aoa = [];
-    // Find actual used range
     let maxR = 0, maxC = 0;
     for (const key of Object.keys(sheet.cells)) {
       const [r, c] = key.split(',').map(Number);

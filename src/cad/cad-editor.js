@@ -1,12 +1,30 @@
 // OfficeLink SL — 3D CAD Editor (Three.js)
 // Onshape-level 3D modeling editor with primitives, transforms, boolean ops, export
 
-// Three.js loaded from CDN via dynamic import
+// Three.js loaded from CDN via dynamic import with retry logic
 // Uses string concat to prevent Vite from analyzing these imports
 let THREE, OrbitControls, TransformControls, STLExporter, OBJExporter, GLTFExporter, STLLoader, OBJLoader, GLTFLoader;
 
 const CDN = 'https://cdn.jsdelivr.net/npm/three@0.162.0';
-const _i = (p) => import(/* @vite-ignore */ CDN + p);
+
+/** Import with retry and timeout */
+const _i = async (p, retries = 2, timeout = 10000) => {
+  let attempts = 0;
+  while (attempts <= retries) {
+    attempts++;
+    try {
+      const result = await Promise.race([
+        import(/* @vite-ignore */ CDN + p),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Import timeout')), timeout)),
+      ]);
+      return result;
+    } catch (err) {
+      if (attempts > retries) throw err;
+      console.warn(`[CAD CDN Retry] Attempt ${attempts}/${retries + 1} for ${p}`);
+      await new Promise((r) => setTimeout(r, 1000 * attempts));
+    }
+  }
+};
 
 async function loadThreeJS() {
   THREE = await _i('/build/three.module.js');

@@ -26,6 +26,10 @@ export function initTabs() {
   });
 }
 
+// Tabs that load heavy resources and benefit from a loading indicator
+const HEAVY_TABS = new Set(['pdf', 'photo', 'cad', '3d']);
+const _initializedTabs = new Set();
+
 export function switchTab(tabName) {
   const prev = currentTab;
   currentTab = tabName;
@@ -47,8 +51,34 @@ export function switchTab(tabName) {
     view.setAttribute('aria-hidden', isActive ? 'false' : 'true');
   });
 
+  // Show loading spinner for heavy tabs on first switch
+  if (HEAVY_TABS.has(tabName) && !_initializedTabs.has(tabName)) {
+    const view = document.getElementById(`view-${tabName}`);
+    if (view && !view.querySelector('.tab-loading-overlay')) {
+      const overlay = document.createElement('div');
+      overlay.className = 'tab-loading-overlay';
+      overlay.innerHTML = '<div class="tab-loading-spinner"></div><div class="tab-loading-text">Loading...</div>';
+      view.style.position = 'relative';
+      view.appendChild(overlay);
+      // Auto-remove after init completes (listeners handle init, remove after short delay)
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          overlay.remove();
+          _initializedTabs.add(tabName);
+        }, 600);
+      });
+    }
+  }
+
   // Notify listeners
   listeners.forEach((fn) => fn(tabName, prev));
+}
+
+/** Mark a tab as fully initialized (removes loading overlay) */
+export function markTabReady(tabName) {
+  _initializedTabs.add(tabName);
+  const overlay = document.querySelector(`#view-${tabName} .tab-loading-overlay`);
+  if (overlay) overlay.remove();
 }
 
 export function onTabChange(fn) {

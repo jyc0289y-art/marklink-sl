@@ -2,12 +2,27 @@
 // mammoth.js (MIT) for import, docx (MIT) for export
 // JSZip fallback for when mammoth fails
 
-import mammoth from 'mammoth';
-import JSZip from 'jszip';
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
-         Table, TableRow, TableCell, WidthType, BorderStyle } from 'docx';
+// Heavy deps loaded dynamically to reduce initial bundle size
+// mammoth (~200KB), jszip (~90KB), docx (~350KB) are loaded on first use
 import { setDocContent, getDocContent, markDocClean } from './doc-editor.js';
 import { generateTimestampFilename } from '../export/filename-utils.js';
+
+let _mammoth = null;
+let _JSZip = null;
+let _docx = null;
+
+async function getMammoth() {
+  if (!_mammoth) _mammoth = (await import('mammoth')).default;
+  return _mammoth;
+}
+async function getJSZip() {
+  if (!_JSZip) _JSZip = (await import('jszip')).default;
+  return _JSZip;
+}
+async function getDocxLib() {
+  if (!_docx) _docx = await import('docx');
+  return _docx;
+}
 
 /**
  * Import a .docx file → Document editor
@@ -18,6 +33,7 @@ export async function importDocx(file) {
 
   // Try mammoth first (best quality conversion)
   try {
+    const mammoth = await getMammoth();
     const result = await mammoth.convertToHtml({ arrayBuffer });
     const html = result.value || '';
     if (html && html.trim().length > 0 && !looksLikeGarbage(html)) {
@@ -57,6 +73,7 @@ function looksLikeGarbage(html) {
  * Parses word/document.xml and converts w:p, w:r, w:t elements to HTML
  */
 async function extractDocxWithJSZip(arrayBuffer) {
+  const JSZip = await getJSZip();
   const zip = await JSZip.loadAsync(arrayBuffer);
   const docXml = zip.file('word/document.xml');
   if (!docXml) {
@@ -161,6 +178,7 @@ async function extractDocxWithJSZip(arrayBuffer) {
  * Export Document editor content → .docx file
  */
 export async function exportDocx(fileName) {
+  const { Document, Packer, Paragraph, TextRun } = await getDocxLib();
   const content = getDocContent();
   const parser = new DOMParser();
   const doc = parser.parseFromString(`<body>${content}</body>`, 'text/html');
@@ -168,7 +186,7 @@ export async function exportDocx(fileName) {
 
   const children = [];
   for (const node of body.childNodes) {
-    const items = convertNode(node);
+    const items = await convertNode(node);
     children.push(...items);
   }
 
@@ -212,7 +230,10 @@ export async function exportDocx(fileName) {
 /**
  * Convert HTML DOM node → docx elements
  */
-function convertNode(node) {
+async function convertNode(node) {
+  const { Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle,
+          Table, TableRow, TableCell, WidthType } = await getDocxLib();
+
   if (node.nodeType === Node.TEXT_NODE) {
     const text = node.textContent.trim();
     if (!text) return [];
@@ -222,58 +243,61 @@ function convertNode(node) {
 
   const tag = node.tagName.toLowerCase();
 
-  // Headings
   const headingMap = {
-    h1: HeadingLevel.HEADING_1,
-    h2: HeadingLevel.HEADING_2,
-    h3: HeadingLevel.HEADING_3,
-    h4: HeadingLevel.HEADING_4,
-    h5: HeadingLevel.HEADING_5,
-    h6: HeadingLevel.HEADING_6,
+    h1: HeadingLevel.HEADING_1, h2: HeadingLevel.HEADING_2,
+    h3: HeadingLevel.HEADING_3, h4: HeadingLevel.HEADING_4,
+    h5: HeadingLevel.HEADING_5, h6: HeadingLevel.HEADING_6,
   };
   if (headingMap[tag]) {
     return [new Paragraph({
       heading: headingMap[tag],
-      children: extractTextRuns(node),
+      children: _extractTextRuns(node, TextRun),
     })];
   }
 
-  // Paragraph
   if (tag === 'p' || tag === 'div') {
-    const align = getAlignment(node);
-    return [new Paragraph({
-      alignment: align,
-      children: extractTextRuns(node),
-    })];
+    const style = node.style?.textAlign || '';
+    const align = style === 'center' ? AlignmentType.CENTER
+      : style === 'right' ? AlignmentType.RIGHT
+      : style === 'justify' ? AlignmentType.JUSTIFIED
+      : AlignmentType.LEFT;
+    return [new Paragraph({ alignment: align, children: _extractTextRuns(node, TextRun) })];
   }
 
-  // Lists
   if (tag === 'ul' || tag === 'ol') {
     const items = [];
     for (const li of node.querySelectorAll(':scope > li')) {
       items.push(new Paragraph({
         bullet: tag === 'ul' ? { level: 0 } : undefined,
         numbering: tag === 'ol' ? { reference: 'default-numbering', level: 0 } : undefined,
-        children: extractTextRuns(li),
+        children: _extractTextRuns(li, TextRun),
       }));
     }
     return items;
   }
 
-  // Table
   if (tag === 'table') {
-    return [convertTable(node)];
+    const rows = [];
+    for (const tr of node.querySelectorAll('tr')) {
+      const cells = [];
+      for (const td of tr.querySelectorAll('td, th')) {
+        cells.push(new TableCell({
+          children: [new Paragraph({ children: _extractTextRuns(td, TextRun) })],
+          width: { size: 100 / tr.children.length, type: WidthType.PERCENTAGE },
+        }));
+      }
+      if (cells.length > 0) rows.push(new TableRow({ children: cells }));
+    }
+    if (rows.length === 0) {
+      rows.push(new TableRow({ children: [new TableCell({ children: [new Paragraph('')] })] }));
+    }
+    return [new Table({ rows })];
   }
 
-  // Blockquote
   if (tag === 'blockquote') {
-    return [new Paragraph({
-      indent: { left: 720 },
-      children: extractTextRuns(node),
-    })];
+    return [new Paragraph({ indent: { left: 720 }, children: _extractTextRuns(node, TextRun) })];
   }
 
-  // HR
   if (tag === 'hr') {
     return [new Paragraph({
       border: { bottom: { style: BorderStyle.SINGLE, size: 6 } },
@@ -281,74 +305,31 @@ function convertNode(node) {
     })];
   }
 
-  // Fallback: treat as paragraph
   if (node.textContent.trim()) {
-    return [new Paragraph({ children: extractTextRuns(node) })];
+    return [new Paragraph({ children: _extractTextRuns(node, TextRun) })];
   }
   return [];
 }
 
-function extractTextRuns(el) {
+function _extractTextRuns(el, TextRun) {
   const runs = [];
   for (const child of el.childNodes) {
     if (child.nodeType === Node.TEXT_NODE) {
-      if (child.textContent) {
-        runs.push(new TextRun({ text: child.textContent }));
-      }
+      if (child.textContent) runs.push(new TextRun({ text: child.textContent }));
     } else if (child.nodeType === Node.ELEMENT_NODE) {
       const ctag = child.tagName.toLowerCase();
-      const isBold = ctag === 'strong' || ctag === 'b';
-      const isItalic = ctag === 'em' || ctag === 'i';
-      const isUnderline = ctag === 'u';
-      const isStrike = ctag === 's' || ctag === 'del' || ctag === 'strike';
-
-      if (ctag === 'br') {
-        runs.push(new TextRun({ break: 1 }));
-        continue;
-      }
-
-      // Recursively get text from nested elements
+      if (ctag === 'br') { runs.push(new TextRun({ break: 1 })); continue; }
       const text = child.textContent;
       if (text) {
         runs.push(new TextRun({
           text,
-          bold: isBold || undefined,
-          italics: isItalic || undefined,
-          underline: isUnderline ? {} : undefined,
-          strike: isStrike || undefined,
+          bold: (ctag === 'strong' || ctag === 'b') || undefined,
+          italics: (ctag === 'em' || ctag === 'i') || undefined,
+          underline: ctag === 'u' ? {} : undefined,
+          strike: (ctag === 's' || ctag === 'del' || ctag === 'strike') || undefined,
         }));
       }
     }
   }
   return runs.length ? runs : [new TextRun('')];
-}
-
-function getAlignment(el) {
-  const style = el.style?.textAlign || '';
-  if (style === 'center') return AlignmentType.CENTER;
-  if (style === 'right') return AlignmentType.RIGHT;
-  if (style === 'justify') return AlignmentType.JUSTIFIED;
-  return AlignmentType.LEFT;
-}
-
-function convertTable(tableEl) {
-  const rows = [];
-  for (const tr of tableEl.querySelectorAll('tr')) {
-    const cells = [];
-    for (const td of tr.querySelectorAll('td, th')) {
-      cells.push(new TableCell({
-        children: [new Paragraph({ children: extractTextRuns(td) })],
-        width: { size: 100 / tr.children.length, type: WidthType.PERCENTAGE },
-      }));
-    }
-    if (cells.length > 0) {
-      rows.push(new TableRow({ children: cells }));
-    }
-  }
-  if (rows.length === 0) {
-    rows.push(new TableRow({
-      children: [new TableCell({ children: [new Paragraph('')] })],
-    }));
-  }
-  return new Table({ rows });
 }

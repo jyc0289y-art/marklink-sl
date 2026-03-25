@@ -481,11 +481,37 @@ export function initDocEditor() {
     }
   });
 
-  // Smart paste: clean up external HTML
+  // Smart paste: handle images from clipboard and clean external HTML
   editorEl.addEventListener('paste', (e) => {
+    // Check for image paste from clipboard (screenshot, copy image, etc.)
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              const img = document.createElement('img');
+              img.src = ev.target.result;
+              img.alt = 'Pasted image';
+              img.style.maxWidth = '100%';
+              img.style.height = 'auto';
+              img.style.borderRadius = '4px';
+              img.style.margin = '8px 0';
+              document.execCommand('insertHTML', false, img.outerHTML);
+            };
+            reader.readAsDataURL(file);
+          }
+          return;
+        }
+      }
+    }
+
+    // Clean up external HTML (MS Office, Google Docs)
     const html = e.clipboardData.getData('text/html');
     if (html && (html.includes('data-meta') || html.includes('MsoNormal') || html.includes('docs-internal'))) {
-      // Pasting from MS Office or Google Docs — clean it
       e.preventDefault();
       const cleaned = html
         .replace(/<meta[^>]*>/gi, '')
@@ -496,6 +522,20 @@ export function initDocEditor() {
         .replace(/<\/?span[^>]*>/gi, '')
         .replace(/<\/?font[^>]*>/gi, '');
       document.execCommand('insertHTML', false, cleaned);
+    }
+
+    // Handle tab-separated data paste — auto-create table
+    const text = e.clipboardData.getData('text/plain');
+    if (!html && text && text.includes('\t') && text.includes('\n')) {
+      e.preventDefault();
+      const rows = text.split('\n').filter((r) => r.trim().length > 0);
+      const tableRows = rows.map((row, i) => {
+        const cells = row.split('\t');
+        const tag = i === 0 ? 'th' : 'td';
+        return `<tr>${cells.map((c) => `<${tag}>${c.replace(/</g, '&lt;')}</${tag}>`).join('')}</tr>`;
+      }).join('');
+      const tableHtml = `<table style="width:100%;border-collapse:collapse;margin:8px 0"><tbody>${tableRows}</tbody></table>`;
+      document.execCommand('insertHTML', false, tableHtml);
     }
   });
 

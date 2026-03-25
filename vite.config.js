@@ -8,18 +8,23 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    chunkSizeWarningLimit: 800,
+    chunkSizeWarningLimit: 1000,
+    minify: true,
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // Vendor splitting
+          // === Vendor splitting: separate heavy libs for better caching ===
           if (id.includes('node_modules/mermaid')) return 'vendor-mermaid';
-          if (id.includes('node_modules/katex')) return 'vendor-katex';
+          if (id.includes('node_modules/katex') || id.includes('node_modules/@mdit/plugin-katex')) return 'vendor-katex';
           if (id.includes('node_modules/codemirror') || id.includes('node_modules/@codemirror')) return 'vendor-codemirror';
-          if (id.includes('node_modules/mammoth')) return 'vendor-docx';
+          if (id.includes('node_modules/mammoth')) return 'vendor-mammoth';
+          if (id.includes('node_modules/jszip')) return 'vendor-jszip';
+          if (id.includes('node_modules/docx')) return 'vendor-docx';
+          if (id.includes('node_modules/xlsx')) return 'vendor-xlsx';
           if (id.includes('node_modules/html2pdf') || id.includes('node_modules/jspdf') || id.includes('node_modules/html2canvas')) return 'vendor-pdf';
           if (id.includes('node_modules/cytoscape')) return 'vendor-cytoscape';
-          // Editor splitting
+          if (id.includes('node_modules/markdown-it')) return 'vendor-markdown';
+          // === Editor splitting ===
           if (id.includes('/photo/')) return 'editor-photo';
           if (id.includes('/calculator/')) return 'editor-calc';
           if (id.includes('/pdf/')) return 'editor-pdf';

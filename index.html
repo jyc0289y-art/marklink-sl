@@ -15,6 +15,26 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="OfficeLink SL — Free Web Office Suite" />
   <meta name="twitter:description" content="10 editors in one browser tab. Free, offline-capable, no signup." />
+  <link rel="canonical" href="https://jyc0289y-art.github.io/marklink-sl/" />
+  <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+  <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "OfficeLink SL",
+    "url": "https://jyc0289y-art.github.io/marklink-sl/",
+    "description": "Free browser-based office suite with 10 editors: Document, Spreadsheet, Slide, PDF, Markdown, Photo, 3D CAD, Drawing, Calculator & AI assistant.",
+    "applicationCategory": "Productivity",
+    "operatingSystem": "Any (Web Browser)",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Organization", "name": "SeouLink (SL Corporation)" },
+    "browserRequirements": "Requires a modern browser with JavaScript enabled"
+  }
+  </script>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#0071e3" />
@@ -30,6 +50,9 @@
     }
   }
   </script>
+  <!-- Preload main entry for faster startup (must come after importmap) -->
+  <link rel="modulepreload" href="/src/main.js" />
+  <link rel="modulepreload" href="/src/app.js" />
   <link rel="stylesheet" href="/src/styles/main.css" />
   <link rel="stylesheet" href="/src/styles/editor.css" />
   <link rel="stylesheet" href="/src/styles/preview.css" />
@@ -48,8 +71,8 @@
   <link rel="stylesheet" href="/src/styles/draw.css" />
   <link rel="stylesheet" href="/src/styles/tutorial.css" />
 
-  <!-- Tesseract.js OCR -->
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <!-- Tesseract.js OCR — deferred to not block initial render -->
+  <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <!-- Google Analytics 4 -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
@@ -2357,8 +2380,17 @@
   <!-- Drop Zone Overlay -->
   <div id="drop-overlay" class="drop-overlay hidden">
     <div class="drop-message">
-      <span class="drop-icon">📄</span>
-      <span data-i18n="drop.message">Drop .md file here</span>
+      <div class="drop-file-icons"></div>
+      <span class="drop-icon">📂</span>
+      <span class="drop-text" data-i18n="drop.message">Drop file to open</span>
+      <div class="drop-file-types">
+        <span>📝 MD</span>
+        <span>📘 DOCX</span>
+        <span>📕 PDF</span>
+        <span>🖼️ Image</span>
+        <span>📊 Sheet</span>
+        <span>📽️ Slide</span>
+      </div>
     </div>
   </div>
 

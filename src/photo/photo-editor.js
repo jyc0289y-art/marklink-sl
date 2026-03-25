@@ -1064,6 +1064,33 @@ function bindFileInput() {
     const file = e.dataTransfer?.files[0];
     if (file && file.type.startsWith('image/')) loadImageFile(file);
   });
+
+  // Clipboard paste support — paste images directly into photo editor
+  const container = document.getElementById('photo-container');
+  if (container) {
+    document.addEventListener('paste', (e) => {
+      // Only handle if photo tab is active
+      const photoView = document.getElementById('view-photo');
+      if (!photoView || !photoView.classList.contains('active')) return;
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            file._name = file.name || 'pasted-image.png';
+            // Wrap in object with name property for loadImageFile
+            const namedFile = new File([file], 'pasted-image.png', { type: file.type });
+            loadImageFile(namedFile);
+          }
+          return;
+        }
+      }
+    });
+  }
 }
 
 /* ==================== Auto-Edit ==================== */

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://jyc0289y-art.github.io/marklink-sl/sitemap.xml

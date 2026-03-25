@@ -38,6 +38,7 @@ import { initSnippetLibrary, initZenMode, updateEnhancedStatusBar, initShortcutO
 import { initDocAiContextMenu, initSheetAi, initSlideAi, initMarkdownAi, initPdfAi, initPhotoAi } from './ai/ai-cowork.js';
 import { initTutorial } from './ui/tutorial.js';
 import { initPwaInstallEnhanced } from './ui/pwa-install.js';
+import { initErrorBoundary, safeSetItem } from './ui/error-boundary.js';
 
 // Default welcome content
 const WELCOME_MD = `# Welcome to OfficeLink SL ✦
@@ -127,6 +128,9 @@ graph LR
  * Initialize the OfficeLink SL application
  */
 export async function initApp() {
+  // 0. Global error boundary — must be first
+  initErrorBoundary();
+
   // 1. Register markdown-it plugins (async — KaTeX, task lists)
   const md = getRenderer();
   await registerAllPlugins(md);
@@ -443,9 +447,21 @@ export async function initApp() {
   initPdfViewer();
   initPhotoEditor();
   initCalculator();
-  // Lazy-load CAD & Drawing to avoid blocking main app
-  import('./cad/cad-editor.js').then(m => m.initCadEditor()).catch(e => console.warn('CAD init skipped:', e.message));
-  import('./draw/draw-editor.js').then(m => m.initDrawEditor()).catch(e => console.warn('Draw init skipped:', e.message));
+  // Lazy-load CAD & Drawing with loading indicators
+  showTabLoading('cad', 'Loading 3D engine...');
+  import('./cad/cad-editor.js')
+    .then((m) => m.initCadEditor())
+    .catch((e) => console.warn('CAD init skipped:', e.message))
+    .finally(() => hideTabLoading('cad'));
+
+  showTabLoading('draw', 'Loading canvas...');
+  import('./draw/draw-editor.js')
+    .then((m) => m.initDrawEditor())
+    .catch((e) => console.warn('Draw init skipped:', e.message))
+    .finally(() => hideTabLoading('draw'));
+
+  // Initialize empty states for editors
+  initEmptyStates();
 
   // Update filename display on tab switch + AI fullscreen mode
   onTabChange((tab, prevTab) => {
@@ -1193,8 +1209,8 @@ function initAutoSave() {
         document: document.getElementById('doc-editor')?.innerHTML || '',
         timestamp: Date.now(),
       };
-      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state));
-      showAutoSaveIndicator('saved');
+      const saved = safeSetItem(AUTOSAVE_KEY, JSON.stringify(state));
+      showAutoSaveIndicator(saved ? 'saved' : 'saving');
     } catch {}
   }, 30000);
 
@@ -1206,7 +1222,7 @@ function initAutoSave() {
         document: document.getElementById('doc-editor')?.innerHTML || '',
         timestamp: Date.now(),
       };
-      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state));
+      safeSetItem(AUTOSAVE_KEY, JSON.stringify(state));
     } catch {}
   });
 }
@@ -1268,7 +1284,7 @@ function saveVersionSnapshot(type = 'auto') {
 
     // Keep only MAX_VERSIONS
     while (versions.length > MAX_VERSIONS) versions.pop();
-    localStorage.setItem(VERSION_KEY, JSON.stringify(versions));
+    safeSetItem(VERSION_KEY, JSON.stringify(versions));
   } catch {}
 }
 
@@ -1903,3 +1919,121 @@ function showToast(message) {
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 2200);
 }
+
+// ── Tab Loading States ──
+
+/**
+ * Show loading overlay on a tab view
+ * @param {string} tabName - Tab name (e.g. 'cad', 'draw')
+ * @param {string} text - Loading text to display
+ */
+const showTabLoading = (tabName, text = 'Loading...') => {
+  const view = document.getElementById(`view-${tabName}`);
+  if (!view) return;
+  // Prevent duplicates
+  if (view.querySelector('.tab-loading-overlay')) return;
+  view.style.position = 'relative';
+  const overlay = document.createElement('div');
+  overlay.className = 'tab-loading-overlay';
+  overlay.innerHTML = `<div class="tab-loading-spinner"></div><div class="tab-loading-text">${text}</div>`;
+  view.appendChild(overlay);
+};
+
+/**
+ * Hide loading overlay from a tab view
+ * @param {string} tabName
+ */
+const hideTabLoading = (tabName) => {
+  const view = document.getElementById(`view-${tabName}`);
+  if (!view) return;
+  const overlay = view.querySelector('.tab-loading-overlay');
+  if (overlay) {
+    overlay.style.opacity = '0';
+    overlay.style.transition = 'opacity 0.3s ease';
+    setTimeout(() => overlay.remove(), 300);
+  }
+};
+
+// ── Empty States ──
+
+const EMPTY_STATE_CONFIG = {
+  document: {
+    icon: '\uD83D\uDCC4',
+    title: 'Start typing or open a file',
+    desc: 'Press Ctrl+O (Cmd+O) to open an existing document',
+    containerId: 'doc-editor',
+    checkContent: (el) => {
+      const text = el.textContent.trim();
+      // Only show empty state if truly empty (no user content)
+      return text.length > 0;
+    },
+  },
+  sheet: {
+    icon: '\uD83D\uDCCA',
+    title: 'Enter data or open a spreadsheet',
+    desc: 'Click any cell to start, or press Ctrl+O to open a file',
+    containerId: 'sheet-container',
+    // Sheet always has grid, so show message overlaid
+    overlay: true,
+    checkContent: () => {
+      // Check if any cell has content
+      const cells = document.querySelectorAll('#sheet-grid td');
+      return Array.from(cells).some((c) => c.textContent.trim().length > 0);
+    },
+  },
+  slide: {
+    icon: '\uD83C\uDFAC',
+    title: 'Create your first slide',
+    desc: 'Click "+ Slide" to add a new slide to your presentation',
+    containerId: null, // handled by slide-editor internal state
+  },
+};
+
+/**
+ * Initialize empty state messages for editors that need them
+ */
+const initEmptyStates = () => {
+  // Sheet gets a subtle overlay message when empty
+  const sheetContainer = document.getElementById('sheet-container');
+  if (sheetContainer) {
+    const sheetMsg = document.createElement('div');
+    sheetMsg.id = 'sheet-empty-hint';
+    sheetMsg.style.cssText = `
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0.4;
+      transition: opacity 0.3s ease;
+    `;
+    sheetMsg.innerHTML = `
+      <div style="font-size: 48px; opacity: 0.3; margin-bottom: 8px;">\uD83D\uDCCA</div>
+      <div style="font-size: 14px; font-weight: 600; color: var(--text-secondary);">Enter data or open a spreadsheet</div>
+      <div style="font-size: 12px; color: var(--text-tertiary); margin-top: 4px;">Click any cell to start, or Ctrl+O to open</div>
+    `;
+    sheetContainer.style.position = 'relative';
+    sheetContainer.appendChild(sheetMsg);
+
+    // Hide hint when sheet gets content
+    const hideSheetHint = () => {
+      const hint = document.getElementById('sheet-empty-hint');
+      if (!hint) return;
+      const hasContent = Array.from(document.querySelectorAll('#sheet-grid td')).some((c) => c.textContent.trim().length > 0);
+      hint.style.opacity = hasContent ? '0' : '0.4';
+      hint.style.pointerEvents = 'none';
+    };
+    document.getElementById('sheet-grid')?.addEventListener('input', hideSheetHint);
+    // Also check on tab switch
+    onTabChange((tab) => { if (tab === 'sheet') setTimeout(hideSheetHint, 100); });
+  }
+
+  // PDF and Photo empty states are already handled in their respective modules
+  // Document already shows "Start typing here..." placeholder content
+  // Markdown has welcome content
+  // Calculator shows calculator interface
+  // CAD shows viewport
+  // Draw shows canvas
+};
