@@ -496,6 +496,205 @@ html, body {
   color: var(--text-primary);
 }
 
+/* Enhanced Recent Files */
+.recent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  cursor: default;
+}
+
+.recent-header-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted, var(--text-secondary));
+}
+
+.recent-clear-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0.7;
+}
+
+.recent-clear-btn:hover {
+  background: var(--hover-bg);
+  opacity: 1;
+  color: var(--accent, #4a9eff);
+}
+
+.recent-file-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px !important;
+  position: relative;
+}
+
+.recent-file-item.pinned {
+  border-left: 2px solid var(--accent, #4a9eff);
+  padding-left: 10px !important;
+}
+
+.recent-file-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+}
+
+.recent-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.recent-file-date {
+  font-size: 10px;
+  color: var(--text-muted, var(--text-secondary));
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.recent-file-actions {
+  display: none;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.recent-file-item:hover .recent-file-actions {
+  display: flex;
+}
+
+.recent-file-item:hover .recent-file-date {
+  display: none;
+}
+
+.recent-pin-btn,
+.recent-remove-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 3px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.recent-pin-btn:hover {
+  color: #f5a623;
+}
+
+.recent-pin-btn.active {
+  color: #f5a623;
+}
+
+.recent-remove-btn:hover {
+  color: #e74c3c;
+}
+
+.recent-group-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted, var(--text-secondary));
+  padding: 8px 12px 2px !important;
+  cursor: default !important;
+}
+
+.recent-group-label:hover {
+  background: none !important;
+}
+
+/* Auto-save restore dialog */
+.autosave-restore-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.autosave-restore-content {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.autosave-restore-content h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.autosave-restore-content p {
+  margin: 4px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.autosave-filename {
+  font-family: monospace;
+  font-size: 12px !important;
+  color: var(--accent, #4a9eff) !important;
+}
+
+.autosave-restore-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+.autosave-restore-actions button {
+  padding: 8px 18px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.btn-restore {
+  background: var(--accent, #4a9eff);
+  color: #fff;
+  border-color: var(--accent, #4a9eff) !important;
+}
+
+.btn-restore:hover {
+  opacity: 0.9;
+}
+
+.btn-discard {
+  background: var(--bg-secondary, var(--bg-primary));
+  color: var(--text-primary);
+}
+
+.btn-discard:hover {
+  background: var(--hover-bg);
+}
+
 /* Split Pane */
 .split-pane {
   display: flex;

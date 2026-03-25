@@ -3763,6 +3763,17 @@ function showChartDialog() {
         <label style="font-size:12px"><input type="checkbox" id="chart-first-col-labels" checked> First column as labels</label><br>
         <label style="font-size:12px"><input type="checkbox" id="chart-trendline"> Show Trendline</label><br>
         <label style="font-size:12px"><input type="checkbox" id="chart-gridlines" checked> Show Gridlines</label>
+        <label style="font-size:12px;font-weight:600;margin-top:8px;display:block">Color Theme</label>
+        <select id="chart-color-theme" style="width:100%;padding:6px;margin:4px 0 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
+          <option value="default">Default</option>
+          <option value="ocean">Ocean</option>
+          <option value="sunset">Sunset</option>
+          <option value="pastel">Pastel</option>
+          <option value="monochrome">Monochrome</option>
+          <option value="vivid">Vivid</option>
+          <option value="earth">Earth</option>
+          <option value="neon">Neon</option>
+        </select>
       </div>
       <div style="flex:1;border:1px solid var(--border-color);border-radius:4px;padding:8px;min-height:300px;display:flex;align-items:center;justify-content:center" id="chart-preview-area">
         <canvas id="chart-preview-canvas" width="400" height="280"></canvas>
@@ -3784,11 +3795,12 @@ function showChartDialog() {
   const firstColEl = dlg.querySelector('#chart-first-col-labels');
   const trendlineEl = dlg.querySelector('#chart-trendline');
   const gridlinesEl = dlg.querySelector('#chart-gridlines');
+  const colorThemeEl = dlg.querySelector('#chart-color-theme');
   const canvas = dlg.querySelector('#chart-preview-canvas');
 
-  function updatePreview() {
-    renderChartToCanvas(canvas, dataRows, typeEl.value, titleEl.value, legendEl.checked, firstRowEl.checked, firstColEl.checked, trendlineEl.checked, xLabelEl.value, yLabelEl.value, gridlinesEl.checked);
-  }
+  const updatePreview = () => {
+    renderChartToCanvas(canvas, dataRows, typeEl.value, titleEl.value, legendEl.checked, firstRowEl.checked, firstColEl.checked, trendlineEl.checked, xLabelEl.value, yLabelEl.value, gridlinesEl.checked, colorThemeEl.value);
+  };
   updatePreview();
   typeEl.onchange = updatePreview;
   titleEl.oninput = updatePreview;
@@ -3799,6 +3811,7 @@ function showChartDialog() {
   firstColEl.onchange = updatePreview;
   trendlineEl.onchange = updatePreview;
   gridlinesEl.onchange = updatePreview;
+  colorThemeEl.onchange = updatePreview;
 
   dlg.querySelector('#chart-cancel').onclick = () => dlg.remove();
   dlg.querySelector('#chart-insert').onclick = () => {
@@ -3814,6 +3827,7 @@ function showChartDialog() {
       firstColLabels: firstColEl.checked,
       trendline: trendlineEl.checked,
       showGridlines: gridlinesEl.checked,
+      colorTheme: colorThemeEl.value,
     };
     insertChartWidget(chartConfig);
     dlg.remove();
@@ -3842,7 +3856,7 @@ function insertChartWidget(config, left = 40, top = 40, width = 480, height = 34
   chartDiv._chartConfig = config;
 
   const canvasEl = chartDiv.querySelector('canvas');
-  renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines);
+  renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines, config.colorTheme);
   makeDraggable(chartDiv);
 
   // Close button
@@ -3858,7 +3872,7 @@ function insertChartWidget(config, left = 40, top = 40, width = 480, height = 34
     if (cw > 0 && ch > 0) {
       canvasEl.width = cw;
       canvasEl.height = ch;
-      renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines);
+      renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines, config.colorTheme);
     }
   });
   ro.observe(chartDiv);
@@ -3904,6 +3918,12 @@ function editChart(chartDiv) {
     <label style="font-size:12px"><input type="checkbox" id="edit-chart-legend" ${config.showLegend?'checked':''}> Show Legend</label><br>
     <label style="font-size:12px"><input type="checkbox" id="edit-chart-trendline" ${config.trendline?'checked':''}> Show Trendline</label><br>
     <label style="font-size:12px"><input type="checkbox" id="edit-chart-gridlines" ${config.showGridlines!==false?'checked':''}> Show Gridlines</label>
+    <div style="margin-top:8px">
+      <label style="font-size:12px;font-weight:600">Color Theme</label>
+      <select id="edit-chart-color-theme" style="${inputStyle}">
+        ${Object.keys(CHART_COLOR_THEMES).map(k => `<option value="${k}" ${config.colorTheme===k?'selected':''}>${k.charAt(0).toUpperCase()+k.slice(1)}</option>`).join('')}
+      </select>
+    </div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
       <button class="toolbar-btn" id="edit-chart-cancel" style="padding:6px 16px">Cancel</button>
       <button class="toolbar-btn" id="edit-chart-apply" style="padding:6px 16px;background:var(--accent-color);color:white;border-radius:4px">Apply</button>
@@ -3920,10 +3940,11 @@ function editChart(chartDiv) {
     config.showLegend = dlg.querySelector('#edit-chart-legend').checked;
     config.trendline = dlg.querySelector('#edit-chart-trendline').checked;
     config.showGridlines = dlg.querySelector('#edit-chart-gridlines').checked;
+    config.colorTheme = dlg.querySelector('#edit-chart-color-theme').value;
     chartDiv._chartConfig = config;
     chartDiv.querySelector('span').textContent = config.title;
     const canvasEl = chartDiv.querySelector('canvas');
-    renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines);
+    renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines, config.colorTheme);
     dlg.remove();
   };
 }
@@ -3941,14 +3962,26 @@ function makeDraggable(el) {
   };
 }
 
-const CHART_COLORS = ['#4285f4','#ea4335','#fbbc05','#34a853','#ff6d01','#46bdc6','#7baaf7','#f07b72','#fdd663','#57bb8a','#ff9e40','#78d5dd'];
+const CHART_COLOR_THEMES = {
+  default: ['#4285f4','#ea4335','#fbbc05','#34a853','#ff6d01','#46bdc6','#7baaf7','#f07b72','#fdd663','#57bb8a','#ff9e40','#78d5dd'],
+  ocean: ['#0077b6','#00b4d8','#90e0ef','#023e8a','#0096c7','#48cae4','#ade8f4','#caf0f8','#005f73','#0a9396','#94d2bd','#e9d8a6'],
+  sunset: ['#ff6b6b','#ee5a24','#f0932b','#ffbe76','#ff7979','#eb4d4b','#6ab04c','#badc58','#e056fd','#be2edd','#7ed6df','#22a6b3'],
+  pastel: ['#a8dadc','#f4a261','#e76f51','#264653','#2a9d8f','#e9c46a','#f9c74f','#90be6d','#43aa8b','#577590','#f8961e','#f3722c'],
+  monochrome: ['#212529','#495057','#6c757d','#868e96','#adb5bd','#ced4da','#343a40','#495057','#dee2e6','#e9ecef','#f1f3f5','#f8f9fa'],
+  vivid: ['#ff0054','#ff5400','#ffbd00','#00ff87','#00b4d8','#7b2ff7','#ff006e','#fb5607','#ffbe0b','#3a86ff','#8338ec','#06d6a0'],
+  earth: ['#606c38','#283618','#dda15e','#bc6c25','#fefae0','#588157','#344e41','#a3b18a','#dad7cd','#3a5a40','#7f5539','#b08968'],
+  neon: ['#39ff14','#ff073a','#00f0ff','#ff00ff','#fff01f','#ff8c00','#7fff00','#00ffff','#ff1493','#ffd700','#00ff7f','#ff4500'],
+};
+let currentChartColorTheme = 'default';
+const CHART_COLORS = CHART_COLOR_THEMES.default;
 
-function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRowLabels, firstColLabels, showTrendline, xAxisLabel, yAxisLabel, showGridlines) {
+function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRowLabels, firstColLabels, showTrendline, xAxisLabel, yAxisLabel, showGridlines, colorTheme) {
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-primary') || '#fff';
   ctx.fillRect(0, 0, W, H);
+  const colors = CHART_COLOR_THEMES[colorTheme] || CHART_COLOR_THEMES.default;
 
   let labels = [];
   let seriesNames = [];
@@ -3980,11 +4013,11 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
   ctx.fillText(title, W / 2, 18);
 
   if (type === 'pie' || type === 'doughnut') {
-    renderPieChart(ctx, W, H, series[0] || [], labels, type === 'doughnut', showLegend, textColor);
+    renderPieChart(ctx, W, H, series[0] || [], labels, type === 'doughnut', showLegend, textColor, colors);
     return;
   }
   if (type === 'radar') {
-    renderRadarChart(ctx, W, H, series, labels, seriesNames, showLegend, textColor);
+    renderRadarChart(ctx, W, H, series, labels, seriesNames, showLegend, textColor, colors);
     return;
   }
 
@@ -4048,7 +4081,7 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
       for (let s = 0; s < series.length; s++) {
         const v = series[s][i] || 0;
         const barW = ((v - minVal) / range) * cW;
-        ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+        ctx.fillStyle = colors[s % colors.length];
         ctx.fillRect(pad.left, baseY + gap / 2 + s * barH, barW, barH);
       }
     }
@@ -4062,14 +4095,14 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
       for (let s = 0; s < series.length; s++) {
         const v = series[s][i] || 0;
         const barH = ((v - minVal) / range) * cH;
-        ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+        ctx.fillStyle = colors[s % colors.length];
         ctx.fillRect(x + (grpW * 0.15) + s * barW, pad.top + cH - barH, barW, barH);
       }
     }
   } else if (type === 'line' || type === 'area') {
     for (let s = 0; s < series.length; s++) {
-      ctx.strokeStyle = CHART_COLORS[s % CHART_COLORS.length];
-      ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+      ctx.strokeStyle = colors[s % colors.length];
+      ctx.fillStyle = colors[s % colors.length];
       ctx.lineWidth = 2;
       ctx.beginPath();
       const points = [];
@@ -4101,17 +4134,39 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
       ctx.fillText(labels[i] || '', x, pad.top + cH + 14);
     }
   } else if (type === 'scatter') {
-    // Use first two series as X,Y
-    const xs = series[0] || [];
-    const ys = series[1] || series[0] || [];
-    const xMax = Math.max(...xs, 1);
-    const yMax = Math.max(...ys, 1);
-    ctx.fillStyle = CHART_COLORS[0];
-    for (let i = 0; i < xs.length; i++) {
-      const x = pad.left + (xs[i] / xMax) * cW;
-      const y = pad.top + cH - (ys[i] / yMax) * cH;
-      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+    // Use first two series as X,Y; additional series as extra scatter groups
+    const scatterSeries = series.length >= 2
+      ? Array.from({ length: Math.floor(series.length / 2) }, (_, i) => ({ xs: series[i * 2], ys: series[i * 2 + 1] }))
+      : [{ xs: series[0] || [], ys: series[0] || [] }];
+    const allXs = scatterSeries.flatMap(s => s.xs);
+    const allYs = scatterSeries.flatMap(s => s.ys);
+    const xMin = Math.min(...allXs, 0);
+    const xMax = Math.max(...allXs, 1);
+    const yMin = Math.min(...allYs, 0);
+    const yMax = Math.max(...allYs, 1);
+    const xRange = xMax - xMin || 1;
+    const yRange = yMax - yMin || 1;
+    // X-axis labels for scatter
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = textColor;
+    ctx.textAlign = 'center';
+    for (let i = 0; i <= 5; i++) {
+      const v = xMin + (i / 5) * xRange;
+      const x = pad.left + (i / 5) * cW;
+      ctx.fillText(v % 1 === 0 ? v.toString() : v.toFixed(1), x, pad.top + cH + 14);
     }
+    scatterSeries.forEach((sg, si) => {
+      ctx.fillStyle = colors[si % colors.length];
+      for (let i = 0; i < sg.xs.length; i++) {
+        const x = pad.left + ((sg.xs[i] - xMin) / xRange) * cW;
+        const y = pad.top + cH - ((sg.ys[i] - yMin) / yRange) * cH;
+        ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+        // Draw a subtle border
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    });
   } else if (type === 'stacked_column') {
     const grpW = cW / n;
     // Recalculate max for stacked
@@ -4124,7 +4179,7 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
       for (let s = 0; s < series.length; s++) {
         const v = Math.max(0, series[s][i] || 0);
         const barH = (v / stackMax) * cH;
-        ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+        ctx.fillStyle = colors[s % colors.length];
         ctx.fillRect(x + grpW * 0.15, pad.top + cH - cumY - barH, grpW * 0.7, barH);
         cumY += barH;
       }
@@ -4141,7 +4196,7 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
       for (let s = 0; s < series.length; s++) {
         const v = Math.max(0, series[s][i] || 0);
         const barW = (v / stackMax) * cW;
-        ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+        ctx.fillStyle = colors[s % colors.length];
         ctx.fillRect(pad.left + cumX, baseY + (cH / n - barH) / 2, barW, barH);
         cumX += barW;
       }
@@ -4206,7 +4261,7 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
     let lx = W / 2 - (seriesNames.length * 70) / 2;
     ctx.font = '10px system-ui, sans-serif';
     for (let s = 0; s < seriesNames.length; s++) {
-      ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+      ctx.fillStyle = colors[s % colors.length];
       ctx.fillRect(lx, ly - 8, 12, 8);
       ctx.fillStyle = textColor;
       ctx.textAlign = 'left';
@@ -4216,54 +4271,87 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
   }
 }
 
-function renderPieChart(ctx, W, H, data, labels, isDoughnut, showLegend, textColor) {
+function renderPieChart(ctx, W, H, data, labels, isDoughnut, showLegend, textColor, colors) {
   const total = data.reduce((a, b) => a + b, 0) || 1;
   const cx = W / 2, cy = H / 2 + 10;
-  const radius = Math.min(W, H) / 2 - (showLegend ? 50 : 30);
+  const radius = Math.min(W, H) / 2 - (showLegend ? 55 : 35);
   let angle = -Math.PI / 2;
+
+  // Draw slices with slight gap between them
   for (let i = 0; i < data.length; i++) {
     const slice = (data[i] / total) * Math.PI * 2;
-    ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length];
+    ctx.fillStyle = colors[i % colors.length];
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.arc(cx, cy, radius, angle, angle + slice);
     ctx.closePath();
     ctx.fill();
-    // Label
+    // Slice border
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Label with percentage
     const mid = angle + slice / 2;
-    const lx = cx + Math.cos(mid) * radius * 0.65;
-    const ly = cy + Math.sin(mid) * radius * 0.65;
     const pct = ((data[i] / total) * 100).toFixed(1);
-    if (parseFloat(pct) > 3) {
+    const pctNum = parseFloat(pct);
+    if (pctNum > 5) {
+      // Inside label
+      const labelR = isDoughnut ? radius * 0.75 : radius * 0.65;
+      const lx = cx + Math.cos(mid) * labelR;
+      const ly = cy + Math.sin(mid) * labelR;
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 11px system-ui';
       ctx.textAlign = 'center';
       ctx.fillText(pct + '%', lx, ly + 4);
+    } else if (pctNum > 1) {
+      // Outside label for small slices
+      const outerR = radius + 16;
+      const lx = cx + Math.cos(mid) * outerR;
+      const ly = cy + Math.sin(mid) * outerR;
+      ctx.fillStyle = textColor;
+      ctx.font = '9px system-ui';
+      ctx.textAlign = Math.cos(mid) > 0 ? 'left' : 'right';
+      ctx.fillText(`${labels[i] || ''} ${pct}%`, lx, ly + 3);
     }
     angle += slice;
   }
+
   if (isDoughnut) {
     ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-primary') || '#fff';
     ctx.beginPath();
     ctx.arc(cx, cy, radius * 0.5, 0, Math.PI * 2);
     ctx.fill();
+    // Center label showing total
+    ctx.fillStyle = textColor;
+    ctx.font = 'bold 16px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(total % 1 === 0 ? total.toString() : total.toFixed(1), cx, cy + 5);
+    ctx.font = '9px system-ui';
+    ctx.fillStyle = textColor;
+    ctx.globalAlpha = 0.5;
+    ctx.fillText('Total', cx, cy - 10);
+    ctx.globalAlpha = 1;
   }
+
   if (showLegend) {
     ctx.font = '10px system-ui';
-    let ly = H - 14;
-    let lx = W / 2 - (labels.length * 60) / 2;
+    const legendY = H - 14;
+    const colW = Math.max(60, Math.min(80, (W - 20) / Math.max(labels.length, 1)));
+    let lx = W / 2 - (labels.length * colW) / 2;
     for (let i = 0; i < labels.length; i++) {
-      ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length];
-      ctx.fillRect(lx, ly - 8, 10, 8);
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.fillRect(lx, legendY - 8, 10, 8);
       ctx.fillStyle = textColor;
       ctx.textAlign = 'left';
-      ctx.fillText(labels[i], lx + 14, ly);
-      lx += 60;
+      const lbl = (labels[i] || '').length > 8 ? (labels[i] || '').slice(0, 7) + '..' : (labels[i] || '');
+      ctx.fillText(lbl, lx + 14, legendY);
+      lx += colW;
     }
   }
 }
 
-function renderRadarChart(ctx, W, H, series, labels, seriesNames, showLegend, textColor) {
+function renderRadarChart(ctx, W, H, series, labels, seriesNames, showLegend, textColor, colors) {
   const cx = W / 2, cy = H / 2 + 10;
   const radius = Math.min(W, H) / 2 - (showLegend ? 50 : 30);
   const n = labels.length || 1;
@@ -4300,8 +4388,8 @@ function renderRadarChart(ctx, W, H, series, labels, seriesNames, showLegend, te
   }
   // Data
   for (let s = 0; s < series.length; s++) {
-    ctx.strokeStyle = CHART_COLORS[s % CHART_COLORS.length];
-    ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+    ctx.strokeStyle = colors[s % colors.length];
+    ctx.fillStyle = colors[s % colors.length];
     ctx.lineWidth = 2;
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
@@ -4321,7 +4409,7 @@ function renderRadarChart(ctx, W, H, series, labels, seriesNames, showLegend, te
     let lx = W / 2 - (seriesNames.length * 70) / 2;
     ctx.font = '10px system-ui';
     for (let s = 0; s < seriesNames.length; s++) {
-      ctx.fillStyle = CHART_COLORS[s % CHART_COLORS.length];
+      ctx.fillStyle = colors[s % colors.length];
       ctx.fillRect(lx, H - 14 - 8, 12, 8);
       ctx.fillStyle = textColor;
       ctx.textAlign = 'left';

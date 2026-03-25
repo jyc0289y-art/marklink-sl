@@ -10,14 +10,14 @@ import { initSidebar, showSidebar } from './ui/sidebar.js';
 import { initShortcuts, applyToolbarShortcutHints } from './ui/shortcuts.js';
 import { initToast, toastSuccess, toastError, toastInfo } from './ui/toast.js';
 import { initContextMenus } from './ui/context-menu.js';
-import { openFile, saveFile, quickSave, getCurrentFileName, setFileName } from './file/file-manager.js';
+import { openFile, saveFile, quickSave, getCurrentFileName, setFileName, startAutoSave, stopAutoSave, checkAutoSaveRestore, clearAutoSave } from './file/file-manager.js';
 import { initDragDrop } from './file/drag-drop.js';
 import { renderRecentFiles } from './file/recent-files.js';
 import { openFolder } from './file/folder-tree.js';
 import { printDocument } from './export/print.js';
 import { exportHTML } from './export/html.js';
 import { exportPDF } from './export/pdf.js';
-import { trackFileOpen, trackFileSave, trackExport, trackThemeToggle, trackToolbarAction, trackFolderOpen, initSessionTracking } from './analytics.js';
+import { trackFileOpen, trackFileSave, trackExport, trackThemeToggle, trackToolbarAction, trackFolderOpen, initSessionTracking, measureStartup, measureTabSwitch, initPerfMonitoring } from './analytics.js';
 import { initTabs, onTabChange, getCurrentTab, switchTab, switchNextTab, switchPrevTab, switchToTabN, setTabDirty } from './ui/tabs.js';
 import { initDocEditor, getDocContent } from './document/doc-editor.js';
 import { openDocFile, saveDocFile, quickSaveDoc, getDocFileName, setDocFileName } from './document/doc-file.js';
@@ -128,6 +128,10 @@ graph LR
  * Initialize the OfficeLink SL application
  */
 export async function initApp() {
+  // 0a. Performance monitoring — start measuring startup
+  initPerfMonitoring();
+  const endStartup = measureStartup();
+
   // 0. Global error boundary — must be first
   initErrorBoundary();
 
@@ -217,9 +221,12 @@ export async function initApp() {
     updateFileName(name);
     setContent(content);
     updatePreviewImmediate(content);
-    renderRecentFiles(document.getElementById('recent-files'), (n) => {
-      // Recent file click — can't reopen without handle, just update name
-      console.log('Recent file clicked:', n);
+    renderRecentFiles(document.getElementById('recent-files'), (result) => {
+      if (result && result.content) {
+        loadFile(result);
+      } else if (result && result.name) {
+        toastInfo(`Cannot reopen "${result.name}" — file handle expired`);
+      }
     });
   }
 
@@ -463,8 +470,10 @@ export async function initApp() {
   // Initialize empty states for editors
   initEmptyStates();
 
-  // Update filename display on tab switch + AI fullscreen mode
+  // Update filename display on tab switch + AI fullscreen mode + URL routing
   onTabChange((tab, prevTab) => {
+    const endTabSwitch = measureTabSwitch(tab);
+
     if (tab === 'document') updateFileName(getDocFileName());
     else if (tab === 'sheet') updateFileName(getSheetFileName());
     else if (tab === 'slide') updateFileName(getSlideFileName());
@@ -481,6 +490,29 @@ export async function initApp() {
     // AI fullscreen mode
     if (tab === 'ai') enterAiFullscreen();
     else if (prevTab === 'ai') exitAiFullscreen();
+
+    // URL routing — update URL without reload
+    const url = new URL(window.location);
+    if (tab === 'markdown') {
+      url.searchParams.delete('tab');
+    } else {
+      url.searchParams.set('tab', tab);
+    }
+    history.pushState({ tab }, '', url);
+
+    // Measure tab switch completion (next frame)
+    requestAnimationFrame(() => endTabSwitch());
+  });
+
+  // Handle browser back/forward for tab routing
+  window.addEventListener('popstate', (e) => {
+    if (e.state && e.state.tab) {
+      switchTab(e.state.tab);
+    } else {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab') || 'markdown';
+      switchTab(tab);
+    }
   });
 
   // 18. AI Chat (Local LLM)
@@ -580,8 +612,30 @@ export async function initApp() {
     showTemplateLibrary();
   });
 
-  // 25. Auto-save to localStorage
+  // 25. Auto-save to localStorage (legacy)
   initAutoSave();
+
+  // 25b. Auto-save to IndexedDB (enhanced — every 30s)
+  startAutoSave(() => getContent(), 'markdown');
+
+  // 25c. Check for auto-saved content on startup
+  checkAutoSaveRestore('markdown', (content, fileName) => {
+    if (content) {
+      setContent(content);
+      updatePreviewImmediate(content);
+      if (fileName) updateFileName(fileName);
+      toastSuccess('Auto-saved content restored');
+    }
+  });
+
+  // 25d. Render recent files in sidebar at startup
+  renderRecentFiles(document.getElementById('recent-files'), (result) => {
+    if (result && result.content) {
+      loadFile(result);
+    } else if (result && result.name) {
+      toastInfo(`Cannot reopen "${result.name}" — file handle expired`);
+    }
+  });
 
   // 30. Version history
   initVersionHistory();
@@ -604,21 +658,31 @@ export async function initApp() {
 
   // 26. Keyboard shortcuts help (handled by unified shortcut system via showShortcuts action)
 
-  // 24. URL query: auto-switch tab (for PWA shortcuts)
+  // 24. URL query: auto-switch tab (for PWA shortcuts & deep links)
   const params = new URLSearchParams(window.location.search);
   const tabParam = params.get('tab');
   if (tabParam) {
     switchTab(tabParam);
     if (params.get('fullscreen') === '1') {
-      // Auto-enter fullscreen for calculator shortcut (mobile home screen)
+      // Auto-enter fullscreen for calculator/cad shortcut (mobile home screen)
       setTimeout(() => {
         const view = document.getElementById(`view-${tabParam}`);
-        if (view && tabParam === 'calculator') {
-          view.classList.add('calc-fullscreen');
+        if (view) {
+          if (tabParam === 'calculator') view.classList.add('calc-fullscreen');
           view.requestFullscreen?.().catch(() => {});
         }
       }, 500);
     }
+    // Set initial history state
+    history.replaceState({ tab: tabParam }, '', window.location.href);
+  } else {
+    history.replaceState({ tab: 'markdown' }, '', window.location.href);
+  }
+
+  // End startup measurement
+  const startupTime = endStartup();
+  if (startupTime > 3000) {
+    console.warn(`[Perf] App startup took ${startupTime.toFixed(0)}ms — consider optimizing`);
   }
 }
 
