@@ -1,6 +1,7 @@
 // OfficeLink SL — Context Menu System
 
 import { getCurrentTab } from './tabs.js';
+import { t } from './i18n.js';
 
 let activeMenu = null;
 
@@ -110,22 +111,49 @@ const showMenu = (e, items) => {
     menu.style.top = `${y}px`;
   });
 
-  // Close on outside click or Escape
+  // Keyboard navigation: Arrow Up/Down to move, Enter to select, Escape to close
+  const keyNavHandler = (ev) => {
+    const menuItems = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+    if (!menuItems.length) return;
+
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      const currentIdx = menuItems.indexOf(document.activeElement);
+      let nextIdx;
+      if (ev.key === 'ArrowDown') {
+        nextIdx = currentIdx < menuItems.length - 1 ? currentIdx + 1 : 0;
+      } else {
+        nextIdx = currentIdx > 0 ? currentIdx - 1 : menuItems.length - 1;
+      }
+      menuItems[nextIdx].focus();
+    } else if (ev.key === 'Enter') {
+      ev.preventDefault();
+      if (document.activeElement && menu.contains(document.activeElement)) {
+        document.activeElement.click();
+      }
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      closeContextMenu();
+      document.removeEventListener('keydown', keyNavHandler);
+      document.removeEventListener('mousedown', closeHandler);
+    }
+  };
+
+  // Close on outside click
   const closeHandler = (ev) => {
     if (!menu.contains(ev.target)) {
       closeContextMenu();
       document.removeEventListener('mousedown', closeHandler);
+      document.removeEventListener('keydown', keyNavHandler);
     }
   };
-  const escHandler = (ev) => {
-    if (ev.key === 'Escape') {
-      closeContextMenu();
-      document.removeEventListener('keydown', escHandler);
-    }
-  };
+
   setTimeout(() => {
     document.addEventListener('mousedown', closeHandler);
-    document.addEventListener('keydown', escHandler);
+    document.addEventListener('keydown', keyNavHandler);
+    // Focus first menu item for immediate keyboard access
+    const firstItem = menu.querySelector('[role="menuitem"]');
+    if (firstItem) firstItem.focus();
   }, 0);
 };
 
@@ -181,7 +209,7 @@ export const initContextMenus = () => {
       showMenu(e, [
         { label: 'Add Text Box', icon: 'T', action: () => {
           const p = document.createElement('p');
-          p.textContent = 'New text';
+          p.textContent = t('contextMenu.newText');
           p.style.cssText = 'cursor:text';
           slideCanvas.appendChild(p);
         }},

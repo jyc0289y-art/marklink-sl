@@ -1,6 +1,8 @@
 // OfficeLink SL — Enhanced Recent Files UI
 // Features: IndexedDB handle storage, reopen, pin, clear, grouping, LRU(20)
 
+import { t } from '../ui/i18n.js';
+
 const DB_NAME = 'officelink-recent';
 const DB_VERSION = 1;
 const STORE_NAME = 'file-handles';
@@ -267,8 +269,8 @@ export const renderRecentFiles = (container, onFileClick, options = {}) => {
   header.innerHTML = `<span class="recent-header-label">Recent Files</span>`;
   const clearBtn = document.createElement('button');
   clearBtn.className = 'recent-clear-btn';
-  clearBtn.textContent = 'Clear';
-  clearBtn.title = 'Clear recent files';
+  clearBtn.textContent = t('recent.clear');
+  clearBtn.title = t('recent.clearTip');
   clearBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     await clearRecentFiles();
@@ -348,7 +350,7 @@ const createFileItem = (entry, onFileClick, container, options) => {
   const removeBtn = document.createElement('button');
   removeBtn.className = 'recent-remove-btn';
   removeBtn.textContent = '×';
-  removeBtn.title = 'Remove from recent';
+  removeBtn.title = t('recent.removeTip');
   removeBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     await removeFromRecent(entry.name);

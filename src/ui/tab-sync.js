@@ -1,6 +1,8 @@
 // OfficeLink SL — Cross-Tab Sync (BroadcastChannel)
 // Theme sync, language sync, file notifications, tab presence, conflict detection
 
+import { t } from './i18n.js';
+
 const CHANNEL_NAME = 'officelink-tab-sync';
 const PRESENCE_KEY = 'officelink-tab-presence';
 const TAB_ID = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -254,7 +256,7 @@ const updatePresenceUI = () => {
     indicator = document.createElement('span');
     indicator.id = 'tab-presence-indicator';
     indicator.className = 'tab-presence-indicator';
-    indicator.title = 'Active browser tabs';
+    indicator.title = t('tabSync.activeTabs');
     // Try to insert into status bar
     const statusBar = document.querySelector('.status-bar') || document.querySelector('.enhanced-status-bar');
     if (statusBar) {
@@ -262,8 +264,8 @@ const updatePresenceUI = () => {
     }
   }
 
-  indicator.textContent = `${count} tabs`;
-  indicator.title = `${count} OfficeLink tabs open`;
+  indicator.textContent = `${count} ${t('tabSync.tabs')}`;
+  indicator.title = `${count} OfficeLink ${t('tabSync.tabs')}`;
 };
 
 /**

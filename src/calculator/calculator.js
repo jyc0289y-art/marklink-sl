@@ -7,6 +7,9 @@ let memory = 0;
 let isDeg = true;
 let lastAnswer = 0;
 
+// Cleanup registry for destroyCalculator()
+const _calcCleanups = [];
+
 /* ==================== Init ==================== */
 
 export function initCalculator() {
@@ -68,9 +71,11 @@ function initCalcToolbar() {
       view.requestFullscreen?.().catch(() => {});
     }
   });
-  document.addEventListener('fullscreenchange', () => {
+  const _onFullscreenChange = () => {
     if (!document.fullscreenElement) view.classList.remove('calc-fullscreen');
-  });
+  };
+  document.addEventListener('fullscreenchange', _onFullscreenChange);
+  _calcCleanups.push(() => document.removeEventListener('fullscreenchange', _onFullscreenChange));
 
   // Add to Home Screen
   document.getElementById('calc-add-home')?.addEventListener('click', () => {
@@ -141,7 +146,7 @@ function bindCalcEvents(container) {
   });
 
   // Keyboard input
-  document.addEventListener('keydown', (e) => {
+  const _onKeydown = (e) => {
     const view = document.getElementById('view-calculator');
     if (!view || !view.classList.contains('active')) return;
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
@@ -156,7 +161,9 @@ function bindCalcEvents(container) {
     else if (key === 'Enter' || key === '=') { e.preventDefault(); handleAction('equals'); }
     else if (key === 'Backspace') { e.preventDefault(); handleAction('backspace'); }
     else if (key === 'Escape' || key === 'c' || key === 'C') { e.preventDefault(); handleAction('clear'); }
-  });
+  };
+  document.addEventListener('keydown', _onKeydown);
+  _calcCleanups.push(() => document.removeEventListener('keydown', _onKeydown));
 }
 
 /* ==================== Calculator Core ==================== */
@@ -390,9 +397,11 @@ function initGraph() {
   });
 
   // Window resize
-  window.addEventListener('resize', () => {
+  const _onGraphResize = () => {
     if (document.getElementById('calc-panel-graph')?.classList.contains('active')) resizeGraphCanvas();
-  });
+  };
+  window.addEventListener('resize', _onGraphResize);
+  _calcCleanups.push(() => window.removeEventListener('resize', _onGraphResize));
 }
 
 function addGraphFunction() {
@@ -559,8 +568,8 @@ const UNIT_DATA = {
     'ft/s': 0.3048, 'kn': 0.514444, 'c': 299792458,
   },
   'Area': {
-    'm²': 1, 'km²': 1e6, 'cm²': 1e-4, 'ha': 10000,
-    'acre': 4046.86, 'ft²': 0.092903, 'mi²': 2.59e6, 'in²': 6.4516e-4,
+    'mm²': 1e-6, 'm²': 1, 'cm²': 1e-4, 'km²': 1e6, 'ha': 10000,
+    'acre': 4046.86, 'in²': 6.4516e-4, 'ft²': 0.092903, 'mi²': 2.59e6,
   },
   'Volume': {
     'L': 1, 'mL': 0.001, 'm³': 1000, 'cm³': 0.001,
@@ -1676,6 +1685,13 @@ function initProgrammerCalc() {
       } else if (act === 'backspace') {
         progInput = progInput.slice(0, -1);
         progValue = progInput ? BigInt(progInput) : 0n;
+      } else if (act === 'equals') {
+        if (progPendingOp && progPendingVal !== null) {
+          progValue = applyProgOp(progPendingVal, progValue, progPendingOp);
+          progPendingOp = null;
+          progPendingVal = null;
+          progInput = '';
+        }
       } else if (act === 'negate') {
         progValue = -progValue;
         progInput = '';
@@ -2252,9 +2268,11 @@ function init3DSurface() {
     if (e.key === 'Enter') { e.preventDefault(); render3DSurface(); }
   });
 
-  window.addEventListener('resize', () => {
+  const _on3DResize = () => {
     if (document.getElementById('calc-panel-surface3d')?.classList.contains('active')) render3DSurface();
-  });
+  };
+  window.addEventListener('resize', _on3DResize);
+  _calcCleanups.push(() => window.removeEventListener('resize', _on3DResize));
 
   // Initial plot after a short delay to let layout settle
   setTimeout(() => render3DSurface(), 100);
@@ -3346,6 +3364,7 @@ function initHistoryTags() {
   const observer = new MutationObserver(() => updateTags());
   const listEl = document.getElementById('calc-history-list');
   if (listEl) observer.observe(listEl, { childList: true });
+  _calcCleanups.push(() => observer.disconnect());
 
   updateTags();
 }
@@ -3354,3 +3373,44 @@ setTimeout(() => {
   initHistorySearch();
   initHistoryTags();
 }, 200);
+
+/* ==================== Destroy / Cleanup ==================== */
+
+export function destroyCalculator() {
+  // Run all registered cleanup callbacks (event listeners, observers)
+  _calcCleanups.forEach((fn) => fn());
+  _calcCleanups.length = 0;
+
+  // Reset module-level state
+  expression = '';
+  result = '0';
+  history = [];
+  memory = 0;
+  isDeg = true;
+  lastAnswer = 0;
+  graphFunctions = [];
+  graphRange = { xmin: -10, xmax: 10, ymin: -10, ymax: 10 };
+  graphMode = 'cartesian';
+  graphShowGrid = true;
+  graphTraceEnabled = false;
+  graphSnapEnabled = false;
+  graphDragStart = null;
+  graphDragRange = null;
+  progValue = 0n;
+  progPendingOp = null;
+  progPendingVal = null;
+  progInput = '';
+
+  // Clear localStorage entries
+  try {
+    localStorage.removeItem('officelink-calc-history');
+    localStorage.removeItem(SAVED_KEY);
+  } catch { /* ignore */ }
+
+  // Clear DOM content in calculator panels
+  const container = document.getElementById('view-calculator');
+  if (container) {
+    container.querySelectorAll('.calc-history-list, .calc-saved-list, .calc-matrix-result-content')
+      .forEach((el) => { el.innerHTML = ''; });
+  }
+}

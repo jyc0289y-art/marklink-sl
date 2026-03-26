@@ -2162,4 +2162,653 @@ export const TRANSLATIONS = {
     en: 'Layers', ko: '레이어', ja: 'レイヤー', zh: '图层',
     es: 'Capas', fr: 'Calques', de: 'Ebenen',
   },
+
+  // ===== APP — STATUS BAR & GENERAL =====
+  'status.saving': {
+    en: 'Saving...', ko: '저장 중...', ja: '保存中...', zh: '保存中...',
+    es: 'Guardando...', fr: 'Enregistrement...', de: 'Speichern...',
+  },
+  'status.saved': {
+    en: 'Saved', ko: '저장 완료', ja: '保存済み', zh: '已保存',
+    es: 'Guardado', fr: 'Enregistré', de: 'Gespeichert',
+  },
+  'status.words': {
+    en: 'Words', ko: '단어', ja: '単語', zh: '单词',
+    es: 'Palabras', fr: 'Mots', de: 'Wörter',
+  },
+  'status.characters': {
+    en: 'Characters', ko: '문자', ja: '文字', zh: '字符',
+    es: 'Caracteres', fr: 'Caractères', de: 'Zeichen',
+  },
+  'status.page': {
+    en: 'page', ko: '페이지', ja: 'ページ', zh: '页',
+    es: 'página', fr: 'page', de: 'Seite',
+  },
+  'status.pages': {
+    en: 'pages', ko: '페이지', ja: 'ページ', zh: '页',
+    es: 'páginas', fr: 'pages', de: 'Seiten',
+  },
+  'status.slide': {
+    en: 'Slide', ko: '슬라이드', ja: 'スライド', zh: '幻灯片',
+    es: 'Diapositiva', fr: 'Diapositive', de: 'Folie',
+  },
+  'status.of': {
+    en: 'of', ko: '/', ja: '/', zh: '/',
+    es: 'de', fr: 'de', de: 'von',
+  },
+  'status.lines': {
+    en: 'Lines', ko: '줄', ja: '行', zh: '行',
+    es: 'Líneas', fr: 'Lignes', de: 'Zeilen',
+  },
+  'status.noHeadings': {
+    en: 'No headings found', ko: '제목을 찾을 수 없음', ja: '見出しが見つかりません', zh: '未找到标题',
+    es: 'No se encontraron títulos', fr: 'Aucun titre trouvé', de: 'Keine Überschriften gefunden',
+  },
+  'status.loading': {
+    en: 'Loading...', ko: '로딩 중...', ja: '読み込み中...', zh: '加载中...',
+    es: 'Cargando...', fr: 'Chargement...', de: 'Laden...',
+  },
+
+  // ===== VERSION HISTORY =====
+  'version.title': {
+    en: 'Version History', ko: '버전 기록', ja: 'バージョン履歴', zh: '版本历史',
+    es: 'Historial de versiones', fr: 'Historique des versions', de: 'Versionsverlauf',
+  },
+  'version.noVersions': {
+    en: 'No versions saved yet for this tab.', ko: '이 탭에 저장된 버전이 없습니다.',
+    ja: 'このタブにはまだバージョンが保存されていません。', zh: '此标签页尚未保存任何版本。',
+    es: 'Aún no hay versiones guardadas para esta pestaña.', fr: 'Aucune version enregistrée pour cet onglet.',
+    de: 'Noch keine Versionen für diesen Tab gespeichert.',
+  },
+  'version.autoSaveNote': {
+    en: 'Versions are saved automatically every 5 minutes.', ko: '버전은 5분마다 자동으로 저장됩니다.',
+    ja: 'バージョンは5分ごとに自動保存されます。', zh: '版本每5分钟自动保存一次。',
+    es: 'Las versiones se guardan automáticamente cada 5 minutos.', fr: 'Les versions sont sauvegardées automatiquement toutes les 5 minutes.',
+    de: 'Versionen werden alle 5 Minuten automatisch gespeichert.',
+  },
+  'version.restore': {
+    en: 'Restore this version', ko: '이 버전 복원', ja: 'このバージョンを復元', zh: '恢复此版本',
+    es: 'Restaurar esta versión', fr: 'Restaurer cette version', de: 'Diese Version wiederherstellen',
+  },
+  'version.restoreConfirm': {
+    en: 'Restore this version? Current content will be replaced.', ko: '이 버전을 복원하시겠습니까? 현재 내용이 대체됩니다.',
+    ja: 'このバージョンを復元しますか？現在の内容が置き換えられます。', zh: '恢复此版本？当前内容将被替换。',
+    es: '¿Restaurar esta versión? El contenido actual será reemplazado.', fr: 'Restaurer cette version ? Le contenu actuel sera remplacé.',
+    de: 'Diese Version wiederherstellen? Der aktuelle Inhalt wird ersetzt.',
+  },
+  'version.selectPreview': {
+    en: 'Select a version to preview', ko: '미리 보려면 버전을 선택하세요', ja: 'プレビューするバージョンを選択',
+    zh: '选择一个版本进行预览', es: 'Seleccione una versión para previsualizar', fr: 'Sélectionnez une version à prévisualiser',
+    de: 'Wählen Sie eine Version zur Vorschau',
+  },
+  'version.current': {
+    en: 'CURRENT', ko: '현재', ja: '現在', zh: '当前',
+    es: 'ACTUAL', fr: 'ACTUEL', de: 'AKTUELL',
+  },
+
+  // ===== TEMPLATE LIBRARY =====
+  'template.title': {
+    en: 'Template Library', ko: '템플릿 라이브러리', ja: 'テンプレートライブラリ', zh: '模板库',
+    es: 'Biblioteca de plantillas', fr: 'Bibliothèque de modèles', de: 'Vorlagenbibliothek',
+  },
+  'template.documents': {
+    en: 'Documents', ko: '문서', ja: 'ドキュメント', zh: '文档',
+    es: 'Documentos', fr: 'Documents', de: 'Dokumente',
+  },
+  'template.sheets': {
+    en: 'Sheets', ko: '시트', ja: 'シート', zh: '表格',
+    es: 'Hojas', fr: 'Feuilles', de: 'Tabellen',
+  },
+  'template.slides': {
+    en: 'Slides', ko: '슬라이드', ja: 'スライド', zh: '幻灯片',
+    es: 'Diapositivas', fr: 'Diapositives', de: 'Folien',
+  },
+
+  // ===== SHEET HINTS =====
+  'sheet.emptyTitle': {
+    en: 'Enter data or open a spreadsheet', ko: '데이터를 입력하거나 스프레드시트를 여세요',
+    ja: 'データを入力するかスプレッドシートを開く', zh: '输入数据或打开电子表格',
+    es: 'Introduzca datos o abra una hoja de cálculo', fr: 'Saisissez des données ou ouvrez un tableur',
+    de: 'Daten eingeben oder Tabelle öffnen',
+  },
+  'sheet.emptyHint': {
+    en: 'Click any cell to start, or Ctrl+O to open', ko: '셀을 클릭하여 시작하거나 Ctrl+O로 열기',
+    ja: 'セルをクリックして開始、またはCtrl+Oで開く', zh: '单击任意单元格开始，或按Ctrl+O打开',
+    es: 'Haga clic en una celda o Ctrl+O para abrir', fr: 'Cliquez sur une cellule ou Ctrl+O pour ouvrir',
+    de: 'Klicken Sie auf eine Zelle oder Ctrl+O zum Öffnen',
+  },
+  'sheet.cellsSelected': {
+    en: 'cells selected', ko: '셀 선택됨', ja: 'セル選択', zh: '个单元格已选',
+    es: 'celdas seleccionadas', fr: 'cellules sélectionnées', de: 'Zellen ausgewählt',
+  },
+
+  // ===== PREVIEW TOOLBAR =====
+  'preview.sync': {
+    en: 'Sync', ko: '동기화', ja: '同期', zh: '同步',
+    es: 'Sincronizar', fr: 'Synchroniser', de: 'Synchronisieren',
+  },
+  'preview.syncToggle': {
+    en: 'Toggle scroll sync', ko: '스크롤 동기화 전환', ja: 'スクロール同期切替', zh: '切换滚动同步',
+    es: 'Alternar sincronización', fr: 'Synchronisation du défilement', de: 'Scroll-Sync umschalten',
+  },
+  'preview.syncOn': {
+    en: 'Scroll sync ON', ko: '스크롤 동기화 켜짐', ja: 'スクロール同期 ON', zh: '滚动同步开',
+    es: 'Sincronización activada', fr: 'Synchronisation activée', de: 'Scroll-Sync AN',
+  },
+  'preview.syncOff': {
+    en: 'Scroll sync OFF', ko: '스크롤 동기화 꺼짐', ja: 'スクロール同期 OFF', zh: '滚动同步关',
+    es: 'Sincronización desactivada', fr: 'Synchronisation désactivée', de: 'Scroll-Sync AUS',
+  },
+  'preview.zoomOut': {
+    en: 'Zoom out', ko: '축소', ja: '縮小', zh: '缩小',
+    es: 'Alejar', fr: 'Zoom arrière', de: 'Verkleinern',
+  },
+  'preview.zoomIn': {
+    en: 'Zoom in', ko: '확대', ja: '拡大', zh: '放大',
+    es: 'Acercar', fr: 'Zoom avant', de: 'Vergrößern',
+  },
+  'preview.present': {
+    en: 'Present', ko: '발표', ja: 'プレゼン', zh: '演示',
+    es: 'Presentar', fr: 'Présenter', de: 'Präsentieren',
+  },
+  'preview.presentTip': {
+    en: 'Markdown Slideshow (split by --- or ## )', ko: '마크다운 슬라이드쇼 (---또는 ##으로 구분)',
+    ja: 'マークダウンスライドショー (---または##で分割)', zh: 'Markdown幻灯片 (用---或##分隔)',
+    es: 'Presentación Markdown (separar con --- o ## )', fr: 'Diaporama Markdown (séparé par --- ou ## )',
+    de: 'Markdown-Diashow (getrennt durch --- oder ## )',
+  },
+  'preview.escHint': {
+    en: 'ESC to exit | Arrow keys to navigate', ko: 'ESC: 종료 | 화살표: 이동',
+    ja: 'ESCで終了 | 矢印キーで移動', zh: 'ESC退出 | 箭头键导航',
+    es: 'ESC para salir | Flechas para navegar', fr: 'ESC pour quitter | Flèches pour naviguer',
+    de: 'ESC zum Beenden | Pfeiltasten zum Navigieren',
+  },
+
+  // ===== SETTINGS =====
+  'settings.title': {
+    en: 'Settings', ko: '설정', ja: '設定', zh: '设置',
+    es: 'Ajustes', fr: 'Paramètres', de: 'Einstellungen',
+  },
+  'settings.general': {
+    en: 'General', ko: '일반', ja: '一般', zh: '通用',
+    es: 'General', fr: 'Général', de: 'Allgemein',
+  },
+  'settings.appearance': {
+    en: 'Appearance', ko: '모양', ja: '外観', zh: '外观',
+    es: 'Apariencia', fr: 'Apparence', de: 'Darstellung',
+  },
+  'settings.editor': {
+    en: 'Editor', ko: '편집기', ja: 'エディター', zh: '编辑器',
+    es: 'Editor', fr: 'Éditeur', de: 'Editor',
+  },
+  'settings.shortcuts': {
+    en: 'Shortcuts', ko: '단축키', ja: 'ショートカット', zh: '快捷键',
+    es: 'Atajos', fr: 'Raccourcis', de: 'Tastenkürzel',
+  },
+  'settings.plugins': {
+    en: 'Plugins', ko: '플러그인', ja: 'プラグイン', zh: '插件',
+    es: 'Complementos', fr: 'Plugins', de: 'Plugins',
+  },
+  'settings.ai': {
+    en: 'AI', ko: 'AI', ja: 'AI', zh: 'AI',
+    es: 'IA', fr: 'IA', de: 'KI',
+  },
+  'settings.storage': {
+    en: 'Storage', ko: '저장소', ja: 'ストレージ', zh: '存储',
+    es: 'Almacenamiento', fr: 'Stockage', de: 'Speicher',
+  },
+  'settings.about': {
+    en: 'About', ko: '정보', ja: 'このアプリについて', zh: '关于',
+    es: 'Acerca de', fr: 'À propos', de: 'Über',
+  },
+  'settings.language': {
+    en: 'Language', ko: '언어', ja: '言語', zh: '语言',
+    es: 'Idioma', fr: 'Langue', de: 'Sprache',
+  },
+  'settings.currentLang': {
+    en: 'Current', ko: '현재', ja: '現在', zh: '当前',
+    es: 'Actual', fr: 'Actuel', de: 'Aktuell',
+  },
+  'settings.changeLang': {
+    en: 'Change Language', ko: '언어 변경', ja: '言語を変更', zh: '更改语言',
+    es: 'Cambiar idioma', fr: 'Changer la langue', de: 'Sprache ändern',
+  },
+  'settings.themeMode': {
+    en: 'Theme Mode', ko: '테마 모드', ja: 'テーマモード', zh: '主题模式',
+    es: 'Modo de tema', fr: 'Mode de thème', de: 'Theme-Modus',
+  },
+  'settings.light': {
+    en: 'Light', ko: '라이트', ja: 'ライト', zh: '浅色',
+    es: 'Claro', fr: 'Clair', de: 'Hell',
+  },
+  'settings.dark': {
+    en: 'Dark', ko: '다크', ja: 'ダーク', zh: '深色',
+    es: 'Oscuro', fr: 'Sombre', de: 'Dunkel',
+  },
+  'settings.auto': {
+    en: 'Auto', ko: '자동', ja: '自動', zh: '自动',
+    es: 'Automático', fr: 'Automatique', de: 'Automatisch',
+  },
+  'settings.autoSaveInterval': {
+    en: 'Auto-save Interval (seconds)', ko: '자동 저장 간격 (초)', ja: '自動保存間隔（秒）', zh: '自动保存间隔（秒）',
+    es: 'Intervalo de autoguardado (segundos)', fr: 'Intervalle de sauvegarde auto (secondes)', de: 'Autospeicher-Intervall (Sekunden)',
+  },
+  'settings.spellCheck': {
+    en: 'Spell Check', ko: '맞춤법 검사', ja: 'スペルチェック', zh: '拼写检查',
+    es: 'Corrector ortográfico', fr: 'Vérification orthographique', de: 'Rechtschreibprüfung',
+  },
+  'settings.lineNumbers': {
+    en: 'Line Numbers (Markdown)', ko: '줄 번호 (마크다운)', ja: '行番号（Markdown）', zh: '行号（Markdown）',
+    es: 'Números de línea (Markdown)', fr: 'Numéros de ligne (Markdown)', de: 'Zeilennummern (Markdown)',
+  },
+  'settings.ollamaUrl': {
+    en: 'Ollama URL', ko: 'Ollama URL', ja: 'Ollama URL', zh: 'Ollama URL',
+    es: 'URL de Ollama', fr: 'URL Ollama', de: 'Ollama-URL',
+  },
+  'settings.aiModel': {
+    en: 'AI Model', ko: 'AI 모델', ja: 'AIモデル', zh: 'AI模型',
+    es: 'Modelo de IA', fr: 'Modèle IA', de: 'KI-Modell',
+  },
+  'settings.apiKey': {
+    en: 'API Key (Cloud Endpoint)', ko: 'API 키 (클라우드)', ja: 'APIキー（クラウド）', zh: 'API密钥（云端）',
+    es: 'Clave API (Cloud)', fr: 'Clé API (Cloud)', de: 'API-Schlüssel (Cloud)',
+  },
+  'settings.show': {
+    en: 'Show', ko: '보기', ja: '表示', zh: '显示',
+    es: 'Mostrar', fr: 'Afficher', de: 'Anzeigen',
+  },
+  'settings.hide': {
+    en: 'Hide', ko: '숨기기', ja: '非表示', zh: '隐藏',
+    es: 'Ocultar', fr: 'Masquer', de: 'Ausblenden',
+  },
+  'settings.testConnection': {
+    en: 'Test Connection', ko: '연결 테스트', ja: '接続テスト', zh: '测试连接',
+    es: 'Probar conexión', fr: 'Tester la connexion', de: 'Verbindung testen',
+  },
+  'settings.testing': {
+    en: 'Testing...', ko: '테스트 중...', ja: 'テスト中...', zh: '测试中...',
+    es: 'Probando...', fr: 'Test en cours...', de: 'Testen...',
+  },
+  'settings.browserStorage': {
+    en: 'Browser Storage Usage', ko: '브라우저 저장소 사용량', ja: 'ブラウザストレージ使用量', zh: '浏览器存储使用量',
+    es: 'Uso de almacenamiento del navegador', fr: 'Utilisation du stockage du navigateur', de: 'Browser-Speicherverbrauch',
+  },
+  'settings.clearData': {
+    en: 'Clear Data', ko: '데이터 삭제', ja: 'データ消去', zh: '清除数据',
+    es: 'Borrar datos', fr: 'Effacer les données', de: 'Daten löschen',
+  },
+  'settings.clearAutoSave': {
+    en: 'Clear Auto-save Cache', ko: '자동 저장 캐시 지우기', ja: '自動保存キャッシュをクリア', zh: '清除自动保存缓存',
+    es: 'Borrar caché de autoguardado', fr: 'Vider le cache de sauvegarde auto', de: 'Autospeicher-Cache löschen',
+  },
+  'settings.settingsBackup': {
+    en: 'Settings Backup', ko: '설정 백업', ja: '設定バックアップ', zh: '设置备份',
+    es: 'Copia de seguridad', fr: 'Sauvegarde des paramètres', de: 'Einstellungen sichern',
+  },
+  'settings.exportSettings': {
+    en: 'Export Settings', ko: '설정 내보내기', ja: '設定をエクスポート', zh: '导出设置',
+    es: 'Exportar ajustes', fr: 'Exporter les paramètres', de: 'Einstellungen exportieren',
+  },
+  'settings.importSettings': {
+    en: 'Import Settings', ko: '설정 가져오기', ja: '設定をインポート', zh: '导入设置',
+    es: 'Importar ajustes', fr: 'Importer les paramètres', de: 'Einstellungen importieren',
+  },
+  'settings.installedPlugins': {
+    en: 'Installed Plugins', ko: '설치된 플러그인', ja: 'インストール済みプラグイン', zh: '已安装插件',
+    es: 'Complementos instalados', fr: 'Plugins installés', de: 'Installierte Plugins',
+  },
+  'settings.pluginsDesc': {
+    en: 'installed. Toggle to enable or disable.', ko: '설치됨. 전환하여 활성화/비활성화하세요.',
+    ja: 'インストール済み。切り替えて有効/無効にします。', zh: '已安装。切换以启用或禁用。',
+    es: 'instalados. Active o desactive según convenga.', fr: 'installés. Basculez pour activer ou désactiver.',
+    de: 'installiert. Umschalten zum Aktivieren/Deaktivieren.',
+  },
+  'settings.noPlugins': {
+    en: 'No plugins installed.', ko: '설치된 플러그인이 없습니다.', ja: 'プラグインはインストールされていません。',
+    zh: '未安装任何插件。', es: 'No hay complementos instalados.', fr: 'Aucun plugin installé.',
+    de: 'Keine Plugins installiert.',
+  },
+  'settings.resetDefaults': {
+    en: 'Reset to Defaults', ko: '기본값으로 초기화', ja: 'デフォルトに戻す', zh: '重置为默认值',
+    es: 'Restablecer valores predeterminados', fr: 'Réinitialiser par défaut', de: 'Auf Standard zurücksetzen',
+  },
+  'settings.aboutDesc': {
+    en: 'A powerful browser-based office suite by SeouLink (SL Corporation).',
+    ko: 'SeouLink(SL Corporation)의 강력한 브라우저 기반 오피스 스위트.',
+    ja: 'SeouLink (SL Corporation) による強力なブラウザベースオフィススイート。',
+    zh: 'SeouLink（SL Corporation）出品的强大浏览器办公套件。',
+    es: 'Una potente suite ofimática basada en navegador de SeouLink (SL Corporation).',
+    fr: 'Une puissante suite bureautique web par SeouLink (SL Corporation).',
+    de: 'Eine leistungsstarke browserbasierte Office-Suite von SeouLink (SL Corporation).',
+  },
+
+  // ===== SHORTCUT CUSTOMIZER =====
+  'shortcuts.edit': {
+    en: 'Edit', ko: '편집', ja: '編集', zh: '编辑',
+    es: 'Editar', fr: 'Modifier', de: 'Bearbeiten',
+  },
+  'shortcuts.reset': {
+    en: 'Reset', ko: '초기화', ja: 'リセット', zh: '重置',
+    es: 'Restablecer', fr: 'Réinitialiser', de: 'Zurücksetzen',
+  },
+  'shortcuts.resetAll': {
+    en: 'Reset All to Defaults', ko: '모두 기본값으로 초기화', ja: 'すべてをデフォルトに戻す', zh: '全部重置为默认值',
+    es: 'Restablecer todo', fr: 'Tout réinitialiser', de: 'Alle zurücksetzen',
+  },
+  'shortcuts.export': {
+    en: 'Export Shortcuts', ko: '단축키 내보내기', ja: 'ショートカットをエクスポート', zh: '导出快捷键',
+    es: 'Exportar atajos', fr: 'Exporter les raccourcis', de: 'Tastenkürzel exportieren',
+  },
+  'shortcuts.import': {
+    en: 'Import Shortcuts', ko: '단축키 가져오기', ja: 'ショートカットをインポート', zh: '导入快捷键',
+    es: 'Importar atajos', fr: 'Importer les raccourcis', de: 'Tastenkürzel importieren',
+  },
+  'shortcuts.pressKeys': {
+    en: 'Press keys...', ko: '키를 누르세요...', ja: 'キーを押してください...', zh: '请按键...',
+    es: 'Presione teclas...', fr: 'Appuyez sur les touches...', de: 'Tasten drücken...',
+  },
+
+  // ===== AI COWORK =====
+  'ai.applyToEditor': {
+    en: 'Apply to Editor', ko: '편집기에 적용', ja: 'エディターに適用', zh: '应用到编辑器',
+    es: 'Aplicar al editor', fr: 'Appliquer à l\'éditeur', de: 'Auf Editor anwenden',
+  },
+  'ai.formulaHelper': {
+    en: 'AI Formula & Data Helper', ko: 'AI 수식 및 데이터 도우미', ja: 'AI数式・データヘルパー', zh: 'AI公式与数据助手',
+    es: 'Asistente de fórmulas IA', fr: 'Assistant formules IA', de: 'KI-Formelassistent',
+  },
+  'ai.slideAssistant': {
+    en: 'AI Slide Assistant', ko: 'AI 슬라이드 어시스턴트', ja: 'AIスライドアシスタント', zh: 'AI幻灯片助手',
+    es: 'Asistente de diapositivas IA', fr: 'Assistant diapositives IA', de: 'KI-Folienassistent',
+  },
+  'ai.markdownAssistant': {
+    en: 'Markdown AI Assistant', ko: '마크다운 AI 어시스턴트', ja: 'Markdown AIアシスタント', zh: 'Markdown AI助手',
+    es: 'Asistente Markdown IA', fr: 'Assistant Markdown IA', de: 'Markdown-KI-Assistent',
+  },
+  'ai.pdfAnalysis': {
+    en: 'PDF AI Analysis', ko: 'PDF AI 분석', ja: 'PDF AI分析', zh: 'PDF AI分析',
+    es: 'Análisis PDF IA', fr: 'Analyse PDF IA', de: 'PDF-KI-Analyse',
+  },
+  'ai.photoSuggestions': {
+    en: 'Photo AI Suggestions', ko: '사진 AI 제안', ja: '写真AIの提案', zh: '照片AI建议',
+    es: 'Sugerencias de foto IA', fr: 'Suggestions photo IA', de: 'Foto-KI-Vorschläge',
+  },
+  'ai.calcHelper': {
+    en: 'Calculator AI Helper', ko: '계산기 AI 도우미', ja: '計算機AIヘルパー', zh: '计算器AI助手',
+    es: 'Asistente de cálculo IA', fr: 'Assistant calcul IA', de: 'Rechner-KI-Assistent',
+  },
+  'ai.connected': {
+    en: 'Ollama connected', ko: 'Ollama 연결됨', ja: 'Ollama接続済み', zh: 'Ollama已连接',
+    es: 'Ollama conectado', fr: 'Ollama connecté', de: 'Ollama verbunden',
+  },
+  'ai.corsError': {
+    en: 'CORS error — click Setup to fix', ko: 'CORS 오류 — 설정 클릭하여 수정', ja: 'CORSエラー — セットアップをクリックして修正',
+    zh: 'CORS错误 — 点击设置修复', es: 'Error CORS — haga clic en Configurar', fr: 'Erreur CORS — cliquez sur Configurer',
+    de: 'CORS-Fehler — Klicken Sie auf Setup',
+  },
+  'ai.notConnected': {
+    en: 'Ollama not connected', ko: 'Ollama 연결되지 않음', ja: 'Ollama未接続', zh: 'Ollama未连接',
+    es: 'Ollama no conectado', fr: 'Ollama non connecté', de: 'Ollama nicht verbunden',
+  },
+  'ai.copied': {
+    en: 'Copied!', ko: '복사됨!', ja: 'コピーしました！', zh: '已复制！',
+    es: '¡Copiado!', fr: 'Copié !', de: 'Kopiert!',
+  },
+  'ai.copy': {
+    en: 'Copy', ko: '복사', ja: 'コピー', zh: '复制',
+    es: 'Copiar', fr: 'Copier', de: 'Kopieren',
+  },
+  'ai.downloading': {
+    en: 'Downloading...', ko: '다운로드 중...', ja: 'ダウンロード中...', zh: '下载中...',
+    es: 'Descargando...', fr: 'Téléchargement...', de: 'Herunterladen...',
+  },
+  'ai.installed': {
+    en: 'Installed!', ko: '설치됨!', ja: 'インストール済み！', zh: '已安装！',
+    es: '¡Instalado!', fr: 'Installé !', de: 'Installiert!',
+  },
+  'ai.downloadComplete': {
+    en: 'Download complete!', ko: '다운로드 완료!', ja: 'ダウンロード完了！', zh: '下载完成！',
+    es: '¡Descarga completa!', fr: 'Téléchargement terminé !', de: 'Download abgeschlossen!',
+  },
+  'ai.test': {
+    en: 'Test', ko: '테스트', ja: 'テスト', zh: '测试',
+    es: 'Probar', fr: 'Tester', de: 'Testen',
+  },
+  'ai.connectionStatus': {
+    en: 'AI Connection Status — click to open settings', ko: 'AI 연결 상태 — 클릭하여 설정 열기',
+    ja: 'AI接続状態 — クリックして設定を開く', zh: 'AI连接状态 — 点击打开设置',
+    es: 'Estado de conexión IA — clic para abrir ajustes', fr: 'État de la connexion IA — cliquer pour ouvrir les paramètres',
+    de: 'KI-Verbindungsstatus — klicken für Einstellungen',
+  },
+
+  // ===== PLUGIN MANAGER =====
+  'plugin.wordCounter': {
+    en: 'Word Counter', ko: '단어 수 세기', ja: '文字カウンター', zh: '字数统计',
+    es: 'Contador de palabras', fr: 'Compteur de mots', de: 'Wortzähler',
+  },
+  'plugin.words': {
+    en: 'words', ko: '단어', ja: '単語', zh: '词',
+    es: 'palabras', fr: 'mots', de: 'Wörter',
+  },
+  'plugin.chars': {
+    en: 'chars', ko: '문자', ja: '文字', zh: '字符',
+    es: 'caracteres', fr: 'caractères', de: 'Zeichen',
+  },
+  'plugin.sentences': {
+    en: 'sentences', ko: '문장', ja: '文', zh: '句',
+    es: 'oraciones', fr: 'phrases', de: 'Sätze',
+  },
+  'plugin.clipboardHistory': {
+    en: 'Clipboard History', ko: '클립보드 기록', ja: 'クリップボード履歴', zh: '剪贴板历史',
+    es: 'Historial del portapapeles', fr: 'Historique du presse-papiers', de: 'Zwischenablage-Verlauf',
+  },
+  'plugin.pomodoroTip': {
+    en: 'Click to start/pause Pomodoro timer', ko: '클릭하여 뽀모도로 타이머 시작/일시정지',
+    ja: 'クリックでポモドーロタイマー開始/一時停止', zh: '点击启动/暂停番茄钟',
+    es: 'Clic para iniciar/pausar Pomodoro', fr: 'Cliquez pour démarrer/mettre en pause le minuteur Pomodoro',
+    de: 'Klicken zum Starten/Pausieren des Pomodoro-Timers',
+  },
+  'plugin.resetTimer': {
+    en: 'Reset timer', ko: '타이머 초기화', ja: 'タイマーをリセット', zh: '重置计时器',
+    es: 'Restablecer temporizador', fr: 'Réinitialiser le minuteur', de: 'Timer zurücksetzen',
+  },
+
+  // ===== PHOTO EDITOR =====
+  'photo.webglError': {
+    en: 'WebGL is not supported in this browser. Photo editing is unavailable.',
+    ko: '이 브라우저에서는 WebGL이 지원되지 않습니다. 사진 편집을 사용할 수 없습니다.',
+    ja: 'このブラウザはWebGLに対応していません。写真編集は利用できません。',
+    zh: '此浏览器不支持WebGL。照片编辑不可用。',
+    es: 'WebGL no es compatible con este navegador. La edición de fotos no está disponible.',
+    fr: 'WebGL n\'est pas pris en charge dans ce navigateur. L\'édition photo n\'est pas disponible.',
+    de: 'WebGL wird in diesem Browser nicht unterstützt. Fotobearbeitung nicht verfügbar.',
+  },
+  'photo.before': {
+    en: 'Before', ko: '이전', ja: 'ビフォー', zh: '之前',
+    es: 'Antes', fr: 'Avant', de: 'Vorher',
+  },
+  'photo.after': {
+    en: 'After', ko: '이후', ja: 'アフター', zh: '之后',
+    es: 'Después', fr: 'Après', de: 'Nachher',
+  },
+  'photo.downloadGif': {
+    en: 'Download GIF', ko: 'GIF 다운로드', ja: 'GIFダウンロード', zh: '下载GIF',
+    es: 'Descargar GIF', fr: 'Télécharger GIF', de: 'GIF herunterladen',
+  },
+  'photo.processing': {
+    en: 'Processing', ko: '처리 중', ja: '処理中', zh: '处理中',
+    es: 'Procesando', fr: 'Traitement en cours', de: 'Verarbeitung',
+  },
+  'photo.done': {
+    en: 'Done!', ko: '완료!', ja: '完了！', zh: '完成！',
+    es: '¡Listo!', fr: 'Terminé !', de: 'Fertig!',
+  },
+  'photo.imagesProcessed': {
+    en: 'images processed', ko: '장 처리됨', ja: '枚処理完了', zh: '张已处理',
+    es: 'imágenes procesadas', fr: 'images traitées', de: 'Bilder verarbeitet',
+  },
+  'photo.filtersPresets': {
+    en: 'Filters & Presets', ko: '필터 및 프리셋', ja: 'フィルター＆プリセット', zh: '滤镜与预设',
+    es: 'Filtros y preajustes', fr: 'Filtres et préréglages', de: 'Filter & Voreinstellungen',
+  },
+  'photo.images': {
+    en: 'images', ko: '이미지', ja: '画像', zh: '张图片',
+    es: 'imágenes', fr: 'images', de: 'Bilder',
+  },
+  'photo.resizing': {
+    en: 'Resizing', ko: '크기 조정 중', ja: 'リサイズ中', zh: '调整大小中',
+    es: 'Redimensionando', fr: 'Redimensionnement', de: 'Größenänderung',
+  },
+  'photo.imagesResized': {
+    en: 'images resized', ko: '장 크기 조정됨', ja: '枚リサイズ完了', zh: '张已调整大小',
+    es: 'imágenes redimensionadas', fr: 'images redimensionnées', de: 'Bilder angepasst',
+  },
+
+  // ===== CAD EDITOR =====
+  'cad.objects': {
+    en: 'Objects', ko: '객체', ja: 'オブジェクト', zh: '对象',
+    es: 'Objetos', fr: 'Objets', de: 'Objekte',
+  },
+  'cad.loadingBrep': {
+    en: 'Loading B-Rep...', ko: 'B-Rep 로딩 중...', ja: 'B-Rep読み込み中...', zh: '加载B-Rep...',
+    es: 'Cargando B-Rep...', fr: 'Chargement B-Rep...', de: 'B-Rep laden...',
+  },
+  'cad.brepActive': {
+    en: 'B-Rep Engine: Active', ko: 'B-Rep 엔진: 활성', ja: 'B-Repエンジン: アクティブ', zh: 'B-Rep引擎: 活动',
+    es: 'Motor B-Rep: Activo', fr: 'Moteur B-Rep : Actif', de: 'B-Rep-Engine: Aktiv',
+  },
+  'cad.meshFallback': {
+    en: 'Mesh Mode (Fallback)', ko: '메시 모드 (폴백)', ja: 'メッシュモード（フォールバック）', zh: '网格模式（回退）',
+    es: 'Modo malla (alternativo)', fr: 'Mode maillage (repli)', de: 'Mesh-Modus (Fallback)',
+  },
+  'cad.edgesAvailable': {
+    en: 'edges available', ko: '개 엣지 사용 가능', ja: '個のエッジが利用可能', zh: '条边可用',
+    es: 'bordes disponibles', fr: 'arêtes disponibles', de: 'Kanten verfügbar',
+  },
+  'cad.facesAvailable': {
+    en: 'faces available', ko: '개 면 사용 가능', ja: '個の面が利用可能', zh: '个面可用',
+    es: 'caras disponibles', fr: 'faces disponibles', de: 'Flächen verfügbar',
+  },
+
+  // ===== SLIDE EDITOR =====
+  'slide.selected': {
+    en: 'selected', ko: '선택됨', ja: '選択中', zh: '已选择',
+    es: 'seleccionados', fr: 'sélectionnés', de: 'ausgewählt',
+  },
+  'slide.hoverPreview': {
+    en: 'Hover options to preview', ko: '옵션에 마우스를 올려 미리보기', ja: 'オプションにホバーしてプレビュー',
+    zh: '悬停选项进行预览', es: 'Pase el cursor para previsualizar', fr: 'Survolez les options pour prévisualiser',
+    de: 'Optionen überfahren für Vorschau',
+  },
+
+  // ===== RECENT FILES =====
+  'recent.clear': {
+    en: 'Clear', ko: '지우기', ja: 'クリア', zh: '清除',
+    es: 'Borrar', fr: 'Effacer', de: 'Löschen',
+  },
+  'recent.clearTip': {
+    en: 'Clear recent files', ko: '최근 파일 지우기', ja: '最近のファイルをクリア', zh: '清除最近文件',
+    es: 'Borrar archivos recientes', fr: 'Effacer les fichiers récents', de: 'Letzte Dateien löschen',
+  },
+  'recent.removeTip': {
+    en: 'Remove from recent', ko: '최근 목록에서 제거', ja: '最近のファイルから削除', zh: '从最近列表中移除',
+    es: 'Quitar de recientes', fr: 'Retirer des récents', de: 'Aus Liste entfernen',
+  },
+
+  // ===== DRAG & DROP =====
+  'dragdrop.openedOneOf': {
+    en: 'Opened 1 of {count} files. Drop files individually to open others.',
+    ko: '{count}개 파일 중 1개를 열었습니다. 다른 파일은 개별적으로 드롭하세요.',
+    ja: '{count}ファイル中1つを開きました。他のファイルは個別にドロップしてください。',
+    zh: '已打开{count}个文件中的1个。逐个拖放以打开其他文件。',
+    es: 'Se abrió 1 de {count} archivos. Suelte los archivos uno por uno.',
+    fr: '1 fichier sur {count} ouvert. Déposez les fichiers un par un.',
+    de: '1 von {count} Dateien geöffnet. Dateien einzeln ablegen.',
+  },
+
+  // ===== TAB SYNC =====
+  'tabSync.tabs': {
+    en: 'tabs', ko: '탭', ja: 'タブ', zh: '标签页',
+    es: 'pestañas', fr: 'onglets', de: 'Tabs',
+  },
+  'tabSync.activeTabs': {
+    en: 'Active browser tabs', ko: '활성 브라우저 탭', ja: 'アクティブなブラウザタブ', zh: '活动浏览器标签页',
+    es: 'Pestañas activas del navegador', fr: 'Onglets actifs du navigateur', de: 'Aktive Browser-Tabs',
+  },
+
+  // ===== CONTEXT MENU =====
+  'contextMenu.newText': {
+    en: 'New text', ko: '새 텍스트', ja: '新しいテキスト', zh: '新建文本',
+    es: 'Nuevo texto', fr: 'Nouveau texte', de: 'Neuer Text',
+  },
+
+  // ===== DOCUMENT EDITOR =====
+  'doc.additions': {
+    en: 'additions', ko: '추가', ja: '追加', zh: '添加',
+    es: 'adiciones', fr: 'ajouts', de: 'Ergänzungen',
+  },
+  'doc.deletions': {
+    en: 'deletions', ko: '삭제', ja: '削除', zh: '删除',
+    es: 'eliminaciones', fr: 'suppressions', de: 'Löschungen',
+  },
+  'doc.modifications': {
+    en: 'modifications', ko: '수정', ja: '変更', zh: '修改',
+    es: 'modificaciones', fr: 'modifications', de: 'Änderungen',
+  },
+  'doc.words': {
+    en: 'words', ko: '단어', ja: '単語', zh: '字',
+    es: 'palabras', fr: 'mots', de: 'Wörter',
+  },
+  'doc.toc': {
+    en: 'Table of Contents', ko: '목차', ja: '目次', zh: '目录',
+    es: 'Tabla de contenidos', fr: 'Table des matières', de: 'Inhaltsverzeichnis',
+  },
+  'doc.autoSaved': {
+    en: 'Auto-saved', ko: '자동 저장됨', ja: '自動保存済み', zh: '已自动保存',
+    es: 'Guardado automáticamente', fr: 'Sauvegardé automatiquement', de: 'Automatisch gespeichert',
+  },
+  'doc.record': {
+    en: 'Record', ko: '레코드', ja: 'レコード', zh: '记录',
+    es: 'Registro', fr: 'Enregistrement', de: 'Datensatz',
+  },
+
+  // ===== PDF VIEWER =====
+  'pdf.addNote': {
+    en: 'Add note...', ko: '메모 추가...', ja: 'メモを追加...', zh: '添加备注...',
+    es: 'Añadir nota...', fr: 'Ajouter une note...', de: 'Notiz hinzufügen...',
+  },
+  'pdf.ocrInit': {
+    en: 'Initializing OCR', ko: 'OCR 초기화 중', ja: 'OCR初期化中', zh: 'OCR初始化中',
+    es: 'Inicializando OCR', fr: 'Initialisation OCR', de: 'OCR initialisieren',
+  },
+  'pdf.recognizing': {
+    en: 'Recognizing text', ko: '텍스트 인식 중', ja: 'テキスト認識中', zh: '正在识别文字',
+    es: 'Reconociendo texto', fr: 'Reconnaissance du texte', de: 'Texterkennung',
+  },
+  'pdf.ocrComplete': {
+    en: 'OCR complete', ko: 'OCR 완료', ja: 'OCR完了', zh: 'OCR完成',
+    es: 'OCR completado', fr: 'OCR terminé', de: 'OCR abgeschlossen',
+  },
+  'pdf.wordsRecognized': {
+    en: 'words recognized', ko: '단어 인식됨', ja: '単語認識', zh: '个单词已识别',
+    es: 'palabras reconocidas', fr: 'mots reconnus', de: 'Wörter erkannt',
+  },
+
+  // ===== COMMON / MISC =====
+  'common.error': {
+    en: 'Error', ko: '오류', ja: 'エラー', zh: '错误',
+    es: 'Error', fr: 'Erreur', de: 'Fehler',
+  },
+  'common.cancel': {
+    en: 'Cancel', ko: '취소', ja: 'キャンセル', zh: '取消',
+    es: 'Cancelar', fr: 'Annuler', de: 'Abbrechen',
+  },
+  'common.apply': {
+    en: 'Apply', ko: '적용', ja: '適用', zh: '应用',
+    es: 'Aplicar', fr: 'Appliquer', de: 'Anwenden',
+  },
+  'common.delete': {
+    en: 'Delete', ko: '삭제', ja: '削除', zh: '删除',
+    es: 'Eliminar', fr: 'Supprimer', de: 'Löschen',
+  },
 };

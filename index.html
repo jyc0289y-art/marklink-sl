@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko" data-theme="light">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -1071,6 +1071,11 @@
         <button class="toolbar-btn" id="photo-histogram" data-i18n-title="photo.histogram" title="Toggle Histogram">📊 Hist</button>
         <button class="toolbar-btn" id="photo-ba-compare" data-i18n-title="photo.baCompare" title="Before/After Comparison">🔀 B/A</button>
         <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" id="photo-zoom-out" title="Zoom Out (Ctrl+-)">−</button>
+        <span id="photo-zoom-display" style="font-size:11px;min-width:40px;text-align:center;user-select:none;color:var(--text-secondary)">100%</span>
+        <button class="toolbar-btn" id="photo-zoom-in" title="Zoom In (Ctrl++)">+</button>
+        <button class="toolbar-btn" id="photo-zoom-reset" title="Reset Zoom (Ctrl+0)" style="font-size:11px">Fit</button>
+        <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="photo-batch-resize" data-i18n-title="photo.batchResize" title="Batch Resize">⤢ Resize</button>
         <button class="toolbar-btn" id="photo-crop-presets" data-i18n-title="photo.cropPresets" title="Crop Presets">📐 Presets</button>
         <div class="toolbar-divider"></div>
@@ -1136,6 +1141,13 @@
           </div>
           <!-- Right adjustment panel -->
           <div class="photo-panel">
+            <!-- Image Info Panel -->
+            <div class="photo-panel-section">
+              <button class="photo-panel-toggle" data-panel="photo-image-info-panel">Image Info</button>
+              <div class="photo-panel-content" id="photo-image-info-panel">
+                <div style="font-size:11px;color:var(--text-secondary)">No image loaded</div>
+              </div>
+            </div>
             <!-- Layers Panel -->
             <div class="photo-panel-section">
               <button class="photo-panel-toggle active" data-panel="photo-layers-panel" data-i18n="photo.layers">Layers</button>
@@ -1704,6 +1716,7 @@
               <button class="calc-btn calc-op calc-op-highlight" data-prog-op="ADD">+</button>
               <button class="calc-btn calc-op calc-op-highlight" data-prog-op="SUB">-</button>
               <button class="calc-btn calc-op calc-op-highlight" data-prog-op="MUL">x</button>
+              <button class="calc-btn calc-equals calc-op-highlight" data-prog-action="equals" style="grid-column:span 4;">=</button>
             </div>
           </div>
         </div>

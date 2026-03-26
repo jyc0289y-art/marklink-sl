@@ -4,6 +4,7 @@
 
 import { chat, streamChat, checkOllamaStatus, listModels } from './ollama-client.js';
 import { escapeHtml as _escapeHtmlBase, sanitizeAiResponse } from '../utils/sanitize.js';
+import { t } from '../ui/i18n.js';
 
 /** Sanitize AI-generated HTML for insertion into slide/doc DOM */
 function sanitizeAiHtml(html) {
@@ -173,7 +174,7 @@ async function aiCallStreaming(systemPrompt, userContent, targetEl, editorType) 
 function createApplyButton(content, targetEditorEl) {
   const btn = document.createElement('button');
   btn.className = 'ai-cowork-btn accent small';
-  btn.textContent = 'Apply to Editor';
+  btn.textContent = t('ai.applyToEditor');
   btn.addEventListener('click', () => {
     if (targetEditorEl) {
       // Try to insert at cursor
@@ -456,7 +457,7 @@ export function initSheetAi() {
   aiBtn.id = 'sheet-ai-btn';
   aiBtn.className = 'ai-cowork-toolbar-btn';
   aiBtn.innerHTML = '✦ AI';
-  aiBtn.title = 'AI Formula & Data Helper';
+  aiBtn.title = t('ai.formulaHelper');
   aiBtn.addEventListener('click', () => showSheetAiPanel());
   formulaBar.parentElement?.insertBefore(aiBtn, formulaBar.nextSibling);
 }
@@ -654,7 +655,7 @@ export function initSlideAi() {
     btn.className = 'ai-cowork-fab';
     btn.id = 'slide-ai-fab';
     btn.innerHTML = '✦';
-    btn.title = 'AI Slide Assistant';
+    btn.title = t('ai.slideAssistant');
     btn.addEventListener('click', () => showSlideAiPanel());
     container.appendChild(btn);
     return;
@@ -663,7 +664,7 @@ export function initSlideAi() {
   const btn = document.createElement('button');
   btn.className = 'ai-cowork-toolbar-btn';
   btn.innerHTML = '✦ AI';
-  btn.title = 'AI Slide Assistant';
+  btn.title = t('ai.slideAssistant');
   btn.addEventListener('click', () => showSlideAiPanel());
   toolbar.appendChild(btn);
 }
@@ -851,7 +852,7 @@ export function initMarkdownAi(getContentFn, setContentFn, updatePreviewFn) {
     const aiBtn = document.createElement('button');
     aiBtn.className = 'ai-cowork-toolbar-btn small';
     aiBtn.innerHTML = '✦ AI';
-    aiBtn.title = 'Markdown AI Assistant';
+    aiBtn.title = t('ai.markdownAssistant');
     aiBtn.addEventListener('click', () => showMarkdownAiPanel());
     statusBar.appendChild(aiBtn);
   }
@@ -1064,7 +1065,7 @@ export function initPdfAi(getPdfTextFn) {
     const btn = document.createElement('button');
     btn.className = 'ai-cowork-toolbar-btn';
     btn.innerHTML = '✦ AI';
-    btn.title = 'PDF AI Analysis';
+    btn.title = t('ai.pdfAnalysis');
     btn.addEventListener('click', () => showPdfAiPanel());
     toolbar.appendChild(btn);
   } else {
@@ -1072,7 +1073,7 @@ export function initPdfAi(getPdfTextFn) {
     const btn = document.createElement('button');
     btn.className = 'ai-cowork-fab';
     btn.innerHTML = '✦';
-    btn.title = 'PDF AI Analysis';
+    btn.title = t('ai.pdfAnalysis');
     btn.addEventListener('click', () => showPdfAiPanel());
     container.appendChild(btn);
   }
@@ -1203,7 +1204,7 @@ export function initPhotoAi() {
     const btn = document.createElement('button');
     btn.className = 'ai-cowork-toolbar-btn';
     btn.innerHTML = '✦ AI';
-    btn.title = 'Photo AI Suggestions';
+    btn.title = t('ai.photoSuggestions');
     btn.addEventListener('click', () => showPhotoAiPanel());
     toolbar.appendChild(btn);
   } else {
@@ -1211,7 +1212,7 @@ export function initPhotoAi() {
     btn.className = 'ai-cowork-fab';
     btn.id = 'photo-ai-fab';
     btn.innerHTML = '✦';
-    btn.title = 'Photo AI Suggestions';
+    btn.title = t('ai.photoSuggestions');
     btn.addEventListener('click', () => showPhotoAiPanel());
     container.appendChild(btn);
   }
@@ -1319,7 +1320,7 @@ export function initCalculatorAi() {
     const btn = document.createElement('button');
     btn.className = 'ai-cowork-toolbar-btn';
     btn.innerHTML = '✦ AI';
-    btn.title = 'Calculator AI Helper';
+    btn.title = t('ai.calcHelper');
     btn.addEventListener('click', () => showCalculatorAiPanel());
     toolbar.appendChild(btn);
   } else {
@@ -1327,7 +1328,7 @@ export function initCalculatorAi() {
     btn.className = 'ai-cowork-fab';
     btn.id = 'calc-ai-fab';
     btn.innerHTML = '✦';
-    btn.title = 'Calculator AI Helper';
+    btn.title = t('ai.calcHelper');
     btn.addEventListener('click', () => showCalculatorAiPanel());
     container.appendChild(btn);
   }

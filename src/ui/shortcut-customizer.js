@@ -3,6 +3,7 @@
 
 import { modSymbol, shiftSymbol, altSymbol, formatShortcut } from './shortcuts.js';
 import { toastSuccess, toastError, toastInfo, toastWarning } from './toast.js';
+import { t } from './i18n.js';
 
 const STORAGE_KEY = 'officelink-custom-shortcuts';
 
@@ -271,14 +272,14 @@ export const buildShortcutsSettingsPanel = () => {
 
       const editBtn = document.createElement('button');
       editBtn.className = 'settings-btn settings-btn-small shortcut-edit-btn';
-      editBtn.textContent = 'Edit';
+      editBtn.textContent = t('shortcuts.edit');
       editBtn.addEventListener('click', () => {
         startCapture(row, sc.id, kbd, keysSpan);
       });
 
       const resetBtn = document.createElement('button');
       resetBtn.className = 'settings-btn settings-btn-small shortcut-reset-btn';
-      resetBtn.textContent = 'Reset';
+      resetBtn.textContent = t('shortcuts.reset');
       resetBtn.style.display = sc.isCustom ? '' : 'none';
       resetBtn.addEventListener('click', () => {
         resetShortcut(sc.id);
@@ -307,7 +308,7 @@ export const buildShortcutsSettingsPanel = () => {
 
   const resetAllBtn = document.createElement('button');
   resetAllBtn.className = 'settings-btn settings-btn-danger';
-  resetAllBtn.textContent = 'Reset All to Defaults';
+  resetAllBtn.textContent = t('shortcuts.resetAll');
   resetAllBtn.addEventListener('click', () => {
     resetAllShortcuts();
     // Refresh the panel
@@ -319,7 +320,7 @@ export const buildShortcutsSettingsPanel = () => {
 
   const exportBtn = document.createElement('button');
   exportBtn.className = 'settings-btn settings-btn-primary';
-  exportBtn.textContent = 'Export Shortcuts';
+  exportBtn.textContent = t('shortcuts.export');
   exportBtn.addEventListener('click', () => {
     const json = exportShortcuts();
     const blob = new Blob([json], { type: 'application/json' });
@@ -334,7 +335,7 @@ export const buildShortcutsSettingsPanel = () => {
 
   const importBtn = document.createElement('button');
   importBtn.className = 'settings-btn';
-  importBtn.textContent = 'Import Shortcuts';
+  importBtn.textContent = t('shortcuts.import');
   importBtn.addEventListener('click', () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -377,7 +378,7 @@ const startCapture = (row, actionId, kbdEl, keysSpan) => {
   });
 
   row.classList.add('shortcut-capture-active');
-  kbdEl.textContent = 'Press keys...';
+  kbdEl.textContent = t('shortcuts.pressKeys');
   kbdEl.classList.add('shortcut-capturing');
 
   const handler = (e) => {

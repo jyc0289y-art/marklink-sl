@@ -1,6 +1,7 @@
 // OfficeLink SL — Preview Pane Controller
 import { render } from './renderer.js';
 import { escapeHtml as _esc } from '../utils/sanitize.js';
+import { t } from '../ui/i18n.js';
 
 let previewElement = null;
 let updateTimer = null;
@@ -243,14 +244,14 @@ export function initPreviewToolbar(previewPane) {
   // Scroll sync toggle
   const syncBtn = document.createElement('button');
   syncBtn.className = 'preview-sync-btn';
-  syncBtn.title = 'Toggle scroll sync';
-  syncBtn.textContent = 'Sync';
+  syncBtn.title = t('preview.syncToggle');
+  syncBtn.textContent = t('preview.sync');
   syncBtn.style.cssText = 'padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--accent-color);color:#fff;cursor:pointer;font-size:11px;font-weight:600';
   syncBtn.addEventListener('click', () => {
     const enabled = toggleScrollSync();
     syncBtn.style.background = enabled ? 'var(--accent-color)' : 'var(--bg-primary)';
     syncBtn.style.color = enabled ? '#fff' : 'var(--text-secondary)';
-    syncBtn.title = enabled ? 'Scroll sync ON' : 'Scroll sync OFF';
+    syncBtn.title = enabled ? t('preview.syncOn') : t('preview.syncOff');
   });
   toolbar.appendChild(syncBtn);
 
@@ -262,7 +263,7 @@ export function initPreviewToolbar(previewPane) {
   // Zoom out
   const zoomOutBtn = document.createElement('button');
   zoomOutBtn.textContent = '-';
-  zoomOutBtn.title = 'Zoom out';
+  zoomOutBtn.title = t('preview.zoomOut');
   zoomOutBtn.style.cssText = 'width:22px;height:22px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);cursor:pointer;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center';
   toolbar.appendChild(zoomOutBtn);
 
@@ -276,7 +277,7 @@ export function initPreviewToolbar(previewPane) {
   // Zoom in
   const zoomInBtn = document.createElement('button');
   zoomInBtn.textContent = '+';
-  zoomInBtn.title = 'Zoom in';
+  zoomInBtn.title = t('preview.zoomIn');
   zoomInBtn.style.cssText = 'width:22px;height:22px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);cursor:pointer;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center';
   toolbar.appendChild(zoomInBtn);
 
@@ -291,8 +292,8 @@ export function initPreviewToolbar(previewPane) {
 
   // Presentation mode button
   const presBtn = document.createElement('button');
-  presBtn.textContent = 'Present';
-  presBtn.title = 'Markdown Slideshow (split by --- or ## )';
+  presBtn.textContent = t('preview.present');
+  presBtn.title = t('preview.presentTip');
   presBtn.style.cssText = 'padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);cursor:pointer;font-size:11px;font-weight:600;margin-left:4px';
   presBtn.addEventListener('click', () => {
     startMarkdownPresentation();
@@ -342,7 +343,7 @@ export function startMarkdownPresentation() {
   // ESC hint
   const hint = document.createElement('div');
   hint.style.cssText = 'position:fixed;bottom:24px;left:32px;font-size:12px;color:rgba(255,255,255,0.3);font-family:sans-serif';
-  hint.textContent = 'ESC to exit | Arrow keys to navigate';
+  hint.textContent = t('preview.escHint');
   overlay.appendChild(hint);
 
   const showSlide = (idx) => {

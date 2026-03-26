@@ -4,6 +4,7 @@
 import { toastSuccess, toastError, toastInfo } from '../ui/toast.js';
 import { getCurrentTab, onTabChange } from '../ui/tabs.js';
 import { getContent, setContent } from '../editor/editor.js';
+import { t } from '../ui/i18n.js';
 
 // ── Plugin Registry ──
 const plugins = new Map();        // id → { plugin, enabled, initialized }
@@ -256,7 +257,7 @@ const wordCounterPlugin = {
     const el = document.createElement('span');
     el.className = 'plugin-word-counter';
     el.style.cssText = 'font-size:11px;opacity:0.7;padding:0 8px;white-space:nowrap;cursor:default;';
-    el.title = 'Word Counter';
+    el.title = t('plugin.wordCounter');
     this._widget = el;
     api.addStatusBarWidget('word-counter', el);
 
@@ -275,7 +276,7 @@ const wordCounterPlugin = {
       const words = text.trim() ? text.trim().split(/\s+/).length : 0;
       const chars = text.length;
       const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0).length;
-      el.textContent = `${words} words | ${chars} chars | ${sentences} sentences`;
+      el.textContent = `${words} ${t('plugin.words')} | ${chars} ${t('plugin.chars')} | ${sentences} ${t('plugin.sentences')}`;
     };
 
     update();
@@ -307,7 +308,7 @@ const pomodoroPlugin = {
     const el = document.createElement('span');
     el.className = 'plugin-pomodoro';
     el.style.cssText = 'font-size:11px;padding:0 8px;white-space:nowrap;cursor:pointer;display:inline-flex;align-items:center;gap:4px;';
-    el.title = 'Click to start/pause Pomodoro timer';
+    el.title = t('plugin.pomodoroTip');
 
     const timerSpan = document.createElement('span');
     timerSpan.textContent = '25:00';
@@ -317,7 +318,7 @@ const pomodoroPlugin = {
     const resetBtn = document.createElement('span');
     resetBtn.textContent = '\u21bb'; // reset
     resetBtn.style.cssText = 'font-size:12px;opacity:0.6;';
-    resetBtn.title = 'Reset timer';
+    resetBtn.title = t('plugin.resetTimer');
 
     el.appendChild(document.createTextNode('\ud83c\udf45 '));
     el.appendChild(timerSpan);
@@ -441,7 +442,7 @@ const clipboardHistoryPlugin = {
     `;
 
     const title = document.createElement('div');
-    title.textContent = 'Clipboard History';
+    title.textContent = t('plugin.clipboardHistory');
     title.style.cssText = 'font-weight:600;font-size:14px;margin-bottom:12px;color:var(--text-primary,#fff);';
     panel.appendChild(title);
 

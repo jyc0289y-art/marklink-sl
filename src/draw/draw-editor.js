@@ -25,6 +25,9 @@ let selectedObjects = [];
 let selectionRect = null;
 let dragStart = null, resizeHandle = null;
 
+// Tracked event listeners for cleanup
+let _boundListeners = [];
+
 // Drawing state
 let currentPath = [];
 let shapeStart = null;
@@ -86,6 +89,21 @@ function buildUI(container) {
         <button class="draw-tool-btn" id="draw-grid-btn" title="Toggle Grid">⊞</button>
         <button class="draw-tool-btn" id="draw-ruler-btn" title="Toggle Rulers">📐</button>
         <button class="draw-tool-btn" id="draw-snap-btn" title="Snap to Grid">🧲</button>
+        <select id="draw-grid-spacing" class="draw-select draw-grid-select" title="Grid Spacing">
+          <option value="10"${gridSpacing === 10 ? ' selected' : ''}>10px</option>
+          <option value="20"${gridSpacing === 20 ? ' selected' : ''}>20px</option>
+          <option value="50"${gridSpacing === 50 ? ' selected' : ''}>50px</option>
+        </select>
+        <div class="draw-tool-sep"></div>
+        <button class="draw-tool-btn" id="draw-align-left" title="Align Left">⫷</button>
+        <button class="draw-tool-btn" id="draw-align-center-h" title="Align Center">⫿</button>
+        <button class="draw-tool-btn" id="draw-align-right" title="Align Right">⫸</button>
+        <button class="draw-tool-btn" id="draw-align-top" title="Align Top">⫠</button>
+        <button class="draw-tool-btn" id="draw-align-center-v" title="Align Middle">⫟</button>
+        <button class="draw-tool-btn" id="draw-align-bottom" title="Align Bottom">⫡</button>
+        <div class="draw-tool-sep"></div>
+        <button class="draw-tool-btn" id="draw-dist-h" title="Distribute Horizontally">⫦</button>
+        <button class="draw-tool-btn" id="draw-dist-v" title="Distribute Vertically">⫧</button>
       </div>
       <!-- Canvas Area -->
       <div class="draw-canvas-area" id="draw-canvas-area">
@@ -205,7 +223,9 @@ function initCanvas() {
   overlayCtx = overlayCanvas.getContext('2d');
 
   resizeCanvas();
-  window.addEventListener('resize', () => resizeCanvas());
+  const _onResize = () => resizeCanvas();
+  window.addEventListener('resize', _onResize);
+  _boundListeners.push({ target: window, type: 'resize', fn: _onResize });
 }
 
 export function resizeCanvas() {
@@ -359,6 +379,17 @@ function bindEvents() {
   document.getElementById('draw-grid-btn')?.addEventListener('click', () => { gridVisible = !gridVisible; document.getElementById('draw-grid-btn')?.classList.toggle('active', gridVisible); render(); });
   document.getElementById('draw-ruler-btn')?.addEventListener('click', () => { rulersVisible = !rulersVisible; document.getElementById('draw-ruler-btn')?.classList.toggle('active', rulersVisible); toggleRulers(); render(); });
   document.getElementById('draw-snap-btn')?.addEventListener('click', () => { snapToGrid = !snapToGrid; document.getElementById('draw-snap-btn')?.classList.toggle('active', snapToGrid); });
+  document.getElementById('draw-grid-spacing')?.addEventListener('change', (e) => { gridSpacing = parseInt(e.target.value) || 20; render(); });
+
+  // Alignment buttons
+  document.getElementById('draw-align-left')?.addEventListener('click', () => alignSelectedObjects('left'));
+  document.getElementById('draw-align-center-h')?.addEventListener('click', () => alignSelectedObjects('center-h'));
+  document.getElementById('draw-align-right')?.addEventListener('click', () => alignSelectedObjects('right'));
+  document.getElementById('draw-align-top')?.addEventListener('click', () => alignSelectedObjects('top'));
+  document.getElementById('draw-align-center-v')?.addEventListener('click', () => alignSelectedObjects('center-v'));
+  document.getElementById('draw-align-bottom')?.addEventListener('click', () => alignSelectedObjects('bottom'));
+  document.getElementById('draw-dist-h')?.addEventListener('click', () => distributeSelectedObjects('horizontal'));
+  document.getElementById('draw-dist-v')?.addEventListener('click', () => distributeSelectedObjects('vertical'));
 
   // Export/Import
   document.getElementById('draw-export-png')?.addEventListener('click', () => exportCanvas('png'));
@@ -370,13 +401,21 @@ function bindEvents() {
   document.getElementById('draw-clear-btn')?.addEventListener('click', () => { if (confirm('Clear all objects on this layer?')) { pushUndo(); getActiveLayer().objects = []; render(); } });
 
   // Keyboard shortcuts
-  document.addEventListener('keydown', (e) => {
+  const _onKeyDown = (e) => {
     if (document.querySelector('#view-draw:not(.active)')) return;
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
     handleKeyDown(e);
-  });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Shift') shiftHeld = true; });
-  document.addEventListener('keyup', (e) => { if (e.key === 'Shift') shiftHeld = false; });
+  };
+  const _onShiftDown = (e) => { if (e.key === 'Shift') shiftHeld = true; };
+  const _onShiftUp = (e) => { if (e.key === 'Shift') shiftHeld = false; };
+  document.addEventListener('keydown', _onKeyDown);
+  document.addEventListener('keydown', _onShiftDown);
+  document.addEventListener('keyup', _onShiftUp);
+  _boundListeners.push(
+    { target: document, type: 'keydown', fn: _onKeyDown },
+    { target: document, type: 'keydown', fn: _onShiftDown },
+    { target: document, type: 'keyup', fn: _onShiftUp },
+  );
 }
 
 /* ==================== Tool Selection ==================== */
@@ -957,6 +996,98 @@ function normalizeRect(r) {
 
 function rectsIntersect(a, b) {
   return !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y);
+}
+
+/* ==================== Alignment & Distribution ==================== */
+
+function alignSelectedObjects(direction) {
+  if (selectedObjects.length < 2) return;
+  pushUndo();
+  const boundsList = selectedObjects.map((obj) => ({ obj, bounds: getObjectBounds(obj) })).filter((b) => b.bounds);
+  if (boundsList.length < 2) return;
+
+  let target;
+  switch (direction) {
+    case 'left':
+      target = Math.min(...boundsList.map((b) => b.bounds.x));
+      boundsList.forEach((b) => {
+        const dx = target - b.bounds.x;
+        setObjPosition(b.obj, { x: getObjPosition(b.obj).x + dx, y: getObjPosition(b.obj).y });
+      });
+      break;
+    case 'center-h':
+      target = boundsList.reduce((sum, b) => sum + b.bounds.x + b.bounds.w / 2, 0) / boundsList.length;
+      boundsList.forEach((b) => {
+        const cx = b.bounds.x + b.bounds.w / 2;
+        const dx = target - cx;
+        setObjPosition(b.obj, { x: getObjPosition(b.obj).x + dx, y: getObjPosition(b.obj).y });
+      });
+      break;
+    case 'right':
+      target = Math.max(...boundsList.map((b) => b.bounds.x + b.bounds.w));
+      boundsList.forEach((b) => {
+        const dx = target - (b.bounds.x + b.bounds.w);
+        setObjPosition(b.obj, { x: getObjPosition(b.obj).x + dx, y: getObjPosition(b.obj).y });
+      });
+      break;
+    case 'top':
+      target = Math.min(...boundsList.map((b) => b.bounds.y));
+      boundsList.forEach((b) => {
+        const dy = target - b.bounds.y;
+        setObjPosition(b.obj, { x: getObjPosition(b.obj).x, y: getObjPosition(b.obj).y + dy });
+      });
+      break;
+    case 'center-v':
+      target = boundsList.reduce((sum, b) => sum + b.bounds.y + b.bounds.h / 2, 0) / boundsList.length;
+      boundsList.forEach((b) => {
+        const cy = b.bounds.y + b.bounds.h / 2;
+        const dy = target - cy;
+        setObjPosition(b.obj, { x: getObjPosition(b.obj).x, y: getObjPosition(b.obj).y + dy });
+      });
+      break;
+    case 'bottom':
+      target = Math.max(...boundsList.map((b) => b.bounds.y + b.bounds.h));
+      boundsList.forEach((b) => {
+        const dy = target - (b.bounds.y + b.bounds.h);
+        setObjPosition(b.obj, { x: getObjPosition(b.obj).x, y: getObjPosition(b.obj).y + dy });
+      });
+      break;
+  }
+  render();
+}
+
+function distributeSelectedObjects(direction) {
+  if (selectedObjects.length < 3) return;
+  pushUndo();
+  const boundsList = selectedObjects.map((obj) => ({ obj, bounds: getObjectBounds(obj) })).filter((b) => b.bounds);
+  if (boundsList.length < 3) return;
+
+  if (direction === 'horizontal') {
+    boundsList.sort((a, b) => a.bounds.x - b.bounds.x);
+    const first = boundsList[0].bounds.x;
+    const last = boundsList[boundsList.length - 1].bounds.x + boundsList[boundsList.length - 1].bounds.w;
+    const totalObjWidth = boundsList.reduce((sum, b) => sum + b.bounds.w, 0);
+    const gap = (last - first - totalObjWidth) / (boundsList.length - 1);
+    let currentX = first;
+    boundsList.forEach((b) => {
+      const dx = currentX - b.bounds.x;
+      setObjPosition(b.obj, { x: getObjPosition(b.obj).x + dx, y: getObjPosition(b.obj).y });
+      currentX += b.bounds.w + gap;
+    });
+  } else {
+    boundsList.sort((a, b) => a.bounds.y - b.bounds.y);
+    const first = boundsList[0].bounds.y;
+    const last = boundsList[boundsList.length - 1].bounds.y + boundsList[boundsList.length - 1].bounds.h;
+    const totalObjHeight = boundsList.reduce((sum, b) => sum + b.bounds.h, 0);
+    const gap = (last - first - totalObjHeight) / (boundsList.length - 1);
+    let currentY = first;
+    boundsList.forEach((b) => {
+      const dy = currentY - b.bounds.y;
+      setObjPosition(b.obj, { x: getObjPosition(b.obj).x, y: getObjPosition(b.obj).y + dy });
+      currentY += b.bounds.h + gap;
+    });
+  }
+  render();
 }
 
 /* ==================== Text Tool ==================== */
@@ -1557,4 +1688,36 @@ function importImage() {
     reader.readAsDataURL(file);
   });
   input.click();
+}
+
+/* ==================== Memory Cleanup ==================== */
+
+export function destroyDrawEditor() {
+  // Remove tracked global event listeners
+  _boundListeners.forEach(({ target, type, fn }) => target.removeEventListener(type, fn));
+  _boundListeners = [];
+
+  // Clear timers
+  if (undoDebounceTimer) { clearTimeout(undoDebounceTimer); undoDebounceTimer = null; }
+
+  // Clear state
+  layers = [];
+  undoStack = [];
+  redoStack = [];
+  selectedObjects = [];
+  currentPath = [];
+  selectionRect = null;
+  dragStart = null;
+  resizeHandle = null;
+  shapeStart = null;
+
+  // Clear canvas references
+  canvas = null;
+  ctx = null;
+  overlayCanvas = null;
+  overlayCtx = null;
+
+  // Remove DOM content
+  const container = document.getElementById('view-draw');
+  if (container) container.innerHTML = '';
 }

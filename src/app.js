@@ -27,7 +27,7 @@ import { initSlideEditor, initSlideEditorEnhanced } from './slide/slide-editor.j
 import { openSlideFile, saveSlideFile, getSlideFileName } from './slide/slide-file.js';
 import { initPdfViewer, getPdfFileName, getPdfText, getPdfPageImages, openPdf } from './pdf/pdf-viewer.js';
 import { initAiChat, setContextProviders, enterAiFullscreen, exitAiFullscreen } from './ai/ai-chat.js';
-import { initI18n, setLang, getLang, showLanguagePicker, onLangChange } from './ui/i18n.js';
+import { initI18n, setLang, getLang, showLanguagePicker, onLangChange, t } from './ui/i18n.js';
 import { initPhotoEditor, getPhotoFileName, openPhotoFile } from './photo/photo-editor.js';
 import { initAdBanners } from './ui/ad-banner.js';
 import { initCalculator } from './calculator/calculator.js';
@@ -1299,11 +1299,11 @@ function initAutoSave() {
       if (statusRight) statusRight.parentElement.insertBefore(indicator, statusRight);
     }
     if (status === 'saving') {
-      indicator.textContent = 'Saving...';
+      indicator.textContent = t('status.saving');
       indicator.style.color = 'var(--brand-color, #0071e3)';
       indicator.style.opacity = '1';
     } else if (status === 'saved') {
-      indicator.textContent = 'Saved';
+      indicator.textContent = t('status.saved');
       indicator.style.color = '#10b981';
       indicator.style.opacity = '1';
       setTimeout(() => { indicator.style.opacity = '0'; }, 2000);
@@ -1429,14 +1429,14 @@ function showVersionHistory() {
 
   const header = document.createElement('div');
   header.style.cssText = 'padding:16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center';
-  header.innerHTML = `<h3 style="margin:0;font-size:16px;color:var(--text-primary)">Version History</h3><button id="vh-close" style="border:none;background:none;font-size:18px;cursor:pointer;color:var(--text-secondary)">✕</button>`;
+  header.innerHTML = `<h3 style="margin:0;font-size:16px;color:var(--text-primary)">${escapeHtml(t('version.title'))}</h3><button id="vh-close" style="border:none;background:none;font-size:18px;cursor:pointer;color:var(--text-secondary)">✕</button>`;
   sidebar.appendChild(header);
 
   const list = document.createElement('div');
   list.style.cssText = 'flex:1;overflow-y:auto;padding:8px';
 
   if (filtered.length === 0) {
-    list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);font-size:13px">No versions saved yet for this tab.<br>Versions are saved automatically every 5 minutes.</div>';
+    list.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-tertiary);font-size:13px">${escapeHtml(t('version.noVersions'))}<br>${escapeHtml(t('version.autoSaveNote'))}</div>`;
   }
 
   filtered.forEach((v, i) => {
@@ -1451,7 +1451,7 @@ function showVersionHistory() {
     const sizeKB = (new Blob([v.content]).size / 1024).toFixed(1);
 
     item.innerHTML = `
-      <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${typeIcon} ${escapeHtml(v.fileName)}${i === 0 ? ' <span style="font-size:10px;color:var(--brand-color,#0071e3);font-weight:700">CURRENT</span>' : ''}</div>
+      <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${typeIcon} ${escapeHtml(v.fileName)}${i === 0 ? ` <span style="font-size:10px;color:var(--brand-color,#0071e3);font-weight:700">${escapeHtml(t('version.current'))}</span>` : ''}</div>
       <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${escapeHtml(timeStr)}</div>
       <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${escapeHtml(v.label)} • ${sizeKB} KB</div>
     `;
@@ -1471,10 +1471,10 @@ function showVersionHistory() {
       const restoreBar = document.createElement('div');
       restoreBar.style.cssText = 'position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:2';
       restoreBar.innerHTML = `
-        <button class="vh-restore" style="padding:10px 24px;border:none;border-radius:8px;background:#0071e3;color:#fff;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2)">Restore this version</button>
+        <button class="vh-restore" style="padding:10px 24px;border:none;border-radius:8px;background:#0071e3;color:#fff;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2)">${escapeHtml(t('version.restore'))}</button>
       `;
       restoreBar.querySelector('.vh-restore').addEventListener('click', () => {
-        if (!confirm('Restore this version? Current content will be replaced.')) return;
+        if (!confirm(t('version.restoreConfirm'))) return;
         if (v.tab === 'editor' && typeof setContent === 'function') {
           setContent(v.content);
         } else if (v.tab === 'document') {
@@ -1505,7 +1505,7 @@ function showVersionHistory() {
   const previewBaseStyle = 'flex:1;background:var(--bg-secondary,#f8f8f8);overflow-y:auto;position:relative;color:var(--text-primary);';
   const previewPane = document.createElement('div');
   previewPane.style.cssText = previewBaseStyle + 'display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text-tertiary)';
-  previewPane.textContent = 'Select a version to preview';
+  previewPane.textContent = t('version.selectPreview');
 
   overlay.appendChild(sidebar);
   overlay.appendChild(previewPane);
@@ -1675,13 +1675,13 @@ function showTemplateLibrary() {
   overlay.innerHTML = `
     <div style="background:var(--bg-primary);border-radius:16px;box-shadow:0 16px 48px rgba(0,0,0,0.3);width:700px;max-height:80vh;overflow-y:auto;padding:24px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-        <h2 style="margin:0;font-size:20px;font-weight:700;color:var(--text-primary)">📋 Template Library</h2>
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:var(--text-primary)">${escapeHtml(t('template.title'))}</h2>
         <button class="tpl-close" style="border:none;background:transparent;font-size:24px;cursor:pointer;color:var(--text-primary)">&times;</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:20px">
-        <button class="tpl-tab ${currentTab === 'document' ? 'active' : ''}" data-tpl-tab="document" style="padding:8px 16px;border:1px solid var(--border-color);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-primary);background:${currentTab === 'document' ? 'var(--brand-color)' : 'var(--bg-primary)'};${currentTab === 'document' ? 'color:#fff' : ''}">Documents</button>
-        <button class="tpl-tab ${currentTab === 'sheet' ? 'active' : ''}" data-tpl-tab="sheet" style="padding:8px 16px;border:1px solid var(--border-color);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-primary);background:${currentTab === 'sheet' ? 'var(--brand-color)' : 'var(--bg-primary)'};${currentTab === 'sheet' ? 'color:#fff' : ''}">Sheets</button>
-        <button class="tpl-tab ${currentTab === 'slide' ? 'active' : ''}" data-tpl-tab="slide" style="padding:8px 16px;border:1px solid var(--border-color);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-primary);background:${currentTab === 'slide' ? 'var(--brand-color)' : 'var(--bg-primary)'};${currentTab === 'slide' ? 'color:#fff' : ''}">Slides</button>
+        <button class="tpl-tab ${currentTab === 'document' ? 'active' : ''}" data-tpl-tab="document" style="padding:8px 16px;border:1px solid var(--border-color);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-primary);background:${currentTab === 'document' ? 'var(--brand-color)' : 'var(--bg-primary)'};${currentTab === 'document' ? 'color:#fff' : ''}">${escapeHtml(t('template.documents'))}</button>
+        <button class="tpl-tab ${currentTab === 'sheet' ? 'active' : ''}" data-tpl-tab="sheet" style="padding:8px 16px;border:1px solid var(--border-color);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-primary);background:${currentTab === 'sheet' ? 'var(--brand-color)' : 'var(--bg-primary)'};${currentTab === 'sheet' ? 'color:#fff' : ''}">${escapeHtml(t('template.sheets'))}</button>
+        <button class="tpl-tab ${currentTab === 'slide' ? 'active' : ''}" data-tpl-tab="slide" style="padding:8px 16px;border:1px solid var(--border-color);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-primary);background:${currentTab === 'slide' ? 'var(--brand-color)' : 'var(--bg-primary)'};${currentTab === 'slide' ? 'color:#fff' : ''}">${escapeHtml(t('template.slides'))}</button>
       </div>
       <div id="tpl-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px"></div>
     </div>
@@ -1853,9 +1853,9 @@ function initStatusBar() {
         const text = editor.innerText || '';
         const words = text.trim().split(/\s+/).filter(Boolean).length;
         const chars = text.length;
-        statusLeft.textContent = `Words: ${words.toLocaleString()} | Characters: ${chars.toLocaleString()}`;
+        statusLeft.textContent = `${t('status.words')}: ${words.toLocaleString()} | ${t('status.characters')}: ${chars.toLocaleString()}`;
         const pages = Math.max(1, Math.ceil(chars / 3000));
-        statusCenter.textContent = `~${pages} page${pages > 1 ? 's' : ''}`;
+        statusCenter.textContent = `~${pages} ${pages > 1 ? t('status.pages') : t('status.page')}`;
       }
     } else if (tab === 'sheet') {
       const cellRef = document.getElementById('sheet-cell-ref');
@@ -1866,13 +1866,13 @@ function initStatusBar() {
       const slides = document.querySelectorAll('.slide-thumb');
       const active = document.querySelector('.slide-thumb.active');
       const idx = active ? Array.from(slides).indexOf(active) + 1 : 1;
-      statusLeft.textContent = `Slide ${idx} of ${slides.length || 1}`;
+      statusLeft.textContent = `${t('status.slide')} ${idx} ${t('status.of')} ${slides.length || 1}`;
       statusCenter.textContent = '';
     } else if (tab === 'markdown') {
       // Enhanced stats are in the md-stats-bar; keep status bar minimal
       const content = getContent();
       const lines = content.split('\n').length;
-      statusLeft.textContent = `Lines: ${lines}`;
+      statusLeft.textContent = `${t('status.lines')}: ${lines}`;
       statusCenter.textContent = '';
       updateEnhancedStatusBar(content);
     } else {
@@ -1954,7 +1954,7 @@ function buildOutline(markdownText) {
   if (headings.length === 0) {
     const empty = document.createElement('div');
     empty.style.cssText = 'padding: 16px 12px; color: var(--text-tertiary); font-size: 12px; text-align: center;';
-    empty.textContent = 'No headings found';
+    empty.textContent = t('status.noHeadings');
     list.appendChild(empty);
     return;
   }
@@ -2048,7 +2048,8 @@ function showToast(message) {
  * @param {string} tabName - Tab name (e.g. 'cad', 'draw')
  * @param {string} text - Loading text to display
  */
-const showTabLoading = (tabName, text = 'Loading...') => {
+const showTabLoading = (tabName, text) => {
+  if (!text) text = t('status.loading');
   const view = document.getElementById(`view-${tabName}`);
   if (!view) return;
   // Prevent duplicates
@@ -2132,8 +2133,8 @@ const initEmptyStates = () => {
     `;
     sheetMsg.innerHTML = `
       <div style="font-size: 48px; opacity: 0.3; margin-bottom: 8px;">\uD83D\uDCCA</div>
-      <div style="font-size: 14px; font-weight: 600; color: var(--text-secondary);">Enter data or open a spreadsheet</div>
-      <div style="font-size: 12px; color: var(--text-tertiary); margin-top: 4px;">Click any cell to start, or Ctrl+O to open</div>
+      <div style="font-size: 14px; font-weight: 600; color: var(--text-secondary);">${escapeHtml(t('sheet.emptyTitle'))}</div>
+      <div style="font-size: 12px; color: var(--text-tertiary); margin-top: 4px;">${escapeHtml(t('sheet.emptyHint'))}</div>
     `;
     sheetContainer.style.position = 'relative';
     sheetContainer.appendChild(sheetMsg);

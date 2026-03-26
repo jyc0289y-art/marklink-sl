@@ -6,6 +6,7 @@
 import { WebGLEngine, DEFAULT_PARAMS, cloneParams } from './webgl-engine.js';
 import { analyzeLocal, analyzeWithOllama, analyzeWithClaude, checkOllamaStatus, getApiKey, setApiKey } from './auto-edit.js';
 import { escapeHtml as _esc } from '../utils/sanitize.js';
+import { t } from '../ui/i18n.js';
 
 let engine = null;
 let currentParams = cloneParams(DEFAULT_PARAMS);
@@ -14,6 +15,18 @@ let historyIndex = 0;
 let imageDataUrl = null;
 let imageInfo = null;
 let showOriginal = false;
+
+/* ==================== Zoom State ==================== */
+
+let zoomLevel = 1; // 1 = fit-to-view (100%)
+let zoomPanX = 0;  // pan offset in pixels (canvas-space)
+let zoomPanY = 0;
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = 16;
+const ZOOM_STEP = 0.1;
+
+/* ==================== Tracked event listeners for cleanup ==================== */
+const _managedListeners = [];
 
 /* ==================== Layers System ==================== */
 
@@ -719,7 +732,7 @@ export function initPhotoEditor() {
       console.error('WebGL init failed:', e);
       const notice = document.createElement('div');
       notice.className = 'photo-webgl-error';
-      notice.textContent = 'WebGL is not supported in this browser. Photo editing is unavailable.';
+      notice.textContent = t('photo.webglError');
       notice.style.cssText = 'padding:24px;text-align:center;color:#e74c3c;font-weight:600;';
       container.prepend(notice);
     }
@@ -730,7 +743,9 @@ export function initPhotoEditor() {
   bindSliders();
   bindFileInput();
   bindLayersUI();
+  bindZoomControls();
   updateSliderValues();
+  updateZoomDisplay();
 }
 
 export function getPhotoFileName() {
@@ -758,7 +773,16 @@ function loadImageFile(file) {
     imageDataUrl = e.target.result;
     const img = new Image();
     img.onload = () => {
-      imageInfo = { name: file.name, width: img.width, height: img.height };
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+      const formatMap = { jpg: 'JPEG', jpeg: 'JPEG', png: 'PNG', webp: 'WebP', heic: 'HEIC', gif: 'GIF', bmp: 'BMP', svg: 'SVG', tiff: 'TIFF', tif: 'TIFF' };
+      imageInfo = {
+        name: file.name,
+        width: img.width,
+        height: img.height,
+        fileSize: file.size,
+        format: formatMap[ext] || file.type || ext.toUpperCase(),
+        colorSpace: 'sRGB',
+      };
       if (engine) {
         // Limit canvas size for performance
         const maxDim = 2048;
@@ -791,6 +815,13 @@ function showEditor() {
   const editor = document.getElementById('photo-editor-area');
   if (empty) empty.style.display = 'none';
   if (editor) editor.style.display = 'flex';
+  // Reset zoom on new image
+  zoomLevel = 1;
+  zoomPanX = 0;
+  zoomPanY = 0;
+  applyZoomTransform();
+  updateZoomDisplay();
+  buildImageInfoPanel();
 }
 
 function updateInfoBar() {
@@ -982,13 +1013,7 @@ function renderOriginal() {
 }
 
 function applyTransform() {
-  const canvas = document.getElementById('photo-canvas');
-  if (!canvas) return;
-  const transforms = [];
-  if (currentParams.rotation) transforms.push(`rotate(${currentParams.rotation}deg)`);
-  if (currentParams.flipH) transforms.push('scaleX(-1)');
-  if (currentParams.flipV) transforms.push('scaleY(-1)');
-  canvas.style.transform = transforms.join(' ') || 'none';
+  applyZoomTransform();
 }
 
 /* ==================== Sliders ==================== */
@@ -1865,7 +1890,7 @@ async function generateGif(modal) {
     // Add download button
     const dlBtn = document.createElement('button');
     dlBtn.className = 'toolbar-btn';
-    dlBtn.textContent = '⬇ Download GIF';
+    dlBtn.textContent = `⬇ ${t('photo.downloadGif')}`;
     dlBtn.style.cssText = 'background:var(--brand-color);color:#fff;border-radius:6px;margin-top:8px';
     dlBtn.onclick = () => {
       const a = document.createElement('a');
@@ -2098,7 +2123,7 @@ function showBatchModal() {
     progressBar.style.display = 'block';
 
     for (let i = 0; i < batchFiles.length; i++) {
-      status.textContent = `Processing ${i + 1} / ${batchFiles.length}...`;
+      status.textContent = `${t('photo.processing')} ${i + 1} / ${batchFiles.length}...`;
       progressFill.style.width = ((i + 1) / batchFiles.length * 100) + '%';
 
       await new Promise(resolve => {
@@ -2143,7 +2168,7 @@ function showBatchModal() {
         reader.readAsDataURL(batchFiles[i]);
       });
     }
-    status.textContent = `Done! Processed ${batchFiles.length} images.`;
+    status.textContent = `${t('photo.done')} ${batchFiles.length} ${t('photo.imagesProcessed')}.`;
   };
 
   modal.querySelector('#batch-close').onclick = () => modal.remove();
@@ -2605,13 +2630,13 @@ function updateSplitView() {
   if (!beforeLabel) {
     beforeLabel = document.createElement('div');
     beforeLabel.className = 'photo-split-label before';
-    beforeLabel.textContent = 'Before';
+    beforeLabel.textContent = t('photo.before');
     canvasArea.appendChild(beforeLabel);
   }
   if (!afterLabel) {
     afterLabel = document.createElement('div');
     afterLabel.className = 'photo-split-label after';
-    afterLabel.textContent = 'After';
+    afterLabel.textContent = t('photo.after');
     canvasArea.appendChild(afterLabel);
   }
   beforeLabel.style.left = (offsetLeft + 8) + 'px';
@@ -3566,7 +3591,7 @@ function showBatchResizeDialog() {
         item.innerHTML = `<span>${_esc(f.name)}</span><span>${(f.size / 1024).toFixed(0)} KB</span>`;
         list.appendChild(item);
       });
-      modal.querySelector('#br-count').textContent = `${brFiles.length} images`;
+      modal.querySelector('#br-count').textContent = `${brFiles.length} ${t('photo.images')}`;
       input.remove();
     });
     input.click();
@@ -3583,11 +3608,11 @@ function showBatchResizeDialog() {
     const status = modal.querySelector('#br-status');
     progress.style.display = 'block';
     for (let i = 0; i < brFiles.length; i++) {
-      status.textContent = `Resizing ${i + 1} / ${brFiles.length}...`;
+      status.textContent = `${t('photo.resizing')} ${i + 1} / ${brFiles.length}...`;
       progressFill.style.width = ((i + 1) / brFiles.length * 100) + '%';
       await _resizeAndDownload(brFiles[i], targetW, targetH, lock, format, quality);
     }
-    status.textContent = `Done! ${brFiles.length} images resized.`;
+    status.textContent = `${t('photo.done')} ${brFiles.length} ${t('photo.imagesResized')}.`;
   });
 }
 
@@ -3752,6 +3777,231 @@ function showBeforeAfterModal() {
   container.addEventListener('click', (e) => updateSlider(e.clientX));
   modal.querySelector('button').addEventListener('click', () => modal.remove());
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+/* ==================== Keyboard Shortcuts (Undo/Redo) ==================== */
+
+const _onKeyDown = (e) => {
+  // Only handle if photo tab is active
+  const photoView = document.getElementById('view-photo');
+  if (!photoView || !photoView.classList.contains('active')) return;
+
+  const isMod = e.metaKey || e.ctrlKey;
+  if (!isMod) return;
+
+  if (e.key === 'z' && !e.shiftKey) {
+    e.preventDefault();
+    undo();
+  } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+    e.preventDefault();
+    redo();
+  } else if (e.key === '0') {
+    e.preventDefault();
+    zoomReset();
+  } else if (e.key === '=' || e.key === '+') {
+    e.preventDefault();
+    zoomIn();
+  } else if (e.key === '-') {
+    e.preventDefault();
+    zoomOut();
+  }
+};
+
+/* ==================== Image Info Panel ==================== */
+
+function buildImageInfoPanel() {
+  const container = document.getElementById('photo-image-info-panel');
+  if (!container) return;
+  if (!imageInfo) {
+    container.innerHTML = '<div style="font-size:11px;color:var(--text-secondary)">No image loaded</div>';
+    return;
+  }
+
+  const fileSizeStr = imageInfo.fileSize
+    ? (imageInfo.fileSize > 1024 * 1024
+        ? (imageInfo.fileSize / (1024 * 1024)).toFixed(2) + ' MB'
+        : (imageInfo.fileSize / 1024).toFixed(1) + ' KB')
+    : 'N/A';
+
+  const format = imageInfo.format || 'N/A';
+  const colorSpace = imageInfo.colorSpace || 'sRGB (assumed)';
+
+  container.innerHTML = `
+    <div class="photo-info-row"><span class="photo-info-label">Dimensions</span><span class="photo-info-value">${imageInfo.width} x ${imageInfo.height} px</span></div>
+    <div class="photo-info-row"><span class="photo-info-label">File Size</span><span class="photo-info-value">${fileSizeStr}</span></div>
+    <div class="photo-info-row"><span class="photo-info-label">Format</span><span class="photo-info-value">${_esc(format)}</span></div>
+    <div class="photo-info-row"><span class="photo-info-label">Color Space</span><span class="photo-info-value">${_esc(colorSpace)}</span></div>
+    <div class="photo-info-row"><span class="photo-info-label">Megapixels</span><span class="photo-info-value">${((imageInfo.width * imageInfo.height) / 1e6).toFixed(2)} MP</span></div>
+    <div class="photo-info-row"><span class="photo-info-label">Aspect Ratio</span><span class="photo-info-value">${_calcAspectRatioLabel(imageInfo.width, imageInfo.height)}</span></div>
+  `;
+}
+
+function _calcAspectRatioLabel(w, h) {
+  const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
+  const d = gcd(w, h);
+  const rw = w / d;
+  const rh = h / d;
+  if (rw <= 100 && rh <= 100) return `${rw}:${rh}`;
+  return (w / h).toFixed(2) + ':1';
+}
+
+/* ==================== Zoom Controls ==================== */
+
+function zoomIn() {
+  if (!imageInfo) return;
+  setZoom(zoomLevel * 1.25);
+}
+
+function zoomOut() {
+  if (!imageInfo) return;
+  setZoom(zoomLevel / 1.25);
+}
+
+function zoomReset() {
+  setZoom(1);
+  zoomPanX = 0;
+  zoomPanY = 0;
+  applyZoomTransform();
+}
+
+function setZoom(level, centerX, centerY) {
+  const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, level));
+  const canvas = document.getElementById('photo-canvas');
+  if (!canvas) return;
+
+  if (centerX !== undefined && centerY !== undefined) {
+    // Adjust pan so the point under cursor stays in the same screen position
+    const ratio = newZoom / zoomLevel;
+    zoomPanX = centerX - ratio * (centerX - zoomPanX);
+    zoomPanY = centerY - ratio * (centerY - zoomPanY);
+  }
+
+  zoomLevel = newZoom;
+  applyZoomTransform();
+  updateZoomDisplay();
+}
+
+function applyZoomTransform() {
+  const canvas = document.getElementById('photo-canvas');
+  if (!canvas) return;
+
+  const transforms = [];
+  if (zoomLevel !== 1 || zoomPanX !== 0 || zoomPanY !== 0) {
+    transforms.push(`translate(${zoomPanX}px, ${zoomPanY}px)`);
+    transforms.push(`scale(${zoomLevel})`);
+  }
+  if (currentParams.rotation) transforms.push(`rotate(${currentParams.rotation}deg)`);
+  if (currentParams.flipH) transforms.push('scaleX(-1)');
+  if (currentParams.flipV) transforms.push('scaleY(-1)');
+  canvas.style.transform = transforms.join(' ') || 'none';
+  canvas.style.transformOrigin = 'center center';
+}
+
+function updateZoomDisplay() {
+  const el = document.getElementById('photo-zoom-display');
+  if (el) el.textContent = Math.round(zoomLevel * 100) + '%';
+}
+
+const _onWheel = (e) => {
+  // Only zoom when over the canvas area
+  const canvasArea = document.getElementById('photo-canvas-area');
+  if (!canvasArea || !canvasArea.contains(e.target)) return;
+  if (!imageInfo) return;
+
+  e.preventDefault();
+  const canvas = document.getElementById('photo-canvas');
+  if (!canvas) return;
+
+  const rect = canvas.getBoundingClientRect();
+  // Cursor position relative to the center of the canvas element on screen
+  const centerX = (e.clientX - rect.left - rect.width / 2);
+  const centerY = (e.clientY - rect.top - rect.height / 2);
+
+  const delta = e.deltaY > 0 ? 1 / 1.1 : 1.1;
+  setZoom(zoomLevel * delta, zoomPanX + centerX * (1 - 1 / delta), zoomPanY + centerY * (1 - 1 / delta));
+};
+
+function bindZoomControls() {
+  document.getElementById('photo-zoom-in')?.addEventListener('click', () => zoomIn());
+  document.getElementById('photo-zoom-out')?.addEventListener('click', () => zoomOut());
+  document.getElementById('photo-zoom-reset')?.addEventListener('click', () => zoomReset());
+
+  // Mouse wheel zoom — attach to canvas area
+  const canvasArea = document.getElementById('photo-canvas-area');
+  if (canvasArea) {
+    canvasArea.addEventListener('wheel', _onWheel, { passive: false });
+    _managedListeners.push({ target: canvasArea, event: 'wheel', handler: _onWheel });
+  }
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', _onKeyDown);
+  _managedListeners.push({ target: document, event: 'keydown', handler: _onKeyDown });
+}
+
+/* ==================== Destroy / Cleanup ==================== */
+
+export function destroyPhotoEditor() {
+  // 1. Destroy WebGL engine
+  if (engine) {
+    try { engine.destroy(); } catch (_) { /* ignore */ }
+    engine = null;
+  }
+
+  // 2. Remove managed event listeners
+  for (const entry of _managedListeners) {
+    try { entry.target.removeEventListener(entry.event, entry.handler); } catch (_) { /* ignore */ }
+  }
+  _managedListeners.length = 0;
+
+  // 3. Clean up dynamic canvases and overlays
+  ['photo-draw-canvas', 'photo-clone-canvas', 'photo-heal-canvas'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.style.display = 'none';
+      const ctx = el.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, el.width, el.height);
+      if (el._workCanvas) el._workCanvas = null;
+    }
+  });
+
+  // 4. Clear text overlays
+  const textLayer = document.getElementById('photo-text-layer');
+  if (textLayer) { textLayer.innerHTML = ''; textLayer.style.display = 'none'; }
+  textItems.length = 0;
+
+  // 5. Remove dynamically-created toolbars/modals
+  ['.photo-text-bar', '.photo-draw-bar', '.photo-clone-bar',
+   '.photo-filters-modal', '.photo-gif-modal', '.photo-batch-modal',
+   '.photo-resize-modal', '.photo-export-modal', '.photo-perspective-modal',
+   '.photo-watermark-modal', '.photo-ba-modal', '.photo-batch-resize-modal',
+   '.photo-crop-presets-panel'].forEach((sel) => {
+    document.querySelectorAll(sel).forEach((el) => el.remove());
+  });
+
+  // 6. Reset state
+  currentParams = cloneParams(DEFAULT_PARAMS);
+  history = [cloneParams(DEFAULT_PARAMS)];
+  historyIndex = 0;
+  historyEntries = [{ action: 'Open Image', timestamp: new Date() }];
+  imageDataUrl = null;
+  imageInfo = null;
+  showOriginal = false;
+  layers = [];
+  activeLayerIndex = 0;
+  layerIdCounter = 0;
+  gifFrames = [];
+  cropActive = false;
+  textMode = false;
+  drawMode = false;
+  drawCtx = null;
+  cloneMode = false;
+  healMode = false;
+  splitViewActive = false;
+  histogramVisible = false;
+  selectedHues.clear();
+  zoomLevel = 1;
+  zoomPanX = 0;
+  zoomPanY = 0;
 }
 
 // Wire new photo buttons

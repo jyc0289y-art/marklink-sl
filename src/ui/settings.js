@@ -4,7 +4,7 @@
 
 import { getCurrentTheme, toggleTheme, autoTheme, isAutoTheme } from './theme-toggle.js';
 import { buildThemeCustomizerPanel, getThemeSettings, importThemeSettings, resetThemeCustomization } from './theme-customizer.js';
-import { getLang, setLang, showLanguagePicker } from './i18n.js';
+import { getLang, setLang, showLanguagePicker, t } from './i18n.js';
 import { getOllamaUrl, setOllamaUrl } from '../ai/ollama-client.js';
 import { toastSuccess, toastError, toastInfo } from './toast.js';
 import { broadcastThemeChange, broadcastLangChange } from './tab-sync.js';
@@ -87,7 +87,7 @@ export const showSettings = () => {
   const header = document.createElement('div');
   header.className = 'settings-header';
   header.innerHTML = `
-    <h2 class="settings-title">Settings</h2>
+    <h2 class="settings-title">${t('settings.title')}</h2>
     <button class="settings-close-btn" aria-label="Close settings">&#10005;</button>
   `;
   header.querySelector('.settings-close-btn')?.addEventListener('click', () => closeSettings());
@@ -97,14 +97,14 @@ export const showSettings = () => {
   const tabNav = document.createElement('div');
   tabNav.className = 'settings-tabs';
   const tabs = [
-    { id: 'general', label: 'General', icon: '&#9881;' },
-    { id: 'appearance', label: 'Appearance', icon: '&#127912;' },
-    { id: 'editor', label: 'Editor', icon: '&#9998;' },
-    { id: 'shortcuts', label: 'Shortcuts', icon: '&#9000;' },
-    { id: 'plugins', label: 'Plugins', icon: '&#128268;' },
-    { id: 'ai', label: 'AI', icon: '&#129302;' },
-    { id: 'storage', label: 'Storage', icon: '&#128190;' },
-    { id: 'about', label: 'About', icon: '&#8505;' },
+    { id: 'general', label: t('settings.general'), icon: '&#9881;' },
+    { id: 'appearance', label: t('settings.appearance'), icon: '&#127912;' },
+    { id: 'editor', label: t('settings.editor'), icon: '&#9998;' },
+    { id: 'shortcuts', label: t('settings.shortcuts'), icon: '&#9000;' },
+    { id: 'plugins', label: t('settings.plugins'), icon: '&#128268;' },
+    { id: 'ai', label: t('settings.ai'), icon: '&#129302;' },
+    { id: 'storage', label: t('settings.storage'), icon: '&#128190;' },
+    { id: 'about', label: t('settings.about'), icon: '&#8505;' },
   ];
 
   const contentArea = document.createElement('div');
@@ -179,14 +179,14 @@ export const closeSettings = () => {
 
 const renderGeneralTab = (container, settings) => {
   // Language
-  const langSection = createSection('Language');
+  const langSection = createSection(t('settings.language'));
   const langRow = document.createElement('div');
   langRow.className = 'settings-row settings-row-between';
   const langLabel = document.createElement('span');
-  langLabel.textContent = `Current: ${getLang().toUpperCase()}`;
+  langLabel.textContent = `${t('settings.currentLang')}: ${getLang().toUpperCase()}`;
   const langBtn = document.createElement('button');
   langBtn.className = 'settings-btn settings-btn-primary';
-  langBtn.textContent = 'Change Language';
+  langBtn.textContent = t('settings.changeLang');
   langBtn.addEventListener('click', () => {
     closeSettings();
     showLanguagePicker();
@@ -197,7 +197,7 @@ const renderGeneralTab = (container, settings) => {
   container.appendChild(langSection);
 
   // Theme mode
-  const themeSection = createSection('Theme Mode');
+  const themeSection = createSection(t('settings.themeMode'));
   const themeRow = document.createElement('div');
   themeRow.className = 'settings-row theme-mode-buttons';
 
@@ -208,9 +208,9 @@ const renderGeneralTab = (container, settings) => {
     const btn = document.createElement('button');
     const isActive = mode === 'auto' ? isAuto : (!isAuto && currentTheme === mode);
     btn.className = `theme-mode-btn${isActive ? ' active' : ''}`;
-    btn.innerHTML = mode === 'light' ? '&#9788; Light'
-      : mode === 'dark' ? '&#9790; Dark'
-      : '&#9211; Auto';
+    btn.innerHTML = mode === 'light' ? `&#9788; ${t('settings.light')}`
+      : mode === 'dark' ? `&#9790; ${t('settings.dark')}`
+      : `&#9211; ${t('settings.auto')}`;
     btn.addEventListener('click', () => {
       if (mode === 'auto') {
         autoTheme();
@@ -234,7 +234,7 @@ const renderAppearanceTab = (container) => {
 
 const renderEditorTab = (container, settings) => {
   // Auto-save interval
-  const autoSaveSection = createSection('Auto-save Interval (seconds)');
+  const autoSaveSection = createSection(t('settings.autoSaveInterval'));
   const autoSaveInput = document.createElement('input');
   autoSaveInput.type = 'number';
   autoSaveInput.min = '5';
@@ -251,7 +251,7 @@ const renderEditorTab = (container, settings) => {
   container.appendChild(autoSaveSection);
 
   // Spell check
-  const spellSection = createSection('Spell Check');
+  const spellSection = createSection(t('settings.spellCheck'));
   const spellToggle = createToggle(settings.spellCheck, (val) => {
     setSetting('spellCheck', val);
     document.querySelectorAll('[contenteditable], textarea').forEach((el) => {
@@ -262,7 +262,7 @@ const renderEditorTab = (container, settings) => {
   container.appendChild(spellSection);
 
   // Line numbers (for markdown editor)
-  const lineSection = createSection('Line Numbers (Markdown)');
+  const lineSection = createSection(t('settings.lineNumbers'));
   const lineToggle = createToggle(settings.lineNumbers, (val) => {
     setSetting('lineNumbers', val);
     document.querySelector('.cm-editor')?.classList.toggle('hide-line-numbers', !val);
@@ -273,7 +273,7 @@ const renderEditorTab = (container, settings) => {
 
 const renderAiTab = (container, settings) => {
   // Ollama URL
-  const urlSection = createSection('Ollama URL');
+  const urlSection = createSection(t('settings.ollamaUrl'));
   const urlInput = document.createElement('input');
   urlInput.type = 'url';
   urlInput.value = getOllamaUrl();
@@ -287,7 +287,7 @@ const renderAiTab = (container, settings) => {
   container.appendChild(urlSection);
 
   // Model selection
-  const modelSection = createSection('AI Model');
+  const modelSection = createSection(t('settings.aiModel'));
   const modelInput = document.createElement('input');
   modelInput.type = 'text';
   modelInput.value = localStorage.getItem('marklink-ai-model') || '';
@@ -301,7 +301,7 @@ const renderAiTab = (container, settings) => {
   container.appendChild(modelSection);
 
   // API Key (for cloud endpoints)
-  const keySection = createSection('API Key (Cloud Endpoint)');
+  const keySection = createSection(t('settings.apiKey'));
   const keyInput = document.createElement('input');
   keyInput.type = 'password';
   keyInput.value = localStorage.getItem('marklink-ai-apikey') || '';
@@ -315,14 +315,14 @@ const renderAiTab = (container, settings) => {
 
   const showKeyBtn = document.createElement('button');
   showKeyBtn.className = 'settings-btn settings-btn-small';
-  showKeyBtn.textContent = 'Show';
+  showKeyBtn.textContent = t('settings.show');
   showKeyBtn.addEventListener('click', () => {
     if (keyInput.type === 'password') {
       keyInput.type = 'text';
-      showKeyBtn.textContent = 'Hide';
+      showKeyBtn.textContent = t('settings.hide');
     } else {
       keyInput.type = 'password';
-      showKeyBtn.textContent = 'Show';
+      showKeyBtn.textContent = t('settings.show');
     }
   });
   keySection.appendChild(showKeyBtn);
@@ -331,9 +331,9 @@ const renderAiTab = (container, settings) => {
   // Test connection
   const testBtn = document.createElement('button');
   testBtn.className = 'settings-btn settings-btn-primary';
-  testBtn.textContent = 'Test Connection';
+  testBtn.textContent = t('settings.testConnection');
   testBtn.addEventListener('click', async () => {
-    testBtn.textContent = 'Testing...';
+    testBtn.textContent = t('settings.testing');
     testBtn.disabled = true;
     try {
       const url = getOllamaUrl();
@@ -348,7 +348,7 @@ const renderAiTab = (container, settings) => {
     } catch (err) {
       toastError(`Connection failed: ${err.message}`);
     } finally {
-      testBtn.textContent = 'Test Connection';
+      testBtn.textContent = t('settings.testConnection');
       testBtn.disabled = false;
     }
   });
@@ -357,7 +357,7 @@ const renderAiTab = (container, settings) => {
 
 const renderStorageTab = (container) => {
   // Storage usage
-  const usageSection = createSection('Browser Storage Usage');
+  const usageSection = createSection(t('settings.browserStorage'));
   const usageInfo = document.createElement('div');
   usageInfo.className = 'storage-usage-info';
 
@@ -373,13 +373,13 @@ const renderStorageTab = (container) => {
   container.appendChild(usageSection);
 
   // Clear cache
-  const clearSection = createSection('Clear Data');
+  const clearSection = createSection(t('settings.clearData'));
   const clearRow = document.createElement('div');
   clearRow.className = 'settings-row settings-row-gap';
 
   const clearCacheBtn = document.createElement('button');
   clearCacheBtn.className = 'settings-btn settings-btn-danger';
-  clearCacheBtn.textContent = 'Clear Auto-save Cache';
+  clearCacheBtn.textContent = t('settings.clearAutoSave');
   clearCacheBtn.addEventListener('click', () => {
     const keys = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -396,13 +396,13 @@ const renderStorageTab = (container) => {
   container.appendChild(clearSection);
 
   // Export settings
-  const exportSection = createSection('Settings Backup');
+  const exportSection = createSection(t('settings.settingsBackup'));
   const exportRow = document.createElement('div');
   exportRow.className = 'settings-row settings-row-gap';
 
   const exportBtn = document.createElement('button');
   exportBtn.className = 'settings-btn settings-btn-primary';
-  exportBtn.textContent = 'Export Settings';
+  exportBtn.textContent = t('settings.exportSettings');
   exportBtn.addEventListener('click', () => {
     const allSettings = {};
     for (let i = 0; i < localStorage.length; i++) {
@@ -423,7 +423,7 @@ const renderStorageTab = (container) => {
 
   const importBtn = document.createElement('button');
   importBtn.className = 'settings-btn';
-  importBtn.textContent = 'Import Settings';
+  importBtn.textContent = t('settings.importSettings');
   importBtn.addEventListener('click', () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -461,7 +461,7 @@ const renderAboutTab = (container) => {
   aboutDiv.innerHTML = `
     <div class="about-logo">&#9998; OfficeLink SL</div>
     <div class="about-version">Version 1.0.0</div>
-    <div class="about-desc">A powerful browser-based office suite by SeouLink (SL Corporation).</div>
+    <div class="about-desc">${t('settings.aboutDesc')}</div>
     <div class="about-features">
       <p>Markdown Editor, Document Editor, Spreadsheet, Slide Presenter, PDF Viewer, Photo Editor, Calculator, 3D CAD, Drawing Canvas, AI Assistant</p>
     </div>
@@ -481,17 +481,17 @@ const renderAboutTab = (container) => {
 const renderPluginsTab = (container) => {
   const plugins = getPluginList();
 
-  const headerSection = createSection('Installed Plugins');
+  const headerSection = createSection(t('settings.installedPlugins'));
   const headerDesc = document.createElement('p');
   headerDesc.style.cssText = 'font-size:12px;opacity:0.6;margin:0 0 12px;';
-  headerDesc.textContent = `${plugins.length} plugin${plugins.length !== 1 ? 's' : ''} installed. Toggle to enable or disable.`;
+  headerDesc.textContent = `${plugins.length} ${t('settings.plugins')} ${t('settings.pluginsDesc')}`;
   headerSection.appendChild(headerDesc);
   container.appendChild(headerSection);
 
   if (plugins.length === 0) {
     const emptyMsg = document.createElement('div');
     emptyMsg.style.cssText = 'text-align:center;padding:24px;opacity:0.5;font-size:13px;';
-    emptyMsg.textContent = 'No plugins installed.';
+    emptyMsg.textContent = t('settings.noPlugins');
     container.appendChild(emptyMsg);
     return;
   }

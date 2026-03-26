@@ -3683,7 +3683,7 @@ function toggleFocusMode() {
     const updateWC = () => {
       const text = editArea.innerText || '';
       const words = text.trim().split(/\s+/).filter(w => w).length;
-      wc.textContent = `${words} words`;
+      wc.textContent = `${words} ${t('doc.words')}`;
     };
     editArea.addEventListener('input', updateWC);
     updateWC();
@@ -3744,7 +3744,7 @@ function toggleReadingMode() {
 
     const tocHeader = document.createElement('div');
     tocHeader.style.cssText = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);margin-bottom:12px;padding:0 4px';
-    tocHeader.textContent = 'Table of Contents';
+    tocHeader.textContent = t('doc.toc');
     tocPanel.appendChild(tocHeader);
 
     const tocList = document.createElement('div');
@@ -5017,7 +5017,7 @@ function updateAutoSaveIndicator() {
   }
   const now = new Date();
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  indicator.textContent = `Auto-saved ${timeStr}`;
+  indicator.textContent = `${t('doc.autoSaved')} ${timeStr}`;
   indicator.style.opacity = '1';
   setTimeout(() => { if (indicator) indicator.style.opacity = '0.6'; }, 3000);
 }
@@ -5173,9 +5173,9 @@ function showVersionDiffDialog() {
     dlg.querySelector('#vdiff-right-content').innerHTML = rightHtml;
     dlg.querySelector('#vdiff-result').style.display = '';
     dlg.querySelector('#vdiff-stats').style.display = '';
-    dlg.querySelector('.vdiff-stat-additions').textContent = `${additions} additions`;
-    dlg.querySelector('.vdiff-stat-deletions').textContent = `${deletions} deletions`;
-    dlg.querySelector('.vdiff-stat-modifications').textContent = `${modifications} modifications`;
+    dlg.querySelector('.vdiff-stat-additions').textContent = `${additions} ${t('doc.additions')}`;
+    dlg.querySelector('.vdiff-stat-deletions').textContent = `${deletions} ${t('doc.deletions')}`;
+    dlg.querySelector('.vdiff-stat-modifications').textContent = `${modifications} ${t('doc.modifications')}`;
 
     // Sync scroll
     const leftPane = dlg.querySelector('#vdiff-left');

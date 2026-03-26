@@ -219,6 +219,25 @@
   flex-shrink: 0;
 }
 
+/* ===== Image Info Panel ===== */
+.photo-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border-color, rgba(128,128,128,0.15));
+}
+.photo-info-row:last-child { border-bottom: none; }
+.photo-info-label {
+  color: var(--text-secondary, #888);
+  font-weight: 500;
+}
+.photo-info-value {
+  color: var(--text-color, #ccc);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ===== Editor area (hidden by default) ===== */
 .photo-editor-area {
   display: none;

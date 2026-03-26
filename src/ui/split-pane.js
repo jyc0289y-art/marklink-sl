@@ -11,6 +11,35 @@ export function initSplitPane(divider, leftPane, rightPane) {
   let startX = 0;
   let startLeftWidth = 0;
 
+  // A11y attributes for the resize divider
+  divider.setAttribute('role', 'separator');
+  divider.setAttribute('aria-orientation', 'vertical');
+  divider.setAttribute('aria-label', 'Resize pane divider');
+  divider.setAttribute('tabindex', '0');
+
+  // Keyboard support for resizing
+  divider.addEventListener('keydown', (e) => {
+    const STEP = e.shiftKey ? 50 : 10;
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+
+    e.preventDefault();
+    const container = leftPane.parentElement;
+    const containerWidth = container.getBoundingClientRect().width;
+    const dividerWidth = divider.getBoundingClientRect().width;
+    const currentLeftWidth = leftPane.getBoundingClientRect().width;
+
+    const delta = e.key === 'ArrowRight' ? STEP : -STEP;
+    let newLeftWidth = currentLeftWidth + delta;
+    const minWidth = 200;
+    const maxWidth = containerWidth - dividerWidth - minWidth;
+    newLeftWidth = Math.max(minWidth, Math.min(maxWidth, newLeftWidth));
+
+    const leftRatio = newLeftWidth / (containerWidth - dividerWidth);
+    const rightRatio = 1 - leftRatio;
+    leftPane.style.flex = `${leftRatio}`;
+    rightPane.style.flex = `${rightRatio}`;
+  });
+
   divider.addEventListener('mousedown', (e) => {
     isDragging = true;
     startX = e.clientX;

@@ -6,6 +6,7 @@
 // Uses string concat to prevent Vite from analyzing these imports
 import { escapeHtml as _esc } from '../utils/sanitize.js';
 import * as OCCT from './occt-engine.js';
+import { t } from '../ui/i18n.js';
 let THREE, OrbitControls, TransformControls, STLExporter, OBJExporter, GLTFExporter, STLLoader, OBJLoader, GLTFLoader;
 
 const CDN = 'https://cdn.jsdelivr.net/npm/three@0.162.0';
@@ -2360,7 +2361,7 @@ function updateStatusBar(msg) {
   if (statusEl && msg) statusEl.textContent = msg;
 
   const countEl = document.getElementById('cad-obj-count');
-  if (countEl) countEl.textContent = `Objects: ${sceneObjects.length}`;
+  if (countEl) countEl.textContent = `${t('cad.objects')}: ${sceneObjects.length}`;
 }
 
 /* ===================== Event Binding ===================== */
@@ -3537,7 +3538,7 @@ async function initOCCTEngine() {
   // Show progress bar
   if (progressBar) progressBar.style.display = 'flex';
   if (statusIndicator) {
-    statusIndicator.textContent = 'Loading B-Rep...';
+    statusIndicator.textContent = t('cad.loadingBrep');
     statusIndicator.className = 'cad-brep-status loading';
   }
 
@@ -3558,7 +3559,7 @@ async function initOCCTEngine() {
   if (success) {
     occtEnabled = true;
     if (statusIndicator) {
-      statusIndicator.textContent = 'B-Rep Engine: Active';
+      statusIndicator.textContent = t('cad.brepActive');
       statusIndicator.className = 'cad-brep-status active';
     }
     // Enable OCCT-only buttons
@@ -3570,7 +3571,7 @@ async function initOCCTEngine() {
   } else {
     occtEnabled = false;
     if (statusIndicator) {
-      statusIndicator.textContent = 'Mesh Mode (Fallback)';
+      statusIndicator.textContent = t('cad.meshFallback');
       statusIndicator.className = 'cad-brep-status fallback';
     }
     updateStatusBar('B-Rep engine unavailable — using mesh mode');
@@ -3767,7 +3768,7 @@ function showFilletDialog() {
   if (dialog) {
     const edgeCount = OCCT.getEdgeCount(occtShapes.get(selectedObject.uuid));
     const infoEl = dialog.querySelector('.cad-fillet-info');
-    if (infoEl) infoEl.textContent = `${edgeCount} edges available`;
+    if (infoEl) infoEl.textContent = `${edgeCount} ${t('cad.edgesAvailable')}`;
     dialog.style.display = 'flex';
   }
 }
@@ -3824,7 +3825,7 @@ function showChamferDialog() {
   if (dialog) {
     const edgeCount = OCCT.getEdgeCount(occtShapes.get(selectedObject.uuid));
     const infoEl = dialog.querySelector('.cad-chamfer-info');
-    if (infoEl) infoEl.textContent = `${edgeCount} edges available`;
+    if (infoEl) infoEl.textContent = `${edgeCount} ${t('cad.edgesAvailable')}`;
     dialog.style.display = 'flex';
   }
 }
@@ -3880,7 +3881,7 @@ function showShellDialog() {
   if (dialog) {
     const faceCount = OCCT.getFaceCount(occtShapes.get(selectedObject.uuid));
     const infoEl = dialog.querySelector('.cad-shell-info');
-    if (infoEl) infoEl.textContent = `${faceCount} faces available`;
+    if (infoEl) infoEl.textContent = `${faceCount} ${t('cad.facesAvailable')}`;
     dialog.style.display = 'flex';
   }
 }

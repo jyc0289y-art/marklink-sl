@@ -943,7 +943,7 @@ function addStickyNote(wrapper, x, y, pageNum) {
   popup.appendChild(header);
 
   const textarea = document.createElement('textarea');
-  textarea.placeholder = 'Add note...';
+  textarea.placeholder = t('pdf.addNote');
   popup.appendChild(textarea);
 
   note.addEventListener('click', (e) => {

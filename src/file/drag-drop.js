@@ -1,5 +1,7 @@
 // OfficeLink SL — Enhanced Drag & Drop Handler
 
+import { t } from '../ui/i18n.js';
+
 /**
  * File type icon mapping for drop overlay
  */
@@ -40,6 +42,12 @@ export const initDragDrop = (onFileLoad) => {
     e.preventDefault();
     e.stopPropagation();
   });
+
+  // Set a11y attributes on drop overlay
+  if (overlay) {
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-label', 'File drop zone');
+  }
 
   document.addEventListener('dragenter', (e) => {
     e.preventDefault();
@@ -308,7 +316,7 @@ const _showMultiFileToast = (count) => {
     box-shadow: 0 4px 16px rgba(0,0,0,0.3); z-index: 9999;
     border: 1px solid var(--border-color, #333);
   `;
-  toast.textContent = `Opened 1 of ${count} files. Drop files individually to open others.`;
+  toast.textContent = t('dragdrop.openedOneOf').replace('{count}', count);
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 3000);
 };

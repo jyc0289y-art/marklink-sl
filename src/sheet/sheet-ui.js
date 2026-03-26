@@ -1238,7 +1238,7 @@ function updateStatusBar() {
     }
   }
 
-  leftEl.textContent = `${count} cells selected`;
+  leftEl.textContent = `${count} ${t('sheet.cellsSelected')}`;
   if (vals.length > 0) {
     const sum = vals.reduce((a, b) => a + b, 0);
     const avg = sum / vals.length;

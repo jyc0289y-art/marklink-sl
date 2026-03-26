@@ -55,6 +55,7 @@ export function switchTab(tabName) {
     btn.classList.toggle('active', isActive);
     btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
     btn.setAttribute('tabindex', isActive ? '0' : '-1');
+    btn.setAttribute('aria-controls', `view-${btn.dataset.tab}`);
     if (isActive) btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   });
 
@@ -64,6 +65,13 @@ export function switchTab(tabName) {
     view.classList.toggle('active', isActive);
     view.setAttribute('role', 'tabpanel');
     view.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+    // Link tabpanel back to its controlling tab button
+    const tabId = view.id.replace('view-', '');
+    const tabBtn = document.querySelector(`.tab-item[data-tab="${tabId}"]`);
+    if (tabBtn) {
+      if (!tabBtn.id) tabBtn.id = `tab-btn-${tabId}`;
+      view.setAttribute('aria-labelledby', tabBtn.id);
+    }
   });
 
   // Show loading spinner for heavy tabs on first switch

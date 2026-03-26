@@ -1,6 +1,8 @@
 // OfficeLink SL — Theme Customizer
 // Accent color, font family, font size, editor background, custom CSS
 
+import { t } from './i18n.js';
+
 const STORAGE_KEY_PREFIX = 'officelink-theme-';
 const KEYS = {
   accent: `${STORAGE_KEY_PREFIX}accent`,
@@ -331,7 +333,7 @@ export const buildThemeCustomizerPanel = () => {
   // ── Reset Button ──
   const resetBtn = document.createElement('button');
   resetBtn.className = 'settings-btn settings-btn-danger';
-  resetBtn.textContent = 'Reset to Defaults';
+  resetBtn.textContent = t('settings.resetDefaults');
   resetBtn.addEventListener('click', () => {
     resetThemeCustomization();
     // Re-render panel

@@ -1,5 +1,7 @@
 // OfficeLink SL — Slide Editor
 
+import { t } from '../ui/i18n.js';
+
 const LAYOUTS = {
   title: '<h1 class="slide-title">Title</h1><p class="slide-subtitle">Subtitle</p>',
   content: '<h2>Slide Title</h2><ul><li>Point 1</li><li>Point 2</li><li>Point 3</li></ul>',
@@ -13,11 +15,58 @@ const LAYOUTS = {
   quote: '<div style="display:flex;flex-direction:column;justify-content:center;height:100%;padding:0 40px"><div style="font-size:72px;line-height:0.8;opacity:0.15;font-family:Georgia,serif">&ldquo;</div><blockquote style="font-size:32px;font-style:italic;margin:0;line-height:1.5;padding:0 20px">Insert your quote here.</blockquote><p style="font-size:18px;margin:24px 0 0 20px;opacity:0.6">&mdash; Author Name</p></div>',
 };
 
+/* ─── Slide Templates ─────────────────────────────────────────── */
+const SLIDE_TEMPLATES = {
+  'title-slide': {
+    name: 'Title Slide',
+    icon: 'T',
+    preview: '<div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center"><h1 style="font-size:48px;margin:0 0 12px">Presentation Title</h1><p style="font-size:24px;opacity:0.6;margin:0">Your subtitle here</p></div>',
+    content: '<div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center"><h1 style="font-size:48px;margin:0 0 12px">Presentation Title</h1><p style="font-size:24px;opacity:0.6;margin:0">Your subtitle here</p></div>',
+  },
+  'title-content': {
+    name: 'Title + Content',
+    icon: 'TC',
+    preview: '<div><h2 style="font-size:20px;margin:0 0 8px;border-bottom:2px solid rgba(128,128,128,0.2);padding-bottom:6px">Slide Title</h2><ul style="margin:8px 0 0;padding-left:20px;font-size:12px"><li>Point 1</li><li>Point 2</li><li>Point 3</li></ul></div>',
+    content: '<h2 style="font-size:36px;margin:0 0 16px;border-bottom:2px solid rgba(128,128,128,0.2);padding-bottom:12px">Slide Title</h2><ul style="font-size:22px;line-height:1.8;margin:0;padding-left:28px"><li>Point 1</li><li>Point 2</li><li>Point 3</li></ul>',
+  },
+  'two-column': {
+    name: 'Two Column',
+    icon: '||',
+    preview: '<div><h2 style="font-size:14px;margin:0 0 6px">Title</h2><div style="display:flex;gap:8px"><div style="flex:1;background:rgba(128,128,128,0.08);border-radius:4px;padding:4px;font-size:8px">Left</div><div style="flex:1;background:rgba(128,128,128,0.08);border-radius:4px;padding:4px;font-size:8px">Right</div></div></div>',
+    content: '<h2 style="font-size:36px;margin:0 0 20px">Title</h2><div style="display:flex;gap:32px"><div style="flex:1"><h3 style="font-size:24px;margin:0 0 12px">Left Column</h3><p style="font-size:18px;line-height:1.6">Content for the left column goes here.</p></div><div style="flex:1"><h3 style="font-size:24px;margin:0 0 12px">Right Column</h3><p style="font-size:18px;line-height:1.6">Content for the right column goes here.</p></div></div>',
+  },
+  'blank': {
+    name: 'Blank',
+    icon: '[ ]',
+    preview: '<div style="height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(128,128,128,0.4)">Blank</div>',
+    content: '<p>&nbsp;</p>',
+  },
+};
+
 let slides = [
   { content: LAYOUTS.title, notes: '', theme: 'default', transition: 'none' },
 ];
 let activeSlideIdx = 0;
 let canvasEl, panelEl, notesEl, themeSelect, transitionSelect;
+
+/* Cleanup tracking for destroySlideEditor */
+const _slideCleanupRefs = {
+  listeners: [],
+  intervals: [],
+};
+
+/** Register a listener for later cleanup */
+const _trackListener = (el, event, handler, options) => {
+  if (!el) return;
+  el.addEventListener(event, handler, options);
+  _slideCleanupRefs.listeners.push({ el, event, handler, options });
+};
+
+/** Register an interval for later cleanup */
+const _trackInterval = (id) => {
+  _slideCleanupRefs.intervals.push(id);
+  return id;
+};
 
 export function initSlideEditor() {
   canvasEl = document.getElementById('slide-canvas');
@@ -30,6 +79,14 @@ export function initSlideEditor() {
   renderPanel();
   loadSlide(0);
   bindEvents();
+
+  // Auto-save notes every 3 seconds to prevent data loss
+  _trackInterval(setInterval(() => {
+    if (notesEl && slides[activeSlideIdx]) {
+      const currentNotes = notesEl.tagName === 'TEXTAREA' ? (notesEl.value || '') : (notesEl.innerHTML || '');
+      slides[activeSlideIdx].notes = currentNotes;
+    }
+  }, 3000));
 }
 
 function bindEvents() {
@@ -44,20 +101,9 @@ function bindEvents() {
     slides[activeSlideIdx].notes = notesEl.tagName === 'TEXTAREA' ? notesEl.value : notesEl.innerHTML;
   });
 
-  // Add slide
-  document.getElementById('slide-add')?.addEventListener('click', () => {
-    const layout = document.getElementById('slide-layout')?.value || 'content';
-    const theme = themeSelect?.value || 'default';
-    const transition = transitionSelect?.value || 'none';
-    slides.splice(activeSlideIdx + 1, 0, {
-      content: LAYOUTS[layout] || LAYOUTS.content,
-      notes: '',
-      theme,
-      transition,
-    });
-    activeSlideIdx++;
-    renderPanel();
-    loadSlide(activeSlideIdx);
+  // Add slide — show template picker
+  document.getElementById('slide-add')?.addEventListener('click', (e) => {
+    showTemplatePicker(e.currentTarget);
   });
 
   // Delete slide
@@ -319,6 +365,74 @@ function bindEvents() {
       }
     }
   });
+}
+
+/* ─── Template Picker for Add Slide ────────────────────────────── */
+
+function showTemplatePicker(anchorBtn) {
+  const existing = document.querySelector('.slide-template-picker');
+  if (existing) { existing.remove(); return; }
+
+  const rect = anchorBtn?.getBoundingClientRect() || { bottom: 100, left: 100 };
+
+  const picker = document.createElement('div');
+  picker.className = 'slide-template-picker';
+  picker.style.cssText = `position:fixed;top:${rect.bottom + 6}px;left:${Math.min(rect.left, window.innerWidth - 380)}px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.18);padding:16px;z-index:2000;width:360px`;
+
+  let gridHTML = '';
+  for (const [key, tpl] of Object.entries(SLIDE_TEMPLATES)) {
+    gridHTML += `<div class="tpl-card" data-tpl="${key}" style="cursor:pointer;border:2px solid var(--border-color);border-radius:8px;overflow:hidden;transition:all 0.15s">
+      <div style="aspect-ratio:16/9;background:var(--hover-bg);padding:8px;font-size:9px;line-height:1.2;overflow:hidden;pointer-events:none">${tpl.preview}</div>
+      <div style="padding:4px 8px;font-size:11px;font-weight:600;text-align:center;color:var(--text-primary)">${tpl.name}</div>
+    </div>`;
+  }
+
+  picker.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span style="font-size:13px;font-weight:700;color:var(--text-primary)">Choose a template</span>
+      <button class="tpl-close" style="border:none;background:transparent;font-size:16px;cursor:pointer;color:var(--text-secondary)">&times;</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">${gridHTML}</div>
+  `;
+
+  document.body.appendChild(picker);
+
+  picker.querySelector('.tpl-close').addEventListener('click', () => picker.remove());
+
+  picker.querySelectorAll('.tpl-card').forEach((card) => {
+    card.addEventListener('mouseenter', () => { card.style.borderColor = 'var(--accent-color)'; });
+    card.addEventListener('mouseleave', () => { card.style.borderColor = 'var(--border-color)'; });
+    card.addEventListener('click', () => {
+      addSlideFromTemplate(card.dataset.tpl);
+      picker.remove();
+    });
+  });
+
+  // Close on outside click
+  setTimeout(() => {
+    const closePicker = (ev) => {
+      if (!picker.contains(ev.target) && ev.target !== anchorBtn) {
+        picker.remove();
+        document.removeEventListener('click', closePicker);
+      }
+    };
+    document.addEventListener('click', closePicker);
+  }, 0);
+}
+
+function addSlideFromTemplate(templateKey) {
+  const tpl = SLIDE_TEMPLATES[templateKey];
+  const theme = themeSelect?.value || 'default';
+  const transition = transitionSelect?.value || 'none';
+  slides.splice(activeSlideIdx + 1, 0, {
+    content: tpl ? tpl.content : LAYOUTS.content,
+    notes: '',
+    theme,
+    transition,
+  });
+  activeSlideIdx++;
+  renderPanel();
+  loadSlide(activeSlideIdx);
 }
 
 function saveCurrentSlide() {
@@ -1508,7 +1622,7 @@ function showSlideSorter() {
     });
     if (selectedSet.size > 0) {
       selCountEl.style.display = '';
-      selCountEl.textContent = `${selectedSet.size} selected`;
+      selCountEl.textContent = `${selectedSet.size} ${t('slide.selected')}`;
       delSelBtn.style.display = '';
     } else {
       selCountEl.style.display = 'none';
@@ -4869,7 +4983,7 @@ function initTransitionPreview() {
 
     const inner = document.createElement('div');
     inner.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary);font-family:sans-serif;background:var(--hover-bg)';
-    inner.textContent = 'Hover options to preview';
+    inner.textContent = t('slide.hoverPreview');
     previewEl.appendChild(inner);
     document.body.appendChild(previewEl);
 
@@ -4942,3 +5056,49 @@ function getTransitionPreviewFrom(transition) {
 }
 
 setTimeout(() => initTransitionPreview(), 100);
+
+/* ═══════════════════════════════════════════════════════════════
+   destroySlideEditor — cleanup all event listeners and intervals
+   ═══════════════════════════════════════════════════════════════ */
+
+/**
+ * Tears down the slide editor, removing tracked event listeners and
+ * clearing intervals.  Call this when unmounting the slide view to
+ * prevent memory leaks.
+ */
+export function destroySlideEditor() {
+  // Clear all tracked intervals
+  _slideCleanupRefs.intervals.forEach((id) => clearInterval(id));
+  _slideCleanupRefs.intervals.length = 0;
+
+  // Remove all tracked event listeners
+  _slideCleanupRefs.listeners.forEach(({ el, event, handler, options }) => {
+    try { el.removeEventListener(event, handler, options); } catch (_) { /* no-op */ }
+  });
+  _slideCleanupRefs.listeners.length = 0;
+
+  // Remove any floating UI elements created by the editor
+  [
+    '.slide-template-picker',
+    '.slide-shape-menu',
+    '.slide-align-menu',
+    '.slide-anim-panel',
+    '.slide-draw-toolbar',
+    '.slide-layout-picker',
+    '.slide-sorter-overlay',
+    '.sorter-ctx-menu',
+    '.master-slide-dialog',
+    '.gradient-bg-dialog',
+    '.pres-timer-dialog',
+    '.transition-preview-popup',
+  ].forEach((sel) => {
+    document.querySelectorAll(sel).forEach((el) => el.remove());
+  });
+
+  // Reset module-level references
+  canvasEl = null;
+  panelEl = null;
+  notesEl = null;
+  themeSelect = null;
+  transitionSelect = null;
+}

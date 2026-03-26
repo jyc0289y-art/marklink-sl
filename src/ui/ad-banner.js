@@ -109,6 +109,7 @@ function createSingleBanner(side) {
   closeBtn.className = 'ad-close-btn';
   closeBtn.innerHTML = '×';
   closeBtn.title = 'Close ad for today';
+  closeBtn.setAttribute('aria-label', 'Close advertisement');
   closeBtn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();

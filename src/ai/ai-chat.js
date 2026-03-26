@@ -169,11 +169,11 @@ function initUrlSettings() {
     testBtn.addEventListener('click', async () => {
       const resultEl = document.getElementById('ai-url-test-result');
       testBtn.disabled = true;
-      testBtn.textContent = 'Testing...';
+      testBtn.textContent = t('settings.testing');
       const urlToTest = urlInput?.value?.trim() || getOllamaUrl();
       const result = await testConnection(urlToTest);
       testBtn.disabled = false;
-      testBtn.textContent = 'Test';
+      testBtn.textContent = t('ai.test');
       if (resultEl) {
         if (result.success) {
           resultEl.innerHTML = `<span style="color:#4caf50">Connected — ${result.modelCount} model(s) found</span>`;
@@ -321,8 +321,8 @@ function showCorsHelp() {
       const codeEl = document.getElementById(btn.dataset.copy);
       if (codeEl) {
         navigator.clipboard.writeText(codeEl.textContent).then(() => {
-          btn.textContent = 'Copied!';
-          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+          btn.textContent = t('ai.copied');
+          setTimeout(() => { btn.textContent = t('ai.copy'); }, 1500);
         });
       }
     });
@@ -585,13 +585,13 @@ function updateStatusUI(running, corsError) {
   }
   if (fullStatusTextEl) {
     if (running) {
-      fullStatusTextEl.textContent = 'Ollama connected';
+      fullStatusTextEl.textContent = t('ai.connected');
       fullStatusTextEl.style.color = '#4caf50';
     } else if (corsError) {
-      fullStatusTextEl.textContent = 'CORS error — click Setup to fix';
+      fullStatusTextEl.textContent = t('ai.corsError');
       fullStatusTextEl.style.color = '#ff9800';
     } else {
-      fullStatusTextEl.textContent = 'Ollama not connected';
+      fullStatusTextEl.textContent = t('ai.notConnected');
       fullStatusTextEl.style.color = '#f44336';
     }
   }
@@ -609,7 +609,7 @@ function updateStatusBarWidget(running) {
     widget = document.createElement('span');
     widget.id = 'ai-statusbar-widget';
     widget.className = 'ai-statusbar-widget';
-    widget.title = 'AI Connection Status — click to open settings';
+    widget.title = t('ai.connectionStatus');
     widget.addEventListener('click', () => {
       // Open the settings panel
       const settingsPanel = document.getElementById('ai-url-settings');
@@ -1151,8 +1151,8 @@ async function showSetupModal() {
       const codeEl = document.getElementById(btn.dataset.copy);
       if (codeEl) {
         navigator.clipboard.writeText(codeEl.textContent).then(() => {
-          btn.textContent = 'Copied!';
-          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+          btn.textContent = t('ai.copied');
+          setTimeout(() => { btn.textContent = t('ai.copy'); }, 1500);
         });
       }
     });
@@ -1252,7 +1252,7 @@ async function showSetupModal() {
       const modelName = btn.dataset.model;
       if (!modelName) return;
       btn.disabled = true;
-      btn.textContent = 'Downloading...';
+      btn.textContent = t('ai.downloading');
 
       const progressSection = document.getElementById('ai-pull-progress');
       const progressLabel = document.getElementById('ai-pull-label');
@@ -1270,8 +1270,8 @@ async function showSetupModal() {
           }
         });
 
-        btn.textContent = 'Installed!';
-        if (progressLabel) progressLabel.textContent = 'Download complete!';
+        btn.textContent = t('ai.installed');
+        if (progressLabel) progressLabel.textContent = t('ai.downloadComplete');
 
         // Refresh model list
         const newModels = await listModels();
