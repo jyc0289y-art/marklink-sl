@@ -49,6 +49,15 @@ function _addHandler(el, event, fn) {
   _docHandlers.push({ el, event, fn });
 }
 
+/**
+ * Initialize the WYSIWYG document editor.
+ * Binds all toolbar buttons (formatting, insert, find/replace, outline, etc.),
+ * sets up paste handling (image paste, MS Office cleanup, tab-delimited tables),
+ * auto-correct, auto-save, word count tracking, and table context menus.
+ * Safe to call multiple times — guards against duplicate initialization.
+ *
+ * @returns {void}
+ */
 export function initDocEditor() {
   // Prevent duplicate initialization
   if (docEditorInitialized) return;
@@ -619,7 +628,14 @@ export function initDocEditor() {
   editorEl.addEventListener('keydown', autoCorrectHandler);
 }
 
-/** Destroy doc editor: remove listeners, clear intervals, reset state */
+/**
+ * Destroy the document editor instance: removes all registered event listeners,
+ * clears auto-save and tracking intervals, removes dynamic overlays (focus mode,
+ * reading mode, table toolbar, etc.), and resets module state. Should be called
+ * before re-initializing or when switching away from the document editor tab.
+ *
+ * @returns {void}
+ */
 export function destroyDocEditor() {
   // Remove all tracked handlers
   for (const h of _docHandlers) {

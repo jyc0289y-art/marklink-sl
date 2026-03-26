@@ -70,6 +70,7 @@
   <link rel="stylesheet" href="/src/styles/cad.css" />
   <link rel="stylesheet" href="/src/styles/draw.css" />
   <link rel="stylesheet" href="/src/styles/tutorial.css" />
+  <link rel="stylesheet" href="/src/styles/settings.css" />
 
   <!-- Tesseract.js OCR — deferred to not block initial render -->
   <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -84,6 +85,7 @@
   </script>
 </head>
 <body>
+  <a href="#main-content" class="skip-to-content">Skip to content</a>
   <!-- Toolbar -->
   <header id="toolbar" class="toolbar">
     <div class="toolbar-left">
@@ -131,6 +133,9 @@
       </button>
       <button id="btn-fullscreen" class="toolbar-btn toolbar-btn-fullscreen" data-tip="tip.fullscreen" title="Fullscreen">
         <span class="icon" id="fullscreen-icon">⛶</span>
+      </button>
+      <button id="btn-settings" class="toolbar-btn" data-tip="tip.settings" title="Settings (Ctrl+,)">
+        <span class="icon">&#9881;</span>
       </button>
       <button id="btn-theme" class="toolbar-btn" data-tip="tip.theme" title="Toggle Theme">
         <span class="icon" id="theme-icon">🌙</span>
@@ -249,6 +254,7 @@
       <div id="md-stats-bar" class="md-stats-bar"></div>
     </div>
 
+    <div id="main-content"></div>
     <!-- Document View -->
     <div id="view-document" class="app-view active">
       <div class="doc-toolbar">
@@ -2373,11 +2379,13 @@
   </aside>
 
   <!-- Status Bar -->
-  <footer id="status-bar" class="status-bar">
+  <footer id="status-bar" class="status-bar" role="status" aria-live="polite">
     <span id="status-left"></span>
     <span id="status-center"></span>
     <span id="status-right"></span>
   </footer>
+  <!-- Screen reader announcements -->
+  <div id="sr-announcements" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
 
   <!-- Drop Zone Overlay -->
   <div id="drop-overlay" class="drop-overlay hidden">

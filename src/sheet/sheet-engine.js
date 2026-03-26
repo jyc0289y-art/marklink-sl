@@ -31,7 +31,18 @@ export function getCell(sheet, r, c) {
   return sheet.cells[cellKey(r, c)] || null;
 }
 
-/** Set cell raw value and compute */
+/**
+ * Set a cell's raw value and compute its evaluated result.
+ * Empty or null values delete the cell. Numeric strings are parsed to numbers.
+ * Formula strings (starting with '=') are evaluated via the formula engine.
+ *
+ * @param {Object} sheet - The sheet data model
+ * @param {number} r - Zero-based row index
+ * @param {number} c - Zero-based column index
+ * @param {string|null} rawValue - The raw input value (e.g. "42", "=SUM(A1:A3)", "hello")
+ * @param {Object[]} [allSheets] - Array of all sheets for cross-sheet formula resolution
+ * @returns {void}
+ */
 export function setCell(sheet, r, c, rawValue, allSheets) {
   const key = cellKey(r, c);
   if (rawValue === '' || rawValue == null) {
@@ -286,7 +297,16 @@ function resolveSheetRef(currentSheet, refStr) {
 }
 
 /**
- * Evaluate a cell value — supports formulas starting with '='
+ * Evaluate a cell value — supports formulas starting with '='.
+ * Plain numeric strings are converted to numbers; non-numeric strings are
+ * returned as-is. Formulas are parsed and evaluated via evalFormula().
+ * Includes circular reference detection using a call stack and depth guard.
+ *
+ * @param {Object} sheet - The sheet data model (created by createSheetData)
+ * @param {string} raw - The raw cell input (e.g. "42", "hello", "=SUM(A1:A3)")
+ * @param {Object[]} [allSheets] - Array of all sheet data models for cross-sheet references
+ * @param {string} [cellId] - Unique cell key for circular reference detection
+ * @returns {number|string} The computed value, or an error string like '#ERROR' or '#CIRC!'
  */
 function evaluate(sheet, raw, allSheets, cellId) {
   if (!raw.startsWith('=')) {
@@ -317,7 +337,15 @@ function evaluate(sheet, raw, allSheets, cellId) {
 }
 
 /**
- * Sort sheet rows by a column
+ * Sort all rows in a sheet by the values in a specified column.
+ * Numeric values are compared numerically; strings are compared with localeCompare.
+ * Empty rows are grouped together (at top for ascending, bottom for descending).
+ * The sort is in-place — it rewrites sheet.cells with the new row ordering.
+ *
+ * @param {Object} sheet - The sheet data model
+ * @param {number} colIdx - Zero-based column index to sort by
+ * @param {boolean} [ascending=true] - Sort direction (true = ascending, false = descending)
+ * @returns {void}
  */
 export function sortByColumn(sheet, colIdx, ascending = true) {
   // Gather data for ALL rows (including empty ones) to preserve row positions
@@ -381,10 +409,17 @@ function parseTopLevelCall(expr) {
 }
 
 /**
- * Formula evaluator
- * Supports: SUM, AVERAGE, COUNT, COUNTA, MIN, MAX, IF, SUMIF, COUNTIF,
- *   VLOOKUP, CONCATENATE/CONCAT, LEFT, RIGHT, MID, LEN, TRIM,
- *   UPPER, LOWER, ROUND, ABS, TODAY, NOW, and basic arithmetic
+ * Top-level formula evaluator. Routes expressions to function handlers or
+ * arithmetic evaluation. Supports 50+ spreadsheet functions including:
+ * SUM, AVERAGE, COUNT, COUNTA, MIN, MAX, IF, SUMIF, COUNTIF, VLOOKUP,
+ * XLOOKUP, CONCATENATE, LEFT, RIGHT, MID, LEN, TRIM, UPPER, LOWER,
+ * ROUND, ABS, TODAY, NOW, SIN, COS, SQRT, POWER, LOG, and more.
+ * Also handles named ranges, nested calls, and trailing arithmetic
+ * (e.g. "SUM(A1:A3)+10").
+ *
+ * @param {Object} sheet - The sheet data model
+ * @param {string} expr - The formula expression without leading '=' (already uppercased)
+ * @returns {number|string} The computed result or an error string
  */
 function evalFormula(sheet, expr) {
   // Parse top-level function call with balanced parentheses
@@ -1556,8 +1591,17 @@ const MONTH_NAMES = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','A
 const MONTH_SHORT = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
 /**
- * Auto-fill from source cells to target cells along a direction.
- * sourceRange: [{r,c},...], direction: 'down'|'right'|'up'|'left', count: how many cells to fill
+ * Auto-fill a range of cells by detecting and extending patterns from source cells.
+ * Supports numeric series (incrementing by detected step), day/month name sequences,
+ * and repeating text patterns. The fill direction can be down, right, up, or left.
+ * Automatically expands the sheet dimensions if the fill extends beyond current bounds.
+ *
+ * @param {Object} sheet - The sheet data model
+ * @param {{r: number, c: number}[]} sourceRange - Array of source cell positions (zero-based)
+ * @param {'down'|'right'|'up'|'left'} direction - Direction to fill
+ * @param {number} count - Number of cells to fill
+ * @param {Object[]} [allSheets] - Array of all sheets for cross-sheet formula resolution
+ * @returns {void}
  */
 export function autoFillRange(sheet, sourceRange, direction, count, allSheets) {
   if (!sourceRange.length || count <= 0) return;

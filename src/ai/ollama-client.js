@@ -169,7 +169,11 @@ export function formatModelSize(bytes) {
 }
 
 /**
- * List installed models
+ * List all models installed on the Ollama server. Queries the /api/tags endpoint
+ * with a 5-second timeout. Returns an empty array on connection failure.
+ *
+ * @returns {Promise<{name: string, size: number, digest: string, modified_at: string}[]>}
+ *   Array of model objects, or empty array if unavailable
  */
 export async function listModels() {
   try {
@@ -219,11 +223,16 @@ export function isVisionModel(modelName) {
 }
 
 /**
- * Chat with Ollama — streaming response
- * @param {string} model
- * @param {Array} messages - chat history [{role, content, images?}]
- * @param {string} systemPrompt
- * @param {Function} onToken
+ * Chat with Ollama using streaming response. Sends messages to the local Ollama
+ * server and streams tokens back via the onToken callback. Automatically prepends
+ * the system prompt to the message history.
+ *
+ * @param {string} model - Model name (e.g. "qwen2.5:7b", "llama3.2-vision:11b")
+ * @param {{role: string, content: string, images?: string[]}[]} messages - Chat history
+ * @param {string} systemPrompt - System prompt to prepend to the conversation
+ * @param {(token: string, fullContent: string) => void} onToken - Callback invoked per streamed token
+ * @returns {Promise<{content: string, tokenStats: {promptTokens: number, completionTokens: number, totalDurationMs: number, model: string}|null}>}
+ * @throws {Error} If the Ollama server returns a non-OK response
  */
 export async function chat(model, messages, systemPrompt, onToken) {
   const body = {
@@ -295,8 +304,18 @@ export async function getModelInfo(modelName) {
 }
 
 /**
- * Stream chat — yields tokens via callback, supports abort
- * Returns { content, tokenStats, aborted }
+ * Stream chat with abort support — sends messages to Ollama or an OpenAI-compatible
+ * cloud endpoint and streams tokens back. Supports both local Ollama format and
+ * OpenAI SSE format (for cloud endpoints configured via setCloudEndpoint).
+ * Includes API key authentication when configured.
+ *
+ * @param {string} model - Model name to use
+ * @param {{role: string, content: string, images?: string[]}[]} messages - Chat history
+ * @param {string} systemPrompt - System prompt to prepend
+ * @param {(token: string, fullContent: string) => void} onToken - Per-token callback
+ * @param {AbortSignal} [abortSignal] - Optional AbortSignal to cancel the request
+ * @returns {Promise<{content: string, tokenStats: Object|null, aborted: boolean}>}
+ * @throws {Error} If the server returns a non-OK response (unless aborted)
  */
 export async function streamChat(model, messages, systemPrompt, onToken, abortSignal) {
   const body = {

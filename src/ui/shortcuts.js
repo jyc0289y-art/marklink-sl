@@ -163,6 +163,7 @@ const closeTopOverlay = () => {
     '.context-menu',
     '.md-emoji-picker',
     '.template-library-overlay',
+    '.settings-overlay',
     '.feedback-overlay',
     '.tour-tooltip',
     '.version-history-overlay',
@@ -227,6 +228,7 @@ export const applyToolbarShortcutHints = () => {
     ['btn-italic',     'Italic',          'Mod+I'],
     ['btn-export',     'Export',          'Mod+P'],
     ['btn-fullscreen', 'Fullscreen',      'F11'],
+    ['btn-settings',   'Settings',        'Mod+,'],
   ];
   hints.forEach(([id, label, shortcut]) => addShortcutHint(id, label, shortcut));
 };

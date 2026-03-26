@@ -33,7 +33,7 @@ function createRenderer() {
 
   // Add heading anchors for TOC navigation
   const originalHeadingOpen = md.renderer.rules.heading_open;
-  md.renderer.rules.heading_open = function(tokens, idx, options, env, self) {
+  md.renderer.rules.heading_open = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
     const contentToken = tokens[idx + 1];
     const text = contentToken?.children?.reduce((acc, t) => acc + (t.content || ''), '') || '';

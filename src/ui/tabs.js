@@ -3,6 +3,13 @@
 let currentTab = 'document';
 const listeners = [];
 
+/**
+ * Initialize the tab bar navigation system. Binds click handlers to switch tabs
+ * and keyboard handlers for left/right arrow key navigation between tabs.
+ * Must be called once after the DOM is ready. No-ops if #tab-bar element is missing.
+ *
+ * @returns {void}
+ */
 export function initTabs() {
   const tabBar = document.getElementById('tab-bar');
   if (!tabBar) return;
@@ -30,6 +37,14 @@ export function initTabs() {
 const HEAVY_TABS = new Set(['pdf', 'photo', 'cad', '3d']);
 const _initializedTabs = new Set();
 
+/**
+ * Switch the active tab view. Updates visual state (active class, ARIA attributes),
+ * shows a loading spinner for heavy tabs (PDF, Photo, CAD, 3D) on first visit,
+ * scrolls the active tab button into view, and notifies all registered listeners.
+ *
+ * @param {string} tabName - The tab identifier (e.g. 'document', 'sheet', 'pdf', 'photo')
+ * @returns {void}
+ */
 export function switchTab(tabName) {
   const prev = currentTab;
   currentTab = tabName;
@@ -85,6 +100,11 @@ export function onTabChange(fn) {
   listeners.push(fn);
 }
 
+/**
+ * Get the name of the currently active tab.
+ *
+ * @returns {string} The current tab identifier (e.g. 'document', 'sheet', 'pdf')
+ */
 export function getCurrentTab() {
   return currentTab;
 }

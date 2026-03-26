@@ -179,8 +179,11 @@ export const checkAutoSaveRestore = async (key, onRestore) => {
 export const hasFileSystemAccess = () => 'showOpenFilePicker' in window;
 
 /**
- * Open a .md file
- * @returns {Promise<{name: string, content: string}>}
+ * Open a file using the File System Access API (Chromium) or a fallback file
+ * input dialog (Safari/Firefox). Sets the current file handle and name for
+ * subsequent quickSave operations. Adds the file to the recent files list.
+ *
+ * @returns {Promise<{name: string, content: string}>} The opened file's name and text content
  */
 export const openFile = async () => {
   if (hasFileSystemAccess()) {
@@ -190,8 +193,13 @@ export const openFile = async () => {
 };
 
 /**
- * Save content to file — always prompts for location/name
- * @param {string} content - Markdown content to save
+ * Save content to a file — always prompts for file location and name via
+ * the Save File Picker (Chromium) or triggers a download (fallback).
+ * Generates a timestamp-prefixed suggested filename. On success, updates
+ * the current file handle and clears auto-save data.
+ *
+ * @param {string} content - The text content to save
+ * @returns {Promise<{name: string}|null>} The saved file's name, or null if cancelled
  */
 export const saveFile = async (content) => {
   const suggestedName = generateTimestampFilename(currentFileName, 'md');
@@ -226,7 +234,13 @@ export const saveFile = async (content) => {
 };
 
 /**
- * Quick Save — save to current handle without prompting (if available)
+ * Quick Save — writes content to the currently open file handle without
+ * prompting for a new location (requires File System Access API and an
+ * active file handle from a previous open or save). Falls back to saveFile()
+ * if no handle is available. Clears auto-save data on success.
+ *
+ * @param {string} content - The text content to save
+ * @returns {Promise<{name: string}>} The saved file's name
  */
 export const quickSave = async (content) => {
   if (hasFileSystemAccess() && currentFileHandle) {

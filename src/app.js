@@ -4,7 +4,7 @@ import { initPreview, updatePreview, updatePreviewImmediate } from './preview/pr
 import { registerAllPlugins } from './preview/plugins.js';
 import { getRenderer } from './preview/renderer.js';
 import { initSplitPane } from './ui/split-pane.js';
-import { initTheme, toggleTheme, isDark } from './ui/theme-toggle.js';
+import { initTheme, toggleTheme, isDark, autoTheme, getCurrentTheme } from './ui/theme-toggle.js';
 import { initToolbar } from './ui/toolbar.js';
 import { initSidebar, showSidebar } from './ui/sidebar.js';
 import { initShortcuts, applyToolbarShortcutHints } from './ui/shortcuts.js';
@@ -37,6 +37,9 @@ import { initCalculator } from './calculator/calculator.js';
 import { initSnippetLibrary, initZenMode, updateEnhancedStatusBar, initShortcutOverlay, initMarkdownKeyboardShortcuts, initAutocomplete, initFocusMode, initTableEditor, initVersionSnapshots, initExportHtml } from './editor/md-enhance.js';
 import { initDocAiContextMenu, initSheetAi, initSlideAi, initMarkdownAi, initPdfAi, initPhotoAi } from './ai/ai-cowork.js';
 import { initTutorial } from './ui/tutorial.js';
+import { initThemeCustomizer } from './ui/theme-customizer.js';
+import { initTabSync, broadcastThemeChange, broadcastLangChange, broadcastFileEvent, markFileEditing } from './ui/tab-sync.js';
+import { showSettings, initSettings } from './ui/settings.js';
 import { initPwaInstallEnhanced } from './ui/pwa-install.js';
 import { initErrorBoundary, safeSetItem } from './ui/error-boundary.js';
 import { initTemplates, showTemplatePicker } from './ui/templates.js';
@@ -353,6 +356,7 @@ export async function initApp() {
         if (result) {
           updateFileName(result.name);
           setTabDirty(tab, false);
+          broadcastFileEvent('file-save', result.name);
           toastSuccess('File saved');
         }
       } catch (e) {
@@ -413,8 +417,7 @@ export async function initApp() {
       }
     },
     settings: () => {
-      // Open settings/preferences — show language picker as main settings
-      showLanguagePicker();
+      showSettings();
     },
     fullscreen: () => {
       if (!document.fullscreenElement) {
@@ -441,7 +444,7 @@ export async function initApp() {
 
   // 15. Render recent files
   renderRecentFiles(document.getElementById('recent-files'), (name) => {
-    console.log('Recent file clicked:', name);
+    // Recent file click handler — no-op placeholder for now
   });
 
   // 16. Scroll sync
@@ -588,6 +591,8 @@ export async function initApp() {
   if (langBtn) {
     langBtn.addEventListener('click', () => showLanguagePicker());
   }
+  // Broadcast language changes to other tabs
+  onLangChange((lang) => broadcastLangChange(lang));
 
   // 21. First-time user onboarding tour
   initOnboardingTour();
@@ -599,6 +604,38 @@ export async function initApp() {
 
   // 22. Tutorial & Help System (guided tours, help center, F1 contextual help)
   initTutorial();
+
+  // 22b. Theme Customizer (accent color, font, editor bg, custom CSS)
+  initThemeCustomizer();
+
+  // 22c. Unified Settings Panel
+  initSettings();
+  const settingsBtn = document.getElementById('btn-settings');
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', () => showSettings());
+  }
+
+  // 22d. Cross-Tab Sync (theme, language, file events, presence)
+  initTabSync({
+    onThemeChange: (theme) => {
+      if (theme === 'auto') {
+        autoTheme();
+      } else if (getCurrentTheme() !== theme) {
+        toggleTheme();
+      }
+    },
+    onLangChange: (lang) => {
+      setLang(lang);
+    },
+    onFileNotify: (type, fileName) => {
+      if (type === 'file-save') {
+        toastInfo(`"${fileName}" saved in another tab`);
+      }
+    },
+    onConflict: (fileName) => {
+      // Conflict warning is shown by tab-sync module
+    },
+  });
 
   // 23. PWA Install Enhanced (custom banner, platform detection, install modal)
   initPwaInstallEnhanced();

@@ -871,7 +871,7 @@ function initEnhancedGraph() {
 
 // Override plotGraph to support parametric and polar
 const _origPlotGraph = plotGraph;
-plotGraph = function() {
+plotGraph = () => {
   const canvas = document.getElementById('calc-graph-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');

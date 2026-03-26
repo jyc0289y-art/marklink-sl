@@ -1240,7 +1240,7 @@ function openSpeakerView() {
       <button onclick="window.opener.postMessage({type:'speaker-start-pres'},'*')" style="background:#10b981">▶ Start Presentation</button>
     </div>
     <script>
-      document.addEventListener('keydown', function(e) {
+      document.addEventListener('keydown', (e) => {
         if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); window.opener.postMessage({type:'speaker-next'},'*'); }
         if (e.key === 'ArrowLeft') { e.preventDefault(); window.opener.postMessage({type:'speaker-prev'},'*'); }
       });
@@ -3700,13 +3700,13 @@ function openPresenterView() {
       <button class="danger" onclick="window.close()">End</button>
     </div>
     <script>
-      document.addEventListener('keydown', function(e) {
+      document.addEventListener('keydown', (e) => {
         if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); window.opener.postMessage({type:'pv-next'},'*'); }
         if (e.key === 'ArrowLeft') { e.preventDefault(); window.opener.postMessage({type:'pv-prev'},'*'); }
         if (e.key === 'Escape') { window.close(); }
       });
-      document.querySelectorAll('.pv-thumb').forEach(function(t) {
-        t.addEventListener('click', function() {
+      document.querySelectorAll('.pv-thumb').forEach((t) => {
+        t.addEventListener('click', () => {
           window.opener.postMessage({type:'pv-goto', idx: parseInt(t.dataset.idx)},'*');
         });
       });

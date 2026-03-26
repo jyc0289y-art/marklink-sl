@@ -1,0 +1,517 @@
+// OfficeLink SL — Unified Settings Panel
+// General, Editor, AI, Storage, About sections
+// Accessible via Ctrl+, or gear icon
+
+import { getCurrentTheme, toggleTheme, autoTheme, isAutoTheme } from './theme-toggle.js';
+import { buildThemeCustomizerPanel, getThemeSettings, importThemeSettings, resetThemeCustomization } from './theme-customizer.js';
+import { getLang, setLang, showLanguagePicker } from './i18n.js';
+import { getOllamaUrl, setOllamaUrl } from '../ai/ollama-client.js';
+import { toastSuccess, toastError, toastInfo } from './toast.js';
+import { broadcastThemeChange, broadcastLangChange } from './tab-sync.js';
+
+const SETTINGS_STORAGE_KEY = 'officelink-settings';
+let settingsOverlay = null;
+
+// Editable settings with defaults
+const DEFAULT_SETTINGS = {
+  autoSaveInterval: 30,     // seconds
+  spellCheck: true,
+  lineNumbers: true,
+  aiOllamaUrl: '',
+  aiModel: '',
+  aiApiKey: '',
+};
+
+/**
+ * Load general settings from localStorage
+ */
+const loadSettings = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}');
+    return { ...DEFAULT_SETTINGS, ...saved };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+};
+
+/**
+ * Save general settings
+ */
+const saveSettings = (settings) => {
+  try {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch { /* quota */ }
+};
+
+/**
+ * Get a single setting value
+ */
+export const getSetting = (key) => {
+  const settings = loadSettings();
+  return settings[key] ?? DEFAULT_SETTINGS[key];
+};
+
+/**
+ * Set a single setting value
+ */
+export const setSetting = (key, value) => {
+  const settings = loadSettings();
+  settings[key] = value;
+  saveSettings(settings);
+};
+
+/**
+ * Show the unified settings modal
+ */
+export const showSettings = () => {
+  // Already open?
+  if (settingsOverlay) {
+    settingsOverlay.remove();
+    settingsOverlay = null;
+    return;
+  }
+
+  const settings = loadSettings();
+
+  settingsOverlay = document.createElement('div');
+  settingsOverlay.className = 'settings-overlay';
+  settingsOverlay.setAttribute('role', 'dialog');
+  settingsOverlay.setAttribute('aria-label', 'Settings');
+
+  const modal = document.createElement('div');
+  modal.className = 'settings-modal';
+
+  // ── Header ──
+  const header = document.createElement('div');
+  header.className = 'settings-header';
+  header.innerHTML = `
+    <h2 class="settings-title">Settings</h2>
+    <button class="settings-close-btn" aria-label="Close settings">&#10005;</button>
+  `;
+  header.querySelector('.settings-close-btn').addEventListener('click', () => closeSettings());
+  modal.appendChild(header);
+
+  // ── Tab Navigation ──
+  const tabNav = document.createElement('div');
+  tabNav.className = 'settings-tabs';
+  const tabs = [
+    { id: 'general', label: 'General', icon: '&#9881;' },
+    { id: 'appearance', label: 'Appearance', icon: '&#127912;' },
+    { id: 'editor', label: 'Editor', icon: '&#9998;' },
+    { id: 'ai', label: 'AI', icon: '&#129302;' },
+    { id: 'storage', label: 'Storage', icon: '&#128190;' },
+    { id: 'about', label: 'About', icon: '&#8505;' },
+  ];
+
+  const contentArea = document.createElement('div');
+  contentArea.className = 'settings-content';
+
+  let activeTab = 'general';
+
+  const renderTabContent = (tabId) => {
+    activeTab = tabId;
+    contentArea.innerHTML = '';
+    tabNav.querySelectorAll('.settings-tab-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.tab === tabId);
+    });
+
+    switch (tabId) {
+      case 'general': renderGeneralTab(contentArea, settings); break;
+      case 'appearance': renderAppearanceTab(contentArea); break;
+      case 'editor': renderEditorTab(contentArea, settings); break;
+      case 'ai': renderAiTab(contentArea, settings); break;
+      case 'storage': renderStorageTab(contentArea); break;
+      case 'about': renderAboutTab(contentArea); break;
+    }
+  };
+
+  tabs.forEach(({ id, label, icon }) => {
+    const btn = document.createElement('button');
+    btn.className = `settings-tab-btn${id === activeTab ? ' active' : ''}`;
+    btn.dataset.tab = id;
+    btn.innerHTML = `<span class="settings-tab-icon">${icon}</span> ${label}`;
+    btn.addEventListener('click', () => renderTabContent(id));
+    tabNav.appendChild(btn);
+  });
+
+  modal.appendChild(tabNav);
+  modal.appendChild(contentArea);
+  settingsOverlay.appendChild(modal);
+
+  // Close on backdrop click
+  settingsOverlay.addEventListener('click', (e) => {
+    if (e.target === settingsOverlay) closeSettings();
+  });
+
+  // Close on Escape
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      closeSettings();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
+
+  document.body.appendChild(settingsOverlay);
+  renderTabContent('general');
+
+  // Focus trap
+  requestAnimationFrame(() => {
+    modal.querySelector('.settings-tab-btn')?.focus();
+  });
+};
+
+/**
+ * Close settings modal
+ */
+export const closeSettings = () => {
+  settingsOverlay?.remove();
+  settingsOverlay = null;
+};
+
+// ── Tab Renderers ──
+
+const renderGeneralTab = (container, settings) => {
+  // Language
+  const langSection = createSection('Language');
+  const langRow = document.createElement('div');
+  langRow.className = 'settings-row settings-row-between';
+  const langLabel = document.createElement('span');
+  langLabel.textContent = `Current: ${getLang().toUpperCase()}`;
+  const langBtn = document.createElement('button');
+  langBtn.className = 'settings-btn settings-btn-primary';
+  langBtn.textContent = 'Change Language';
+  langBtn.addEventListener('click', () => {
+    closeSettings();
+    showLanguagePicker();
+  });
+  langRow.appendChild(langLabel);
+  langRow.appendChild(langBtn);
+  langSection.appendChild(langRow);
+  container.appendChild(langSection);
+
+  // Theme mode
+  const themeSection = createSection('Theme Mode');
+  const themeRow = document.createElement('div');
+  themeRow.className = 'settings-row theme-mode-buttons';
+
+  const currentTheme = getCurrentTheme();
+  const isAuto = isAutoTheme();
+
+  ['light', 'dark', 'auto'].forEach((mode) => {
+    const btn = document.createElement('button');
+    const isActive = mode === 'auto' ? isAuto : (!isAuto && currentTheme === mode);
+    btn.className = `theme-mode-btn${isActive ? ' active' : ''}`;
+    btn.innerHTML = mode === 'light' ? '&#9788; Light'
+      : mode === 'dark' ? '&#9790; Dark'
+      : '&#9211; Auto';
+    btn.addEventListener('click', () => {
+      if (mode === 'auto') {
+        autoTheme();
+      } else if (getCurrentTheme() !== mode) {
+        toggleTheme();
+      }
+      broadcastThemeChange(mode);
+      themeRow.querySelectorAll('.theme-mode-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+    themeRow.appendChild(btn);
+  });
+  themeSection.appendChild(themeRow);
+  container.appendChild(themeSection);
+};
+
+const renderAppearanceTab = (container) => {
+  const panel = buildThemeCustomizerPanel();
+  container.appendChild(panel);
+};
+
+const renderEditorTab = (container, settings) => {
+  // Auto-save interval
+  const autoSaveSection = createSection('Auto-save Interval (seconds)');
+  const autoSaveInput = document.createElement('input');
+  autoSaveInput.type = 'number';
+  autoSaveInput.min = '5';
+  autoSaveInput.max = '300';
+  autoSaveInput.value = settings.autoSaveInterval;
+  autoSaveInput.className = 'settings-input';
+  autoSaveInput.addEventListener('change', (e) => {
+    const val = Math.max(5, Math.min(300, parseInt(e.target.value) || 30));
+    e.target.value = val;
+    setSetting('autoSaveInterval', val);
+    toastSuccess(`Auto-save interval set to ${val}s`);
+  });
+  autoSaveSection.appendChild(autoSaveInput);
+  container.appendChild(autoSaveSection);
+
+  // Spell check
+  const spellSection = createSection('Spell Check');
+  const spellToggle = createToggle(settings.spellCheck, (val) => {
+    setSetting('spellCheck', val);
+    document.querySelectorAll('[contenteditable], textarea').forEach((el) => {
+      el.spellcheck = val;
+    });
+  });
+  spellSection.appendChild(spellToggle);
+  container.appendChild(spellSection);
+
+  // Line numbers (for markdown editor)
+  const lineSection = createSection('Line Numbers (Markdown)');
+  const lineToggle = createToggle(settings.lineNumbers, (val) => {
+    setSetting('lineNumbers', val);
+    document.querySelector('.cm-editor')?.classList.toggle('hide-line-numbers', !val);
+  });
+  lineSection.appendChild(lineToggle);
+  container.appendChild(lineSection);
+};
+
+const renderAiTab = (container, settings) => {
+  // Ollama URL
+  const urlSection = createSection('Ollama URL');
+  const urlInput = document.createElement('input');
+  urlInput.type = 'url';
+  urlInput.value = getOllamaUrl();
+  urlInput.placeholder = 'http://localhost:11434';
+  urlInput.className = 'settings-input settings-input-wide';
+  urlInput.addEventListener('change', (e) => {
+    setOllamaUrl(e.target.value);
+    toastSuccess('Ollama URL updated');
+  });
+  urlSection.appendChild(urlInput);
+  container.appendChild(urlSection);
+
+  // Model selection
+  const modelSection = createSection('AI Model');
+  const modelInput = document.createElement('input');
+  modelInput.type = 'text';
+  modelInput.value = localStorage.getItem('marklink-ai-model') || '';
+  modelInput.placeholder = 'e.g., llama3, gemma2, mistral';
+  modelInput.className = 'settings-input settings-input-wide';
+  modelInput.addEventListener('change', (e) => {
+    localStorage.setItem('marklink-ai-model', e.target.value.trim());
+    toastSuccess('AI model updated');
+  });
+  modelSection.appendChild(modelInput);
+  container.appendChild(modelSection);
+
+  // API Key (for cloud endpoints)
+  const keySection = createSection('API Key (Cloud Endpoint)');
+  const keyInput = document.createElement('input');
+  keyInput.type = 'password';
+  keyInput.value = localStorage.getItem('marklink-ai-apikey') || '';
+  keyInput.placeholder = 'sk-...';
+  keyInput.className = 'settings-input settings-input-wide';
+  keyInput.addEventListener('change', (e) => {
+    localStorage.setItem('marklink-ai-apikey', e.target.value.trim());
+    toastSuccess('API key saved');
+  });
+  keySection.appendChild(keyInput);
+
+  const showKeyBtn = document.createElement('button');
+  showKeyBtn.className = 'settings-btn settings-btn-small';
+  showKeyBtn.textContent = 'Show';
+  showKeyBtn.addEventListener('click', () => {
+    if (keyInput.type === 'password') {
+      keyInput.type = 'text';
+      showKeyBtn.textContent = 'Hide';
+    } else {
+      keyInput.type = 'password';
+      showKeyBtn.textContent = 'Show';
+    }
+  });
+  keySection.appendChild(showKeyBtn);
+  container.appendChild(keySection);
+
+  // Test connection
+  const testBtn = document.createElement('button');
+  testBtn.className = 'settings-btn settings-btn-primary';
+  testBtn.textContent = 'Test Connection';
+  testBtn.addEventListener('click', async () => {
+    testBtn.textContent = 'Testing...';
+    testBtn.disabled = true;
+    try {
+      const url = getOllamaUrl();
+      const resp = await fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(5000) });
+      if (resp.ok) {
+        const data = await resp.json();
+        const models = data.models?.map((m) => m.name).join(', ') || 'none';
+        toastSuccess(`Connected! Models: ${models}`);
+      } else {
+        toastError(`Connection failed: HTTP ${resp.status}`);
+      }
+    } catch (err) {
+      toastError(`Connection failed: ${err.message}`);
+    } finally {
+      testBtn.textContent = 'Test Connection';
+      testBtn.disabled = false;
+    }
+  });
+  container.appendChild(testBtn);
+};
+
+const renderStorageTab = (container) => {
+  // Storage usage
+  const usageSection = createSection('Browser Storage Usage');
+  const usageInfo = document.createElement('div');
+  usageInfo.className = 'storage-usage-info';
+
+  // Calculate localStorage usage
+  let totalSize = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    totalSize += (key.length + (localStorage.getItem(key) || '').length) * 2; // UTF-16
+  }
+  const sizeKB = (totalSize / 1024).toFixed(1);
+  usageInfo.textContent = `localStorage: ~${sizeKB} KB used`;
+  usageSection.appendChild(usageInfo);
+  container.appendChild(usageSection);
+
+  // Clear cache
+  const clearSection = createSection('Clear Data');
+  const clearRow = document.createElement('div');
+  clearRow.className = 'settings-row settings-row-gap';
+
+  const clearCacheBtn = document.createElement('button');
+  clearCacheBtn.className = 'settings-btn settings-btn-danger';
+  clearCacheBtn.textContent = 'Clear Auto-save Cache';
+  clearCacheBtn.addEventListener('click', () => {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.includes('autosave') || key.includes('auto-save')) keys.push(key);
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+    // Clear IndexedDB autosave
+    try { indexedDB.deleteDatabase('officelink-autosave'); } catch { /* ignore */ }
+    toastSuccess(`Cleared ${keys.length} auto-save entries`);
+  });
+  clearRow.appendChild(clearCacheBtn);
+  clearSection.appendChild(clearRow);
+  container.appendChild(clearSection);
+
+  // Export settings
+  const exportSection = createSection('Settings Backup');
+  const exportRow = document.createElement('div');
+  exportRow.className = 'settings-row settings-row-gap';
+
+  const exportBtn = document.createElement('button');
+  exportBtn.className = 'settings-btn settings-btn-primary';
+  exportBtn.textContent = 'Export Settings';
+  exportBtn.addEventListener('click', () => {
+    const allSettings = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.startsWith('marklink-') || key.startsWith('officelink-')) {
+        allSettings[key] = localStorage.getItem(key);
+      }
+    }
+    const blob = new Blob([JSON.stringify(allSettings, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `officelink-settings-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toastSuccess('Settings exported');
+  });
+
+  const importBtn = document.createElement('button');
+  importBtn.className = 'settings-btn';
+  importBtn.textContent = 'Import Settings';
+  importBtn.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        let count = 0;
+        Object.entries(data).forEach(([key, value]) => {
+          if (key.startsWith('marklink-') || key.startsWith('officelink-')) {
+            localStorage.setItem(key, value);
+            count++;
+          }
+        });
+        toastSuccess(`Imported ${count} settings. Reload recommended.`);
+      } catch (err) {
+        toastError('Invalid settings file');
+      }
+    });
+    input.click();
+  });
+
+  exportRow.appendChild(exportBtn);
+  exportRow.appendChild(importBtn);
+  exportSection.appendChild(exportRow);
+  container.appendChild(exportSection);
+};
+
+const renderAboutTab = (container) => {
+  const aboutDiv = document.createElement('div');
+  aboutDiv.className = 'settings-about';
+  aboutDiv.innerHTML = `
+    <div class="about-logo">&#9998; OfficeLink SL</div>
+    <div class="about-version">Version 1.0.0</div>
+    <div class="about-desc">A powerful browser-based office suite by SeouLink (SL Corporation).</div>
+    <div class="about-features">
+      <p>Markdown Editor, Document Editor, Spreadsheet, Slide Presenter, PDF Viewer, Photo Editor, Calculator, 3D CAD, Drawing Canvas, AI Assistant</p>
+    </div>
+    <div class="about-links">
+      <a href="https://github.com/seoulink/officelink-sl" target="_blank" rel="noopener">GitHub</a>
+      <span class="about-separator">|</span>
+      <a href="https://seoulink.com" target="_blank" rel="noopener">SeouLink.com</a>
+    </div>
+    <div class="about-credits">
+      <p>Built with CodeMirror 6, markdown-it, KaTeX, Mermaid, Three.js, and more.</p>
+      <p>&copy; 2024-2026 SL Corporation. All rights reserved.</p>
+    </div>
+  `;
+  container.appendChild(aboutDiv);
+};
+
+// ── Helpers ──
+
+const createSection = (label) => {
+  const section = document.createElement('div');
+  section.className = 'settings-section';
+  const heading = document.createElement('label');
+  heading.className = 'settings-label';
+  heading.textContent = label;
+  section.appendChild(heading);
+  return section;
+};
+
+const createToggle = (initialValue, onChange) => {
+  const toggle = document.createElement('label');
+  toggle.className = 'settings-toggle';
+
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.checked = initialValue;
+  input.addEventListener('change', (e) => onChange(e.target.checked));
+
+  const slider = document.createElement('span');
+  slider.className = 'toggle-slider';
+
+  toggle.appendChild(input);
+  toggle.appendChild(slider);
+  return toggle;
+};
+
+/**
+ * Initialize settings system — call on app startup
+ */
+export const initSettings = () => {
+  // Apply saved editor settings
+  const settings = loadSettings();
+
+  // Spell check
+  if (!settings.spellCheck) {
+    document.querySelectorAll('[contenteditable], textarea').forEach((el) => {
+      el.spellcheck = false;
+    });
+  }
+};
