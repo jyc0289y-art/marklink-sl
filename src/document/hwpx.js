@@ -315,13 +315,22 @@ function processChildren(container, binDataMap, footnoteCollector = null) {
       }
       html += parseTable(node, binDataMap);
     } else if (tag === 'sec' || tag === 'subDoc') {
-      // Nested section
+      // Nested section — insert page break before new section
       if (listBuffer.length > 0) {
         html += flushListBuffer(listBuffer, listType);
         listBuffer = [];
         listType = null;
       }
+      html += '<hr class="page-break" style="page-break-before:always;border:none;border-top:2px dashed #ccc;margin:24px 0">';
       html += processChildren(node, binDataMap, footnoteCollector);
+    } else if (tag === 'secPr' || tag === 'colSz') {
+      // Section properties — add page break marker
+      if (listBuffer.length > 0) {
+        html += flushListBuffer(listBuffer, listType);
+        listBuffer = [];
+        listType = null;
+      }
+      html += '<hr class="page-break" style="page-break-before:always;border:none;border-top:2px dashed #ccc;margin:24px 0">';
     }
   }
 
@@ -410,6 +419,33 @@ function parseParagraph(pNode, binDataMap, footnoteCollector = null) {
       // HWPX uses HWP units (1/7200 inch), convert to px (~96dpi)
       const px = Math.round(parseInt(marginLeft, 10) / 75);
       if (px > 0) paraStyles.push(`margin-left:${px}px`);
+    }
+
+    // Paragraph spacing: before/after
+    const spacing = findChild(paraPr, 'spacing') || findChild(paraPr, 'paraSpacing');
+    if (spacing) {
+      const beforeVal = spacing.getAttribute('before') || spacing.getAttribute('spaceBefore') || '';
+      const afterVal = spacing.getAttribute('after') || spacing.getAttribute('spaceAfter') || '';
+      if (beforeVal && parseInt(beforeVal, 10) > 0) {
+        // HWPX spacing in HWP units (1/7200 inch) → px
+        const px = Math.round(parseInt(beforeVal, 10) / 75);
+        if (px > 0) paraStyles.push(`margin-top:${px}px`);
+      }
+      if (afterVal && parseInt(afterVal, 10) > 0) {
+        const px = Math.round(parseInt(afterVal, 10) / 75);
+        if (px > 0) paraStyles.push(`margin-bottom:${px}px`);
+      }
+    }
+    // Also check direct attributes on paraPr
+    const spaceBefore = paraPr.getAttribute('spaceBefore') || paraPr.getAttribute('marginTop') || '';
+    const spaceAfter = paraPr.getAttribute('spaceAfter') || paraPr.getAttribute('marginBottom') || '';
+    if (spaceBefore && parseInt(spaceBefore, 10) > 0) {
+      const px = Math.round(parseInt(spaceBefore, 10) / 75);
+      if (px > 0) paraStyles.push(`margin-top:${px}px`);
+    }
+    if (spaceAfter && parseInt(spaceAfter, 10) > 0) {
+      const px = Math.round(parseInt(spaceAfter, 10) / 75);
+      if (px > 0) paraStyles.push(`margin-bottom:${px}px`);
     }
 
     // Line spacing
@@ -706,9 +742,42 @@ function parseTable(tblNode, binDataMap) {
         // Cell width
         const width = tcPr.getAttribute('width') || tcPr.getAttribute('cellWidth') || '';
         if (width && parseInt(width, 10) > 0) {
-          // HWPX widths in HWP units, convert to approximate %/px
           const px = Math.round(parseInt(width, 10) / 75);
           if (px > 0) cellStyles.push(`width:${px}px`);
+        }
+
+        // Cell padding from tcPr attributes or child element
+        const cellPadding = tcPr.getAttribute('cellPadding') || tcPr.getAttribute('margin') || '';
+        if (cellPadding && parseInt(cellPadding, 10) > 0) {
+          const padPx = Math.round(parseInt(cellPadding, 10) / 75);
+          if (padPx > 0) {
+            // Override default padding
+            const padIdx = cellStyles.findIndex(s => s.startsWith('padding:'));
+            if (padIdx >= 0) cellStyles[padIdx] = `padding:${padPx}px`;
+            else cellStyles.push(`padding:${padPx}px`);
+          }
+        }
+        // Also check individual padding attrs
+        const padLeft = tcPr.getAttribute('paddingLeft') || tcPr.getAttribute('cellMarginLeft') || '';
+        const padRight = tcPr.getAttribute('paddingRight') || tcPr.getAttribute('cellMarginRight') || '';
+        const padTop = tcPr.getAttribute('paddingTop') || tcPr.getAttribute('cellMarginTop') || '';
+        const padBottom = tcPr.getAttribute('paddingBottom') || tcPr.getAttribute('cellMarginBottom') || '';
+        if (padLeft || padRight || padTop || padBottom) {
+          const toPx = (v) => v ? Math.max(0, Math.round(parseInt(v, 10) / 75)) : 4;
+          const padIdx = cellStyles.findIndex(s => s.startsWith('padding:'));
+          if (padIdx >= 0) cellStyles[padIdx] = `padding:${toPx(padTop)}px ${toPx(padRight)}px ${toPx(padBottom)}px ${toPx(padLeft)}px`;
+          else cellStyles.push(`padding:${toPx(padTop)}px ${toPx(padRight)}px ${toPx(padBottom)}px ${toPx(padLeft)}px`);
+        }
+
+        // Vertical alignment
+        const vAlign = tcPr.getAttribute('verticalAlign') || tcPr.getAttribute('vAlign') || '';
+        if (vAlign) {
+          const vaMap = { TOP: 'top', CENTER: 'middle', BOTTOM: 'bottom', top: 'top', center: 'middle', bottom: 'bottom' };
+          if (vaMap[vAlign]) {
+            const vaIdx = cellStyles.findIndex(s => s.startsWith('vertical-align:'));
+            if (vaIdx >= 0) cellStyles[vaIdx] = `vertical-align:${vaMap[vAlign]}`;
+            else cellStyles.push(`vertical-align:${vaMap[vAlign]}`);
+          }
         }
 
         // Background color
@@ -718,14 +787,43 @@ function parseTable(tblNode, binDataMap) {
           if (hex) cellStyles.push(`background-color:#${hex}`);
         }
 
-        // Border details (simplified)
+        // Border details — parse borderFill child with individual sides
         const borderFill = findChild(tcPr, 'cellBorderFill') || findChild(tcPr, 'borderFill');
         if (borderFill) {
-          // Could parse individual border sides, but keep it simple
+          // Background from borderFill
           const fillColor = borderFill.getAttribute('bgColor') || '';
-          if (fillColor && fillColor !== 'none') {
+          if (fillColor && fillColor !== 'none' && fillColor !== '0') {
             const hex = normalizeHwpxColor(fillColor);
             if (hex) cellStyles.push(`background-color:#${hex}`);
+          }
+          // Also check nested <fillBrush> or <fill> for background
+          const fillBrush = findChild(borderFill, 'fillBrush') || findChild(borderFill, 'fill');
+          if (fillBrush) {
+            const fbColor = fillBrush.getAttribute('color') || fillBrush.getAttribute('bgColor') || '';
+            if (fbColor && fbColor !== '0') {
+              const hex = normalizeHwpxColor(fbColor);
+              if (hex) cellStyles.push(`background-color:#${hex}`);
+            }
+          }
+          // Parse individual border sides
+          const borderIdx = cellStyles.findIndex(s => s === 'border:1px solid #999');
+          for (const side of ['top', 'right', 'bottom', 'left']) {
+            const sideEl = findChild(borderFill, side) || findChild(borderFill, `border${side.charAt(0).toUpperCase() + side.slice(1)}`);
+            if (sideEl) {
+              const bType = sideEl.getAttribute('type') || sideEl.getAttribute('style') || 'solid';
+              const bWidth = sideEl.getAttribute('width') || '1';
+              const bColor = sideEl.getAttribute('color') || '000000';
+              const hex = normalizeHwpxColor(bColor);
+              const bwPx = Math.max(1, Math.round(parseInt(bWidth, 10) / 75) || 1);
+              const cssType = bType.toLowerCase().includes('dash') ? 'dashed'
+                : bType.toLowerCase().includes('dot') ? 'dotted'
+                : bType.toLowerCase().includes('none') ? 'none' : 'solid';
+              cellStyles.push(`border-${side}:${bwPx}px ${cssType} #${hex || '000'}`);
+            }
+          }
+          // If we found individual borders, remove the default
+          if (borderIdx >= 0 && cellStyles.some(s => s.startsWith('border-'))) {
+            cellStyles.splice(borderIdx, 1);
           }
         }
       }

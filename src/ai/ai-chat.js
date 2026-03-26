@@ -25,6 +25,8 @@ let isOffline = false; // offline mode tracking
 let offlineQueue = []; // queued messages when offline
 let lastLatencyMs = -1; // last measured latency for health indicator
 let healthCheckInterval = null; // periodic health check timer
+let currentAbortController = null; // for stop generation
+let lastUserMessage = ''; // for retry on error
 
 // ─── Office context providers (set by app.js) ──────────
 let contextProviders = {};
@@ -946,14 +948,61 @@ function scrollToBottom() {
 }
 
 function renderMarkdown(text) {
-  // Basic markdown rendering for chat
-  return text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="lang-$1">$2</code></pre>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/\n/g, '<br>');
+  // Enhanced markdown rendering for chat responses
+  let html = text;
+
+  // Escape HTML entities first
+  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // Fenced code blocks with language label and copy button
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const langLabel = lang ? `<span class="ai-code-lang">${lang}</span>` : '';
+    const codeId = 'code-' + Math.random().toString(36).slice(2, 8);
+    return `<div class="ai-code-block">${langLabel}<button class="ai-code-copy-btn" data-code-id="${codeId}" title="Copy code">Copy</button><pre><code id="${codeId}" class="lang-${lang}">${code.trim()}</code></pre></div>`;
+  });
+
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Headings (### ## #) — must be at line start
+  html = html.replace(/^(#{1,3})\s+(.+)$/gm, (_, hashes, text) => {
+    const level = hashes.length;
+    return `<h${level + 2} class="ai-md-heading">${text}</h${level + 2}>`;
+  });
+
+  // Bold and italic
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // Strikethrough
+  html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
+
+  // Horizontal rule
+  html = html.replace(/^---$/gm, '<hr class="ai-md-hr">');
+
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="ai-md-link">$1</a>');
+
+  // Unordered list items (- or *)
+  html = html.replace(/^[\s]*[-*]\s+(.+)$/gm, '<li class="ai-md-li">$1</li>');
+  // Wrap consecutive <li> in <ul>
+  html = html.replace(/((?:<li class="ai-md-li">.*<\/li>\n?)+)/g, '<ul class="ai-md-ul">$1</ul>');
+
+  // Ordered list items (1. 2. etc.)
+  html = html.replace(/^[\s]*\d+\.\s+(.+)$/gm, '<li class="ai-md-oli">$1</li>');
+  html = html.replace(/((?:<li class="ai-md-oli">.*<\/li>\n?)+)/g, '<ol class="ai-md-ol">$1</ol>');
+
+  // Blockquote
+  html = html.replace(/^&gt;\s+(.+)$/gm, '<blockquote class="ai-md-quote">$1</blockquote>');
+
+  // Newlines (but not inside pre/ul/ol/blockquote)
+  html = html.replace(/\n/g, '<br>');
+
+  // Clean up double <br> around block elements
+  html = html.replace(/<br>\s*(<(?:ul|ol|pre|div|blockquote|hr|h[3-5]))/g, '$1');
+  html = html.replace(/(<\/(?:ul|ol|pre|div|blockquote|h[3-5])>)\s*<br>/g, '$1');
+
+  return html;
 }
 
 // ─── Send Message ───────────────────────────────────────

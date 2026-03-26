@@ -15,6 +15,53 @@ let occtReady = false;
 let occtLoading = false;
 let occtLoadError = null;
 
+/* ===================== Safe OCCT Helpers ===================== */
+
+/**
+ * Safely delete one or more OCCT objects.
+ * Accepts individual objects or arrays. Silently skips null/undefined.
+ */
+const safeDelete = (...objs) => {
+  for (const obj of objs) {
+    if (Array.isArray(obj)) { obj.forEach((o) => { try { if (o && typeof o.delete === 'function') o.delete(); } catch { /* already freed */ } }); }
+    else { try { if (obj && typeof obj.delete === 'function') obj.delete(); } catch { /* already freed */ } }
+  }
+};
+
+/**
+ * Wrap an OCCT operation with user-friendly error handling.
+ * Returns the result of fn() or null on failure.
+ * @param {string} opName - Human-readable operation name for error messages
+ * @param {Function} fn - The OCCT operation to execute
+ * @param {Function} [onProgress] - Optional progress callback(percent, msg)
+ * @returns {*|null}
+ */
+const safeOCCT = (opName, fn, onProgress) => {
+  if (!oc) {
+    console.warn(`[OCCT] ${opName}: Engine not loaded`);
+    return null;
+  }
+  try {
+    if (onProgress) onProgress(0, `Starting ${opName}...`);
+    const result = fn();
+    if (onProgress) onProgress(100, `${opName} complete`);
+    return result;
+  } catch (e) {
+    const msg = e?.message || String(e);
+    // Detect common OCCT failures and provide actionable messages
+    if (msg.includes('Standard_NullObject') || msg.includes('Null shape')) {
+      console.error(`[OCCT] ${opName}: Input shape is null or invalid. Ensure the source geometry is valid.`);
+    } else if (msg.includes('BRepCheck') || msg.includes('not valid')) {
+      console.error(`[OCCT] ${opName}: Shape validation failed. The geometry may be self-intersecting or degenerate.`);
+    } else if (msg.includes('out of memory') || msg.includes('OOM')) {
+      console.error(`[OCCT] ${opName}: Out of memory. Try simpler geometry or lower tessellation quality.`);
+    } else {
+      console.error(`[OCCT] ${opName} error:`, msg);
+    }
+    return null;
+  }
+};
+
 /* ===================== IndexedDB WASM Cache ===================== */
 
 let _cachedIDB = null; // Cache db instance to avoid repeated IndexedDB open requests
@@ -186,16 +233,16 @@ export const getOC = () => oc;
  * @returns {TopoDS_Shape}
  */
 export const createBox = (width = 2, height = 2, depth = 2) => {
-  if (!oc) return null;
-  try {
-    const maker = new oc.BRepPrimAPI_MakeBox_1(width, height, depth);
-    const shape = maker.Shape();
-    maker.delete();
-    return shape;
-  } catch (e) {
-    console.error('[OCCT] createBox error:', e);
+  if (width <= 0 || height <= 0 || depth <= 0) {
+    console.warn('[OCCT] createBox: dimensions must be positive');
     return null;
   }
+  return safeOCCT('createBox', () => {
+    const maker = new oc.BRepPrimAPI_MakeBox_1(width, height, depth);
+    const shape = maker.Shape();
+    safeDelete(maker);
+    return shape;
+  });
 };
 
 /**
@@ -203,16 +250,16 @@ export const createBox = (width = 2, height = 2, depth = 2) => {
  * @returns {TopoDS_Shape}
  */
 export const createSphere = (radius = 1) => {
-  if (!oc) return null;
-  try {
-    const maker = new oc.BRepPrimAPI_MakeSphere_1(radius);
-    const shape = maker.Shape();
-    maker.delete();
-    return shape;
-  } catch (e) {
-    console.error('[OCCT] createSphere error:', e);
+  if (radius <= 0) {
+    console.warn('[OCCT] createSphere: radius must be positive');
     return null;
   }
+  return safeOCCT('createSphere', () => {
+    const maker = new oc.BRepPrimAPI_MakeSphere_1(radius);
+    const shape = maker.Shape();
+    safeDelete(maker);
+    return shape;
+  });
 };
 
 /**
@@ -220,16 +267,16 @@ export const createSphere = (radius = 1) => {
  * @returns {TopoDS_Shape}
  */
 export const createCylinder = (radius = 1, height = 2) => {
-  if (!oc) return null;
-  try {
-    const maker = new oc.BRepPrimAPI_MakeCylinder_1(radius, height);
-    const shape = maker.Shape();
-    maker.delete();
-    return shape;
-  } catch (e) {
-    console.error('[OCCT] createCylinder error:', e);
+  if (radius <= 0 || height <= 0) {
+    console.warn('[OCCT] createCylinder: radius and height must be positive');
     return null;
   }
+  return safeOCCT('createCylinder', () => {
+    const maker = new oc.BRepPrimAPI_MakeCylinder_1(radius, height);
+    const shape = maker.Shape();
+    safeDelete(maker);
+    return shape;
+  });
 };
 
 /**
@@ -237,16 +284,20 @@ export const createCylinder = (radius = 1, height = 2) => {
  * @returns {TopoDS_Shape}
  */
 export const createCone = (r1 = 1, r2 = 0, height = 2) => {
-  if (!oc) return null;
-  try {
-    const maker = new oc.BRepPrimAPI_MakeCone_1(r1, r2, height);
-    const shape = maker.Shape();
-    maker.delete();
-    return shape;
-  } catch (e) {
-    console.error('[OCCT] createCone error:', e);
+  if (r1 < 0 || r2 < 0 || height <= 0) {
+    console.warn('[OCCT] createCone: radii must be >= 0, height must be positive');
     return null;
   }
+  if (r1 === 0 && r2 === 0) {
+    console.warn('[OCCT] createCone: at least one radius must be > 0');
+    return null;
+  }
+  return safeOCCT('createCone', () => {
+    const maker = new oc.BRepPrimAPI_MakeCone_1(r1, r2, height);
+    const shape = maker.Shape();
+    safeDelete(maker);
+    return shape;
+  });
 };
 
 /**
@@ -254,16 +305,20 @@ export const createCone = (r1 = 1, r2 = 0, height = 2) => {
  * @returns {TopoDS_Shape}
  */
 export const createTorus = (majorR = 1, minorR = 0.4) => {
-  if (!oc) return null;
-  try {
-    const maker = new oc.BRepPrimAPI_MakeTorus_1(majorR, minorR);
-    const shape = maker.Shape();
-    maker.delete();
-    return shape;
-  } catch (e) {
-    console.error('[OCCT] createTorus error:', e);
+  if (majorR <= 0 || minorR <= 0) {
+    console.warn('[OCCT] createTorus: radii must be positive');
     return null;
   }
+  if (minorR >= majorR) {
+    console.warn('[OCCT] createTorus: minor radius must be less than major radius');
+    return null;
+  }
+  return safeOCCT('createTorus', () => {
+    const maker = new oc.BRepPrimAPI_MakeTorus_1(majorR, minorR);
+    const shape = maker.Shape();
+    safeDelete(maker);
+    return shape;
+  });
 };
 
 /* ===================== Sketch → Wire → Extrude/Revolve ===================== */
@@ -275,9 +330,10 @@ export const createTorus = (majorR = 1, minorR = 0.4) => {
  * @returns {TopoDS_Wire|null}
  */
 export const createSketchWire = (entities, plane) => {
-  if (!oc || !entities || entities.length === 0) return null;
-  try {
+  if (!entities || entities.length === 0) return null;
+  return safeOCCT('createSketchWire', () => {
     const wireBuilder = new oc.BRepBuilderAPI_MakeWire_1();
+    const toClean = [wireBuilder];
 
     const lines = entities.filter((e) => e.type === 'line');
     const circles = entities.filter((e) => e.type === 'circle');
@@ -285,44 +341,43 @@ export const createSketchWire = (entities, plane) => {
     // If only a circle, make a circle wire
     if (lines.length === 0 && circles.length > 0) {
       const c = circles[0];
+      if (!c.radius || c.radius <= 0) { safeDelete(toClean); return null; }
       const center = to3D(c.points[0], plane);
       const normal = plane.normal;
       const ax2 = makeAx2(center, normal);
       const circle = new oc.gp_Circ_2(ax2, c.radius);
       const edge = new oc.BRepBuilderAPI_MakeEdge_8(circle);
-      wireBuilder.Add_1(edge.Edge());
-      edge.delete();
-      ax2.delete();
-      circle.delete();
+      if (edge.IsDone()) {
+        wireBuilder.Add_1(edge.Edge());
+      }
+      safeDelete(edge, ax2, circle);
     } else {
       // Chain line segments into wire edges
       for (const line of lines) {
         const p1 = to3D(line.points[0], plane);
         const p2 = to3D(line.points[1], plane);
+        // Skip degenerate edges (coincident points)
+        const dx = p2.x - p1.x, dy = p2.y - p1.y, dz = p2.z - p1.z;
+        if (Math.sqrt(dx * dx + dy * dy + dz * dz) < 1e-6) continue;
         const gp1 = new oc.gp_Pnt_3(p1.x, p1.y, p1.z);
         const gp2 = new oc.gp_Pnt_3(p2.x, p2.y, p2.z);
         const edgeMaker = new oc.BRepBuilderAPI_MakeEdge_3(gp1, gp2);
         if (edgeMaker.IsDone()) {
           wireBuilder.Add_1(edgeMaker.Edge());
         }
-        gp1.delete();
-        gp2.delete();
-        edgeMaker.delete();
+        safeDelete(gp1, gp2, edgeMaker);
       }
     }
 
     if (!wireBuilder.IsDone()) {
-      wireBuilder.delete();
+      safeDelete(toClean);
       return null;
     }
 
     const wire = wireBuilder.Wire();
-    wireBuilder.delete();
+    safeDelete(wireBuilder);
     return wire;
-  } catch (e) {
-    console.error('[OCCT] createSketchWire error:', e);
-    return null;
-  }
+  });
 };
 
 /**

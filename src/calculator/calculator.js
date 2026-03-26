@@ -145,6 +145,15 @@ function bindCalcEvents(container) {
     renderSavedFormulas();
   });
 
+  // Copy result button
+  document.getElementById('calc-copy-result')?.addEventListener('click', () => {
+    const text = result || '0';
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('calc-copy-result');
+      if (btn) { const orig = btn.textContent; btn.textContent = '✓'; setTimeout(() => btn.textContent = orig, 1000); }
+    }).catch(() => {});
+  });
+
   // Keyboard input
   const _onKeydown = (e) => {
     const view = document.getElementById('view-calculator');
@@ -160,6 +169,21 @@ function bindCalcEvents(container) {
     else if (key === '%') { e.preventDefault(); appendToExpr('mod'); }
     else if (key === 'Enter' || key === '=') { e.preventDefault(); handleAction('equals'); }
     else if (key === 'Backspace') { e.preventDefault(); handleAction('backspace'); }
+    else if ((e.ctrlKey || e.metaKey) && (key === 'c' || key === 'C')) {
+      e.preventDefault();
+      navigator.clipboard.writeText(result || '0').catch(() => {});
+      return;
+    }
+    else if ((e.ctrlKey || e.metaKey) && (key === 'v' || key === 'V')) {
+      e.preventDefault();
+      navigator.clipboard.readText().then((text) => {
+        const cleaned = text.trim();
+        if (/^[\d.+\-×÷*/()\s]+$/.test(cleaned)) {
+          appendToExpr(cleaned);
+        }
+      }).catch(() => {});
+      return;
+    }
     else if (key === 'Escape' || key === 'c' || key === 'C') { e.preventDefault(); handleAction('clear'); }
   };
   document.addEventListener('keydown', _onKeydown);
@@ -275,9 +299,10 @@ function evalExpression(expr) {
   let clean = expr
     .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-')
     .replace(/π/g, String(Math.PI))
-    .replace(/(?<![a-zA-Z])e(?![a-zA-Z^])/g, String(Math.E))
-    .replace(/mod/g, '%').replace(/\^/g, '**');
-  if (!/^[\d\s+\-*/().%*e]+$/i.test(clean)) return null;
+    .replace(/\^/g, '**')
+    .replace(/(?<![a-zA-Z])e(?![a-zA-Z])/g, String(Math.E))
+    .replace(/mod/g, '%');
+  if (!/^[\d\s+\-*/().%e]+$/i.test(clean)) return null;
   return Function(`"use strict"; return (${clean})`)();
 }
 

@@ -98,15 +98,15 @@ async function extractDocxWithJSZip(arrayBuffer) {
   // Parse relationships file for hyperlinks and images
   const relsMap = await _parseRels(zip, parser);
 
-  // Parse numbering definitions to distinguish ordered vs unordered lists
-  const numTypeMap = {}; // numId → 'ol' | 'ul'
+  // Parse numbering definitions to distinguish ordered vs unordered lists per level
+  const numTypeMap = {}; // numId → 'ol' | 'ul' (default level 0 type)
+  const numLevelMap = {}; // `${numId}-${ilvl}` → 'ol' | 'ul' (per-level type)
   try {
     const numXml = zip.file('word/numbering.xml');
     if (numXml) {
       const numText = await numXml.async('text');
       const numDoc = parser.parseFromString(numText, 'application/xml');
-      // Build abstractNumId → format map
-      const abstractFormats = {};
+      const abstractFormats = {}; // absId → { levels: { ilvl: 'ol'|'ul' }, default: 'ol'|'ul' }
       const walkNum = (parent, localNameTarget) => {
         const results = [];
         const w = (node) => {
@@ -118,24 +118,33 @@ async function extractDocxWithJSZip(arrayBuffer) {
         w(parent);
         return results;
       };
-      // Parse abstractNum elements to detect bullet vs decimal
+      // Parse abstractNum elements — collect format per level
       for (const absNum of walkNum(numDoc, 'abstractNum')) {
         const absId = absNum.getAttribute('w:abstractNumId') || absNum.getAttribute('abstractNumId') || '';
         const lvls = walkNum(absNum, 'lvl');
-        if (lvls.length > 0) {
-          const fmt = lvls[0];
-          const numFmt = walkNum(fmt, 'numFmt')[0];
+        const levelTypes = {};
+        let defaultType = 'ol';
+        for (const lvl of lvls) {
+          const ilvl = lvl.getAttribute('w:ilvl') || lvl.getAttribute('ilvl') || '0';
+          const numFmt = walkNum(lvl, 'numFmt')[0];
           const fmtVal = (numFmt?.getAttribute('w:val') || numFmt?.getAttribute('val') || '').toLowerCase();
-          abstractFormats[absId] = fmtVal === 'bullet' ? 'ul' : 'ol';
+          const type = fmtVal === 'bullet' ? 'ul' : 'ol';
+          levelTypes[ilvl] = type;
+          if (ilvl === '0') defaultType = type;
         }
+        abstractFormats[absId] = { levels: levelTypes, default: defaultType };
       }
-      // Map numId → abstractNumId → type
+      // Map numId → abstractNumId → type info
       for (const num of walkNum(numDoc, 'num')) {
         const numId = num.getAttribute('w:numId') || num.getAttribute('numId') || '';
         const absRef = walkNum(num, 'abstractNumId')[0];
         const absId = absRef?.getAttribute('w:val') || absRef?.getAttribute('val') || '';
         if (numId && absId && abstractFormats[absId]) {
-          numTypeMap[numId] = abstractFormats[absId];
+          numTypeMap[numId] = abstractFormats[absId].default;
+          const levels = abstractFormats[absId].levels;
+          for (const [ilvl, type] of Object.entries(levels)) {
+            numLevelMap[`${numId}-${ilvl}`] = type;
+          }
         }
       }
     }
@@ -172,6 +181,15 @@ async function extractDocxWithJSZip(arrayBuffer) {
   const getAttr = (el, name) => el?.getAttribute(`w:${name}`) ?? el?.getAttribute(name) ?? '';
 
   /**
+   * Theme color map — OOXML theme color names to default hex values
+   */
+  const _themeColorDefaults = {
+    dark1: '000000', light1: 'FFFFFF', dark2: '44546A', light2: 'E7E6E6',
+    accent1: '4472C4', accent2: 'ED7D31', accent3: 'A5A5A5', accent4: 'FFC000',
+    accent5: '5B9BD5', accent6: '70AD47', hyperlink: '0563C1', followedHyperlink: '954F72',
+  };
+
+  /**
    * Extract inline styles from run properties (rPr)
    */
   const extractRunStyles = (rPr) => {
@@ -186,11 +204,14 @@ async function extractDocxWithJSZip(arrayBuffer) {
       if (pt > 0) styles.push(`font-size:${pt}pt`);
     }
 
-    // Font color
+    // Font color — with theme color support
     const color = queryFirst(rPr, 'color');
     const colorVal = getAttr(color, 'val');
+    const themeColor = getAttr(color, 'themeColor');
     if (colorVal && colorVal !== 'auto') {
       styles.push(`color:#${colorVal}`);
+    } else if (themeColor && _themeColorDefaults[themeColor]) {
+      styles.push(`color:#${_themeColorDefaults[themeColor]}`);
     }
 
     // Background / highlight
@@ -211,6 +232,40 @@ async function extractDocxWithJSZip(arrayBuffer) {
     const fontName = getAttr(rFonts, 'ascii') || getAttr(rFonts, 'hAnsi') || getAttr(rFonts, 'cs');
     if (fontName) {
       styles.push(`font-family:${fontName}`);
+    }
+
+    // SmallCaps / AllCaps
+    const smallCaps = queryFirst(rPr, 'smallCaps');
+    if (smallCaps && getAttr(smallCaps, 'val') !== 'false' && getAttr(smallCaps, 'val') !== '0') {
+      styles.push('font-variant:small-caps');
+    }
+    const caps = queryFirst(rPr, 'caps');
+    if (caps && getAttr(caps, 'val') !== 'false' && getAttr(caps, 'val') !== '0') {
+      styles.push('text-transform:uppercase');
+    }
+
+    // Text shadow
+    const shadow = queryFirst(rPr, 'shadow');
+    if (shadow && getAttr(shadow, 'val') !== 'false' && getAttr(shadow, 'val') !== '0') {
+      styles.push('text-shadow:1px 1px 2px rgba(0,0,0,0.3)');
+    }
+
+    // Text outline
+    const outline = queryFirst(rPr, 'outline');
+    if (outline && getAttr(outline, 'val') !== 'false' && getAttr(outline, 'val') !== '0') {
+      styles.push('-webkit-text-stroke:1px currentColor');
+      styles.push('color:transparent');
+    }
+
+    // Letter spacing (w:spacing val in half-points → convert to em)
+    const spacingEl = queryFirst(rPr, 'spacing');
+    const spacingVal = getAttr(spacingEl, 'val');
+    if (spacingVal) {
+      const halfPts = parseInt(spacingVal, 10);
+      if (halfPts !== 0) {
+        const em = (halfPts / 20).toFixed(2);
+        styles.push(`letter-spacing:${em}em`);
+      }
     }
 
     return styles.join(';');
@@ -246,7 +301,7 @@ async function extractDocxWithJSZip(arrayBuffer) {
       }
     }
 
-    // Spacing (twips → pt for before/after; line is in 240ths of a line)
+    // Spacing (twips → pt for before/after; line depends on lineRule)
     const spacing = queryFirst(pPr, 'spacing');
     if (spacing) {
       const before = parseInt(getAttr(spacing, 'before') || '0', 10);
@@ -254,10 +309,23 @@ async function extractDocxWithJSZip(arrayBuffer) {
       const after = parseInt(getAttr(spacing, 'after') || '0', 10);
       if (after > 0) styles.push(`margin-bottom:${Math.round(after / 20)}pt`);
       const line = parseInt(getAttr(spacing, 'line') || '0', 10);
+      const lineRule = getAttr(spacing, 'lineRule');
       if (line > 0) {
-        const lineHeight = (line / 240).toFixed(2);
-        styles.push(`line-height:${lineHeight}`);
+        if (lineRule === 'exact' || lineRule === 'atLeast') {
+          // Value is in twips (1/20 pt)
+          styles.push(`line-height:${Math.round(line / 20)}pt`);
+        } else {
+          // Default: proportional (240ths of a line)
+          const lineHeight = (line / 240).toFixed(2);
+          styles.push(`line-height:${lineHeight}`);
+        }
       }
+    }
+
+    // Page break before paragraph
+    const pageBreakBefore = queryFirst(pPr, 'pageBreakBefore');
+    if (pageBreakBefore && getAttr(pageBreakBefore, 'val') !== 'false' && getAttr(pageBreakBefore, 'val') !== '0') {
+      styles.push('page-break-before:always');
     }
 
     return styles.join(';');
@@ -276,6 +344,13 @@ async function extractDocxWithJSZip(arrayBuffer) {
     const textNodes = queryAll(r, 't');
     let text = textNodes.map((t) => t.textContent).join('');
 
+    // Handle tab characters → convert to spacing
+    const tabs = queryAll(r, 'tab');
+    let tabHtml = '';
+    for (const _tab of tabs) {
+      tabHtml += '<span style="display:inline-block;width:2em">&nbsp;</span>';
+    }
+
     // Handle breaks
     const brs = queryAll(r, 'br');
     let breakHtml = '';
@@ -288,7 +363,7 @@ async function extractDocxWithJSZip(arrayBuffer) {
       }
     }
 
-    if (!text && !breakHtml) return '';
+    if (!text && !breakHtml && !tabHtml) return '';
 
     // Escape HTML entities
     text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -305,7 +380,7 @@ async function extractDocxWithJSZip(arrayBuffer) {
       text = `<span style="${inlineStyle}">${text}</span>`;
     }
 
-    return text + breakHtml;
+    return tabHtml + text + breakHtml;
   };
 
   /**
@@ -450,20 +525,64 @@ async function extractDocxWithJSZip(arrayBuffer) {
           const vMerge = queryFirst(tcPr, 'vMerge');
           if (vMerge) {
             const mergeVal = getAttr(vMerge, 'val');
-            // val="restart" means start of merge; no val or val="" means continuation
             if (!mergeVal || mergeVal === 'continue') {
-              // This cell is a continuation of a vertical merge — skip it entirely.
-              // The restart cell above should have rowspan (handled via post-processing or
-              // a lookahead pass). Emitting nothing avoids broken table layout from hidden cells.
               continue;
             }
           }
 
-          // Cell shading
+          // Cell shading (w:shd)
           const shd = queryFirst(tcPr, 'shd');
           const fill = getAttr(shd, 'fill');
           if (fill && fill !== 'auto') {
             cellStyle += `background-color:#${fill};`;
+          }
+          // Also check theme fill
+          const themeFill = getAttr(shd, 'themeFill');
+          if (!fill && themeFill && _themeColorDefaults[themeFill]) {
+            cellStyle += `background-color:#${_themeColorDefaults[themeFill]};`;
+          }
+
+          // Cell borders (w:tcBorders)
+          const tcBorders = queryFirst(tcPr, 'tcBorders');
+          if (tcBorders) {
+            for (const side of ['top', 'right', 'bottom', 'left']) {
+              const borderEl = queryFirst(tcBorders, side);
+              if (borderEl) {
+                const bVal = getAttr(borderEl, 'val');
+                if (bVal && bVal !== 'nil' && bVal !== 'none') {
+                  const bSize = Math.max(1, Math.round(parseInt(getAttr(borderEl, 'sz') || '4', 10) / 8));
+                  const bColor = getAttr(borderEl, 'color');
+                  const bTheme = getAttr(borderEl, 'themeColor');
+                  const hex = (bColor && bColor !== 'auto') ? bColor : (bTheme && _themeColorDefaults[bTheme]) || '000000';
+                  const cssStyle = (bVal === 'dashed' || bVal === 'dashSmallGap') ? 'dashed'
+                    : (bVal === 'dotted' || bVal === 'dotDash') ? 'dotted'
+                    : (bVal === 'double') ? 'double' : 'solid';
+                  cellStyle += `border-${side}:${bSize}px ${cssStyle} #${hex};`;
+                }
+              }
+            }
+          }
+
+          // Cell margins/padding (w:tcMar)
+          const tcMar = queryFirst(tcPr, 'tcMar');
+          if (tcMar) {
+            const padParts = [];
+            for (const side of ['top', 'right', 'bottom', 'left']) {
+              const mEl = queryFirst(tcMar, side);
+              const mW = parseInt(getAttr(mEl, 'w') || '0', 10);
+              padParts.push(mW > 0 ? `${Math.round(mW / 20)}pt` : '4px');
+            }
+            cellStyle += `padding:${padParts.join(' ')};`;
+          } else {
+            cellStyle += 'padding:4px 6px;';
+          }
+
+          // Vertical alignment (w:vAlign)
+          const vAlign = queryFirst(tcPr, 'vAlign');
+          const vAlignVal = getAttr(vAlign, 'val');
+          if (vAlignVal) {
+            const vaMap = { top: 'top', center: 'middle', bottom: 'bottom' };
+            if (vaMap[vAlignVal]) cellStyle += `vertical-align:${vaMap[vAlignVal]};`;
           }
         }
 
@@ -514,13 +633,18 @@ async function extractDocxWithJSZip(arrayBuffer) {
       else if (/^heading\s*5$/i.test(styleVal)) tag = 'h5';
       else if (/^heading\s*6$/i.test(styleVal)) tag = 'h6';
 
-      // Check for list
+      // Check for list with multi-level support
       const numPr = queryFirst(pPr, 'numPr');
       if (numPr) {
         const numId = queryFirst(numPr, 'numId');
         const idVal = getAttr(numId, 'val');
+        const ilvlEl = queryFirst(numPr, 'ilvl');
+        const ilvlVal = parseInt(getAttr(ilvlEl, 'val') || '0', 10);
         if (parseInt(idVal || '0') > 0) {
-          listType = numTypeMap[idVal] || 'ul'; // Use parsed numbering type, default to ul
+          // Check per-level type first, then default
+          listType = numLevelMap[`${idVal}-${ilvlVal}`] || numTypeMap[idVal] || 'ul';
+          // Store indent level for rendering
+          p._ilvl = ilvlVal;
         }
       }
     }
@@ -533,7 +657,9 @@ async function extractDocxWithJSZip(arrayBuffer) {
     const paraContent = await processParaContent(p);
 
     if (listType) {
-      html += `<li data-list-type="${listType}"${styleAttr}>${paraContent}</li>\n`;
+      const ilvl = p._ilvl || 0;
+      const indentStyle = ilvl > 0 ? ` style="margin-left:${ilvl * 24}px${paraStyle ? ';' + paraStyle : ''}"` : styleAttr;
+      html += `<li data-list-type="${listType}" data-level="${ilvl}"${indentStyle}>${paraContent}</li>\n`;
     } else {
       html += `<${tag}${styleAttr}>${paraContent}</${tag}>\n`;
     }
@@ -716,14 +842,48 @@ async function convertNode(node) {
   }
 
   if (tag === 'table') {
+    const { ShadingType, TableCellBorders } = await getDocxLib();
     const rows = [];
     for (const tr of node.querySelectorAll('tr')) {
       const cells = [];
       for (const td of tr.querySelectorAll('td, th')) {
-        cells.push(new TableCell({
+        const cellOpts = {
           children: [new Paragraph({ children: _extractTextRuns(td, TextRun, ImageRun) })],
           width: { size: 100 / tr.children.length, type: WidthType.PERCENTAGE },
-        }));
+        };
+
+        // Preserve background color from inline style
+        const bgColor = td.style?.backgroundColor;
+        if (bgColor) {
+          const hex = _cssColorToHex(bgColor);
+          if (hex) {
+            cellOpts.shading = { type: ShadingType?.CLEAR || 'clear', fill: hex };
+          }
+        }
+
+        // Preserve colspan/rowspan
+        const colspan = parseInt(td.getAttribute('colspan') || '1', 10);
+        const rowspan = parseInt(td.getAttribute('rowspan') || '1', 10);
+        if (colspan > 1) cellOpts.columnSpan = colspan;
+        if (rowspan > 1) cellOpts.rowSpan = rowspan;
+
+        // Preserve vertical alignment
+        const vAlign = td.style?.verticalAlign;
+        if (vAlign === 'middle') cellOpts.verticalAlign = 'center';
+        else if (vAlign === 'bottom') cellOpts.verticalAlign = 'bottom';
+
+        // Preserve borders
+        const borderStyle = td.style?.border || td.style?.borderTop;
+        if (borderStyle) {
+          cellOpts.borders = {
+            top: { style: BorderStyle.SINGLE, size: 1 },
+            bottom: { style: BorderStyle.SINGLE, size: 1 },
+            left: { style: BorderStyle.SINGLE, size: 1 },
+            right: { style: BorderStyle.SINGLE, size: 1 },
+          };
+        }
+
+        cells.push(new TableCell(cellOpts));
       }
       if (cells.length > 0) rows.push(new TableRow({ children: cells }));
     }

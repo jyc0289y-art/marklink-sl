@@ -55,3 +55,9 @@
 | P11.45wc | HWPX/HWP Import Bugfix & Enhancement | 2026-03-26 | P11.44wc | 진행중 |
 | P9.8wc | DOCX Import Quality Enhancement | 2026-03-26 | 없음 | 진행중 |
 | P9.9wc | Sheet UI Imported Styles Rendering Fix | 2026-03-26 | 없음 | 진행중 |
+| P9.10wc | PDF Viewer Quality Audit & Fix | 2026-03-26 | 없음 | 진행중 |
+| P9.11wc | Document Editor Quality Audit & Bugfix | 2026-03-26 | 없음 | 진행중 |
+| P9.12wc | Slide Editor Quality Audit & Bugfix | 2026-03-26 | 없음 | 진행중 |
+| P9.13wc | App Shell & UI Systems Quality Audit | 2026-03-26 | 없음 | 진행중 |
+| P9.14wc | Markdown & Photo Editor Quality Audit | 2026-03-26 | 없음 | 진행중 |
+| P9.15wc | Sheet Formula Engine Expansion | 2026-03-26 | 없음 | 진행중 |

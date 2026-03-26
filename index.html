@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" dir="ltr" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -919,11 +919,11 @@
         </div>
       </div>
       <!-- Signature Modal -->
-      <div id="pdf-sig-modal" class="pdf-modal-overlay" style="display:none">
+      <div id="pdf-sig-modal" class="pdf-modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pdf-sig-title">
         <div class="pdf-modal">
           <div class="pdf-modal-header">
-            <span data-i18n="pdf.signature">Digital Signature</span>
-            <button class="pdf-modal-close" id="pdf-sig-close">&times;</button>
+            <span id="pdf-sig-title" data-i18n="pdf.signature">Digital Signature</span>
+            <button class="pdf-modal-close" id="pdf-sig-close" aria-label="Close">&times;</button>
           </div>
           <div class="pdf-sig-tabs">
             <button class="pdf-sig-tab active" data-tab="draw">Draw</button>
@@ -974,11 +974,11 @@
         </div>
       </div>
       <!-- Merge Modal -->
-      <div id="pdf-merge-modal" class="pdf-modal-overlay" style="display:none">
+      <div id="pdf-merge-modal" class="pdf-modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pdf-merge-title">
         <div class="pdf-modal" style="width:560px">
           <div class="pdf-modal-header">
-            <span>Merge PDFs</span>
-            <button class="pdf-modal-close" id="pdf-merge-close">&times;</button>
+            <span id="pdf-merge-title" data-i18n="pdf.mergePdfs">Merge PDFs</span>
+            <button class="pdf-modal-close" id="pdf-merge-close" aria-label="Close">&times;</button>
           </div>
           <div class="pdf-sig-body">
             <p style="font-size:12px;color:var(--text-secondary);margin:0 0 8px">Add PDF files and arrange order. Optionally specify page ranges.</p>
@@ -991,11 +991,11 @@
         </div>
       </div>
       <!-- Split Modal -->
-      <div id="pdf-split-modal" class="pdf-modal-overlay" style="display:none">
+      <div id="pdf-split-modal" class="pdf-modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pdf-split-title">
         <div class="pdf-modal" style="width:480px">
           <div class="pdf-modal-header">
-            <span>Split PDF</span>
-            <button class="pdf-modal-close" id="pdf-split-close">&times;</button>
+            <span id="pdf-split-title" data-i18n="pdf.splitPdf">Split PDF</span>
+            <button class="pdf-modal-close" id="pdf-split-close" aria-label="Close">&times;</button>
           </div>
           <div class="pdf-sig-body">
             <div style="margin-bottom:12px">
@@ -1405,6 +1405,7 @@
               <div class="calc-display">
                 <div class="calc-expression" id="calc-expression"></div>
                 <div class="calc-result" id="calc-result">0</div>
+                <button class="calc-copy-btn" id="calc-copy-result" title="Copy result" style="position:absolute;right:12px;bottom:8px;background:none;border:none;cursor:pointer;font-size:14px;opacity:0.5;padding:4px 6px;border-radius:4px;color:var(--text-secondary,#888);">📋</button>
               </div>
               <!-- Mode toggle -->
               <div class="calc-modes">

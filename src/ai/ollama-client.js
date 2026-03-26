@@ -234,7 +234,7 @@ export function isVisionModel(modelName) {
  * @returns {Promise<{content: string, tokenStats: {promptTokens: number, completionTokens: number, totalDurationMs: number, model: string}|null}>}
  * @throws {Error} If the Ollama server returns a non-OK response
  */
-export async function chat(model, messages, systemPrompt, onToken) {
+export async function chat(model, messages, systemPrompt, onToken, abortSignal) {
   const body = {
     model,
     messages: [
@@ -244,11 +244,14 @@ export async function chat(model, messages, systemPrompt, onToken) {
     stream: true,
   };
 
-  const res = await fetch(`${getOllamaBase()}/api/chat`, {
+  const fetchOptions = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  });
+  };
+  if (abortSignal) fetchOptions.signal = abortSignal;
+
+  const res = await fetch(`${getOllamaBase()}/api/chat`, fetchOptions);
 
   if (!res.ok) {
     throw new Error(`Ollama error: ${res.status} ${res.statusText}`);

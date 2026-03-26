@@ -1433,6 +1433,231 @@ function evalFunctionCall(sheet, fn, argsStr) {
         // For single cell: return top-left; for array formulas: return special marker
         return `__ARRAY__${JSON.stringify(result)}`;
       }
+
+      // ─── Missing Essential Functions ───
+
+      // ─── Conditional: AVERAGEIFS ───
+      case 'AVERAGEIFS': {
+        const args = splitArgs(argsStr);
+        if (args.length < 3 || args.length % 2 === 0) return '#ERROR';
+        const avgRange = resolveRange(sheet, args[0]);
+        const criteriaCount = (args.length - 1) / 2;
+        const critRanges = [];
+        const criteria = [];
+        for (let i = 0; i < criteriaCount; i++) {
+          critRanges.push(resolveRange(sheet, args[1 + i * 2]));
+          criteria.push(evalSimpleExpr(sheet, args[2 + i * 2]));
+        }
+        const matches = [];
+        for (let i = 0; i < avgRange.length; i++) {
+          let allMatch = true;
+          for (let c = 0; c < criteriaCount; c++) {
+            if (!matchCriteria(critRanges[c][i], criteria[c])) { allMatch = false; break; }
+          }
+          if (allMatch && typeof avgRange[i] === 'number') matches.push(avgRange[i]);
+        }
+        return matches.length ? matches.reduce((a, b) => a + b, 0) / matches.length : '#DIV/0';
+      }
+
+      // ─── Math: ROUNDUP, ROUNDDOWN, INT ───
+      case 'ROUNDUP': {
+        const args = splitArgs(argsStr);
+        const num = Number(evalSimpleExpr(sheet, args[0]));
+        const digits = args[1] ? Number(evalSimpleExpr(sheet, args[1])) : 0;
+        if (isNaN(num)) return '#VALUE!';
+        const factor = Math.pow(10, digits);
+        return num >= 0 ? Math.ceil(num * factor) / factor : Math.floor(num * factor) / factor;
+      }
+      case 'ROUNDDOWN': {
+        const args = splitArgs(argsStr);
+        const num = Number(evalSimpleExpr(sheet, args[0]));
+        const digits = args[1] ? Number(evalSimpleExpr(sheet, args[1])) : 0;
+        if (isNaN(num)) return '#VALUE!';
+        const factor = Math.pow(10, digits);
+        return num >= 0 ? Math.floor(num * factor) / factor : Math.ceil(num * factor) / factor;
+      }
+      case 'INT': {
+        const num = Number(evalSimpleExpr(sheet, argsStr));
+        if (isNaN(num)) return '#VALUE!';
+        return Math.floor(num);
+      }
+
+      // ─── Text: CHAR, CODE, CLEAN ───
+      case 'CHAR': {
+        const code = Number(evalSimpleExpr(sheet, argsStr));
+        if (isNaN(code) || code < 1 || code > 65535) return '#VALUE!';
+        return String.fromCharCode(Math.floor(code));
+      }
+      case 'CODE': {
+        const str = String(evalSimpleExpr(sheet, argsStr)).replace(/^"|"$/g, '');
+        if (!str.length) return '#VALUE!';
+        return str.charCodeAt(0);
+      }
+      case 'CLEAN': {
+        const str = String(evalSimpleExpr(sheet, argsStr)).replace(/^"|"$/g, '');
+        // Remove non-printable characters (0-31)
+        return str.replace(/[\x00-\x1F]/g, '');
+      }
+
+      // ─── Date/Time: DATEVALUE, EOMONTH, WEEKNUM, NETWORKDAYS ───
+      case 'DATEVALUE': {
+        const str = String(evalSimpleExpr(sheet, argsStr)).replace(/^"|"$/g, '');
+        const d = new Date(str);
+        if (isNaN(d.getTime())) return '#VALUE!';
+        // Convert to Excel serial date
+        const epoch = new Date(1899, 11, 30);
+        return Math.floor((d.getTime() - epoch.getTime()) / 86400000);
+      }
+      case 'EOMONTH': {
+        const args = splitArgs(argsStr);
+        if (args.length < 2) return '#ERROR';
+        const startVal = evalSimpleExpr(sheet, args[0]);
+        const months = Number(evalSimpleExpr(sheet, args[1]));
+        if (isNaN(months)) return '#VALUE!';
+        let startDate;
+        if (typeof startVal === 'number') {
+          startDate = excelDateToJSDate(startVal);
+        } else {
+          startDate = new Date(String(startVal).replace(/^"|"$/g, ''));
+        }
+        if (isNaN(startDate.getTime())) return '#VALUE!';
+        // Move to target month, then get last day
+        const targetDate = new Date(startDate.getFullYear(), startDate.getMonth() + months + 1, 0);
+        return `${targetDate.getFullYear()}-${String(targetDate.getMonth()+1).padStart(2,'0')}-${String(targetDate.getDate()).padStart(2,'0')}`;
+      }
+      case 'WEEKNUM': {
+        const args = splitArgs(argsStr);
+        const val = evalSimpleExpr(sheet, args[0]);
+        let d;
+        if (typeof val === 'number') {
+          d = excelDateToJSDate(val);
+        } else {
+          d = new Date(String(val).replace(/^"|"$/g, ''));
+        }
+        if (isNaN(d.getTime())) return '#VALUE!';
+        // Calculate week number (system 1: week starts on Sunday)
+        const jan1 = new Date(d.getFullYear(), 0, 1);
+        const days = Math.floor((d.getTime() - jan1.getTime()) / 86400000);
+        return Math.ceil((days + jan1.getDay() + 1) / 7);
+      }
+      case 'NETWORKDAYS': {
+        const args = splitArgs(argsStr);
+        if (args.length < 2) return '#ERROR';
+        const startVal = evalSimpleExpr(sheet, args[0]);
+        const endVal = evalSimpleExpr(sheet, args[1]);
+        let startDate, endDate;
+        if (typeof startVal === 'number') startDate = excelDateToJSDate(startVal);
+        else startDate = new Date(String(startVal).replace(/^"|"$/g, ''));
+        if (typeof endVal === 'number') endDate = excelDateToJSDate(endVal);
+        else endDate = new Date(String(endVal).replace(/^"|"$/g, ''));
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return '#VALUE!';
+        // Collect holidays if provided
+        const holidays = new Set();
+        if (args[2]) {
+          const hols = resolveRange(sheet, args[2]);
+          for (const h of hols) {
+            const hd = typeof h === 'number' ? excelDateToJSDate(h) : new Date(String(h));
+            if (!isNaN(hd.getTime())) holidays.add(hd.toDateString());
+          }
+        }
+        let count = 0;
+        const step = startDate <= endDate ? 1 : -1;
+        const cur = new Date(startDate);
+        while (step > 0 ? cur <= endDate : cur >= endDate) {
+          const dow = cur.getDay();
+          if (dow !== 0 && dow !== 6 && !holidays.has(cur.toDateString())) count++;
+          cur.setDate(cur.getDate() + step);
+        }
+        return step > 0 ? count : -count;
+      }
+
+      // ─── Statistical: FORECAST ───
+      case 'FORECAST': {
+        const args = splitArgs(argsStr);
+        if (args.length < 3) return '#ERROR';
+        const x = Number(evalSimpleExpr(sheet, args[0]));
+        const knownYs = resolveRange(sheet, args[1]).filter(v => typeof v === 'number');
+        const knownXs = resolveRange(sheet, args[2]).filter(v => typeof v === 'number');
+        if (knownYs.length !== knownXs.length || knownYs.length < 1) return '#N/A';
+        const n = knownYs.length;
+        const meanX = knownXs.reduce((a, b) => a + b, 0) / n;
+        const meanY = knownYs.reduce((a, b) => a + b, 0) / n;
+        let num = 0, den = 0;
+        for (let i = 0; i < n; i++) {
+          num += (knownXs[i] - meanX) * (knownYs[i] - meanY);
+          den += (knownXs[i] - meanX) ** 2;
+        }
+        if (den === 0) return '#DIV/0';
+        const slope = num / den;
+        const intercept = meanY - slope * meanX;
+        return intercept + slope * x;
+      }
+
+      // ─── Logical: XOR ───
+      case 'XOR': {
+        const args = splitArgs(argsStr);
+        let trueCount = 0;
+        for (const arg of args) {
+          const rangeVals = resolveRange(sheet, arg);
+          if (rangeVals.length > 1) {
+            for (const v of rangeVals) {
+              if (v) trueCount++;
+            }
+          } else {
+            const v = evalSimpleExpr(sheet, arg);
+            if (v) trueCount++;
+          }
+        }
+        return trueCount % 2 === 1;
+      }
+
+      // ─── Info: ISNA, TYPE, N, CELL ───
+      case 'ISNA': {
+        const v = evalSimpleExpr(sheet, argsStr);
+        return v === '#N/A';
+      }
+      case 'TYPE': {
+        const v = evalSimpleExpr(sheet, argsStr);
+        if (typeof v === 'number') return 1;
+        if (typeof v === 'string') {
+          if (v.startsWith('#')) return 16; // error
+          return 2; // text
+        }
+        if (typeof v === 'boolean') return 4;
+        return 1; // default number
+      }
+      case 'N': {
+        const v = evalSimpleExpr(sheet, argsStr);
+        if (typeof v === 'number') return v;
+        if (typeof v === 'boolean') return v ? 1 : 0;
+        if (typeof v === 'string' && v.startsWith('#')) return v; // pass through errors
+        return 0;
+      }
+      case 'CELL': {
+        // Simplified CELL function — supports "address", "row", "col", "type", "contents"
+        const args = splitArgs(argsStr);
+        if (args.length < 1) return '#ERROR';
+        const infoType = String(evalSimpleExpr(sheet, args[0])).replace(/^"|"$/g, '').toLowerCase();
+        const ref = args[1] ? refToRC(args[1].trim()) : null;
+        if (!ref && infoType !== 'filename') return '#REF!';
+        switch (infoType) {
+          case 'address': return rcToRef(ref[0], ref[1]);
+          case 'row': return ref[0] + 1;
+          case 'col': return ref[1] + 1;
+          case 'type': {
+            const cell = ref ? getCell(sheet, ref[0], ref[1]) : null;
+            if (!cell || cell.raw === '') return 'b'; // blank
+            if (typeof cell.value === 'number' || !isNaN(Number(cell.value))) return 'v'; // value
+            return 'l'; // label
+          }
+          case 'contents': {
+            const cell = ref ? getCell(sheet, ref[0], ref[1]) : null;
+            return cell ? cell.value : 0;
+          }
+          case 'filename': return '';
+          default: return '#VALUE!';
+        }
+      }
     }
   return '#ERROR'; // unknown function
 }
