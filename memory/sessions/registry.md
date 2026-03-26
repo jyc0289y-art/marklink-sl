@@ -50,3 +50,4 @@
 | P11.40wc | Security Audit & XSS Hardening | 2026-03-26 | P11.39wc | 진행중 |
 | P11.41wc | CAD Editor Onshape UX Overhaul | 2026-03-26 | P11.40wc | 진행중 |
 | P11.42wc | CAD Sketch Mode + Extrude/Revolve Workflow | 2026-03-26 | P11.41wc | 진행중 |
+| P11.43wc | CAD OpenCascade.js B-Rep Integration | 2026-03-26 | P11.42wc | 진행중 |
