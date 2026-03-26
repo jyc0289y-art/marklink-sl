@@ -67,6 +67,40 @@ export function createEditor(container, initialContent = '', isDark = false) {
     }
   });
 
+  // Image drag & drop — insert as inline base64 markdown image
+  editorView.dom.addEventListener('dragover', (e) => {
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      editorView.dom.classList.add('drop-active');
+    }
+  });
+
+  editorView.dom.addEventListener('dragleave', () => {
+    editorView.dom.classList.remove('drop-active');
+  });
+
+  editorView.dom.addEventListener('drop', (e) => {
+    editorView.dom.classList.remove('drop-active');
+    const files = e.dataTransfer?.files;
+    if (!files || files.length === 0) return;
+
+    for (const file of files) {
+      if (file.type.startsWith('image/')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result;
+          const name = file.name || 'dropped-image';
+          insertAtCursor(`![${name}](${dataUrl})\n`);
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+    }
+  });
+
   return editorView;
 }
 

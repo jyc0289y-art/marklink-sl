@@ -1,43 +1,32 @@
-// OfficeLink SL — markdown-it Plugin Registration
-// Plugins are registered here and applied in renderer.js
+// OfficeLink SL — markdown-it Plugin Registration (async plugins)
+// Synchronous plugins (task-lists, footnote, emoji) are registered in renderer.js.
+// Only async/heavy plugins (KaTeX) are registered here.
 
 /**
  * Register KaTeX plugin for math rendering
- * Uses @mdit/plugin-katex or markdown-it-katex
+ * Uses @mdit/plugin-katex
  */
 export async function registerKaTeX(md) {
   try {
     const { katex: katexPlugin } = await import('@mdit/plugin-katex');
     md.use(katexPlugin);
     // Import KaTeX CSS
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    // Use katex-swap variant which includes font-display: swap to prevent FOIT
-    link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex-swap.min.css';
-    document.head.appendChild(link);
+    if (!document.querySelector('link[href*="katex"]')) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      // Use katex-swap variant which includes font-display: swap to prevent FOIT
+      link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex-swap.min.css';
+      document.head.appendChild(link);
+    }
   } catch (e) {
     console.warn('KaTeX plugin not available:', e.message);
   }
 }
 
 /**
- * Register task list plugin for GFM checklists
- */
-export async function registerTaskLists(md) {
-  try {
-    const taskListPlugin = await import('markdown-it-task-lists');
-    md.use(taskListPlugin.default || taskListPlugin);
-  } catch (e) {
-    console.warn('Task list plugin not available:', e.message);
-  }
-}
-
-/**
- * Register all plugins
+ * Register all async plugins.
+ * Task lists, footnotes, and emoji are already registered synchronously in renderer.js.
  */
 export async function registerAllPlugins(md) {
-  await Promise.all([
-    registerKaTeX(md),
-    registerTaskLists(md),
-  ]);
+  await registerKaTeX(md);
 }

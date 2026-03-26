@@ -301,6 +301,10 @@ async function parseSlideXml(slideXml, slideRelMap, zip, themeColors) {
       // Graphic frame — may contain table, chart, or SmartArt
       const html = await parseGraphicFrame(child, slideRelMap, zip, themeColors);
       if (html) htmlParts.push(html);
+    } else if (localName === 'cxnSp') {
+      // Connector shape
+      const html = parseConnector(child, themeColors);
+      if (html) htmlParts.push(html);
     } else if (localName === 'grpSp') {
       // Group shape — recurse into children
       const html = await parseGroupShape(child, slideRelMap, zip, themeColors);
@@ -308,15 +312,84 @@ async function parseSlideXml(slideXml, slideRelMap, zip, themeColors) {
     }
   }
 
-  return htmlParts.join('\n') || '<p>(Empty slide)</p>';
+  const joined = htmlParts.join('\n');
+  if (!joined) return '<p>(Empty slide)</p>';
+
+  // Wrap in position:relative container so absolutely-positioned shapes work
+  return `<div style="position:relative;width:100%;height:100%">${joined}</div>`;
 }
 
 /**
- * Parse a shape element (p:sp) into HTML
+ * Extract fill color from a shape's spPr element
+ */
+function extractFillColor(spPr, themeColors) {
+  if (!spPr) return null;
+  const solidFill = getFirstByLocalName(spPr, 'solidFill');
+  if (solidFill) {
+    const srgb = getFirstByLocalName(solidFill, 'srgbClr');
+    if (srgb) return '#' + (srgb.getAttribute('val') || '000000');
+    const schemeClr = getFirstByLocalName(solidFill, 'schemeClr');
+    if (schemeClr && themeColors) {
+      return themeColors[schemeClr.getAttribute('val')] || null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Parse a connector shape (p:cxnSp) into HTML
+ */
+function parseConnector(cxnEl, themeColors) {
+  const posStyle = extractPositionStyle(cxnEl);
+  if (!posStyle) return null;
+
+  // Extract line color
+  const spPr = getFirstByLocalName(cxnEl, 'spPr');
+  let lineColor = '#999';
+  if (spPr) {
+    const ln = getFirstByLocalName(spPr, 'ln');
+    if (ln) {
+      const solidFill = getFirstByLocalName(ln, 'solidFill');
+      if (solidFill) {
+        const srgb = getFirstByLocalName(solidFill, 'srgbClr');
+        if (srgb) lineColor = '#' + (srgb.getAttribute('val') || '999999');
+        else {
+          const schemeClr = getFirstByLocalName(solidFill, 'schemeClr');
+          if (schemeClr && themeColors) lineColor = themeColors[schemeClr.getAttribute('val')] || lineColor;
+        }
+      }
+    }
+  }
+
+  return `<div style="${posStyle};border-bottom:2px solid ${lineColor};box-sizing:border-box"></div>`;
+}
+
+/**
+ * Parse a shape element (p:sp) into HTML.
+ * Handles both text shapes and non-text shapes (filled rectangles, arrows, etc.)
  */
 function parseShape(spEl, themeColors) {
   const txBody = getFirstByLocalName(spEl, 'txBody');
-  if (!txBody) return null;
+
+  // If there's no text body, render as a visual shape placeholder
+  if (!txBody) {
+    const posStyle = extractPositionStyle(spEl);
+    if (!posStyle) return null;
+
+    // Extract shape fill color
+    const spPr = getFirstByLocalName(spEl, 'spPr');
+    const fillColor = extractFillColor(spPr, themeColors);
+    const prstGeom = spPr ? getFirstByLocalName(spPr, 'prstGeom') : null;
+    const shapePreset = prstGeom ? prstGeom.getAttribute('prst') : 'rect';
+
+    // Determine border-radius for rounded shapes
+    let borderRadius = '';
+    if (shapePreset === 'roundRect') borderRadius = 'border-radius:8px;';
+    else if (shapePreset === 'ellipse') borderRadius = 'border-radius:50%;';
+
+    const bgStyle = fillColor ? `background:${fillColor};` : 'background:rgba(128,128,128,0.15);';
+    return `<div style="${posStyle};${bgStyle}${borderRadius}box-sizing:border-box;overflow:hidden"></div>`;
+  }
 
   // Check if this is a title/subtitle placeholder
   const phEl = getFirstByLocalName(spEl, 'ph');
@@ -344,10 +417,11 @@ function parseShape(spEl, themeColors) {
       continue;
     }
 
-    // Check for bullets/numbering
+    // Check for bullets/numbering (buNone explicitly disables bullets)
     const pPr = getFirstByLocalName(para, 'pPr');
-    const hasBullet = pPr && (getFirstByLocalName(pPr, 'buChar') || getFirstByLocalName(pPr, 'buFont') || getFirstByLocalName(pPr, 'buBlip'));
-    const hasAutoNum = pPr && getFirstByLocalName(pPr, 'buAutoNum');
+    const hasBuNone = pPr && getFirstByLocalName(pPr, 'buNone');
+    const hasBullet = !hasBuNone && pPr && (getFirstByLocalName(pPr, 'buChar') || getFirstByLocalName(pPr, 'buFont') || getFirstByLocalName(pPr, 'buBlip'));
+    const hasAutoNum = !hasBuNone && pPr && getFirstByLocalName(pPr, 'buAutoNum');
     const isBulleted = hasBullet || hasAutoNum;
     const newListType = hasAutoNum ? 'ol' : 'ul';
 
@@ -379,9 +453,43 @@ function parseShape(spEl, themeColors) {
   const content = htmlParts.join('\n');
   if (!content.trim()) return null;
 
+  // Build additional styling from shape properties
+  const spPr = getFirstByLocalName(spEl, 'spPr');
+  const fillColor = extractFillColor(spPr, themeColors);
+  let extraStyle = '';
+  if (fillColor) extraStyle += `background:${fillColor};`;
+
+  // Shape border
+  if (spPr) {
+    const ln = getFirstByLocalName(spPr, 'ln');
+    if (ln) {
+      const lnFill = getFirstByLocalName(ln, 'solidFill');
+      if (lnFill) {
+        const srgb = getFirstByLocalName(lnFill, 'srgbClr');
+        const lineHex = srgb ? '#' + (srgb.getAttribute('val') || '333333') : '#333';
+        const lnW = parseInt(ln.getAttribute('w'), 10);
+        const borderWidth = lnW ? Math.max(1, Math.round(lnW / 12700)) : 1;
+        extraStyle += `border:${borderWidth}px solid ${lineHex};`;
+      }
+    }
+  }
+
+  // Rounded rect detection
+  if (spPr) {
+    const prstGeom = getFirstByLocalName(spPr, 'prstGeom');
+    const preset = prstGeom ? prstGeom.getAttribute('prst') : '';
+    if (preset === 'roundRect') extraStyle += 'border-radius:8px;';
+    else if (preset === 'ellipse') extraStyle += 'border-radius:50%;';
+  }
+
+  if (extraStyle) extraStyle += 'padding:8px;box-sizing:border-box;overflow:hidden;';
+
   // Wrap in positioned div if we have position data
   if (posStyle) {
-    return `<div style="${posStyle}">${content}</div>`;
+    return `<div style="${posStyle};${extraStyle}">${content}</div>`;
+  }
+  if (extraStyle) {
+    return `<div style="${extraStyle}">${content}</div>`;
   }
   return content;
 }
@@ -481,7 +589,14 @@ function parseParagraphRuns(paraEl, themeColors) {
 }
 
 /**
- * Extract position/size style from a shape element
+ * Standard slide dimensions in EMU (10in x 7.5in at 96 DPI)
+ */
+const SLIDE_W_EMU = 9144000;
+const SLIDE_H_EMU = 6858000;
+
+/**
+ * Extract position/size style from a shape element.
+ * Converts EMU coordinates to percentage-based positioning relative to slide dimensions.
  */
 function extractPositionStyle(spEl) {
   const xfrm = getFirstByLocalName(spEl, 'xfrm');
@@ -492,19 +607,34 @@ function extractPositionStyle(spEl) {
 
   if (!off && !ext) return '';
 
-  const styles = [];
+  const styles = ['position:absolute'];
   if (off) {
-    const x = emuToPx(off.getAttribute('x'));
-    const y = emuToPx(off.getAttribute('y'));
-    // Convert absolute positioning to relative hints — don't use absolute positioning
-    // as it breaks the slide editor flow. Instead, use margin hints.
-    if (x > 200) styles.push(`margin-left:${Math.min(x / 10, 40)}%`);
-    if (y > 0) styles.push(`margin-top:${Math.min(y / 20, 20)}px`);
+    const xEmu = parseInt(off.getAttribute('x'), 10) || 0;
+    const yEmu = parseInt(off.getAttribute('y'), 10) || 0;
+    // Convert to percentage of slide dimensions for responsive layout
+    const leftPct = (xEmu / SLIDE_W_EMU * 100).toFixed(2);
+    const topPct = (yEmu / SLIDE_H_EMU * 100).toFixed(2);
+    styles.push(`left:${leftPct}%`);
+    styles.push(`top:${topPct}%`);
   }
   if (ext) {
-    const cx = emuToPx(ext.getAttribute('cx'));
-    const cy = emuToPx(ext.getAttribute('cy'));
-    if (cx > 0 && cx < 900) styles.push(`max-width:${cx}px`);
+    const cxEmu = parseInt(ext.getAttribute('cx'), 10) || 0;
+    const cyEmu = parseInt(ext.getAttribute('cy'), 10) || 0;
+    if (cxEmu > 0) {
+      const widthPct = (cxEmu / SLIDE_W_EMU * 100).toFixed(2);
+      styles.push(`width:${widthPct}%`);
+    }
+    if (cyEmu > 0) {
+      const heightPct = (cyEmu / SLIDE_H_EMU * 100).toFixed(2);
+      styles.push(`height:${heightPct}%`);
+    }
+  }
+
+  // Check for rotation
+  const rot = xfrm.getAttribute('rot');
+  if (rot) {
+    const degrees = parseInt(rot, 10) / 60000; // OOXML rotation is in 60000ths of a degree
+    if (degrees !== 0) styles.push(`transform:rotate(${degrees.toFixed(1)}deg)`);
   }
 
   return styles.join(';');
@@ -686,12 +816,22 @@ async function parseGroupShape(grpEl, slideRelMap, zip, themeColors) {
     } else if (child.localName === 'graphicFrame') {
       const html = await parseGraphicFrame(child, slideRelMap, zip, themeColors);
       if (html) htmlParts.push(html);
+    } else if (child.localName === 'cxnSp') {
+      const html = parseConnector(child, themeColors);
+      if (html) htmlParts.push(html);
     } else if (child.localName === 'grpSp') {
       const html = await parseGroupShape(child, slideRelMap, zip, themeColors);
       if (html) htmlParts.push(html);
     }
   }
-  return htmlParts.join('\n');
+
+  // Wrap group in a positioned div using the group's transform
+  const posStyle = extractPositionStyle(grpEl);
+  const joined = htmlParts.join('\n');
+  if (posStyle) {
+    return `<div style="${posStyle};overflow:visible">${joined}</div>`;
+  }
+  return joined;
 }
 
 /**
@@ -1184,10 +1324,16 @@ export async function saveSlideAsPptx() {
     }
   }
 
+  // Determine which slides have speaker notes
+  const slidesWithNotes = slides.map((s, i) => !!(s.notes && s.notes.trim()));
+
   // ─── [Content_Types].xml ───
   let contentTypesOverrides = '';
   for (let i = 0; i < slides.length; i++) {
     contentTypesOverrides += `\n  <Override PartName="/ppt/slides/slide${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`;
+    if (slidesWithNotes[i]) {
+      contentTypesOverrides += `\n  <Override PartName="/ppt/notesSlides/notesSlide${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>`;
+    }
   }
 
   // Media content type defaults
@@ -1211,6 +1357,7 @@ export async function saveSlideAsPptx() {
   <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>${contentTypesOverrides}
   <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
   <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
+  <Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
 </Types>`);
 
   // ─── _rels/.rels ───
@@ -1252,7 +1399,34 @@ export async function saveSlideAsPptx() {
   zip.file('ppt/slideMasters/_rels/slideMaster1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/>
 </Relationships>`);
+
+  // ─── Theme ───
+  zip.file('ppt/theme/theme1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="OfficeLink Theme">
+  <a:themeElements>
+    <a:clrScheme name="OfficeLink">
+      <a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1>
+      <a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1>
+      <a:dk2><a:srgbClr val="44546A"/></a:dk2>
+      <a:lt2><a:srgbClr val="E7E6E6"/></a:lt2>
+      <a:accent1><a:srgbClr val="4472C4"/></a:accent1>
+      <a:accent2><a:srgbClr val="ED7D31"/></a:accent2>
+      <a:accent3><a:srgbClr val="A5A5A5"/></a:accent3>
+      <a:accent4><a:srgbClr val="FFC000"/></a:accent4>
+      <a:accent5><a:srgbClr val="5B9BD5"/></a:accent5>
+      <a:accent6><a:srgbClr val="70AD47"/></a:accent6>
+      <a:hlink><a:srgbClr val="0563C1"/></a:hlink>
+      <a:folHlink><a:srgbClr val="954F72"/></a:folHlink>
+    </a:clrScheme>
+    <a:fontScheme name="OfficeLink">
+      <a:majorFont><a:latin typeface="Calibri Light"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont>
+      <a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont>
+    </a:fontScheme>
+    <a:fmtScheme name="OfficeLink"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="12700"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="19050"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>
+  </a:themeElements>
+</a:theme>`);
 
   zip.file('ppt/slideLayouts/slideLayout1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank">
@@ -1280,16 +1454,58 @@ export async function saveSlideAsPptx() {
   </p:cSld>
 </p:sld>`);
 
-    // Slide relationships (layout + images)
+    // Slide relationships (layout + images + notes)
+    // Calculate next available rId: rId1 = layout, rId2+ = images (from htmlToOoxmlShapes rIdCounter starting at 2)
+    const maxImgRId = slideImages.reduce((max, img) => {
+      const num = parseInt(img.rId.replace('rId', ''), 10);
+      return num > max ? num : max;
+    }, 1);
+    const notesRId = `rId${maxImgRId + 1}`;
+
     let slideRelXml = `  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>`;
     for (const img of slideImages) {
       slideRelXml += `\n  <Relationship Id="${img.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${img.mediaName}"/>`;
+    }
+    if (slidesWithNotes[i]) {
+      slideRelXml += `\n  <Relationship Id="${notesRId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide" Target="../notesSlides/notesSlide${i + 1}.xml"/>`;
     }
 
     zip.file(`ppt/slides/_rels/slide${i + 1}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 ${slideRelXml}
 </Relationships>`);
+
+    // Generate notes slide if notes exist
+    if (slidesWithNotes[i]) {
+      const notesText = slide.notes || '';
+      const notesParagraphs = notesText.split('\n').map(line =>
+        `<a:p><a:r><a:rPr lang="ko-KR" sz="1200" dirty="0"/><a:t>${escXmlExport(line)}</a:t></a:r></a:p>`
+      ).join('');
+
+      zip.file(`ppt/notesSlides/notesSlide${i + 1}.xml`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:notes xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
+      <p:sp>
+        <p:nvSpPr><p:cNvPr id="2" name="Slide Image"/><p:cNvSpPr><a:spLocks noGrp="1" noRot="1" noChangeAspect="1"/></p:cNvSpPr><p:nvPr><p:ph type="sldImg"/></p:nvPr></p:nvSpPr>
+        <p:spPr/>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr><p:cNvPr id="3" name="Notes"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr>
+        <p:spPr/>
+        <p:txBody><a:bodyPr/><a:lstStyle/>${notesParagraphs}</p:txBody>
+      </p:sp>
+    </p:spTree>
+  </p:cSld>
+</p:notes>`);
+
+      zip.file(`ppt/notesSlides/_rels/notesSlide${i + 1}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="../slides/slide${i + 1}.xml"/>
+</Relationships>`);
+    }
   }
 
   // ─── Media files ───

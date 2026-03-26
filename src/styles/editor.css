@@ -40,6 +40,27 @@
   outline: none;
 }
 
+/* Image drag & drop visual feedback */
+.editor-container .cm-editor .drop-active {
+  box-shadow: inset 0 0 0 3px var(--accent-color, #3b82f6);
+  border-radius: 4px;
+}
+
+.editor-container .cm-editor .cm-content.drop-active::after {
+  content: 'Drop image here';
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  inset: 0;
+  background: rgba(59, 130, 246, 0.05);
+  color: var(--accent-color, #3b82f6);
+  font-size: 16px;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 10;
+}
+
 .editor-container .cm-scroller {
   overflow: auto;
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Menlo', monospace;

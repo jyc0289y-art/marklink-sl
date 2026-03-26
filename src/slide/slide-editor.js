@@ -487,9 +487,11 @@ function loadSlide(idx) {
     applyMasterToCanvas(MASTER_SLIDES[slide.master]);
   }
 
-  // Apply custom background if set
+  // Apply custom background if set (check both customBg and background from PPTX import)
   if (slide.customBg) {
     canvasEl.style.background = slide.customBg;
+  } else if (slide.background) {
+    canvasEl.style.background = slide.background;
   } else {
     canvasEl.style.background = '';
   }

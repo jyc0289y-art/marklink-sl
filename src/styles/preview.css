@@ -197,6 +197,93 @@
   font-family: monospace;
 }
 
+/* Footnotes */
+.markdown-body .footnotes {
+  margin-top: 2em;
+  padding-top: 1em;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.9em;
+  color: var(--text-secondary);
+}
+
+.markdown-body .footnotes-sep {
+  display: none;
+}
+
+.markdown-body .footnotes ol {
+  padding-left: 1.5em;
+}
+
+.markdown-body .footnotes li {
+  margin-bottom: 0.5em;
+}
+
+.markdown-body sup.footnote-ref a {
+  color: var(--accent-color, #3b82f6);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.markdown-body sup.footnote-ref a:hover {
+  text-decoration: underline;
+}
+
+.markdown-body .footnote-backref {
+  color: var(--accent-color, #3b82f6);
+  text-decoration: none;
+  margin-left: 4px;
+}
+
+/* Table of Contents */
+.markdown-body .md-toc {
+  background: var(--bg-secondary, #f6f8fa);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin: 1em 0;
+}
+
+.markdown-body .md-toc strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 1.1em;
+  color: var(--text-primary);
+}
+
+.markdown-body .md-toc ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.markdown-body .md-toc li {
+  padding: 2px 0;
+}
+
+.markdown-body .md-toc a {
+  color: var(--accent-color, #3b82f6);
+  text-decoration: none;
+}
+
+.markdown-body .md-toc a:hover {
+  text-decoration: underline;
+}
+
+/* Image alignment via CSS classes */
+.markdown-body img[align="center"],
+.markdown-body img.center {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.markdown-body img[align="right"],
+.markdown-body img.right {
+  float: right;
+  margin-left: 1em;
+  margin-bottom: 0.5em;
+}
+
 /* Scrollbar */
 .preview-container::-webkit-scrollbar {
   width: 8px;

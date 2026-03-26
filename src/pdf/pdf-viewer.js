@@ -1064,11 +1064,10 @@ async function extractCurrentPage() {
   const exportScale = 2;
   const viewport = page.getViewport({ scale: exportScale, rotation });
   const canvas = document.createElement('canvas');
-  const dpr = getDpr();
-  canvas.width = Math.floor(viewport.width * dpr);
-  canvas.height = Math.floor(viewport.height * dpr);
+  // For export, use 1:1 pixel ratio (no DPR scaling needed)
+  canvas.width = Math.floor(viewport.width);
+  canvas.height = Math.floor(viewport.height);
   const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   await page.render({ canvasContext: ctx, viewport }).promise;
 
   // Download as PNG (simpler than reconstructing PDF)
@@ -1251,7 +1250,74 @@ function addStickyNote(wrapper, x, y, pageNum) {
   textarea.addEventListener('blur', () => {
     const annots = pageAnnotations[pageNum] || [];
     const last = [...annots].reverse().find(a => a.type === 'sticky' && a.x === x && a.y === y);
-    if (last) last.text = textarea.value;
+    if (last) {
+      last.text = textarea.value;
+      persistAnnotationsToStorage();
+    }
+  });
+}
+
+/**
+ * Re-create a sticky note from saved annotation data (used during redraw after zoom/re-render).
+ * Unlike addStickyNote, this does NOT create a new annotation entry.
+ */
+function addStickyNoteFromSaved(wrapper, x, y, pageNum, text, color) {
+  const colorIcons = { '#fff9c4': '📌', '#c8e6c9': '📗', '#bbdefb': '📘', '#ffccbc': '📙', '#f8bbd0': '💗', '#e1bee7': '💜' };
+  const icon = colorIcons[color] || '📌';
+
+  const note = document.createElement('div');
+  note.className = 'pdf-sticky-note-el';
+  note.textContent = icon;
+  note.style.left = x + 'px';
+  note.style.top = y + 'px';
+
+  const popup = document.createElement('div');
+  popup.className = 'pdf-sticky-popup';
+  popup.style.left = (x + 28) + 'px';
+  popup.style.top = y + 'px';
+  popup.style.display = 'none';
+  popup.style.background = color;
+  popup.style.borderColor = adjustColor(color, -30);
+
+  const header = document.createElement('div');
+  header.className = 'pdf-sticky-popup-header';
+  header.innerHTML = '<span>Note</span>';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'pdf-sticky-popup-close';
+  closeBtn.textContent = '\u00d7';
+  closeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    note.remove();
+    popup.remove();
+    const annots = pageAnnotations[pageNum] || [];
+    const idx = annots.findIndex(a => a.type === 'sticky' && a.x === x && a.y === y);
+    if (idx !== -1) annots.splice(idx, 1);
+    persistAnnotationsToStorage();
+  });
+  header.appendChild(closeBtn);
+  popup.appendChild(header);
+
+  const textarea = document.createElement('textarea');
+  textarea.placeholder = t('pdf.addNote');
+  textarea.value = text;
+  popup.appendChild(textarea);
+
+  note.addEventListener('click', (e) => {
+    e.stopPropagation();
+    popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
+    if (popup.style.display === 'block') textarea.focus();
+  });
+
+  wrapper.appendChild(note);
+  wrapper.appendChild(popup);
+
+  textarea.addEventListener('blur', () => {
+    const annots = pageAnnotations[pageNum] || [];
+    const last = [...annots].reverse().find(a => a.type === 'sticky' && a.x === x && a.y === y);
+    if (last) {
+      last.text = textarea.value;
+      persistAnnotationsToStorage();
+    }
   });
 }
 
@@ -1334,6 +1400,7 @@ function redrawAnnotations(annotCanvas, pageNum, viewport) {
   const annots = pageAnnotations[pageNum];
   if (!annots || !annots.length) return;
   const ctx = annotCanvas.getContext('2d');
+  const wrapper = annotCanvas.parentElement;
 
   for (const a of annots) {
     if (a.type === 'highlight') {
@@ -1363,6 +1430,9 @@ function redrawAnnotations(annotCanvas, pageNum, viewport) {
         ctx.lineTo(a.points[i].x, a.points[i].y);
       }
       ctx.stroke();
+    } else if (a.type === 'sticky' && wrapper) {
+      // Re-create sticky note DOM elements from saved annotation
+      addStickyNoteFromSaved(wrapper, a.x, a.y, pageNum, a.text || '', a.color || '#fff9c4');
     }
   }
 }
@@ -1392,7 +1462,11 @@ async function clearAnnotationsOnPage() {
 }
 
 // ─── Search ─────────────────────────────────────────────────
-function performSearch(query) {
+/**
+ * Search across ALL pages, including those not yet rendered.
+ * For unrendered pages, we load text content from PDF.js directly.
+ */
+async function performSearch(query) {
   const infoEl = document.getElementById('pdf-search-info');
   // Clear previous highlights
   document.querySelectorAll('.pdf-search-hl').forEach(el => el.classList.remove('pdf-search-hl', 'pdf-search-hl-active'));
@@ -1406,6 +1480,7 @@ function performSearch(query) {
 
   const lowerQ = query.toLowerCase();
 
+  // First, search rendered pages (with DOM elements for highlighting)
   document.querySelectorAll('.pdf-text-layer').forEach(layer => {
     const pageNum = parseInt(layer.dataset.page, 10);
     layer.querySelectorAll('span').forEach((span, si) => {
@@ -1415,6 +1490,38 @@ function performSearch(query) {
       }
     });
   });
+
+  // Then, search unrendered pages by loading text content from PDF.js
+  const renderedPageNums = new Set();
+  document.querySelectorAll('.pdf-text-layer').forEach(layer => {
+    renderedPageNums.add(parseInt(layer.dataset.page, 10));
+  });
+
+  for (let idx = 0; idx < pageOrder.length; idx++) {
+    const id = pageOrder[idx];
+    const pageNum = pageIdToNum(id);
+    if (!pageNum || renderedPageNums.has(pageNum)) continue;
+
+    try {
+      // Load text content if not cached
+      if (!textContentCache[pageNum]) {
+        const page = await pdfDoc.getPage(pageNum);
+        textContentCache[pageNum] = await page.getTextContent();
+      }
+      const textContent = textContentCache[pageNum];
+      textContent.items.forEach((item, si) => {
+        if (item.str.toLowerCase().includes(lowerQ)) {
+          // No DOM element yet — store pageNum and index for navigation
+          searchMatches.push({ pageNum, spanIndex: si, element: null });
+        }
+      });
+    } catch (_e) {
+      // Skip pages that fail to load
+    }
+  }
+
+  // Sort matches by page order
+  searchMatches.sort((a, b) => a.pageNum - b.pageNum || a.spanIndex - b.spanIndex);
 
   if (infoEl) infoEl.textContent = searchMatches.length ? `${searchMatches.length} found` : 'No results';
 
@@ -1440,8 +1547,33 @@ function highlightActiveMatch() {
   document.querySelectorAll('.pdf-search-hl-active').forEach(el => el.classList.remove('pdf-search-hl-active'));
   const match = searchMatches[searchIdx];
   if (!match) return;
-  match.element.classList.add('pdf-search-hl-active');
-  match.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  if (match.element) {
+    // Page is rendered — highlight the element directly
+    match.element.classList.add('pdf-search-hl-active');
+    match.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } else {
+    // Page is not yet rendered — navigate to the page to trigger rendering
+    // Find the page index in pageOrder
+    const pageIdx = pageOrder.findIndex(id => pageIdToNum(id) === match.pageNum);
+    if (pageIdx >= 0) {
+      currentPage = pageIdx + 1;
+      scrollToPageIdx(pageIdx);
+      updatePageInfo();
+      // After rendering, try to highlight the span
+      setTimeout(() => {
+        const layer = document.querySelector(`.pdf-text-layer[data-page="${match.pageNum}"]`);
+        if (layer) {
+          const span = layer.querySelectorAll('span')[match.spanIndex];
+          if (span) {
+            span.classList.add('pdf-search-hl', 'pdf-search-hl-active');
+            match.element = span;
+            span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }
+      }, 500);
+    }
+  }
 
   const infoEl = document.getElementById('pdf-search-info');
   if (infoEl) infoEl.textContent = `${searchIdx + 1}/${searchMatches.length}`;
@@ -1491,14 +1623,14 @@ async function detectAndRenderFormFields(wrapper, page, viewport, pageNum) {
           const textarea = document.createElement('textarea');
           textarea.style.cssText = `width:${width}px;height:${height}px`;
           textarea.value = formFieldValues[fieldId] || annot.fieldValue || '';
-          textarea.addEventListener('input', () => { formFieldValues[fieldId] = textarea.value; });
+          textarea.addEventListener('input', () => { formFieldValues[fieldId] = textarea.value; persistAnnotationsToStorage(); });
           fieldWrap.appendChild(textarea);
         } else {
           const input = document.createElement('input');
           input.type = 'text';
           input.style.cssText = `width:${width}px;height:${height}px`;
           input.value = formFieldValues[fieldId] || annot.fieldValue || '';
-          input.addEventListener('input', () => { formFieldValues[fieldId] = input.value; });
+          input.addEventListener('input', () => { formFieldValues[fieldId] = input.value; persistAnnotationsToStorage(); });
           fieldWrap.appendChild(input);
         }
       } else if (annot.fieldType === 'Btn') {
@@ -1506,7 +1638,7 @@ async function detectAndRenderFormFields(wrapper, page, viewport, pageNum) {
           const cb = document.createElement('input');
           cb.type = 'checkbox';
           cb.checked = formFieldValues[fieldId] !== undefined ? formFieldValues[fieldId] : !!annot.fieldValue;
-          cb.addEventListener('change', () => { formFieldValues[fieldId] = cb.checked; });
+          cb.addEventListener('change', () => { formFieldValues[fieldId] = cb.checked; persistAnnotationsToStorage(); });
           fieldWrap.appendChild(cb);
         } else if (annot.radioButton) {
           const rb = document.createElement('input');
@@ -1514,7 +1646,7 @@ async function detectAndRenderFormFields(wrapper, page, viewport, pageNum) {
           rb.name = annot.fieldName || `radio_${pageNum}`;
           rb.value = annot.buttonValue || '';
           rb.checked = formFieldValues[fieldId] !== undefined ? formFieldValues[fieldId] : !!annot.fieldValue;
-          rb.addEventListener('change', () => { formFieldValues[fieldId] = rb.checked; });
+          rb.addEventListener('change', () => { formFieldValues[fieldId] = rb.checked; persistAnnotationsToStorage(); });
           fieldWrap.appendChild(rb);
         }
       } else if (annot.fieldType === 'Ch') {
@@ -1529,7 +1661,7 @@ async function detectAndRenderFormFields(wrapper, page, viewport, pageNum) {
           });
         }
         select.value = formFieldValues[fieldId] || annot.fieldValue || '';
-        select.addEventListener('change', () => { formFieldValues[fieldId] = select.value; });
+        select.addEventListener('change', () => { formFieldValues[fieldId] = select.value; persistAnnotationsToStorage(); });
         fieldWrap.appendChild(select);
       }
 
@@ -1757,6 +1889,18 @@ function placeSignatureOnPage(wrapper, _pageNum, dataUrl, x, y) {
 
 function makeDraggable(el, container) {
   let isDragging = false, offsetX, offsetY;
+  const onMouseMove = (e) => {
+    if (!isDragging) return;
+    const cr = container.getBoundingClientRect();
+    el.style.left = (e.clientX - cr.left - offsetX) + 'px';
+    el.style.top = (e.clientY - cr.top - offsetY) + 'px';
+  };
+  const onMouseUp = () => {
+    if (!isDragging) return;
+    isDragging = false;
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+  };
   el.addEventListener('mousedown', (e) => {
     if (e.target.tagName === 'BUTTON') return;
     isDragging = true;
@@ -1765,14 +1909,9 @@ function makeDraggable(el, container) {
     offsetY = e.clientY - rect.top;
     e.preventDefault();
     e.stopPropagation();
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
   });
-  document.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
-    const cr = container.getBoundingClientRect();
-    el.style.left = (e.clientX - cr.left - offsetX) + 'px';
-    el.style.top = (e.clientY - cr.top - offsetY) + 'px';
-  });
-  document.addEventListener('mouseup', () => { isDragging = false; });
 }
 
 // ─── Redaction ──────────────────────────────────────────────
@@ -1802,16 +1941,22 @@ async function applyRedactions() {
   if (!hasRedactions) { alert('No redaction areas marked.'); return; }
   if (!confirm('Apply redactions permanently? This cannot be undone.')) return;
 
+  const dpr = getDpr();
+
   for (const [pageNumStr, rects] of Object.entries(redactionRects)) {
     const pageNum = parseInt(pageNumStr, 10);
     const canvasEl = pagesEl.querySelector(`.pdf-page-wrapper canvas[data-page="${pageNum}"]`);
     if (!canvasEl) continue;
     const ctx = canvasEl.getContext('2d');
 
+    // Save context state and set DPR transform so CSS coordinates work correctly
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     for (const r of rects) {
       ctx.fillStyle = '#000000';
       ctx.fillRect(r.x, r.y, r.w, r.h);
     }
+    ctx.restore();
 
     const wrapperEl = canvasEl.closest('.pdf-page-wrapper');
     wrapperEl?.querySelectorAll('.pdf-redact-rect.preview').forEach(el => {
@@ -2107,10 +2252,14 @@ const renderBookmarksList = () => {
       }
 
       item.addEventListener('click', () => {
-        if (bm.pageNum && bm.pageNum >= 1 && bm.pageNum <= getVisiblePageCount()) {
-          currentPage = bm.pageNum;
-          scrollToPageIdx(currentPage - 1);
-          updatePageInfo();
+        if (bm.pageNum && bm.pageNum >= 1) {
+          // Map original page number to visible index in pageOrder
+          const visibleIdx = pageOrder.indexOf('p' + bm.pageNum);
+          if (visibleIdx >= 0) {
+            currentPage = visibleIdx + 1;
+            scrollToPageIdx(visibleIdx);
+            updatePageInfo();
+          }
         }
       });
 
@@ -2650,12 +2799,15 @@ const buildPdfFromCanvases = (canvases) => {
 
   const pageObjNums = [];
   const imageObjNums = [];
+  const contentObjNums = [];
 
   for (let i = 0; i < pages.length; i++) {
     const imgNum = addObj(''); // image stream placeholder
     imageObjNums.push(imgNum);
     const pageNum = addObj(''); // page placeholder
     pageObjNums.push(pageNum);
+    const contentNum = addObj(''); // content stream placeholder
+    contentObjNums.push(contentNum);
   }
 
   // Now build the actual PDF binary
@@ -2700,21 +2852,21 @@ const buildPdfFromCanvases = (canvases) => {
     write('\nendstream\nendobj\n');
 
     offsets[pgNum] = offset;
-    write(`${pgNum} 0 obj\n<< /Type /Page /Parent ${pagesNum} 0 R /MediaBox [0 0 ${Math.round(width)} ${Math.round(height)}] /Contents ${pgNum + pages.length} 0 R /Resources << /XObject << /Im0 ${imgNum} 0 R >> >> >>\nendobj\n`);
+    write(`${pgNum} 0 obj\n<< /Type /Page /Parent ${pagesNum} 0 R /MediaBox [0 0 ${Math.round(width)} ${Math.round(height)}] /Contents ${contentObjNums[i]} 0 R /Resources << /XObject << /Im0 ${imgNum} 0 R >> >> >>\nendobj\n`);
   }
 
   // Content streams for each page
   for (let i = 0; i < pages.length; i++) {
     const { width, height } = pages[i];
     const contentStr = `q ${Math.round(width)} 0 0 ${Math.round(height)} 0 0 cm /Im0 Do Q`;
-    const contentNum = pageObjNums[i] + pages.length;
-    offsets[contentNum] = offset;
-    write(`${contentNum} 0 obj\n<< /Length ${contentStr.length} >>\nstream\n${contentStr}\nendstream\nendobj\n`);
+    const cNum = contentObjNums[i];
+    offsets[cNum] = offset;
+    write(`${cNum} 0 obj\n<< /Length ${contentStr.length} >>\nstream\n${contentStr}\nendstream\nendobj\n`);
   }
 
   // XRef
   const xrefOffset = offset;
-  const totalObjs = pagesNum + pages.length * 3;
+  const totalObjs = objs.length;
   write(`xref\n0 ${totalObjs + 1}\n0000000000 65535 f \n`);
   for (let i = 1; i <= totalObjs; i++) {
     const off = offsets[i] || 0;

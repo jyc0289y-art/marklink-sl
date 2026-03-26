@@ -66,3 +66,7 @@
 | P9.18wc | Accessibility & i18n Audit | 2026-03-27 | 없음 | 진행중 |
 | P9.19wc | CAD OCCT Engine Quality Audit & Bugfix | 2026-03-27 | 없음 | 진행중 |
 | P9.20wc | DOCX/HWPX Import Quality Fundamentals | 2026-03-27 | 없음 | 진행중 |
+| P9.21wc | PPTX Import/Export Roundtrip Quality | 2026-03-27 | 없음 | 진행중 |
+| P9.22wc | Markdown Editor & Preview Quality Audit | 2026-03-27 | 없음 | 진행중 |
+| P9.23wc | PDF Viewer Annotation & Form Quality Fix | 2026-03-27 | 없음 | 진행중 |
+| P9.24wc | Sheet UI Interaction Quality Bugfix | 2026-03-27 | 없음 | 진행중 |

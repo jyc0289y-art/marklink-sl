@@ -471,6 +471,64 @@ function bindEvents() {
     }
   });
 
+  // Corner cell click → select all
+  gridEl.addEventListener('mousedown', (e) => {
+    const corner = e.target.closest('th.sheet-corner');
+    if (corner) {
+      if (isEditing) commitEdit();
+      const sheet = getSheet();
+      selAnchorRow = 0; selAnchorCol = 0;
+      selectedRow = sheet.rows - 1; selectedCol = sheet.cols - 1;
+      updateSelection();
+      e.preventDefault();
+      return;
+    }
+
+    // Column header click → select entire column
+    const colHeader = e.target.closest('th.sheet-col-header');
+    if (colHeader) {
+      const rect = colHeader.getBoundingClientRect();
+      // Skip if near the right edge (resize zone)
+      if (Math.abs(e.clientX - rect.right) < 5) return;
+      if (isEditing) commitEdit();
+      const c = parseInt(colHeader.dataset.col, 10);
+      const sheet = getSheet();
+      if (e.shiftKey) {
+        // Extend selection to this column
+        selectedCol = c;
+        selectedRow = sheet.rows - 1;
+      } else {
+        selAnchorRow = 0; selAnchorCol = c;
+        selectedRow = sheet.rows - 1; selectedCol = c;
+      }
+      updateSelection();
+      e.preventDefault();
+      return;
+    }
+
+    // Row header click → select entire row
+    const rowHeader = e.target.closest('th.sheet-row-header');
+    if (rowHeader) {
+      const rect = rowHeader.getBoundingClientRect();
+      // Skip if near the bottom edge (resize zone)
+      if (Math.abs(e.clientY - rect.bottom) < 5) return;
+      if (isEditing) commitEdit();
+      const r = parseInt(rowHeader.dataset.row, 10);
+      const sheet = getSheet();
+      if (e.shiftKey) {
+        // Extend selection to this row
+        selectedRow = r;
+        selectedCol = sheet.cols - 1;
+      } else {
+        selAnchorRow = r; selAnchorCol = 0;
+        selectedRow = r; selectedCol = sheet.cols - 1;
+      }
+      updateSelection();
+      e.preventDefault();
+      return;
+    }
+  });
+
   // Cell click → select or insert reference
   gridEl.addEventListener('mousedown', (e) => {
     const td = e.target.closest('td[data-row]');
@@ -627,18 +685,23 @@ function bindEvents() {
     if (e.key === 'Enter') {
       hideAutocomplete();
       const val = formulaBarEl.value;
+      const sheet = getSheet();
+      const key = `${selectedRow},${selectedCol}`;
+      const oldCell = sheet.cells[key] ? JSON.parse(JSON.stringify(sheet.cells[key])) : null;
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && val.startsWith('=')) {
         // Array formula: Ctrl+Shift+Enter
-        setCellArrayFormula(getSheet(), selectedRow, selectedCol, val);
+        setCellArrayFormula(sheet, selectedRow, selectedCol, val);
       } else {
-        setCell(getSheet(), selectedRow, selectedCol, val);
+        setCell(sheet, selectedRow, selectedCol, val);
       }
-      recalcAll(getSheet());
+      const newCell = sheet.cells[key] ? JSON.parse(JSON.stringify(sheet.cells[key])) : null;
+      pushUndoEntry(key, oldCell, newCell);
+      recalcAll(sheet);
       isEditing = false;
       isFormulaMode = false;
       formulaEditTarget = null;
       renderGrid();
-      updateSelection();
+      moveSelection(1, 0); // move down after Enter, like in-cell editing
       formulaBarEl.blur();
     } else if (e.key === 'Escape') {
       hideAutocomplete();
@@ -646,6 +709,8 @@ function bindEvents() {
       isFormulaMode = false;
       formulaEditTarget = null;
       formulaBarEl.value = getRawValue(getSheet(), selectedRow, selectedCol);
+      renderGrid();
+      updateSelection();
       formulaBarEl.blur();
     }
   });
@@ -1604,9 +1669,15 @@ function sheetRedo() {
 
 function commitEdit(asArrayFormula = false) {
   const td = gridEl.querySelector(`td[data-row="${editingRow}"][data-col="${editingCol}"]`);
-  if (!td) return;
-  const input = td.querySelector('input');
-  const val = input ? input.value : (formulaEditTarget === 'bar' ? formulaBarEl.value : '');
+  // Get value from input, formula bar, or bail out
+  let val;
+  if (td) {
+    const input = td.querySelector('input');
+    val = input ? input.value : (formulaEditTarget === 'bar' ? formulaBarEl.value : '');
+  } else {
+    // Cell scrolled out of view (virtual scrolling) — use formula bar as fallback
+    val = formulaBarEl?.value ?? '';
+  }
   if (val !== undefined) {
     // Data validation check
     const dvRule = validations[`${editingRow},${editingCol}`];
@@ -1641,7 +1712,7 @@ function commitEdit(asArrayFormula = false) {
   isEditing = false;
   isFormulaMode = false;
   formulaEditTarget = null;
-  td.classList.remove('editing');
+  if (td) td.classList.remove('editing');
   clearFormulaRefHighlights();
   renderGrid();
   updateSelection();
@@ -1653,9 +1724,9 @@ function cancelEdit() {
   isFormulaMode = false;
   formulaEditTarget = null;
   clearFormulaRefHighlights();
-  renderCell(editingRow, editingCol);
-  const td = gridEl.querySelector(`td[data-row="${editingRow}"][data-col="${editingCol}"]`);
-  if (td) td.classList.remove('editing');
+  // Re-render the full grid because renderCell only sets textContent,
+  // which doesn't restore sparklines, hyperlinks, notes, or the full cell HTML.
+  renderGrid();
   updateSelection();
   hideAutocomplete();
 }
@@ -1793,19 +1864,25 @@ function pasteSelection() {
 
   // Try system clipboard first
   navigator.clipboard?.readText().then((text) => {
-    if (text && text.includes('\t')) {
-      // Parse TSV from system clipboard
+    if (text && text.trim().length > 0) {
+      // Parse as TSV/CSV — split by newlines, then by tabs
       const rows = text.split('\n').filter((r) => r.length > 0);
+      const changes = [];
       for (let r = 0; r < rows.length; r++) {
-        const cols = rows[r].split('\t');
+        const cols = rows[r].includes('\t') ? rows[r].split('\t') : [rows[r]];
         for (let c = 0; c < cols.length; c++) {
           const tr = selectedRow + r;
           const tc = selectedCol + c;
           if (tr < sheet.rows && tc < sheet.cols) {
+            const key = `${tr},${tc}`;
+            const oldCell = sheet.cells[key] ? JSON.parse(JSON.stringify(sheet.cells[key])) : null;
             setCell(sheet, tr, tc, cols[c]);
+            const newCell = sheet.cells[key] ? JSON.parse(JSON.stringify(sheet.cells[key])) : null;
+            changes.push({ cellKey: key, oldValue: oldCell, newValue: newCell });
           }
         }
       }
+      if (changes.length) pushBulkUndo(changes);
       recalcAll(sheet);
       renderGrid();
       updateSelection();
@@ -1821,12 +1898,15 @@ function pasteFromInternal() {
   if (!clipboard) return;
   const sheet = getSheet();
   const { data } = clipboard;
+  const changes = [];
 
   for (let r = 0; r < data.length; r++) {
     for (let c = 0; c < data[r].length; c++) {
       const tr = selectedRow + r;
       const tc = selectedCol + c;
       if (tr < sheet.rows && tc < sheet.cols) {
+        const key = `${tr},${tc}`;
+        const oldCell = sheet.cells[key] ? JSON.parse(JSON.stringify(sheet.cells[key])) : null;
         // Adjust relative references in formulas
         const raw = adjustFormulaReferences(data[r][c].raw,
           tr - clipboard.r1, tc - clipboard.c1);
@@ -1836,9 +1916,12 @@ function pasteFromInternal() {
             if (v != null) setCellFormat(sheet, tr, tc, k, v);
           });
         }
+        const newCell = sheet.cells[key] ? JSON.parse(JSON.stringify(sheet.cells[key])) : null;
+        changes.push({ cellKey: key, oldValue: oldCell, newValue: newCell });
       }
     }
   }
+  if (changes.length) pushBulkUndo(changes);
   recalcAll(sheet);
   renderGrid();
   updateSelection();
@@ -1884,11 +1967,18 @@ function clearSelection() {
   }
   const sheet = getSheet();
   const { r1, r2, c1, c2 } = getSelectionRange();
+  const changes = [];
   for (let r = r1; r <= r2; r++) {
     for (let c = c1; c <= c2; c++) {
+      const key = `${r},${c}`;
+      const oldCell = sheet.cells[key] ? JSON.parse(JSON.stringify(sheet.cells[key])) : null;
+      if (oldCell) {
+        changes.push({ cellKey: key, oldValue: oldCell, newValue: null });
+      }
       setCell(sheet, r, c, '');
     }
   }
+  if (changes.length) pushBulkUndo(changes);
   recalcAll(sheet);
   renderGrid();
   updateSelection();
@@ -1970,11 +2060,13 @@ function applyFreezeStyles() {
   if (freezeRows <= 0 && freezeCols <= 0) return;
 
   // Frozen rows get position: sticky with top offset
+  // Compute cumulative top offsets from actual row heights (header row ~25px)
   const frozenRowEls = gridEl.querySelectorAll('.sheet-frozen-row');
+  let cumTop = 25; // thead header row height
   frozenRowEls.forEach((tr, i) => {
     const th = tr.querySelector('th');
     const tds = tr.querySelectorAll('td');
-    const top = (i + 1) * 25 + 'px'; // header row height ~25px
+    const top = cumTop + 'px';
     if (th) { th.style.position = 'sticky'; th.style.top = top; th.style.zIndex = '3'; }
     tds.forEach((td) => {
       td.style.position = 'sticky';
@@ -1982,14 +2074,34 @@ function applyFreezeStyles() {
       td.style.zIndex = '2';
       td.style.background = td.style.background || 'var(--bg-primary)';
     });
+    // Advance cumTop by this row's actual height
+    const rowIdx = parseInt(tr.dataset?.vrow ?? i);
+    cumTop += getRowHeight(rowIdx);
   });
 
-  // Frozen columns
+  // Frozen columns — compute left offsets from actual column widths
+  const frozenColLefts = [];
+  let cumLeft = 40; // row header width
+  for (let ci = 0; ci < freezeCols; ci++) {
+    if (hiddenCols.has(ci)) continue;
+    frozenColLefts.push(cumLeft);
+    cumLeft += getColWidth(ci);
+  }
+  // Apply sticky to frozen column headers in thead
+  const frozenColHeaders = gridEl.querySelectorAll('.sheet-frozen-col-header');
+  frozenColHeaders.forEach((th, i) => {
+    const left = (i < frozenColLefts.length ? frozenColLefts[i] : 40 + i * 80) + 'px';
+    th.style.position = 'sticky';
+    th.style.left = left;
+    th.style.zIndex = '4'; // above frozen rows (z-index 3) to stay in corner
+    th.style.background = th.style.background || 'var(--bg-secondary, var(--bg-primary))';
+  });
+  // Apply sticky to frozen columns in body rows
   const allRows = gridEl.querySelectorAll('tbody tr');
   allRows.forEach((tr) => {
-    const frozenCols = tr.querySelectorAll('.sheet-frozen-col');
-    frozenCols.forEach((td, i) => {
-      const left = 40 + i * 80 + 'px';
+    const frozenColEls = tr.querySelectorAll('.sheet-frozen-col');
+    frozenColEls.forEach((td, i) => {
+      const left = (i < frozenColLefts.length ? frozenColLefts[i] : 40 + i * 80) + 'px';
       td.style.position = 'sticky';
       td.style.left = left;
       td.style.zIndex = '1';
