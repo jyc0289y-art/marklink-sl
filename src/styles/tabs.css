@@ -58,7 +58,7 @@
   flex-direction: column;
 }
 
-/* App container must accommodate tab bar */
+/* App container must accommodate toolbar + tab bar + status bar */
 .app-container {
-  height: calc(100vh - 44px - 34px);
+  height: calc(100vh - 44px - 34px - 22px);
 }

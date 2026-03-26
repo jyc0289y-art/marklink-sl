@@ -1491,9 +1491,7 @@ html.rtl .lang-picker-grid {
 
 /* Responsive: tab view below 768px */
 @media (max-width: 768px) {
-  .sidebar {
-    display: none !important;
-  }
+  /* Sidebar handled as drawer in mobile.css — do NOT force display:none */
 
   .split-pane {
     flex-direction: column;
@@ -1513,8 +1511,8 @@ html.rtl .lang-picker-grid {
 
   /* Compact toolbar */
   .toolbar {
-    height: 40px;
-    padding: 0 6px;
+    height: 44px;
+    padding: 0 4px;
   }
   .toolbar-brand {
     font-size: 12px;
@@ -1523,11 +1521,6 @@ html.rtl .lang-picker-grid {
   .toolbar-left, .toolbar-right {
     gap: 1px;
   }
-  .toolbar-btn {
-    width: 28px;
-    height: 28px;
-    font-size: 12px;
-  }
   .toolbar-btn .icon {
     font-size: 13px;
   }
@@ -1535,28 +1528,21 @@ html.rtl .lang-picker-grid {
     margin: 0 2px;
     height: 16px;
   }
-  /* Hide less essential toolbar buttons on mobile */
+  /* Hide md-specific toolbar buttons from main toolbar on mobile */
   #btn-bold, #btn-italic, #btn-heading, #btn-code, #btn-list, #btn-link, #btn-table,
-  #btn-sidebar, #btn-export, #btn-tutorial, #btn-templates, #btn-feedback,
-  .toolbar-filename, .zoom-controls, .unsaved-indicator, #btn-undo, #btn-redo {
+  #btn-undo, #btn-redo {
     display: none !important;
   }
-  .lang-btn {
-    font-size: 10px;
-    padding: 1px 5px;
-  }
+  /* Toolbar-hide-mobile items hidden via mobile.css class */
   #btn-ai {
     font-size: 11px;
     padding: 0 7px;
-  }
-  .toolbar-btn-fullscreen {
-    padding: 0 6px;
-    font-size: 14px;
+    min-height: 44px;
   }
 
   /* Compact tab bar — horizontal scrollable */
   .tab-bar {
-    height: 32px;
+    height: 44px;
     padding: 0 4px;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -1573,7 +1559,7 @@ html.rtl .lang-picker-grid {
 
   /* App container height adjustment */
   .app-container {
-    height: calc(100vh - 40px - 32px - 20px);
+    height: calc(100vh - 44px - 44px - 20px);
   }
   .status-bar {
     height: 20px;
@@ -1581,9 +1567,9 @@ html.rtl .lang-picker-grid {
     padding: 0 6px;
   }
 
-  /* Touch-friendly inputs */
+  /* Touch-friendly inputs — prevent iOS zoom */
   input, select, textarea {
-    font-size: 16px !important; /* prevents iOS zoom on focus */
+    font-size: 16px !important;
   }
   /* Ensure minimum touch target size */
   button, .toolbar-btn, .tab-item, .calc-btn, .draw-tool-btn {
@@ -1608,28 +1594,22 @@ html.rtl .lang-picker-grid {
 /* Extra small screens (< 480px) — phone portrait */
 @media (max-width: 480px) {
   .toolbar {
-    height: 36px;
+    height: 44px;
     padding: 0 4px;
   }
   .toolbar-brand {
     font-size: 10px;
   }
-  .toolbar-btn {
-    width: 26px;
-    height: 26px;
-  }
   .toolbar-divider {
     display: none;
-  }
-  .lang-btn {
-    display: none !important;
   }
   .tab-item {
     padding: 3px 8px;
     font-size: 10px;
+    min-height: 44px;
   }
   .app-container {
-    height: calc(100vh - 36px - 32px - 18px);
+    height: calc(100vh - 44px - 44px - 18px);
   }
   .status-bar {
     height: 18px;
@@ -1892,22 +1872,4 @@ html.rtl .lang-picker-grid {
   opacity: 0.5;
 }
 
-/* ========== Mobile Sidebar Overlay ========== */
-@media (max-width: 768px) {
-  .sidebar:not(.hidden) {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 1500;
-    width: 280px;
-    box-shadow: 4px 0 24px rgba(0,0,0,0.25);
-    display: flex !important;
-  }
-  .sidebar-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.4);
-    z-index: 1499;
-  }
-}
+/* Mobile Sidebar Overlay — handled by mobile.css */

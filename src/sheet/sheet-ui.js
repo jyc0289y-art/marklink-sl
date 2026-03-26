@@ -96,12 +96,144 @@ function getSheet() {
   return sheets[activeSheetIdx];
 }
 
-/* ==================== Rendering ==================== */
+/* ==================== Rendering (Virtual Scrolling) ==================== */
+
+// Virtual scrolling — only render rows visible in the viewport + buffer
+const VSCROLL_BUFFER = 10; // extra rows above/below viewport
+let _vsLastStart = -1;
+let _vsLastEnd = -1;
+let _vsScrollBound = false;
+
+/**
+ * Build the list of visible (non-hidden, non-collapsed, non-filtered) row indices.
+ */
+const _buildVisibleRows = () => {
+  const sheet = getSheet();
+  const visible = [];
+  for (let r = 0; r < sheet.rows; r++) {
+    const collapsedGroup = rowGroups.find(g => g.collapsed && r >= g.r1 && r <= g.r2);
+    if (collapsedGroup && r > collapsedGroup.r1) continue;
+    if (hiddenRows.has(r)) continue;
+    if (filterRow >= 0 && r > filterRow) {
+      const hasActiveFilter = Object.keys(filterValues).length > 0;
+      if (hasActiveFilter) {
+        const shouldHide = Object.entries(filterValues).some(([fc, allowed]) => {
+          const cellVal = getDisplayValue(sheet, r, parseInt(fc));
+          return allowed.size > 0 && !allowed.has(cellVal);
+        });
+        if (shouldHide) continue;
+      }
+    }
+    visible.push(r);
+  }
+  return visible;
+};
+
+/**
+ * Determine which slice of visibleRows to render based on scroll position.
+ */
+const _getViewportSlice = (visibleRows) => {
+  if (!containerEl) return { start: 0, end: visibleRows.length };
+  const scrollTop = containerEl.scrollTop;
+  const viewportH = containerEl.clientHeight;
+  const defaultH = 24;
+  // Find the first visible row in the viewport
+  let cumH = 0;
+  let startIdx = 0;
+  for (let i = 0; i < visibleRows.length; i++) {
+    const rh = getRowHeight(visibleRows[i]);
+    if (cumH + rh > scrollTop) { startIdx = i; break; }
+    cumH += rh;
+    if (i === visibleRows.length - 1) startIdx = visibleRows.length;
+  }
+  // Find the last visible row
+  let endIdx = startIdx;
+  let accH = 0;
+  for (let i = startIdx; i < visibleRows.length; i++) {
+    accH += getRowHeight(visibleRows[i]);
+    endIdx = i + 1;
+    if (accH >= viewportH) break;
+  }
+  // Add buffer
+  const bufferedStart = Math.max(0, startIdx - VSCROLL_BUFFER);
+  const bufferedEnd = Math.min(visibleRows.length, endIdx + VSCROLL_BUFFER);
+  return { start: bufferedStart, end: bufferedEnd };
+};
+
+/**
+ * Render a single row's HTML.
+ */
+const _renderRowHtml = (sheet, r) => {
+  const groupIdx = rowGroups.findIndex(g => g.r1 === r);
+  const groupIndicator = groupIdx >= 0
+    ? `<span class="sheet-group-toggle" data-group="${groupIdx}" style="cursor:pointer;font-size:9px;margin-right:2px;color:var(--accent-color)" title="Toggle group">${rowGroups[groupIdx].collapsed ? '▶' : '▼'}</span>`
+    : '';
+  const rowCls = r < freezeRows ? 'sheet-frozen-row' : '';
+  const rh = getRowHeight(r);
+  let html = `<tr class="${rowCls}" data-vrow="${r}"><th class="sheet-row-header" data-row="${r}" style="height:${rh}px">${groupIndicator}${r + 1}</th>`;
+  for (let c = 0; c < sheet.cols; c++) {
+    if (hiddenCols.has(c)) {
+      html += `<td data-row="${r}" data-col="${c}" style="display:none"></td>`;
+      continue;
+    }
+    const cell = getCell(sheet, r, c);
+    if (cell?.format?.merged) continue;
+    const val = getDisplayValue(sheet, r, c);
+    const style = cellStyle(cell, r, c);
+    const frozenCls = c < freezeCols ? ' sheet-frozen-col' : '';
+    const mergeSpan = cell?.format?.mergeSpan;
+    const spanAttrs = mergeSpan
+      ? ` rowspan="${mergeSpan.rows}" colspan="${mergeSpan.cols}"`
+      : '';
+    const w = getColWidth(c);
+    const noteKey = `${r},${c}`;
+    const hasNote = cellNotes[noteKey];
+    const noteIndicator = hasNote ? '<span class="cell-note-indicator" title="' + escapeHTML(hasNote) + '"></span>' : '';
+    const commentIndicator = hasComment(r, c) ? `<span class="cell-comment-indicator" data-comment-row="${r}" data-comment-col="${c}" title="Click to view comments"></span>` : '';
+    const sparkline = cell?.format?.sparkline;
+    const hyperlink = cell?.format?.hyperlink;
+    let cellContent;
+    const isSparklineFormula = typeof val === 'string' && val.startsWith('__SPARKLINE__');
+    if (isSparklineFormula) {
+      const parts = val.split('__');
+      const sparkTypeF = parts[2] || 'line';
+      const sparkDataF = parts[3] || '';
+      cellContent = `<canvas class="sparkline-canvas" data-type="${sparkTypeF}" data-values="${sparkDataF}" style="width:100%;height:100%"></canvas>`;
+    } else if (sparkline) {
+      cellContent = `<img src="${sparkline}" style="width:100%;height:100%;object-fit:contain" alt="sparkline">`;
+    } else if (hyperlink) {
+      const linkLabel = cellHyperlinks[`${r},${c}`]?.label || val;
+      cellContent = `<a href="${escapeHTML(hyperlink)}" target="_blank" rel="noopener" style="color:#1a73e8;text-decoration:underline;cursor:pointer" onclick="event.stopPropagation()">${escapeHTML(String(linkLabel))}</a>`;
+    } else if (cell?.format?.isArrayFormula && cell.raw.startsWith('=')) {
+      cellContent = escapeHTML(String(val));
+    } else if (cell?.format?.spillSource) {
+      cellContent = escapeHTML(String(val));
+    } else {
+      cellContent = escapeHTML(String(val));
+    }
+    const filterBtn = (filterRow === r)
+      ? `<span class="sheet-filter-btn" data-filter-col="${c}" style="cursor:pointer;font-size:9px;float:right;color:${filterValues[c] ? 'var(--accent-color)' : 'var(--text-secondary)'};margin-left:2px" title="Filter">▼</span>`
+      : '';
+    const dvKey = `${r},${c}`;
+    const dvIndicator = validations[dvKey]?.type === 'list'
+      ? `<span class="sheet-dv-btn" data-dv-row="${r}" data-dv-col="${c}" style="cursor:pointer;font-size:8px;float:right;color:var(--text-secondary);margin-left:1px" title="Dropdown">▾</span>`
+      : '';
+    html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="width:${w}px;min-width:${w}px;height:${rh}px;${style}"${spanAttrs}>${filterBtn}${dvIndicator}${cellContent}${noteIndicator}${commentIndicator}</td>`;
+  }
+  html += '</tr>';
+  return html;
+};
+
+// Cache visible rows between render calls (invalidated by renderGrid)
+let _cachedVisibleRows = null;
 
 function renderGrid() {
   const sheet = getSheet();
-  let html = '<thead><tr><th class="sheet-corner"></th>';
+  const visibleRows = _buildVisibleRows();
+  _cachedVisibleRows = visibleRows;
 
+  // Header
+  let html = '<thead><tr><th class="sheet-corner"></th>';
   for (let c = 0; c < sheet.cols; c++) {
     if (hiddenCols.has(c)) {
       html += `<th class="sheet-col-header sheet-hidden-col" data-col="${c}" style="display:none">${colToLetter(c)}</th>`;
@@ -113,100 +245,63 @@ function renderGrid() {
   }
   html += '</tr></thead><tbody>';
 
-  for (let r = 0; r < sheet.rows; r++) {
-    // Check if row is in a collapsed group
-    const collapsedGroup = rowGroups.find(g => g.collapsed && r >= g.r1 && r <= g.r2);
-    if (collapsedGroup && r > collapsedGroup.r1) {
-      // Hide rows inside collapsed group (except the first row which shows the toggle)
-      continue;
-    }
-    if (hiddenRows.has(r)) {
-      html += `<tr style="display:none" data-hidden-row="${r}"><th class="sheet-row-header" data-row="${r}">${r + 1}</th></tr>`;
-      continue;
-    }
-    // Filter: skip rows that don't match active filters
-    if (filterRow >= 0 && r > filterRow) {
-      const hasActiveFilter = Object.keys(filterValues).length > 0;
-      if (hasActiveFilter) {
-        const shouldHide = Object.entries(filterValues).some(([fc, allowed]) => {
-          const cellVal = getDisplayValue(sheet, r, parseInt(fc));
-          return allowed.size > 0 && !allowed.has(cellVal);
-        });
-        if (shouldHide) continue;
-      }
-    }
-    // Check if this row starts a group
-    const groupIdx = rowGroups.findIndex(g => g.r1 === r);
-    const groupIndicator = groupIdx >= 0
-      ? `<span class="sheet-group-toggle" data-group="${groupIdx}" style="cursor:pointer;font-size:9px;margin-right:2px;color:var(--accent-color)" title="Toggle group">${rowGroups[groupIdx].collapsed ? '▶' : '▼'}</span>`
-      : '';
-    const rowCls = r < freezeRows ? 'sheet-frozen-row' : '';
-    const rh = getRowHeight(r);
-    html += `<tr class="${rowCls}"><th class="sheet-row-header" data-row="${r}" style="height:${rh}px">${groupIndicator}${r + 1}</th>`;
-    for (let c = 0; c < sheet.cols; c++) {
-      if (hiddenCols.has(c)) {
-        html += `<td data-row="${r}" data-col="${c}" style="display:none"></td>`;
-        continue;
-      }
-      const cell = getCell(sheet, r, c);
-      // Skip merged cells (hidden by merge)
-      if (cell?.format?.merged) continue;
-      const val = getDisplayValue(sheet, r, c);
-      const style = cellStyle(cell, r, c);
-      const frozenCls = c < freezeCols ? ' sheet-frozen-col' : '';
-      const mergeSpan = cell?.format?.mergeSpan;
-      const spanAttrs = mergeSpan
-        ? ` rowspan="${mergeSpan.rows}" colspan="${mergeSpan.cols}"`
-        : '';
-      const w = getColWidth(c);
-      const noteKey = `${r},${c}`;
-      const hasNote = cellNotes[noteKey];
-      const noteIndicator = hasNote ? '<span class="cell-note-indicator" title="' + escapeHTML(hasNote) + '"></span>' : '';
-      const commentIndicator = hasComment(r, c) ? `<span class="cell-comment-indicator" data-comment-row="${r}" data-comment-col="${c}" title="Click to view comments"></span>` : '';
-      const sparkline = cell?.format?.sparkline;
-      const hyperlink = cell?.format?.hyperlink;
-      let cellContent;
-      const isSparklineFormula = typeof val === 'string' && val.startsWith('__SPARKLINE__');
-      if (isSparklineFormula) {
-        // Render sparkline via Canvas (data attribute for post-render)
-        const parts = val.split('__');
-        const sparkTypeF = parts[2] || 'line';
-        const sparkDataF = parts[3] || '';
-        cellContent = `<canvas class="sparkline-canvas" data-type="${sparkTypeF}" data-values="${sparkDataF}" style="width:100%;height:100%"></canvas>`;
-      } else if (sparkline) {
-        cellContent = `<img src="${sparkline}" style="width:100%;height:100%;object-fit:contain" alt="sparkline">`;
-      } else if (hyperlink) {
-        const linkLabel = cellHyperlinks[`${r},${c}`]?.label || val;
-        cellContent = `<a href="${escapeHTML(hyperlink)}" target="_blank" rel="noopener" style="color:#1a73e8;text-decoration:underline;cursor:pointer" onclick="event.stopPropagation()">${escapeHTML(String(linkLabel))}</a>`;
-      } else if (cell?.format?.isArrayFormula && cell.raw.startsWith('=')) {
-        // Display array formula with curly braces
-        cellContent = escapeHTML(String(val));
-      } else if (cell?.format?.spillSource) {
-        // Spill cell — show value with subtle styling
-        cellContent = escapeHTML(String(val));
-      } else {
-        cellContent = escapeHTML(String(val));
-      }
-      // Filter dropdown on filter header row
-      const filterBtn = (filterRow === r)
-        ? `<span class="sheet-filter-btn" data-filter-col="${c}" style="cursor:pointer;font-size:9px;float:right;color:${filterValues[c] ? 'var(--accent-color)' : 'var(--text-secondary)'};margin-left:2px" title="Filter">▼</span>`
-        : '';
-      // Data validation dropdown indicator
-      const dvKey = `${r},${c}`;
-      const dvIndicator = validations[dvKey]?.type === 'list'
-        ? `<span class="sheet-dv-btn" data-dv-row="${r}" data-dv-col="${c}" style="cursor:pointer;font-size:8px;float:right;color:var(--text-secondary);margin-left:1px" title="Dropdown">▾</span>`
-        : '';
-      html += `<td data-row="${r}" data-col="${c}" class="${frozenCls}" style="width:${w}px;min-width:${w}px;height:${rh}px;${style}"${spanAttrs}>${filterBtn}${dvIndicator}${cellContent}${noteIndicator}${commentIndicator}</td>`;
-    }
-    html += '</tr>';
+  // Virtual scrolling: compute viewport slice
+  const { start, end } = _getViewportSlice(visibleRows);
+
+  // Top spacer — sum of heights for rows above the rendered range
+  let topH = 0;
+  for (let i = 0; i < start; i++) topH += getRowHeight(visibleRows[i]);
+  const colCount = sheet.cols - hiddenCols.size + 1; // +1 for row header
+  if (topH > 0) {
+    html += `<tr class="vscroll-spacer-top" style="height:${topH}px"><td colspan="${colCount}"></td></tr>`;
   }
+
+  // Render visible rows
+  for (let i = start; i < end && i < visibleRows.length; i++) {
+    html += _renderRowHtml(sheet, visibleRows[i]);
+  }
+
+  // Bottom spacer
+  let bottomH = 0;
+  for (let i = end; i < visibleRows.length; i++) bottomH += getRowHeight(visibleRows[i]);
+  if (bottomH > 0) {
+    html += `<tr class="vscroll-spacer-bottom" style="height:${bottomH}px"><td colspan="${colCount}"></td></tr>`;
+  }
+
   html += '</tbody>';
   gridEl.innerHTML = html;
+  _vsLastStart = start;
+  _vsLastEnd = end;
+
   applyFreezeStyles();
   if (condFormats.length > 0) applyConditionalFormatting();
   applyIconSets();
   renderSparklineCanvases();
+
+  // Bind scroll listener once for virtual scroll updates
+  if (!_vsScrollBound && containerEl) {
+    _vsScrollBound = true;
+    let _vsRafId = 0;
+    containerEl.addEventListener('scroll', () => {
+      if (_vsRafId) return;
+      _vsRafId = requestAnimationFrame(() => {
+        _vsRafId = 0;
+        _onVirtualScroll();
+      });
+    });
+  }
 }
+
+/**
+ * Handle scroll — re-render only if viewport slice changed.
+ */
+const _onVirtualScroll = () => {
+  if (!_cachedVisibleRows) return;
+  const { start, end } = _getViewportSlice(_cachedVisibleRows);
+  if (start === _vsLastStart && end === _vsLastEnd) return;
+  // Re-render with new viewport
+  renderGrid();
+};
 
 function renderCell(r, c) {
   const td = gridEl.querySelector(`td[data-row="${r}"][data-col="${c}"]`);

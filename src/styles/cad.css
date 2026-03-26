@@ -1163,3 +1163,57 @@
   color: #b45309;
   border-color: #f59e0b;
 }
+
+/* ===================== Snap Indicator ===================== */
+.cad-snap-indicator {
+  position: absolute;
+  pointer-events: none;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transform: translate(-50%, -50%);
+}
+.cad-snap-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff6600;
+  border: 2px solid #fff;
+  box-shadow: 0 0 6px rgba(255, 102, 0, 0.7);
+}
+.cad-snap-dot.snap-grid { background: #4caf50; box-shadow: 0 0 6px rgba(76, 175, 80, 0.7); }
+.cad-snap-dot.snap-midpoint { background: #2196f3; box-shadow: 0 0 6px rgba(33, 150, 243, 0.7); }
+.cad-snap-dot.snap-center { background: #e91e63; box-shadow: 0 0 6px rgba(233, 30, 99, 0.7); border-radius: 0; transform: rotate(45deg); }
+.cad-snap-dot.snap-intersection { background: #ff9800; box-shadow: 0 0 6px rgba(255, 152, 0, 0.7); width: 8px; height: 8px; border-radius: 0; }
+.cad-snap-label {
+  font-size: 10px;
+  color: #fff;
+  background: rgba(0,0,0,0.7);
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+/* ===================== Measurement Floating Label ===================== */
+.cad-measure-float {
+  position: absolute;
+  pointer-events: none;
+  z-index: 201;
+  background: rgba(20, 20, 40, 0.9);
+  color: #ff6600;
+  font: bold 13px/1.3 monospace;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 102, 0, 0.5);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  white-space: nowrap;
+}
+
+/* ===================== Background Gradient Canvas ===================== */
+.cad-bg-gradient-canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+}

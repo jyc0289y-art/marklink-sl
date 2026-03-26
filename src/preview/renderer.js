@@ -61,6 +61,17 @@ function createRenderer() {
     return `${inner}</div>`;
   };
 
+  // Add loading="lazy" to all images for viewport-based loading
+  const originalImage = md.renderer.rules.image;
+  md.renderer.rules.image = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    token.attrSet('loading', 'lazy');
+    if (originalImage) {
+      return originalImage(tokens, idx, options, env, self);
+    }
+    return self.renderToken(tokens, idx, options);
+  };
+
   return md;
 }
 

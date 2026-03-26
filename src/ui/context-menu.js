@@ -2,6 +2,7 @@
 
 import { getCurrentTab } from './tabs.js';
 import { t } from './i18n.js';
+import { addComment } from '../collab/comments.js';
 
 let activeMenu = null;
 
@@ -195,6 +196,9 @@ export const initContextMenus = () => {
           });
           input.click();
         }},
+        { divider: true },
+        { label: 'Add Comment', icon: '\ud83d\udcac', action: () => addComment(),
+          disabled: !window.getSelection()?.toString().trim() },
       ]);
     });
   }

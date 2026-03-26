@@ -84,6 +84,22 @@ let themeObserver = null;
 let resizeObserver = null;
 let keydownHandler = null;
 
+/* ===================== Measurement Unit System ===================== */
+let measureUnit = 'mm'; // mm | cm | in
+const UNIT_FACTORS = { mm: 1, cm: 0.1, in: 0.03937 };
+const UNIT_LABELS = { mm: 'mm', cm: 'cm', in: 'in' };
+
+/* ===================== Advanced Snap State ===================== */
+let snapMidpointEnabled = true;
+let snapCenterEnabled = true;
+let snapIntersectionEnabled = true;
+let lastSnapInfo = null; // { type, point, screenX, screenY }
+
+/* ===================== Background State ===================== */
+let bgMode = 'solid'; // solid | gradient | envmap
+let bgColor1 = 0x1a1a2e;
+let bgColor2 = 0x0a0a1a;
+
 /* ===================== OCCT B-Rep State ===================== */
 let occtEnabled = false; // true when OCCT WASM loaded
 let occtShapes = new Map(); // mesh.uuid → TopoDS_Shape (B-Rep data alongside Three.js mesh)
@@ -115,6 +131,8 @@ export async function initCadEditor() {
   initViewCube();
   initBoxSelect();
   bindClippingControls();
+  bindMeasureUnitEvents();
+  bindBackgroundEvents();
   animate();
   handleResize();
 
@@ -304,20 +322,23 @@ function setupGrid() {
 function updateCadThemeColors() {
   if (!scene || !THREE) return;
   const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-  if (isLight) {
-    scene.background = new THREE.Color(0xe5e5ea);
-    if (gridHelper) {
-      gridHelper.material.color.set(0xbbbbcc);
-      if (gridHelper.material.uniforms) gridHelper.material.uniforms.diffuse?.value.set(0xbbbbcc);
-      // GridHelper uses two materials for the two colors
-      gridHelper.material = gridHelper.material; // force update
+
+  // Only apply default theme background when in solid mode without custom override
+  if (bgMode === 'solid') {
+    if (isLight) {
+      bgColor1 = 0xe5e5ea;
+      scene.background = new THREE.Color(0xe5e5ea);
+    } else {
+      bgColor1 = 0x1a1a2e;
+      scene.background = new THREE.Color(0x1a1a2e);
     }
+    // Update color input to reflect theme change
+    const c1Input = document.getElementById('cad-bg-color1');
+    if (c1Input) c1Input.value = '#' + new THREE.Color(bgColor1).getHexString();
   } else {
-    scene.background = new THREE.Color(0x1a1a2e);
-    if (gridHelper) {
-      gridHelper.material = gridHelper.material;
-    }
+    applyBackground();
   }
+
   // Recreate grid with correct colors
   if (gridHelper) {
     scene.remove(gridHelper);
@@ -2314,12 +2335,20 @@ function updatePropertiesPanel() {
   const nameInput = document.getElementById('cad-obj-name');
   if (nameInput) nameInput.value = obj.name;
 
+  // Update dimensions (bounding box size)
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = box.getSize(new THREE.Vector3());
+  setInput('cad-dim-w', size.x.toFixed(3));
+  setInput('cad-dim-h', size.y.toFixed(3));
+  setInput('cad-dim-d', size.z.toFixed(3));
+
   // Show measurement
   updateMeasurement(obj);
 }
 
 function clearPropertiesPanel() {
   ['cad-pos-x','cad-pos-y','cad-pos-z','cad-rot-x','cad-rot-y','cad-rot-z','cad-scl-x','cad-scl-y','cad-scl-z'].forEach((id) => setInput(id, ''));
+  ['cad-dim-w','cad-dim-h','cad-dim-d'].forEach((id) => setInput(id, ''));
   setInput('cad-mat-metalness', 0);
   setInput('cad-mat-roughness', 0.5);
   setInput('cad-mat-opacity', 1);
@@ -2607,6 +2636,37 @@ function bindViewportEvents(container) {
     if (e.target.closest('.cad-viewport-overlay')) return;
     pickObject(e);
     if (selectedObject) focusSelected();
+  });
+
+  // Mousemove: show snap indicator during measurement mode
+  viewport.addEventListener('mousemove', (e) => {
+    if (!measurementMode || !snapEnabled) { hideSnapIndicator(); return; }
+    const rect = viewport.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const rc = new THREE.Raycaster();
+    rc.setFromCamera(mouse, camera);
+    const hits = rc.intersectObjects(sceneObjects.filter((o) => o.visible), true);
+    let hitPoint;
+    if (hits.length > 0) {
+      hitPoint = hits[0].point.clone();
+    } else {
+      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const pt = new THREE.Vector3();
+      if (rc.ray.intersectPlane(groundPlane, pt)) hitPoint = pt;
+    }
+    if (hitPoint) {
+      const snap = computeAdvancedSnap(hitPoint);
+      if (snap) {
+        showSnapIndicator(snap, viewport);
+      } else {
+        hideSnapIndicator();
+      }
+    } else {
+      hideSnapIndicator();
+    }
   });
 }
 
@@ -3081,10 +3141,14 @@ function initBoxSelect() {
   });
 }
 
-/* ===================== Measurement Tool ===================== */
+/* ===================== Measurement Tool (Enhanced with Units) ===================== */
 let measurementMode = false;
 let measurePoints = [];
 let measureLines = [];
+
+/** Convert raw distance to current unit */
+const toMeasureUnit = (dist) => dist * (UNIT_FACTORS[measureUnit] || 1);
+const formatMeasure = (dist) => `${toMeasureUnit(dist).toFixed(3)} ${UNIT_LABELS[measureUnit]}`;
 
 function toggleMeasurementTool() {
   measurementMode = !measurementMode;
@@ -3096,6 +3160,7 @@ function toggleMeasurementTool() {
   if (!measurementMode) {
     const overlay = document.getElementById('cad-measure-overlay');
     if (overlay) { const ctx = overlay.getContext('2d'); ctx.clearRect(0, 0, overlay.width, overlay.height); }
+    hideMeasureFloat();
   }
 }
 
@@ -3110,10 +3175,28 @@ function handleMeasureClick(e) {
   );
   const rc = new THREE.Raycaster();
   rc.setFromCamera(mouse, camera);
-  const hits = rc.intersectObjects(sceneObjects.filter((o) => o.visible), true);
 
-  if (hits.length === 0) return;
-  measurePoints.push(hits[0].point.clone());
+  // Raycast against all visible objects AND the grid plane (for clicking empty space)
+  const hits = rc.intersectObjects(sceneObjects.filter((o) => o.visible), true);
+  let hitPoint;
+  if (hits.length > 0) {
+    hitPoint = hits[0].point.clone();
+  } else {
+    // Intersect with ground plane (Y=0) as fallback
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const pt = new THREE.Vector3();
+    if (rc.ray.intersectPlane(groundPlane, pt)) {
+      hitPoint = pt;
+    } else {
+      return;
+    }
+  }
+
+  // Apply snap if enabled
+  const snapped = computeAdvancedSnap(hitPoint);
+  if (snapped) hitPoint = snapped.point;
+
+  measurePoints.push(hitPoint.clone());
 
   if (measurePoints.length === 1) {
     updateStatusBar('Measure: Click second point');
@@ -3122,7 +3205,7 @@ function handleMeasureClick(e) {
       new THREE.SphereGeometry(0.08, 8, 8),
       new THREE.MeshBasicMaterial({ color: 0xff6600, depthTest: false })
     );
-    dot.position.copy(hits[0].point);
+    dot.position.copy(hitPoint);
     dot.userData.isMeasure = true;
     dot.renderOrder = 999;
     scene.add(dot);
@@ -3152,17 +3235,51 @@ function handleMeasureClick(e) {
     scene.add(dot);
     measureLines.push(dot);
 
+    // Show floating label at midpoint
+    showMeasureFloat(p1, p2, distance);
+
     // Draw distance label on 2D overlay
     drawMeasurementLabel(p1, p2, distance);
-    updateStatusBar(`Distance: ${distance.toFixed(4)} units`);
 
-    // Update measurement panel
+    const displayDist = formatMeasure(distance);
+    updateStatusBar(`Distance: ${displayDist}`);
+
+    // Update measurement panel with unit-converted value
     const measDiv = document.getElementById('cad-measurement');
-    if (measDiv) measDiv.textContent = `Distance: ${distance.toFixed(4)}`;
+    if (measDiv) {
+      const dx = Math.abs(p2.x - p1.x);
+      const dy = Math.abs(p2.y - p1.y);
+      const dz = Math.abs(p2.z - p1.z);
+      measDiv.innerHTML = `<b>P2P: ${displayDist}</b><br>` +
+        `<span style="color:#ff6b6b">dX: ${formatMeasure(dx)}</span> ` +
+        `<span style="color:#51cf66">dY: ${formatMeasure(dy)}</span> ` +
+        `<span style="color:#339af0">dZ: ${formatMeasure(dz)}</span>`;
+    }
 
     measurePoints = [];
   }
 }
+
+/** Show floating distance label near the measurement line */
+const showMeasureFloat = (p1, p2, distance) => {
+  const floatEl = document.getElementById('cad-measure-float');
+  if (!floatEl) return;
+  const viewport = document.querySelector('.cad-viewport');
+  if (!viewport) return;
+  const rect = viewport.getBoundingClientRect();
+  const mid = p1.clone().add(p2).multiplyScalar(0.5).project(camera);
+  const sx = (mid.x * 0.5 + 0.5) * rect.width;
+  const sy = (-mid.y * 0.5 + 0.5) * rect.height;
+  floatEl.textContent = formatMeasure(distance);
+  floatEl.style.left = (sx + 12) + 'px';
+  floatEl.style.top = (sy - 20) + 'px';
+  floatEl.style.display = 'block';
+};
+
+const hideMeasureFloat = () => {
+  const floatEl = document.getElementById('cad-measure-float');
+  if (floatEl) floatEl.style.display = 'none';
+};
 
 function drawMeasurementLabel(p1, p2, distance) {
   const overlay = document.getElementById('cad-measure-overlay');
@@ -3185,9 +3302,18 @@ function drawMeasurementLabel(p1, p2, distance) {
   ctx.fillStyle = '#ff6600';
   ctx.strokeStyle = '#000';
   ctx.lineWidth = 3;
-  const text = `${distance.toFixed(3)}`;
+  const text = formatMeasure(distance);
   ctx.strokeText(text, sx + 8, sy - 8);
   ctx.fillText(text, sx + 8, sy - 8);
+}
+
+/** Bind measurement unit selector */
+function bindMeasureUnitEvents() {
+  const unitSel = document.getElementById('cad-measure-unit');
+  if (unitSel) unitSel.addEventListener('change', () => {
+    measureUnit = unitSel.value;
+    updateStatusBar(`Unit: ${UNIT_LABELS[measureUnit]}`);
+  });
 }
 
 function clearMeasureLines() {
@@ -3197,9 +3323,235 @@ function clearMeasureLines() {
     if (obj.material) obj.material.dispose();
   });
   measureLines = [];
+  hideMeasureFloat();
   const overlay = document.getElementById('cad-measure-overlay');
   if (overlay) { const ctx = overlay.getContext('2d'); ctx.clearRect(0, 0, overlay.width, overlay.height); }
 }
+
+/* ===================== Advanced Snap System ===================== */
+
+/**
+ * Compute advanced snap for a 3D point.
+ * Checks: grid points, edge midpoints, circle/arc centers, intersection points.
+ * @param {THREE.Vector3} point - the raw 3D point
+ * @returns {{ type: string, point: THREE.Vector3 }|null}
+ */
+const computeAdvancedSnap = (point) => {
+  if (!snapEnabled || !point) return null;
+  const threshold = snapGrid * 1.5; // snap capture radius in world units
+  let best = null;
+  let bestDist = threshold;
+
+  // 1. Grid snap
+  const gx = Math.round(point.x / snapGrid) * snapGrid;
+  const gz = Math.round(point.z / snapGrid) * snapGrid;
+  const gridPt = new THREE.Vector3(gx, point.y, gz);
+  const gDist = point.distanceTo(gridPt);
+  if (gDist < bestDist) {
+    best = { type: 'grid', point: gridPt };
+    bestDist = gDist;
+  }
+
+  // 2. Edge midpoints
+  if (snapMidpointEnabled) {
+    for (const obj of sceneObjects) {
+      if (!obj.visible || !obj.geometry) continue;
+      const edges = getEdgeMidpoints(obj);
+      for (const mid of edges) {
+        const d = point.distanceTo(mid);
+        if (d < bestDist) {
+          best = { type: 'midpoint', point: mid };
+          bestDist = d;
+        }
+      }
+    }
+  }
+
+  // 3. Circle/arc center snap
+  if (snapCenterEnabled) {
+    for (const obj of sceneObjects) {
+      if (!obj.visible) continue;
+      const center = getObjectCenter(obj);
+      if (center) {
+        const d = point.distanceTo(center);
+        if (d < bestDist) {
+          best = { type: 'center', point: center };
+          bestDist = d;
+        }
+      }
+    }
+  }
+
+  // 4. Intersection snap (bounding box corners of objects)
+  if (snapIntersectionEnabled) {
+    for (const obj of sceneObjects) {
+      if (!obj.visible) continue;
+      const box = new THREE.Box3().setFromObject(obj);
+      const corners = [
+        new THREE.Vector3(box.min.x, box.min.y, box.min.z),
+        new THREE.Vector3(box.max.x, box.min.y, box.min.z),
+        new THREE.Vector3(box.min.x, box.max.y, box.min.z),
+        new THREE.Vector3(box.max.x, box.max.y, box.min.z),
+        new THREE.Vector3(box.min.x, box.min.y, box.max.z),
+        new THREE.Vector3(box.max.x, box.min.y, box.max.z),
+        new THREE.Vector3(box.min.x, box.max.y, box.max.z),
+        new THREE.Vector3(box.max.x, box.max.y, box.max.z),
+      ];
+      for (const c of corners) {
+        const d = point.distanceTo(c);
+        if (d < bestDist) {
+          best = { type: 'intersection', point: c };
+          bestDist = d;
+        }
+      }
+    }
+  }
+
+  lastSnapInfo = best;
+  return best;
+};
+
+/** Extract edge midpoints from object geometry (bounding box edge midpoints) */
+const getEdgeMidpoints = (obj) => {
+  const box = new THREE.Box3().setFromObject(obj);
+  const min = box.min;
+  const max = box.max;
+  const midX = (min.x + max.x) / 2;
+  const midY = (min.y + max.y) / 2;
+  const midZ = (min.z + max.z) / 2;
+  return [
+    // Bottom face edge midpoints
+    new THREE.Vector3(midX, min.y, min.z),
+    new THREE.Vector3(midX, min.y, max.z),
+    new THREE.Vector3(min.x, min.y, midZ),
+    new THREE.Vector3(max.x, min.y, midZ),
+    // Top face edge midpoints
+    new THREE.Vector3(midX, max.y, min.z),
+    new THREE.Vector3(midX, max.y, max.z),
+    new THREE.Vector3(min.x, max.y, midZ),
+    new THREE.Vector3(max.x, max.y, midZ),
+    // Vertical edge midpoints
+    new THREE.Vector3(min.x, midY, min.z),
+    new THREE.Vector3(max.x, midY, min.z),
+    new THREE.Vector3(min.x, midY, max.z),
+    new THREE.Vector3(max.x, midY, max.z),
+  ];
+};
+
+/** Get center point for circle/sphere/cylinder/torus objects */
+const getObjectCenter = (obj) => {
+  if (!obj.userData || !obj.userData.type) return null;
+  const type = obj.userData.type;
+  if (['sphere', 'cylinder', 'cone', 'torus'].includes(type)) {
+    return obj.position.clone();
+  }
+  // For any object, return the bounding box center
+  const box = new THREE.Box3().setFromObject(obj);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  return center;
+};
+
+/** Show snap indicator at a screen position */
+const showSnapIndicator = (snapInfo, viewport) => {
+  const indicator = document.getElementById('cad-snap-indicator');
+  if (!indicator || !snapInfo) { hideSnapIndicator(); return; }
+
+  const rect = viewport.getBoundingClientRect();
+  const projected = snapInfo.point.clone().project(camera);
+  const sx = (projected.x * 0.5 + 0.5) * rect.width;
+  const sy = (-projected.y * 0.5 + 0.5) * rect.height;
+
+  const dot = indicator.querySelector('.cad-snap-dot');
+  const label = indicator.querySelector('.cad-snap-label');
+  if (dot) {
+    dot.className = 'cad-snap-dot';
+    dot.classList.add(`snap-${snapInfo.type}`);
+  }
+  if (label) {
+    const labels = { grid: 'Grid', midpoint: 'Midpoint', center: 'Center', intersection: 'Vertex' };
+    label.textContent = labels[snapInfo.type] || '';
+  }
+  indicator.style.left = sx + 'px';
+  indicator.style.top = sy + 'px';
+  indicator.style.display = 'flex';
+};
+
+const hideSnapIndicator = () => {
+  const indicator = document.getElementById('cad-snap-indicator');
+  if (indicator) indicator.style.display = 'none';
+};
+
+/* ===================== Scene Background Options ===================== */
+
+/** Apply background mode to the 3D scene */
+const applyBackground = () => {
+  if (!scene || !THREE) return;
+
+  if (bgMode === 'solid') {
+    scene.background = new THREE.Color(bgColor1);
+  } else if (bgMode === 'gradient') {
+    // Create gradient texture using canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = 2;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    const c1 = new THREE.Color(bgColor1);
+    const c2 = new THREE.Color(bgColor2);
+    const grad = ctx.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, `#${c1.getHexString()}`);
+    grad.addColorStop(1, `#${c2.getHexString()}`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 2, 256);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    scene.background = tex;
+  } else if (bgMode === 'envmap') {
+    // Sky gradient environment map: light blue top, white horizon, grey bottom
+    const canvas = document.createElement('canvas');
+    canvas.width = 2;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    const c1 = new THREE.Color(bgColor1);
+    const c2 = new THREE.Color(bgColor2);
+    const grad = ctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, `#${c1.getHexString()}`);
+    grad.addColorStop(0.4, '#87ceeb');
+    grad.addColorStop(0.5, '#e0e8f0');
+    grad.addColorStop(0.6, '#c0c8d0');
+    grad.addColorStop(1, `#${c2.getHexString()}`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 2, 512);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    scene.background = tex;
+  }
+};
+
+/** Bind background mode and color inputs */
+const bindBackgroundEvents = () => {
+  const modeSel = document.getElementById('cad-bg-mode');
+  const color1Input = document.getElementById('cad-bg-color1');
+  const color2Input = document.getElementById('cad-bg-color2');
+  const color2Row = document.getElementById('cad-bg-color2-row');
+
+  if (modeSel) modeSel.addEventListener('change', () => {
+    bgMode = modeSel.value;
+    if (color2Row) color2Row.style.display = bgMode === 'solid' ? 'none' : 'flex';
+    applyBackground();
+  });
+  if (color1Input) color1Input.addEventListener('input', () => {
+    bgColor1 = parseInt(color1Input.value.replace('#', ''), 16);
+    applyBackground();
+  });
+  if (color2Input) color2Input.addEventListener('input', () => {
+    bgColor2 = parseInt(color2Input.value.replace('#', ''), 16);
+    applyBackground();
+  });
+
+  // Initialize: hide color2 row for solid mode
+  if (color2Row) color2Row.style.display = 'none';
+};
 
 /* ===================== Section / Clipping Plane ===================== */
 let clippingPlane = null;

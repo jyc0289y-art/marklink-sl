@@ -1,0 +1,480 @@
+/* ═══════════════════════════════════════════════════════════════
+   OfficeLink SL — Mobile Responsiveness
+   Comprehensive mobile-first fixes for <768px screens
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ──────────────────────────────────────────────────────────────
+   1. TOOLBAR — "More..." dropdown for overflow buttons
+   ────────────────────────────────────────────────────────────── */
+
+/* Hamburger / sidebar toggle — always visible on mobile */
+.mobile-hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--icon-color, var(--text-secondary));
+  cursor: pointer;
+  font-size: 18px;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+.mobile-hamburger:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+/* More button for toolbar overflow */
+.toolbar-more-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--icon-color, var(--text-secondary));
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+}
+
+.toolbar-more-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+/* More dropdown menu */
+.toolbar-more-menu {
+  position: fixed;
+  top: 44px;
+  right: 4px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  padding: 6px 0;
+  min-width: 180px;
+  max-height: 60vh;
+  overflow-y: auto;
+  z-index: 2000;
+  display: none;
+  animation: mobileMenuIn 0.15s ease;
+}
+
+.toolbar-more-menu.open {
+  display: block;
+}
+
+@keyframes mobileMenuIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.toolbar-more-menu .more-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  min-height: 44px;
+  transition: background 0.1s;
+}
+
+.toolbar-more-menu .more-menu-item:hover,
+.toolbar-more-menu .more-menu-item:active {
+  background: var(--hover-bg);
+}
+
+.toolbar-more-menu .more-menu-item .icon {
+  font-size: 16px;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.toolbar-more-menu .more-menu-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 0;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   2. TAB BAR — scroll indicators
+   ────────────────────────────────────────────────────────────── */
+
+.tab-bar-wrapper {
+  position: relative;
+}
+
+.tab-scroll-indicator {
+  display: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.tab-scroll-indicator.left {
+  left: 0;
+  background: linear-gradient(to right, var(--toolbar-bg) 0%, transparent 100%);
+}
+
+.tab-scroll-indicator.right {
+  right: 0;
+  background: linear-gradient(to left, var(--toolbar-bg) 0%, transparent 100%);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   3. SPLIT PANE — mobile toggle (single pane mode)
+   ────────────────────────────────────────────────────────────── */
+
+.mobile-pane-toggle {
+  display: none;
+  position: fixed;
+  bottom: 28px;
+  right: 12px;
+  z-index: 1200;
+  background: var(--brand-color, #0071e3);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  font-size: 18px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.mobile-pane-toggle:hover {
+  transform: scale(1.1);
+}
+
+.mobile-pane-toggle:active {
+  transform: scale(0.95);
+}
+
+/* Sidebar close button — hidden on desktop, shown on mobile */
+.sidebar-close-mobile {
+  display: none;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   4. SIDEBAR — off-canvas drawer with overlay
+   ────────────────────────────────────────────────────────────── */
+
+.sidebar-drawer-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1499;
+  animation: fadeIn 0.2s ease;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   MOBILE BREAKPOINT: < 768px
+   ────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+
+  /* --- Hamburger visible --- */
+  .mobile-hamburger {
+    display: flex;
+  }
+
+  /* --- Toolbar "More..." visible --- */
+  .toolbar-more-btn {
+    display: flex;
+  }
+
+  /* Hidden toolbar buttons go into the More menu via JS */
+  .toolbar-right .toolbar-hide-mobile {
+    display: none !important;
+  }
+
+  /* --- Tab bar scroll indicators --- */
+  .tab-scroll-indicator {
+    display: block;
+  }
+
+  .tab-scroll-indicator.hidden {
+    display: none;
+  }
+
+  /* Tab items: ensure tap-friendly */
+  .tab-item {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+  }
+
+  /* --- Split pane: single-pane toggle --- */
+  .mobile-pane-toggle {
+    display: flex;
+  }
+
+  /* When mobile-editor-only class is set, hide preview */
+  .split-pane.mobile-editor-only .preview-pane,
+  .split-pane.mobile-editor-only .divider {
+    display: none !important;
+  }
+  .split-pane.mobile-editor-only .editor-pane {
+    flex: 1 !important;
+    min-height: 0;
+  }
+
+  /* When mobile-preview-only class is set, hide editor */
+  .split-pane.mobile-preview-only .editor-pane,
+  .split-pane.mobile-preview-only .divider {
+    display: none !important;
+  }
+  .split-pane.mobile-preview-only .preview-pane {
+    flex: 1 !important;
+    min-height: 0;
+  }
+
+  /* Default stacked mode: divider hidden on mobile to save space */
+  .split-pane:not(.mobile-editor-only):not(.mobile-preview-only) .divider {
+    height: 2px;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  /* --- Sidebar as drawer --- */
+  .sidebar-drawer-overlay.open {
+    display: block;
+  }
+
+  .sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    width: 280px !important;
+    z-index: 1500 !important;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease !important;
+    display: flex !important;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+  }
+
+  .sidebar.hidden {
+    transform: translateX(-100%) !important;
+    display: flex !important;
+    pointer-events: none;
+  }
+
+  .sidebar:not(.hidden) {
+    transform: translateX(0) !important;
+    pointer-events: auto;
+  }
+
+  /* Sidebar close button for mobile drawer */
+  .sidebar-close-mobile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 18px;
+    cursor: pointer;
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+
+  .sidebar-close-mobile:hover {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+  }
+
+  /* --- Touch-friendly controls: 44x44 minimum --- */
+  .toolbar-btn,
+  .toolbar-more-btn,
+  .mobile-hamburger,
+  .tab-item,
+  .md-toolbar .toolbar-btn,
+  .doc-toolbar .toolbar-btn,
+  .sidebar-header .toolbar-btn,
+  .settings-tab-btn,
+  .settings-close-btn,
+  .settings-btn,
+  .shortcut-close,
+  .snippet-cat-tab,
+  .floating-toc-close,
+  .lint-panel-close,
+  .pane-header button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Touch-friendly for doc toolbar buttons */
+  .doc-toolbar .toolbar-btn,
+  .doc-toolbar .doc-insert-btn {
+    min-width: 44px;
+    min-height: 44px;
+    flex-shrink: 0;
+  }
+
+  .doc-toolbar select,
+  .doc-toolbar input[type="color"] {
+    min-height: 44px;
+    flex-shrink: 0;
+  }
+
+  /* --- Dialog / Modal responsiveness --- */
+  .settings-modal,
+  .doc-dialog,
+  .doc-spell-menu,
+  .lang-picker-modal,
+  .print-preview-modal,
+  .shortcut-modal,
+  .md-snippet-panel,
+  .autosave-restore-content,
+  .tab-close-confirm > div,
+  .slide-shape-lib-panel,
+  .slide-layout-picker,
+  .ai-setup-content,
+  .modal-content {
+    max-width: 95vw !important;
+    max-height: 85vh !important;
+    overflow-y: auto;
+    border-radius: 12px;
+  }
+
+  /* Shortcut modal specifically */
+  .shortcut-modal {
+    width: 95vw;
+    max-width: 95vw !important;
+  }
+
+  /* Snippet panel — full-width on mobile */
+  .md-snippet-panel {
+    width: 95vw;
+    max-width: 95vw !important;
+  }
+
+  /* Floating TOC — adjust for mobile */
+  .md-floating-toc {
+    width: calc(100vw - 24px);
+    max-width: 300px;
+    right: 12px;
+    left: auto;
+    max-height: 50vh;
+  }
+
+  /* Status bar items — prevent overflow */
+  .status-bar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .status-bar::-webkit-scrollbar { display: none; }
+
+  /* Preview container — reduce padding on mobile */
+  .preview-container {
+    padding: 16px;
+  }
+
+  /* Pane headers — compact on mobile */
+  .pane-header {
+    height: 28px;
+    padding: 0 8px;
+    font-size: 10px;
+  }
+
+  /* MD stats bar — compact */
+  .md-stats-bar {
+    padding: 2px 8px;
+    font-size: 10px;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   EXTRA SMALL: < 480px (phone portrait)
+   ────────────────────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+
+  /* Sidebar drawer narrower */
+  .sidebar {
+    width: 240px !important;
+  }
+
+  /* Mobile pane toggle — smaller */
+  .mobile-pane-toggle {
+    width: 44px;
+    height: 44px;
+    bottom: 24px;
+    right: 8px;
+    font-size: 16px;
+  }
+
+  /* More menu — full width */
+  .toolbar-more-menu {
+    left: 4px;
+    right: 4px;
+    min-width: auto;
+  }
+
+  /* Floating TOC — smaller */
+  .md-floating-toc {
+    width: calc(100vw - 16px);
+    right: 8px;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Light mode adjustments for mobile components
+   ────────────────────────────────────────────────────────────── */
+
+[data-theme="light"] .toolbar-more-menu {
+  background: #fff;
+  border-color: #e0e0e0;
+}
+
+[data-theme="light"] .toolbar-more-menu .more-menu-item:hover {
+  background: #f0f0f0;
+}
+
+[data-theme="light"] .sidebar-drawer-overlay.open {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="light"] .mobile-pane-toggle {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .tab-scroll-indicator.left {
+  background: linear-gradient(to right, #f5f5f7 0%, transparent 100%);
+}
+
+[data-theme="light"] .tab-scroll-indicator.right {
+  background: linear-gradient(to left, #f5f5f7 0%, transparent 100%);
+}

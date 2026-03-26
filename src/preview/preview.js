@@ -5,7 +5,7 @@ import { t } from '../ui/i18n.js';
 
 let previewElement = null;
 let updateTimer = null;
-const DEBOUNCE_MS = 150;
+const DEBOUNCE_MS = 250;
 
 // ─── Scroll Sync State ───────────────────────────────────────
 let scrollSyncEnabled = true;

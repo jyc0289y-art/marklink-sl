@@ -12,7 +12,8 @@ export async function registerKaTeX(md) {
     // Import KaTeX CSS
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';
+    // Use katex-swap variant which includes font-display: swap to prevent FOIT
+    link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex-swap.min.css';
     document.head.appendChild(link);
   } catch (e) {
     console.warn('KaTeX plugin not available:', e.message);

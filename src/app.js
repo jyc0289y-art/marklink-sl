@@ -19,18 +19,52 @@ import { exportHTML } from './export/html.js';
 import { exportPDF } from './export/pdf.js';
 import { trackFileOpen, trackFileSave, trackExport, trackThemeToggle, trackToolbarAction, trackFolderOpen, initSessionTracking, measureStartup, measureTabSwitch, initPerfMonitoring } from './analytics.js';
 import { initTabs, onTabChange, getCurrentTab, switchTab, switchNextTab, switchPrevTab, switchToTabN, setTabDirty, confirmTabClose, isTabDirty } from './ui/tabs.js';
-import { initDocEditor, getDocContent } from './document/doc-editor.js';
-import { openDocFile, saveDocFile, quickSaveDoc, getDocFileName, setDocFileName } from './document/doc-file.js';
-import { initSheetEditor, getSheetsData } from './sheet/sheet-ui.js';
-import { openSheetFile, saveSheetFile, getSheetFileName } from './sheet/sheet-file.js';
-import { initSlideEditor, initSlideEditorEnhanced } from './slide/slide-editor.js';
-import { openSlideFile, saveSlideFile, getSlideFileName } from './slide/slide-file.js';
-import { initPdfViewer, getPdfFileName, getPdfText, getPdfPageImages, openPdf } from './pdf/pdf-viewer.js';
+// Heavy editors — lazy-loaded on first tab activation (dynamic import)
+// Lightweight proxy getters for use in closures before modules load
+let _docEditorMod = null;
+let _docFileMod = null;
+let _sheetUiMod = null;
+let _sheetFileMod = null;
+let _slideEditorMod = null;
+let _slideFileMod = null;
+let _pdfViewerMod = null;
+let _photoEditorMod = null;
+let _calculatorMod = null;
+
+const loadDocEditor = () => _docEditorMod || (_docEditorMod = import('./document/doc-editor.js'));
+const loadDocFile = () => _docFileMod || (_docFileMod = import('./document/doc-file.js'));
+const loadSheetUi = () => _sheetUiMod || (_sheetUiMod = import('./sheet/sheet-ui.js'));
+const loadSheetFile = () => _sheetFileMod || (_sheetFileMod = import('./sheet/sheet-file.js'));
+const loadSlideEditor = () => _slideEditorMod || (_slideEditorMod = import('./slide/slide-editor.js'));
+const loadSlideFile = () => _slideFileMod || (_slideFileMod = import('./slide/slide-file.js'));
+const loadPdfViewer = () => _pdfViewerMod || (_pdfViewerMod = import('./pdf/pdf-viewer.js'));
+const loadPhotoEditor = () => _photoEditorMod || (_photoEditorMod = import('./photo/photo-editor.js'));
+const loadCalculator = () => _calculatorMod || (_calculatorMod = import('./calculator/calculator.js'));
+
+// Proxy getters — safe to call before module loads (return fallback)
+const getDocContent = async () => { const m = await loadDocEditor(); return m.getDocContent(); };
+const getSheetsData = async () => { const m = await loadSheetUi(); return m.getSheetsData(); };
+const getDocFileName = async () => { const m = await loadDocFile(); return m.getDocFileName(); };
+const setDocFileName = async (n) => { const m = await loadDocFile(); return m.setDocFileName(n); };
+const getSheetFileName = async () => { const m = await loadSheetFile(); return m.getSheetFileName(); };
+const getSlideFileName = async () => { const m = await loadSlideFile(); return m.getSlideFileName(); };
+const getPdfFileName = async () => { const m = await loadPdfViewer(); return m.getPdfFileName(); };
+const getPdfText = async () => { const m = await loadPdfViewer(); return m.getPdfText(); };
+const getPdfPageImages = async () => { const m = await loadPdfViewer(); return m.getPdfPageImages(); };
+const getPhotoFileName = async () => { const m = await loadPhotoEditor(); return m.getPhotoFileName(); };
+const openDocFile = async () => { const m = await loadDocFile(); return m.openDocFile(); };
+const saveDocFile = async () => { const m = await loadDocFile(); return m.saveDocFile(); };
+const quickSaveDoc = async () => { const m = await loadDocFile(); return m.quickSaveDoc(); };
+const openSheetFile = async () => { const m = await loadSheetFile(); return m.openSheetFile(); };
+const saveSheetFile = async () => { const m = await loadSheetFile(); return m.saveSheetFile(); };
+const openSlideFile = async () => { const m = await loadSlideFile(); return m.openSlideFile(); };
+const saveSlideFile = async () => { const m = await loadSlideFile(); return m.saveSlideFile(); };
+const openPdf = async () => { const m = await loadPdfViewer(); return m.openPdf(); };
+const openPhotoFile = async () => { const m = await loadPhotoEditor(); return m.openPhotoFile(); };
+
 import { initAiChat, setContextProviders, enterAiFullscreen, exitAiFullscreen } from './ai/ai-chat.js';
 import { initI18n, setLang, getLang, showLanguagePicker, onLangChange, t } from './ui/i18n.js';
-import { initPhotoEditor, getPhotoFileName, openPhotoFile } from './photo/photo-editor.js';
 import { initAdBanners } from './ui/ad-banner.js';
-import { initCalculator } from './calculator/calculator.js';
 // CAD and Drawing are loaded dynamically to avoid blocking app init
 // import { initCadEditor } from './cad/cad-editor.js';
 // import { initDrawEditor } from './draw/draw-editor.js';
@@ -48,7 +82,11 @@ import { initPerfDashboard } from './ui/perf-dashboard.js';
 import { initShortcutCustomizer } from './ui/shortcut-customizer.js';
 import { initEnhancedStatusBar } from './ui/status-bar-enhanced.js';
 import { initOfflineManager } from './ui/offline-manager.js';
+import { initMobile } from './ui/mobile.js';
 import { escapeHtml, sanitizeAiResponse, sanitizeFileName, sanitizeUrlParam } from './utils/sanitize.js';
+import { initCommentSystem, addComment, openCommentsPanel } from './collab/comments.js';
+import { initVersionSnapshots as initCollabVersionSnapshots, saveVersion, showVersionList } from './collab/versions.js';
+import { initShareLink, shareAsLink } from './collab/share-link.js';
 
 // Default welcome content
 const WELCOME_MD = `# Welcome to OfficeLink SL ✦
@@ -231,6 +269,9 @@ export async function initApp() {
 
   // 10. Sidebar
   initSidebar();
+
+  // 10b. Mobile responsiveness (drawer, More menu, pane toggle, tab indicators)
+  initMobile();
 
   // 11. File operations
   const fileNameEl = document.getElementById('file-name');
@@ -420,9 +461,9 @@ export async function initApp() {
       document.execCommand('redo');
       toastInfo('Redo', 1500);
     },
-    print: () => printDocument(
-      getCurrentTab() === 'document' ? getDocContent() : getContent(),
-      getCurrentTab() === 'document' ? getDocFileName() : getCurrentFileName()
+    print: async () => printDocument(
+      getCurrentTab() === 'document' ? await getDocContent() : getContent(),
+      getCurrentTab() === 'document' ? await getDocFileName() : getCurrentFileName()
     ),
     find: () => {
       const tab = getCurrentTab();
@@ -479,37 +520,75 @@ export async function initApp() {
 
   // 17. Tab navigation
   initTabs();
-  initDocEditor();
-  initSheetEditor();
-  initSlideEditorEnhanced();
-  initPdfViewer();
-  initPhotoEditor();
-  initCalculator();
-  // Lazy-load CAD & Drawing with loading indicators
-  showTabLoading('cad', 'Loading 3D engine...');
-  import('./cad/cad-editor.js')
-    .then((m) => m.initCadEditor())
-    .catch((e) => console.warn('CAD init skipped:', e.message))
-    .finally(() => hideTabLoading('cad'));
 
-  showTabLoading('draw', 'Loading canvas...');
-  import('./draw/draw-editor.js')
-    .then((m) => m.initDrawEditor())
-    .catch((e) => console.warn('Draw init skipped:', e.message))
-    .finally(() => hideTabLoading('draw'));
+  // Lazy-load all heavy editors on first tab activation
+  const _editorInited = new Set();
+  const _lazyInitEditor = async (tab) => {
+    if (_editorInited.has(tab)) return;
+    _editorInited.add(tab);
+    try {
+      if (tab === 'document') {
+        showTabLoading('document', 'Loading document editor...');
+        const m = await loadDocEditor();
+        m.initDocEditor();
+        hideTabLoading('document');
+      } else if (tab === 'sheet') {
+        showTabLoading('sheet', 'Loading spreadsheet...');
+        const m = await loadSheetUi();
+        m.initSheetEditor();
+        hideTabLoading('sheet');
+      } else if (tab === 'slide') {
+        showTabLoading('slide', 'Loading slide editor...');
+        const m = await loadSlideEditor();
+        m.initSlideEditorEnhanced();
+        hideTabLoading('slide');
+      } else if (tab === 'pdf') {
+        showTabLoading('pdf', 'Loading PDF viewer...');
+        const m = await loadPdfViewer();
+        m.initPdfViewer();
+        hideTabLoading('pdf');
+      } else if (tab === 'photo') {
+        showTabLoading('photo', 'Loading photo editor...');
+        const m = await loadPhotoEditor();
+        m.initPhotoEditor();
+        hideTabLoading('photo');
+      } else if (tab === 'calculator') {
+        showTabLoading('calculator', 'Loading calculator...');
+        const m = await loadCalculator();
+        m.initCalculator();
+        hideTabLoading('calculator');
+      } else if (tab === 'cad') {
+        showTabLoading('cad', 'Loading 3D engine...');
+        const m = await import('./cad/cad-editor.js');
+        m.initCadEditor();
+        hideTabLoading('cad');
+      } else if (tab === 'draw') {
+        showTabLoading('draw', 'Loading canvas...');
+        const m = await import('./draw/draw-editor.js');
+        m.initDrawEditor();
+        hideTabLoading('draw');
+      }
+    } catch (e) {
+      console.warn(`[lazy-init] ${tab} init skipped:`, e.message);
+      hideTabLoading(tab);
+    }
+  };
 
   // Initialize empty states for editors
   initEmptyStates();
 
   // Update filename display on tab switch + AI fullscreen mode + URL routing
-  onTabChange((tab, prevTab) => {
+  onTabChange(async (tab, prevTab) => {
+    // Lazy-init editor on first visit
+    await _lazyInitEditor(tab);
+
     const endTabSwitch = measureTabSwitch(tab);
 
-    if (tab === 'document') updateFileName(getDocFileName());
-    else if (tab === 'sheet') updateFileName(getSheetFileName());
-    else if (tab === 'slide') updateFileName(getSlideFileName());
-    else if (tab === 'pdf') updateFileName(getPdfFileName());
-    else if (tab === 'photo') updateFileName(getPhotoFileName());
+    if (tab === 'document') updateFileName(await getDocFileName());
+    else if (tab === 'sheet') updateFileName(await getSheetFileName());
+    else if (tab === 'slide') updateFileName(await getSlideFileName());
+    else if (tab === 'pdf') updateFileName(await getPdfFileName());
+    else if (tab === 'photo') updateFileName(await getPhotoFileName());
     else if (tab === 'ai') updateFileName('AI Assistant');
     else updateFileName(getCurrentFileName());
 
@@ -566,8 +645,8 @@ export async function initApp() {
   initAdBanners();
   setContextProviders({
     getDocContent: () => getDocContent(),
-    getSheetText: () => {
-      try { return JSON.stringify(getSheetsData()); }
+    getSheetText: async () => {
+      try { return JSON.stringify(await getSheetsData()); }
       catch { return ''; }
     },
     getMarkdownContent: () => getContent(),
@@ -730,6 +809,20 @@ export async function initApp() {
   // 23b. Offline/Online indicator + file caching + background sync
   initOfflineManager();
 
+  // 23c. Collaboration preparation — comments, version snapshots, share link
+  initCommentSystem();
+  initCollabVersionSnapshots();
+  initShareLink();
+
+  // Listen for content restore events from version snapshots / share link
+  document.addEventListener('officelink-restore-content', (e) => {
+    const content = e.detail;
+    if (content && typeof setContent === 'function') {
+      setContent(content);
+      updatePreviewImmediate(content);
+    }
+  });
+
   // 24-b. Feedback button
   document.getElementById('btn-feedback')?.addEventListener('click', () => {
     showFeedbackDialog();
@@ -858,6 +951,7 @@ function showExportMenu(anchorBtn) {
     { label: '📄 Export as PDF', action: () => { trackExport('pdf'); exportPDF(getContent(), getCurrentFileName()); toastSuccess('PDF exported'); } },
     { label: '🌐 Export as HTML', action: () => { trackExport('html'); exportHTML(getContent(), getCurrentFileName()); toastSuccess('HTML exported'); } },
     { label: '📋 Copy as Rich Text', action: () => { trackExport('richtext'); copyAsRichText(getContent()); toastSuccess('Copied as rich text'); } },
+    { label: '🔗 Share as Link', action: () => shareAsLink() },
   ];
 
   items.forEach(({ label, action }) => {

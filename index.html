@@ -22,6 +22,8 @@
   <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
   <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+  <!-- Preload KaTeX font CSS (swap variant) for math rendering without FOIT -->
+  <link rel="preload" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex-swap.min.css" as="style" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -72,6 +74,7 @@
   <link rel="stylesheet" href="/src/styles/draw.css" />
   <link rel="stylesheet" href="/src/styles/tutorial.css" />
   <link rel="stylesheet" href="/src/styles/settings.css" />
+  <link rel="stylesheet" href="/src/styles/mobile.css" />
 
   <!-- Tesseract.js OCR — deferred to not block initial render -->
   <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -90,6 +93,7 @@
   <!-- Toolbar -->
   <header id="toolbar" class="toolbar">
     <div class="toolbar-left">
+      <button id="btn-mobile-hamburger" class="mobile-hamburger" title="Menu" aria-label="Open sidebar menu">☰</button>
       <span class="toolbar-brand">✦ OfficeLink SL</span>
       <div class="toolbar-divider"></div>
       <button id="btn-open" class="toolbar-btn" data-tip="tip.open" title="Open File (⌘O)">
@@ -110,29 +114,29 @@
       </button>
     </div>
     <div class="toolbar-right">
-      <button id="btn-sidebar" class="toolbar-btn" data-tip="tip.sidebar" title="Toggle Sidebar">
+      <button id="btn-sidebar" class="toolbar-btn toolbar-hide-mobile" data-tip="tip.sidebar" title="Toggle Sidebar">
         <span class="icon">📁</span>
       </button>
-      <button id="btn-export" class="toolbar-btn" data-tip="tip.export" title="Export">
+      <button id="btn-export" class="toolbar-btn toolbar-hide-mobile" data-tip="tip.export" title="Export">
         <span class="icon">⬇</span>
       </button>
       <button id="btn-ai" class="toolbar-btn" data-tip="tip.ai" title="AI Assistant">
         <span class="icon">✦ AI</span>
       </button>
-      <button id="lang-btn" class="lang-btn" data-tip="tip.lang" title="Change Language">🇺🇸 English</button>
-      <button id="btn-tutorial" class="toolbar-btn" data-tip="tip.tutorial" title="Tutorial">
+      <button id="lang-btn" class="lang-btn toolbar-hide-mobile" data-tip="tip.lang" title="Change Language">🇺🇸 English</button>
+      <button id="btn-tutorial" class="toolbar-btn toolbar-hide-mobile" data-tip="tip.tutorial" title="Tutorial">
         <span class="icon">❓</span>
       </button>
-      <button id="btn-install" class="toolbar-btn" data-tip="tip.install" title="Install App" style="display:none">
+      <button id="btn-install" class="toolbar-btn toolbar-hide-mobile" data-tip="tip.install" title="Install App" style="display:none">
         <span class="icon">📲</span>
       </button>
-      <button id="btn-templates" class="toolbar-btn" data-tip="tip.templates" title="Templates">
+      <button id="btn-templates" class="toolbar-btn toolbar-hide-mobile" data-tip="tip.templates" title="Templates">
         <span class="icon">📋</span>
       </button>
-      <button id="btn-feedback" class="toolbar-btn" data-tip="tip.feedback" title="Feedback">
+      <button id="btn-feedback" class="toolbar-btn toolbar-hide-mobile" data-tip="tip.feedback" title="Feedback">
         <span class="icon">💬</span>
       </button>
-      <button id="btn-fullscreen" class="toolbar-btn toolbar-btn-fullscreen" data-tip="tip.fullscreen" title="Fullscreen">
+      <button id="btn-fullscreen" class="toolbar-btn toolbar-btn-fullscreen toolbar-hide-mobile" data-tip="tip.fullscreen" title="Fullscreen">
         <span class="icon" id="fullscreen-icon">⛶</span>
       </button>
       <button id="btn-settings" class="toolbar-btn" data-tip="tip.settings" title="Settings (Ctrl+,)">
@@ -141,15 +145,18 @@
       <button id="btn-theme" class="toolbar-btn" data-tip="tip.theme" title="Toggle Theme">
         <span class="icon" id="theme-icon">🌙</span>
       </button>
-      <div class="toolbar-divider"></div>
-      <div class="zoom-controls" style="display:flex;align-items:center;gap:2px">
+      <div class="toolbar-divider toolbar-hide-mobile"></div>
+      <div class="zoom-controls toolbar-hide-mobile" style="display:flex;align-items:center;gap:2px">
         <button id="btn-zoom-out" class="toolbar-btn" title="Zoom Out" style="font-size:11px;padding:2px 6px">−</button>
         <span id="zoom-level" class="toolbar-filename" style="min-width:40px;text-align:center;cursor:pointer" title="Click to reset">100%</span>
         <button id="btn-zoom-in" class="toolbar-btn" title="Zoom In" style="font-size:11px;padding:2px 6px">+</button>
       </div>
-      <div class="toolbar-divider"></div>
-      <span id="file-name" class="toolbar-filename">untitled.md</span>
-      <span id="unsaved-dot" class="unsaved-indicator" style="display:none" title="Unsaved changes">●</span>
+      <div class="toolbar-divider toolbar-hide-mobile"></div>
+      <span id="file-name" class="toolbar-filename toolbar-hide-mobile">untitled.md</span>
+      <span id="unsaved-dot" class="unsaved-indicator toolbar-hide-mobile" style="display:none" title="Unsaved changes">●</span>
+      <button id="btn-toolbar-more" class="toolbar-more-btn" title="More options" aria-label="More options">
+        <span class="icon">⋯</span> More
+      </button>
     </div>
   </header>
 
@@ -173,7 +180,10 @@
     <aside id="sidebar" class="sidebar hidden">
       <div class="sidebar-header">
         <span data-i18n="sidebar.files">Files</span>
-        <button id="btn-open-folder" class="toolbar-btn" data-i18n-title="sidebar.openFolder" title="Open Folder">📂+</button>
+        <div style="display:flex;gap:2px;align-items:center">
+          <button id="btn-open-folder" class="toolbar-btn" data-i18n-title="sidebar.openFolder" title="Open Folder">📂+</button>
+          <button id="btn-sidebar-close-mobile" class="sidebar-close-mobile" title="Close sidebar" aria-label="Close sidebar">&times;</button>
+        </div>
       </div>
       <div id="folder-tree" class="folder-tree"></div>
       <div class="sidebar-section">
@@ -2109,6 +2119,11 @@
         </div>
         <div class="cad-toolbar-group">
           <button id="cad-measure-tool" class="cad-btn" title="Measure (M)"><span class="icon">📏</span> Measure</button>
+          <select id="cad-measure-unit" class="cad-select" style="width:50px;padding:2px 4px;font-size:11px" title="Measurement Unit">
+            <option value="mm">mm</option>
+            <option value="cm">cm</option>
+            <option value="in">in</option>
+          </select>
           <button id="cad-section-tool" class="cad-btn" title="Section View"><span class="icon">✂</span> Section</button>
           <button id="cad-grid-toggle" class="cad-btn active" title="Toggle Grid (G)"><span class="icon">⊞</span> Grid</button>
           <button id="cad-fit-all" class="cad-btn" title="Fit All (F)"><span class="icon">⬜</span> Fit</button>
@@ -2167,6 +2182,28 @@
               <input type="range" id="cad-light-directional" class="cad-prop-input" min="0" max="3" step="0.1" value="1.2" />
             </div>
           </div>
+
+          <div class="cad-panel-section">
+            <div class="cad-panel-title">Background</div>
+            <div class="cad-panel-content" style="gap:4px">
+              <div class="cad-prop-row-full">
+                <span class="cad-prop-label" style="width:auto;min-width:50px">Mode</span>
+                <select id="cad-bg-mode" class="cad-select" style="flex:1">
+                  <option value="solid">Solid</option>
+                  <option value="gradient">Gradient</option>
+                  <option value="envmap">Sky Gradient</option>
+                </select>
+              </div>
+              <div class="cad-prop-row-full">
+                <span class="cad-prop-label" style="width:auto;min-width:50px">Color 1</span>
+                <input type="color" id="cad-bg-color1" class="cad-prop-input" value="#1a1a2e" />
+              </div>
+              <div class="cad-prop-row-full" id="cad-bg-color2-row">
+                <span class="cad-prop-label" style="width:auto;min-width:50px">Color 2</span>
+                <input type="color" id="cad-bg-color2" class="cad-prop-input" value="#0a0a1a" />
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Viewport -->
@@ -2184,6 +2221,13 @@
             </div>
             <!-- View Cube container (rendered by JS) -->
             <div id="cad-view-cube" class="cad-view-cube"></div>
+            <!-- Snap Indicator (shown when snapping to a point) -->
+            <div id="cad-snap-indicator" class="cad-snap-indicator" style="display:none">
+              <div class="cad-snap-dot"></div>
+              <span class="cad-snap-label"></span>
+            </div>
+            <!-- Measurement floating label -->
+            <div id="cad-measure-float" class="cad-measure-float" style="display:none"></div>
             <div class="cad-viewport-info" id="cad-viewport-info">
               <span id="cad-coords" class="cad-status-coord">X: 0.00  Y: 0.00  Z: 0.00</span>
             </div>
@@ -2219,6 +2263,13 @@
             <div class="cad-prop-row"><span class="cad-prop-label" style="color:#ff6b6b">X</span><input type="number" id="cad-scl-x" class="cad-prop-input" step="0.1" value="1" /></div>
             <div class="cad-prop-row"><span class="cad-prop-label" style="color:#51cf66">Y</span><input type="number" id="cad-scl-y" class="cad-prop-input" step="0.1" value="1" /></div>
             <div class="cad-prop-row"><span class="cad-prop-label" style="color:#339af0">Z</span><input type="number" id="cad-scl-z" class="cad-prop-input" step="0.1" value="1" /></div>
+          </div>
+
+          <div class="cad-prop-section">
+            <div class="cad-prop-title">Dimensions</div>
+            <div class="cad-prop-row"><span class="cad-prop-label" style="color:#ff6b6b">W</span><input type="number" id="cad-dim-w" class="cad-prop-input" step="0.1" value="0" readonly /></div>
+            <div class="cad-prop-row"><span class="cad-prop-label" style="color:#51cf66">H</span><input type="number" id="cad-dim-h" class="cad-prop-input" step="0.1" value="0" readonly /></div>
+            <div class="cad-prop-row"><span class="cad-prop-label" style="color:#339af0">D</span><input type="number" id="cad-dim-d" class="cad-prop-input" step="0.1" value="0" readonly /></div>
           </div>
 
           <div class="cad-prop-section">
@@ -2627,6 +2678,15 @@
       </div>
     </div>
   </div>
+
+  <!-- Mobile: sidebar drawer overlay -->
+  <div id="sidebar-drawer-overlay" class="sidebar-drawer-overlay"></div>
+
+  <!-- Mobile: toolbar "More" dropdown -->
+  <div id="toolbar-more-menu" class="toolbar-more-menu" role="menu" aria-label="More toolbar options"></div>
+
+  <!-- Mobile: pane toggle FAB (editor/preview switcher) -->
+  <button id="mobile-pane-toggle" class="mobile-pane-toggle" title="Toggle Editor/Preview" aria-label="Toggle Editor/Preview">👁</button>
 
   <script type="module" src="/src/main.js"></script>
 </body>
