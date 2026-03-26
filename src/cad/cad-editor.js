@@ -1,9 +1,11 @@
-// OfficeLink SL — 3D CAD Editor (Three.js)
+// OfficeLink SL — 3D CAD Editor (Three.js + OpenCascade.js B-Rep)
 // Onshape-level 3D modeling editor with primitives, transforms, boolean ops, export
+// Dual-mode: OCCT B-Rep (precise) + Three.js mesh (fallback)
 
 // Three.js loaded from CDN via dynamic import with retry logic
 // Uses string concat to prevent Vite from analyzing these imports
 import { escapeHtml as _esc } from '../utils/sanitize.js';
+import * as OCCT from './occt-engine.js';
 let THREE, OrbitControls, TransformControls, STLExporter, OBJExporter, GLTFExporter, STLLoader, OBJLoader, GLTFLoader;
 
 const CDN = 'https://cdn.jsdelivr.net/npm/three@0.162.0';
@@ -55,6 +57,10 @@ let objectCounter = 0;
 let lights = {};
 let viewportEl, canvasEl;
 
+/* ===================== OCCT B-Rep State ===================== */
+let occtEnabled = false; // true when OCCT WASM loaded
+let occtShapes = new Map(); // mesh.uuid → TopoDS_Shape (B-Rep data alongside Three.js mesh)
+
 /* ===================== Init ===================== */
 export async function initCadEditor() {
   const container = document.getElementById('view-cad');
@@ -78,6 +84,7 @@ export async function initCadEditor() {
   bindImportExport(container);
   bindNewToolbarButtons(container);
   bindSketchEvents();
+  bindOCCTButtons(container);
   initViewCube();
   initBoxSelect();
   bindClippingControls();
@@ -93,6 +100,9 @@ export async function initCadEditor() {
   updateCadThemeColors();
   const themeObserver = new MutationObserver(() => updateCadThemeColors());
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // Start loading OCCT B-Rep engine (non-blocking)
+  initOCCTEngine();
 }
 
 /* ===================== Scene Setup ===================== */
@@ -2267,19 +2277,20 @@ function bindToolbarEvents(container) {
     btn.addEventListener('click', () => setCameraView(btn.dataset.view));
   });
 
-  // Boolean operations
+  // Boolean operations (OCCT-enhanced with fallback)
   const unionBtn = document.getElementById('cad-bool-union');
   const subBtn = document.getElementById('cad-bool-subtract');
   const interBtn = document.getElementById('cad-bool-intersect');
-  if (unionBtn) unionBtn.addEventListener('click', () => booleanOperation('union'));
-  if (subBtn) subBtn.addEventListener('click', () => booleanOperation('subtract'));
-  if (interBtn) interBtn.addEventListener('click', () => booleanOperation('intersect'));
+  if (unionBtn) unionBtn.addEventListener('click', () => booleanOperationOCCT('union'));
+  if (subBtn) subBtn.addEventListener('click', () => booleanOperationOCCT('subtract'));
+  if (interBtn) interBtn.addEventListener('click', () => booleanOperationOCCT('intersect'));
 
-  // Extrude / Revolve — use new dialog if sketches exist, else legacy
+  // Extrude / Revolve — use OCCT-enhanced dialog if sketches exist, else legacy
   const extBtn = document.getElementById('cad-extrude');
   const revBtn = document.getElementById('cad-revolve');
   if (extBtn) extBtn.addEventListener('click', () => { allSketches.length > 0 ? showExtrudeDialog() : extrudeShape(); });
   if (revBtn) revBtn.addEventListener('click', () => { allSketches.length > 0 ? showRevolveDialog() : revolveShape(); });
+
 
   // Focus selected
   const focusBtn = document.getElementById('cad-focus');
@@ -2302,7 +2313,15 @@ function bindToolbarEvents(container) {
 
 function bindPrimitiveEvents(container) {
   container.querySelectorAll('.cad-prim-btn').forEach((btn) => {
-    btn.addEventListener('click', () => createPrimitive(btn.dataset.prim));
+    btn.addEventListener('click', () => {
+      // Use OCCT for supported primitives when available
+      const type = btn.dataset.prim;
+      if (occtEnabled && ['box', 'sphere', 'cylinder', 'cone', 'torus'].includes(type)) {
+        createPrimitiveOCCT(type);
+      } else {
+        createPrimitive(type);
+      }
+    });
   });
 }
 
@@ -3222,9 +3241,9 @@ function handleContextAction(action) {
     case 'move': setTransformMode('translate'); break;
     case 'rotate': setTransformMode('rotate'); break;
     case 'scale': setTransformMode('scale'); break;
-    case 'bool-union': booleanOperation('union'); break;
-    case 'bool-subtract': booleanOperation('subtract'); break;
-    case 'bool-intersect': booleanOperation('intersect'); break;
+    case 'bool-union': booleanOperationOCCT('union'); break;
+    case 'bool-subtract': booleanOperationOCCT('subtract'); break;
+    case 'bool-intersect': booleanOperationOCCT('intersect'); break;
     case 'set-material':
       // Scroll properties panel to material section
       document.querySelector('.cad-right-panel')?.scrollTo({ top: 9999, behavior: 'smooth' });
@@ -3326,10 +3345,10 @@ function bindSketchEvents() {
     updateStatusBar(hvBtn.classList.contains('active') ? 'H/V constraint: Auto-apply' : 'H/V constraint: Off');
   });
 
-  // Extrude dialog
+  // Extrude dialog — use OCCT-enhanced version when available
   const extOk = document.getElementById('cad-extrude-ok');
   const extCancel = document.getElementById('cad-extrude-cancel');
-  if (extOk) extOk.addEventListener('click', () => executeExtrude());
+  if (extOk) extOk.addEventListener('click', () => executeExtrudeOCCT());
   if (extCancel) extCancel.addEventListener('click', () => hideExtrudeDialog());
 
   // Extrude slider sync
@@ -3346,10 +3365,10 @@ function bindSketchEvents() {
   const extBevel = document.getElementById('cad-extrude-bevel');
   if (extBevel) extBevel.addEventListener('change', () => updateExtrudePreview());
 
-  // Revolve dialog
+  // Revolve dialog — use OCCT-enhanced version when available
   const revOk = document.getElementById('cad-revolve-ok');
   const revCancel = document.getElementById('cad-revolve-cancel');
-  if (revOk) revOk.addEventListener('click', () => executeRevolve());
+  if (revOk) revOk.addEventListener('click', () => executeRevolveOCCT());
   if (revCancel) revCancel.addEventListener('click', () => hideRevolveDialog());
 
   // Revolve slider sync
@@ -3382,6 +3401,685 @@ function bindClippingControls() {
   if (posEl) posEl.addEventListener('input', () => updateClippingPlane());
   if (flipEl) flipEl.addEventListener('change', () => updateClippingPlane());
   if (closeEl) closeEl.addEventListener('click', () => toggleSectionView());
+}
+
+/* ===================== OCCT B-Rep Engine Integration ===================== */
+
+/** Initialize OCCT engine (non-blocking, lazy load) */
+async function initOCCTEngine() {
+  const progressBar = document.getElementById('cad-occt-progress');
+  const progressFill = document.getElementById('cad-occt-progress-fill');
+  const progressText = document.getElementById('cad-occt-progress-text');
+  const statusIndicator = document.getElementById('cad-brep-status');
+
+  // Show progress bar
+  if (progressBar) progressBar.style.display = 'flex';
+  if (statusIndicator) {
+    statusIndicator.textContent = 'Loading B-Rep...';
+    statusIndicator.className = 'cad-brep-status loading';
+  }
+
+  const success = await OCCT.loadOCCT((pct, msg) => {
+    if (progressFill && pct >= 0) {
+      progressFill.style.width = pct + '%';
+    }
+    if (progressText) {
+      progressText.textContent = msg;
+    }
+  });
+
+  // Hide progress bar
+  if (progressBar) {
+    setTimeout(() => { progressBar.style.display = 'none'; }, 1000);
+  }
+
+  if (success) {
+    occtEnabled = true;
+    if (statusIndicator) {
+      statusIndicator.textContent = 'B-Rep Engine: Active';
+      statusIndicator.className = 'cad-brep-status active';
+    }
+    // Enable OCCT-only buttons
+    document.querySelectorAll('.cad-occt-only').forEach((btn) => {
+      btn.disabled = false;
+      btn.title = btn.dataset.occtTitle || btn.title;
+    });
+    updateStatusBar('OpenCascade B-Rep engine loaded');
+  } else {
+    occtEnabled = false;
+    if (statusIndicator) {
+      statusIndicator.textContent = 'Mesh Mode (Fallback)';
+      statusIndicator.className = 'cad-brep-status fallback';
+    }
+    updateStatusBar('B-Rep engine unavailable — using mesh mode');
+  }
+}
+
+/** Convert OCCT tessellation data to Three.js mesh */
+function occtShapeToMesh(topoShape, color) {
+  if (!topoShape || !THREE) return null;
+  const data = OCCT.tessellate(topoShape, 0.1);
+  if (!data) return null;
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(data.vertices, 3));
+  geometry.setAttribute('normal', new THREE.BufferAttribute(data.normals, 3));
+  if (data.indices.length > 0) {
+    geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
+  }
+  geometry.computeBoundingBox();
+
+  const material = new THREE.MeshStandardMaterial({
+    color: color || getRandomPastelColor(),
+    metalness: 0.1,
+    roughness: 0.6,
+    side: THREE.DoubleSide,
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  // Store edge data for wireframe overlay
+  if (data.edges.length > 0) {
+    mesh.userData.occtEdges = data.edges;
+  }
+
+  return mesh;
+}
+
+/** Create a primitive using OCCT if available, else fallback to Three.js */
+function createPrimitiveOCCT(type) {
+  if (!occtEnabled) {
+    createPrimitive(type);
+    return;
+  }
+
+  let shape = null;
+  let name = '';
+  objectCounter++;
+
+  switch (type) {
+    case 'box':
+      shape = OCCT.createBox(2, 2, 2);
+      name = `Box_${objectCounter}`;
+      break;
+    case 'sphere':
+      shape = OCCT.createSphere(1);
+      name = `Sphere_${objectCounter}`;
+      break;
+    case 'cylinder':
+      shape = OCCT.createCylinder(1, 2);
+      name = `Cylinder_${objectCounter}`;
+      break;
+    case 'cone':
+      shape = OCCT.createCone(1, 0, 2);
+      name = `Cone_${objectCounter}`;
+      break;
+    case 'torus':
+      shape = OCCT.createTorus(1, 0.4);
+      name = `Torus_${objectCounter}`;
+      break;
+    default:
+      // No OCCT primitive for this type, fallback
+      createPrimitive(type);
+      return;
+  }
+
+  if (!shape) {
+    // OCCT failed, fallback
+    objectCounter--;
+    createPrimitive(type);
+    return;
+  }
+
+  const mesh = occtShapeToMesh(shape);
+  if (!mesh) {
+    objectCounter--;
+    createPrimitive(type);
+    return;
+  }
+
+  mesh.name = name;
+  mesh.position.y = type === 'plane' ? 0.01 : 1;
+  mesh.userData.type = type;
+  mesh.userData.isCADObject = true;
+  mesh.userData.isBRep = true;
+
+  // Store the B-Rep shape for precise operations later
+  occtShapes.set(mesh.uuid, shape);
+
+  scene.add(mesh);
+  sceneObjects.push(mesh);
+  selectObject(mesh);
+  pushUndo('add', mesh);
+  updateSceneTree();
+  updateFeatureTree();
+  updateStatusBar(`Created ${name} (B-Rep)`);
+}
+
+/** Perform boolean using OCCT if both shapes have B-Rep data */
+function booleanOperationOCCT(op) {
+  if (sceneObjects.length < 2) {
+    updateStatusBar('Need at least 2 objects for boolean operation');
+    return;
+  }
+  if (!selectedObject) {
+    updateStatusBar('Select the target object first');
+    return;
+  }
+
+  const otherObjects = sceneObjects.filter((o) => o !== selectedObject);
+  if (otherObjects.length === 0) return;
+  const second = otherObjects[0];
+
+  // Check if both have B-Rep data
+  const shapeA = occtShapes.get(selectedObject.uuid);
+  const shapeB = occtShapes.get(second.uuid);
+
+  if (!occtEnabled || !shapeA || !shapeB) {
+    // Fallback to mesh boolean
+    booleanOperation(op);
+    return;
+  }
+
+  pushUndo('boolean');
+
+  let resultShape = null;
+  try {
+    if (op === 'union') resultShape = OCCT.booleanUnion(shapeA, shapeB);
+    else if (op === 'subtract') resultShape = OCCT.booleanSubtract(shapeA, shapeB);
+    else if (op === 'intersect') resultShape = OCCT.booleanIntersect(shapeA, shapeB);
+  } catch (e) {
+    updateStatusBar(`B-Rep boolean ${op} failed, using mesh fallback`);
+    booleanOperation(op);
+    return;
+  }
+
+  if (!resultShape) {
+    updateStatusBar(`B-Rep boolean ${op} failed, using mesh fallback`);
+    booleanOperation(op);
+    return;
+  }
+
+  const mesh = occtShapeToMesh(resultShape, selectedObject.material ? selectedObject.material.color.clone() : undefined);
+  if (!mesh) {
+    booleanOperation(op);
+    return;
+  }
+
+  objectCounter++;
+  const capOp = op.charAt(0).toUpperCase() + op.slice(1);
+  mesh.name = `${capOp}_${objectCounter}`;
+  mesh.userData.type = op;
+  mesh.userData.isCADObject = true;
+  mesh.userData.isBRep = true;
+
+  // Remove originals
+  occtShapes.delete(selectedObject.uuid);
+  occtShapes.delete(second.uuid);
+  scene.remove(selectedObject);
+  scene.remove(second);
+  sceneObjects = sceneObjects.filter((o) => o !== selectedObject && o !== second);
+
+  // Store result B-Rep
+  occtShapes.set(mesh.uuid, resultShape);
+
+  scene.add(mesh);
+  sceneObjects.push(mesh);
+  selectObject(mesh);
+  updateSceneTree();
+  updateFeatureTree();
+  updateStatusBar(`Boolean ${op} completed (B-Rep)`);
+}
+
+/* ===================== Fillet / Chamfer / Shell Operations ===================== */
+
+function showFilletDialog() {
+  if (!occtEnabled) { updateStatusBar('Fillet requires B-Rep engine (not loaded)'); return; }
+  if (!selectedObject || !occtShapes.has(selectedObject.uuid)) {
+    updateStatusBar('Select a B-Rep object to fillet');
+    return;
+  }
+  const dialog = document.getElementById('cad-fillet-dialog');
+  if (dialog) {
+    const edgeCount = OCCT.getEdgeCount(occtShapes.get(selectedObject.uuid));
+    const infoEl = dialog.querySelector('.cad-fillet-info');
+    if (infoEl) infoEl.textContent = `${edgeCount} edges available`;
+    dialog.style.display = 'flex';
+  }
+}
+
+function executeFilletFromDialog() {
+  const radiusInput = document.getElementById('cad-fillet-radius');
+  const radius = parseFloat(radiusInput?.value) || 0.2;
+  const shape = occtShapes.get(selectedObject?.uuid);
+  if (!shape) return;
+
+  pushUndo('fillet');
+  const result = OCCT.filletEdges(shape, radius, []);
+  if (!result) {
+    updateStatusBar('Fillet failed — try a smaller radius');
+    return;
+  }
+
+  const mesh = occtShapeToMesh(result, selectedObject.material?.color?.clone());
+  if (!mesh) return;
+
+  objectCounter++;
+  mesh.name = `Fillet_${objectCounter}`;
+  mesh.position.copy(selectedObject.position);
+  mesh.rotation.copy(selectedObject.rotation);
+  mesh.scale.copy(selectedObject.scale);
+  mesh.userData.type = 'fillet';
+  mesh.userData.isCADObject = true;
+  mesh.userData.isBRep = true;
+
+  // Replace old
+  occtShapes.delete(selectedObject.uuid);
+  scene.remove(selectedObject);
+  sceneObjects = sceneObjects.filter((o) => o !== selectedObject);
+
+  occtShapes.set(mesh.uuid, result);
+  scene.add(mesh);
+  sceneObjects.push(mesh);
+  selectObject(mesh);
+  updateSceneTree();
+  updateFeatureTree();
+
+  const dialog = document.getElementById('cad-fillet-dialog');
+  if (dialog) dialog.style.display = 'none';
+  updateStatusBar(`Applied fillet (R=${radius})`);
+}
+
+function showChamferDialog() {
+  if (!occtEnabled) { updateStatusBar('Chamfer requires B-Rep engine (not loaded)'); return; }
+  if (!selectedObject || !occtShapes.has(selectedObject.uuid)) {
+    updateStatusBar('Select a B-Rep object to chamfer');
+    return;
+  }
+  const dialog = document.getElementById('cad-chamfer-dialog');
+  if (dialog) {
+    const edgeCount = OCCT.getEdgeCount(occtShapes.get(selectedObject.uuid));
+    const infoEl = dialog.querySelector('.cad-chamfer-info');
+    if (infoEl) infoEl.textContent = `${edgeCount} edges available`;
+    dialog.style.display = 'flex';
+  }
+}
+
+function executeChamferFromDialog() {
+  const distInput = document.getElementById('cad-chamfer-dist');
+  const distance = parseFloat(distInput?.value) || 0.2;
+  const shape = occtShapes.get(selectedObject?.uuid);
+  if (!shape) return;
+
+  pushUndo('chamfer');
+  const result = OCCT.chamferEdges(shape, distance, []);
+  if (!result) {
+    updateStatusBar('Chamfer failed — try a smaller distance');
+    return;
+  }
+
+  const mesh = occtShapeToMesh(result, selectedObject.material?.color?.clone());
+  if (!mesh) return;
+
+  objectCounter++;
+  mesh.name = `Chamfer_${objectCounter}`;
+  mesh.position.copy(selectedObject.position);
+  mesh.rotation.copy(selectedObject.rotation);
+  mesh.scale.copy(selectedObject.scale);
+  mesh.userData.type = 'chamfer';
+  mesh.userData.isCADObject = true;
+  mesh.userData.isBRep = true;
+
+  occtShapes.delete(selectedObject.uuid);
+  scene.remove(selectedObject);
+  sceneObjects = sceneObjects.filter((o) => o !== selectedObject);
+
+  occtShapes.set(mesh.uuid, result);
+  scene.add(mesh);
+  sceneObjects.push(mesh);
+  selectObject(mesh);
+  updateSceneTree();
+  updateFeatureTree();
+
+  const dialog = document.getElementById('cad-chamfer-dialog');
+  if (dialog) dialog.style.display = 'none';
+  updateStatusBar(`Applied chamfer (D=${distance})`);
+}
+
+function showShellDialog() {
+  if (!occtEnabled) { updateStatusBar('Shell requires B-Rep engine (not loaded)'); return; }
+  if (!selectedObject || !occtShapes.has(selectedObject.uuid)) {
+    updateStatusBar('Select a B-Rep object to shell');
+    return;
+  }
+  const dialog = document.getElementById('cad-shell-dialog');
+  if (dialog) {
+    const faceCount = OCCT.getFaceCount(occtShapes.get(selectedObject.uuid));
+    const infoEl = dialog.querySelector('.cad-shell-info');
+    if (infoEl) infoEl.textContent = `${faceCount} faces available`;
+    dialog.style.display = 'flex';
+  }
+}
+
+function executeShellFromDialog() {
+  const thicknessInput = document.getElementById('cad-shell-thickness');
+  const faceIdxInput = document.getElementById('cad-shell-face');
+  const thickness = parseFloat(thicknessInput?.value) || 0.2;
+  const faceIdx = parseInt(faceIdxInput?.value) || 0;
+  const shape = occtShapes.get(selectedObject?.uuid);
+  if (!shape) return;
+
+  pushUndo('shell');
+  const result = OCCT.shellShape(shape, thickness, [faceIdx]);
+  if (!result) {
+    updateStatusBar('Shell failed — try different parameters');
+    return;
+  }
+
+  const mesh = occtShapeToMesh(result, selectedObject.material?.color?.clone());
+  if (!mesh) return;
+
+  objectCounter++;
+  mesh.name = `Shell_${objectCounter}`;
+  mesh.position.copy(selectedObject.position);
+  mesh.rotation.copy(selectedObject.rotation);
+  mesh.scale.copy(selectedObject.scale);
+  mesh.userData.type = 'shell';
+  mesh.userData.isCADObject = true;
+  mesh.userData.isBRep = true;
+
+  occtShapes.delete(selectedObject.uuid);
+  scene.remove(selectedObject);
+  sceneObjects = sceneObjects.filter((o) => o !== selectedObject);
+
+  occtShapes.set(mesh.uuid, result);
+  scene.add(mesh);
+  sceneObjects.push(mesh);
+  selectObject(mesh);
+  updateSceneTree();
+  updateFeatureTree();
+
+  const dialog = document.getElementById('cad-shell-dialog');
+  if (dialog) dialog.style.display = 'none';
+  updateStatusBar(`Applied shell (T=${thickness})`);
+}
+
+/* ===================== STEP Export / Import ===================== */
+
+function exportSTEPFile() {
+  if (!occtEnabled) { updateStatusBar('STEP export requires B-Rep engine'); return; }
+
+  const shapes = [];
+  sceneObjects.forEach((o) => {
+    if (o.visible && occtShapes.has(o.uuid)) {
+      shapes.push(occtShapes.get(o.uuid));
+    }
+  });
+
+  if (shapes.length === 0) {
+    updateStatusBar('No B-Rep objects to export. Use OCCT primitives for STEP export.');
+    return;
+  }
+
+  const stepContent = OCCT.exportSTEP(shapes);
+  if (stepContent) {
+    downloadBlob(new Blob([stepContent], { type: 'application/step' }), 'model.step');
+    updateStatusBar(`Exported ${shapes.length} shape(s) to STEP`);
+  } else {
+    updateStatusBar('STEP export failed');
+  }
+}
+
+function importSTEPFile() {
+  if (!occtEnabled) { updateStatusBar('STEP import requires B-Rep engine'); return; }
+  const input = document.getElementById('cad-step-import-input');
+  if (input) input.click();
+}
+
+function handleSTEPImport(file) {
+  if (!occtEnabled) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const shape = OCCT.importSTEP(e.target.result);
+      if (!shape) {
+        updateStatusBar('Failed to read STEP file');
+        return;
+      }
+
+      const mesh = occtShapeToMesh(shape);
+      if (!mesh) {
+        updateStatusBar('Failed to tessellate STEP geometry');
+        return;
+      }
+
+      objectCounter++;
+      mesh.name = `STEP_${objectCounter}_${file.name}`;
+      mesh.userData.type = 'step-import';
+      mesh.userData.isCADObject = true;
+      mesh.userData.isBRep = true;
+
+      // Auto-scale
+      const box = new THREE.Box3().setFromObject(mesh);
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      if (maxDim > 10) mesh.scale.multiplyScalar(5 / maxDim);
+
+      // Center
+      const center = box.getCenter(new THREE.Vector3());
+      mesh.position.sub(center);
+      mesh.position.y = 0;
+
+      occtShapes.set(mesh.uuid, shape);
+      scene.add(mesh);
+      sceneObjects.push(mesh);
+      selectObject(mesh);
+      pushUndo('add', mesh);
+      updateSceneTree();
+      updateFeatureTree();
+      updateStatusBar(`Imported STEP: ${file.name} (B-Rep)`);
+    } catch (err) {
+      updateStatusBar(`STEP import error: ${err.message}`);
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* ===================== OCCT-enhanced Extrude / Revolve ===================== */
+
+function executeExtrudeOCCT() {
+  if (!occtEnabled) {
+    executeExtrude();
+    return;
+  }
+
+  const profileSelect = document.getElementById('cad-extrude-profile');
+  const distInput = document.getElementById('cad-extrude-dist');
+  const symCheck = document.getElementById('cad-extrude-symmetric');
+  if (!profileSelect || !distInput) return;
+
+  const sketch = allSketches.find((s) => s.id === profileSelect.value);
+  if (!sketch) { updateStatusBar('No sketch selected'); return; }
+
+  const dist = parseFloat(distInput.value) || 5;
+  const symmetric = symCheck ? symCheck.checked : false;
+
+  // Build OCCT wire from sketch entities
+  const planeData = {
+    origin: { x: sketch.plane.origin.x, y: sketch.plane.origin.y, z: sketch.plane.origin.z },
+    normal: { x: sketch.plane.normal.x, y: sketch.plane.normal.y, z: sketch.plane.normal.z },
+    right: { x: sketch.plane.right.x, y: sketch.plane.right.y, z: sketch.plane.right.z },
+    up: { x: sketch.plane.up.x, y: sketch.plane.up.y, z: sketch.plane.up.z },
+  };
+
+  const wire = OCCT.createSketchWire(sketch.entities, planeData);
+  if (!wire) {
+    // Fallback to Three.js extrude
+    executeExtrude();
+    return;
+  }
+
+  const direction = { x: sketch.plane.normal.x, y: sketch.plane.normal.y, z: sketch.plane.normal.z };
+  const shape = OCCT.extrudeShape(wire, direction, dist, symmetric);
+  if (!shape) {
+    executeExtrude();
+    return;
+  }
+
+  const mesh = occtShapeToMesh(shape);
+  if (!mesh) {
+    executeExtrude();
+    return;
+  }
+
+  objectCounter++;
+  mesh.name = `Extrude_${objectCounter}`;
+  mesh.userData.type = 'extrude';
+  mesh.userData.isCADObject = true;
+  mesh.userData.isBRep = true;
+  mesh.userData.sketchId = sketch.id;
+
+  occtShapes.set(mesh.uuid, shape);
+  scene.add(mesh);
+  sceneObjects.push(mesh);
+  selectObject(mesh);
+  pushUndo('add', mesh);
+
+  featureCounter++;
+  featureTree.push({
+    type: 'extrude', name: `Extrude ${objectCounter} (${sketch.name}) [B-Rep]`,
+    id: `feat_${featureCounter}`, meshUuid: mesh.uuid, sketchId: sketch.id, suppressed: false,
+  });
+
+  hideExtrudeDialog();
+  updateSceneTree();
+  updateFeatureTree();
+  updateStatusBar(`Created B-Rep extrude from ${sketch.name}`);
+}
+
+function executeRevolveOCCT() {
+  if (!occtEnabled) {
+    executeRevolve();
+    return;
+  }
+
+  const profileSelect = document.getElementById('cad-revolve-profile');
+  const angleInput = document.getElementById('cad-revolve-angle');
+  const axisSelect = document.getElementById('cad-revolve-axis');
+  if (!profileSelect || !angleInput) return;
+
+  const sketch = allSketches.find((s) => s.id === profileSelect.value);
+  if (!sketch) { updateStatusBar('No sketch selected'); return; }
+
+  const angleDeg = parseFloat(angleInput.value) || 360;
+  const axisVal = axisSelect ? axisSelect.value : 'y';
+
+  const planeData = {
+    origin: { x: sketch.plane.origin.x, y: sketch.plane.origin.y, z: sketch.plane.origin.z },
+    normal: { x: sketch.plane.normal.x, y: sketch.plane.normal.y, z: sketch.plane.normal.z },
+    right: { x: sketch.plane.right.x, y: sketch.plane.right.y, z: sketch.plane.right.z },
+    up: { x: sketch.plane.up.x, y: sketch.plane.up.y, z: sketch.plane.up.z },
+  };
+
+  const wire = OCCT.createSketchWire(sketch.entities, planeData);
+  if (!wire) {
+    executeRevolve();
+    return;
+  }
+
+  const axisDirs = {
+    x: { origin: { x: 0, y: 0, z: 0 }, dir: { x: 1, y: 0, z: 0 } },
+    y: { origin: { x: 0, y: 0, z: 0 }, dir: { x: 0, y: 1, z: 0 } },
+    z: { origin: { x: 0, y: 0, z: 0 }, dir: { x: 0, y: 0, z: 1 } },
+  };
+
+  const shape = OCCT.revolveShape(wire, axisDirs[axisVal] || axisDirs.y, angleDeg);
+  if (!shape) {
+    executeRevolve();
+    return;
+  }
+
+  const mesh = occtShapeToMesh(shape);
+  if (!mesh) {
+    executeRevolve();
+    return;
+  }
+
+  objectCounter++;
+  mesh.name = `Revolve_${objectCounter}`;
+  mesh.userData.type = 'revolve';
+  mesh.userData.isCADObject = true;
+  mesh.userData.isBRep = true;
+  mesh.userData.sketchId = sketch.id;
+
+  occtShapes.set(mesh.uuid, shape);
+  scene.add(mesh);
+  sceneObjects.push(mesh);
+  selectObject(mesh);
+  pushUndo('add', mesh);
+
+  featureCounter++;
+  featureTree.push({
+    type: 'revolve', name: `Revolve ${objectCounter} (${sketch.name}) [B-Rep]`,
+    id: `feat_${featureCounter}`, meshUuid: mesh.uuid, sketchId: sketch.id, suppressed: false,
+  });
+
+  hideRevolveDialog();
+  updateSceneTree();
+  updateFeatureTree();
+  updateStatusBar(`Created B-Rep revolve from ${sketch.name}`);
+}
+
+/* ===================== Bind OCCT UI Buttons ===================== */
+
+function bindOCCTButtons(container) {
+  // Fillet
+  const filletBtn = document.getElementById('cad-fillet');
+  if (filletBtn) filletBtn.addEventListener('click', () => showFilletDialog());
+  const filletOk = document.getElementById('cad-fillet-ok');
+  if (filletOk) filletOk.addEventListener('click', () => executeFilletFromDialog());
+  const filletCancel = document.getElementById('cad-fillet-cancel');
+  if (filletCancel) filletCancel.addEventListener('click', () => {
+    const d = document.getElementById('cad-fillet-dialog');
+    if (d) d.style.display = 'none';
+  });
+
+  // Chamfer
+  const chamferBtn = document.getElementById('cad-chamfer');
+  if (chamferBtn) chamferBtn.addEventListener('click', () => showChamferDialog());
+  const chamferOk = document.getElementById('cad-chamfer-ok');
+  if (chamferOk) chamferOk.addEventListener('click', () => executeChamferFromDialog());
+  const chamferCancel = document.getElementById('cad-chamfer-cancel');
+  if (chamferCancel) chamferCancel.addEventListener('click', () => {
+    const d = document.getElementById('cad-chamfer-dialog');
+    if (d) d.style.display = 'none';
+  });
+
+  // Shell
+  const shellBtn = document.getElementById('cad-shell');
+  if (shellBtn) shellBtn.addEventListener('click', () => showShellDialog());
+  const shellOk = document.getElementById('cad-shell-ok');
+  if (shellOk) shellOk.addEventListener('click', () => executeShellFromDialog());
+  const shellCancel = document.getElementById('cad-shell-cancel');
+  if (shellCancel) shellCancel.addEventListener('click', () => {
+    const d = document.getElementById('cad-shell-dialog');
+    if (d) d.style.display = 'none';
+  });
+
+  // STEP Export/Import
+  const stepExportBtn = document.getElementById('cad-export-step');
+  if (stepExportBtn) stepExportBtn.addEventListener('click', () => exportSTEPFile());
+  const stepImportBtn = document.getElementById('cad-import-step');
+  if (stepImportBtn) stepImportBtn.addEventListener('click', () => importSTEPFile());
+  const stepImportInput = document.getElementById('cad-step-import-input');
+  if (stepImportInput) stepImportInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+      handleSTEPImport(e.target.files[0]);
+      e.target.value = '';
+    }
+  });
 }
 
 // Call after DOM is ready

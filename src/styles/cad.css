@@ -1063,3 +1063,103 @@
 [data-theme="light"] .cad-feat-btn:hover {
   background: #eee;
 }
+
+/* === OCCT B-Rep Engine Styles === */
+
+/* Progress bar for OCCT WASM loading */
+.cad-occt-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #0f1a2e;
+  border-bottom: 1px solid #0f3460;
+}
+.cad-occt-progress-track {
+  flex: 1;
+  height: 6px;
+  background: #1a2744;
+  border-radius: 3px;
+  overflow: hidden;
+  max-width: 300px;
+}
+.cad-occt-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #3a86ff, #00d4ff);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.cad-occt-progress-text {
+  font-size: 11px;
+  color: #8892b0;
+  white-space: nowrap;
+}
+
+/* B-Rep status indicator in status bar */
+.cad-brep-status {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: 8px;
+  font-weight: 500;
+}
+.cad-brep-status.loading {
+  background: #2a2a4a;
+  color: #8892b0;
+  animation: cad-brep-pulse 1.5s ease-in-out infinite;
+}
+.cad-brep-status.active {
+  background: #1a3a2a;
+  color: #4caf50;
+  border: 1px solid #2e7d32;
+}
+.cad-brep-status.fallback {
+  background: #3a2a1a;
+  color: #ff9800;
+  border: 1px solid #e65100;
+}
+@keyframes cad-brep-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* OCCT-only buttons (disabled state) */
+.cad-occt-only:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.cad-occt-only:not(:disabled) {
+  border-left: 2px solid #4caf50;
+}
+
+/* OCCT toolbar group styling */
+.cad-occt-group {
+  border-left: 2px solid #3a86ff;
+}
+
+/* Light theme overrides for OCCT elements */
+[data-theme="light"] .cad-occt-progress {
+  background: #f0f4f8;
+  border-bottom-color: #d0d7de;
+}
+[data-theme="light"] .cad-occt-progress-track {
+  background: #e1e4e8;
+}
+[data-theme="light"] .cad-occt-progress-text {
+  color: #57606a;
+}
+[data-theme="light"] .cad-brep-status.loading {
+  background: #e8eaed;
+  color: #57606a;
+}
+[data-theme="light"] .cad-brep-status.active {
+  background: #e6f4ea;
+  color: #1e7e34;
+  border-color: #34a853;
+}
+[data-theme="light"] .cad-brep-status.fallback {
+  background: #fef3e2;
+  color: #b45309;
+  border-color: #f59e0b;
+}

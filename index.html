@@ -2073,6 +2073,11 @@
           <button id="cad-extrude" class="cad-btn" title="Extrude (Shift+E)"><span class="icon">⬆</span> Extrude</button>
           <button id="cad-revolve" class="cad-btn" title="Revolve (Shift+R)"><span class="icon">🔄</span> Revolve</button>
         </div>
+        <div class="cad-toolbar-group cad-occt-group">
+          <button id="cad-fillet" class="cad-btn cad-occt-only" disabled title="Requires B-Rep engine" data-occt-title="Fillet Edges"><span class="icon">◠</span> Fillet</button>
+          <button id="cad-chamfer" class="cad-btn cad-occt-only" disabled title="Requires B-Rep engine" data-occt-title="Chamfer Edges"><span class="icon">⬠</span> Chamfer</button>
+          <button id="cad-shell" class="cad-btn cad-occt-only" disabled title="Requires B-Rep engine" data-occt-title="Shell (Hollow)"><span class="icon">☐</span> Shell</button>
+        </div>
         <!-- Sketch Toolbar (shown only in sketch mode, replaces 3D toolbar) -->
         <div class="cad-toolbar-group cad-sketch-toolbar" id="cad-sketch-toolbar" style="display:none">
           <button id="cad-sketch-line" class="cad-btn cad-sketch-tool-btn active" data-tool="line" title="Line (L)"><span class="icon">╲</span> Line</button>
@@ -2097,9 +2102,12 @@
         <div class="cad-toolbar-group">
           <button id="cad-import" class="cad-btn" title="Import STL/OBJ/GLTF"><span class="icon">📥</span> Import</button>
           <input type="file" id="cad-import-input" accept=".stl,.obj,.gltf,.glb" style="display:none" />
+          <button id="cad-import-step" class="cad-btn cad-occt-only" disabled title="Requires B-Rep engine" data-occt-title="Import STEP"><span class="icon">📥</span> STEP</button>
+          <input type="file" id="cad-step-import-input" accept=".step,.stp" style="display:none" />
           <button id="cad-export-stl" class="cad-btn" title="Export STL">STL</button>
           <button id="cad-export-obj" class="cad-btn" title="Export OBJ">OBJ</button>
           <button id="cad-export-gltf" class="cad-btn" title="Export GLTF">GLTF</button>
+          <button id="cad-export-step" class="cad-btn cad-occt-only" disabled title="Requires B-Rep engine" data-occt-title="Export STEP">STEP</button>
         </div>
         <div class="cad-toolbar-group">
           <button id="cad-clear-scene" class="cad-btn" title="Clear Scene"><span class="icon">🧹</span></button>
@@ -2230,6 +2238,14 @@
         </div>
       </div>
 
+      <!-- OCCT Loading Progress Bar -->
+      <div id="cad-occt-progress" class="cad-occt-progress" style="display:none">
+        <div class="cad-occt-progress-track">
+          <div id="cad-occt-progress-fill" class="cad-occt-progress-fill"></div>
+        </div>
+        <span id="cad-occt-progress-text" class="cad-occt-progress-text">Loading...</span>
+      </div>
+
       <!-- Status Bar -->
       <div class="cad-statusbar">
         <div class="cad-status-left">
@@ -2237,6 +2253,7 @@
         </div>
         <div class="cad-status-center">
           <span id="cad-obj-count">Objects: 0</span>
+          <span id="cad-brep-status" class="cad-brep-status loading">Loading B-Rep...</span>
         </div>
         <div class="cad-status-right">
           <span>W/E/R=Move/Rotate/Scale | Shift+S=Sketch | Shift+E=Extrude | Shift+R=Revolve | S=Radial | 1-7=Views | F=Fit</span>
@@ -2347,6 +2364,58 @@
           <input type="range" id="cad-clip-pos" class="cad-prop-input" min="-20" max="20" step="0.1" value="0" />
         </div>
         <div class="cad-prop-row-full"><label><input type="checkbox" id="cad-clip-flip" /> Flip</label></div>
+      </div>
+      <!-- Fillet Dialog -->
+      <div id="cad-fillet-dialog" class="cad-modal-dialog" style="display:none">
+        <div class="cad-modal-content" style="max-width:280px">
+          <div class="cad-modal-title">Fillet Edges</div>
+          <div class="cad-fillet-info" style="font-size:11px;color:#8892b0;margin-bottom:8px"></div>
+          <div class="cad-prop-row-full">
+            <span class="cad-prop-label" style="width:auto;min-width:50px">Radius</span>
+            <input type="number" id="cad-fillet-radius" class="cad-prop-input" min="0.01" max="10" step="0.05" value="0.2" style="flex:1" />
+          </div>
+          <div style="font-size:10px;color:#8892b0;margin:4px 0">Applies to all edges. Select B-Rep object first.</div>
+          <div class="cad-modal-actions">
+            <button id="cad-fillet-ok" class="cad-btn cad-btn-primary">Apply</button>
+            <button id="cad-fillet-cancel" class="cad-btn">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <!-- Chamfer Dialog -->
+      <div id="cad-chamfer-dialog" class="cad-modal-dialog" style="display:none">
+        <div class="cad-modal-content" style="max-width:280px">
+          <div class="cad-modal-title">Chamfer Edges</div>
+          <div class="cad-chamfer-info" style="font-size:11px;color:#8892b0;margin-bottom:8px"></div>
+          <div class="cad-prop-row-full">
+            <span class="cad-prop-label" style="width:auto;min-width:50px">Distance</span>
+            <input type="number" id="cad-chamfer-dist" class="cad-prop-input" min="0.01" max="10" step="0.05" value="0.2" style="flex:1" />
+          </div>
+          <div style="font-size:10px;color:#8892b0;margin:4px 0">Applies to all edges. Select B-Rep object first.</div>
+          <div class="cad-modal-actions">
+            <button id="cad-chamfer-ok" class="cad-btn cad-btn-primary">Apply</button>
+            <button id="cad-chamfer-cancel" class="cad-btn">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <!-- Shell Dialog -->
+      <div id="cad-shell-dialog" class="cad-modal-dialog" style="display:none">
+        <div class="cad-modal-content" style="max-width:280px">
+          <div class="cad-modal-title">Shell (Hollow)</div>
+          <div class="cad-shell-info" style="font-size:11px;color:#8892b0;margin-bottom:8px"></div>
+          <div class="cad-prop-row-full">
+            <span class="cad-prop-label" style="width:auto;min-width:60px">Thickness</span>
+            <input type="number" id="cad-shell-thickness" class="cad-prop-input" min="0.01" max="5" step="0.05" value="0.2" style="flex:1" />
+          </div>
+          <div class="cad-prop-row-full">
+            <span class="cad-prop-label" style="width:auto;min-width:60px">Face #</span>
+            <input type="number" id="cad-shell-face" class="cad-prop-input" min="0" max="100" step="1" value="0" style="flex:1" />
+          </div>
+          <div style="font-size:10px;color:#8892b0;margin:4px 0">Face index to remove (0 = top face). Select B-Rep object first.</div>
+          <div class="cad-modal-actions">
+            <button id="cad-shell-ok" class="cad-btn cad-btn-primary">Apply</button>
+            <button id="cad-shell-cancel" class="cad-btn">Cancel</button>
+          </div>
+        </div>
       </div>
     </div>
 
