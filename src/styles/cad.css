@@ -710,3 +710,158 @@
 [data-theme="light"] .cad-context-item .shortcut {
   color: #999;
 }
+
+/* === S-Key Radial Menu (Onshape-style) === */
+.cad-radial-menu {
+  position: fixed;
+  width: 200px;
+  height: 200px;
+  z-index: 300;
+  display: none;
+  pointer-events: none;
+}
+.cad-radial-menu.visible {
+  display: block;
+  pointer-events: auto;
+  animation: radial-pop 0.15s ease-out;
+}
+@keyframes radial-pop {
+  from { transform: scale(0.5); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.radial-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #0f3460;
+  border: 2px solid #64ffda;
+  color: #64ffda;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 16px;
+  z-index: 2;
+}
+.radial-item {
+  position: absolute;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(22, 33, 62, 0.95);
+  border: 1px solid #233554;
+  color: #ccd6f6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.12s;
+  padding: 2px;
+  z-index: 1;
+  backdrop-filter: blur(8px);
+}
+.radial-item:hover {
+  background: #0f3460;
+  border-color: #64ffda;
+  transform: scale(1.15);
+}
+.radial-icon { font-size: 16px; line-height: 1; }
+.radial-label { font-size: 8px; color: #8892b0; line-height: 1; margin-top: 1px; }
+
+/* === View Cube === */
+.cad-view-cube {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 120px;
+  height: 120px;
+  z-index: 10;
+  cursor: pointer;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.cad-view-cube canvas {
+  display: block;
+  width: 120px !important;
+  height: 120px !important;
+}
+
+/* === Box Select === */
+.cad-box-select {
+  position: fixed;
+  border: 1px solid #64ffda;
+  background: rgba(100, 255, 218, 0.08);
+  z-index: 500;
+  pointer-events: none;
+  display: none;
+}
+
+/* === Measurement Overlay === */
+.cad-measure-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 15;
+}
+
+/* === Clipping Plane Controls === */
+.cad-clip-controls {
+  position: absolute;
+  bottom: 40px;
+  right: 8px;
+  background: rgba(22, 33, 62, 0.95);
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  padding: 8px 12px;
+  z-index: 20;
+  min-width: 180px;
+  backdrop-filter: blur(8px);
+}
+.cad-clip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64ffda;
+  margin-bottom: 8px;
+}
+
+/* === Selection glow outline (for selected objects) === */
+/* Handled via emissive in JS — no additional CSS needed */
+
+/* === Light theme overrides for new elements === */
+[data-theme="light"] .cad-radial-menu .radial-center {
+  background: #e0eef9;
+  border-color: #0071e3;
+  color: #0071e3;
+}
+[data-theme="light"] .radial-item {
+  background: rgba(255,255,255,0.95);
+  border-color: #ccc;
+  color: #333;
+}
+[data-theme="light"] .radial-item:hover {
+  background: #e0eef9;
+  border-color: #0071e3;
+}
+[data-theme="light"] .radial-label { color: #666; }
+[data-theme="light"] .cad-clip-controls {
+  background: rgba(255,255,255,0.95);
+  border-color: #ccc;
+}
+[data-theme="light"] .cad-clip-header {
+  color: #0071e3;
+}
+[data-theme="light"] .cad-box-select {
+  border-color: #0071e3;
+  background: rgba(0, 113, 227, 0.08);
+}

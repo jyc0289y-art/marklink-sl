@@ -2046,9 +2046,9 @@
         </div>
         <div class="cad-toolbar-group">
           <label data-i18n="cad.transform">Transform:</label>
-          <button class="cad-btn cad-transform-btn active" data-mode="translate" title="Move (G)"><span class="icon">✥</span> Move</button>
-          <button class="cad-btn cad-transform-btn" data-mode="rotate" title="Rotate (R)"><span class="icon">↻</span> Rotate</button>
-          <button class="cad-btn cad-transform-btn" data-mode="scale" title="Scale (S)"><span class="icon">⤢</span> Scale</button>
+          <button class="cad-btn cad-transform-btn active" data-mode="translate" title="Move (W)"><span class="icon">✥</span> Move</button>
+          <button class="cad-btn cad-transform-btn" data-mode="rotate" title="Rotate (E)"><span class="icon">↻</span> Rotate</button>
+          <button class="cad-btn cad-transform-btn" data-mode="scale" title="Scale (R)"><span class="icon">⤢</span> Scale</button>
         </div>
         <div class="cad-toolbar-group">
           <button id="cad-snap" class="cad-btn active" title="Toggle Snap"><span class="icon">⊞</span> Snap</button>
@@ -2071,6 +2071,12 @@
         <div class="cad-toolbar-group">
           <button id="cad-extrude" class="cad-btn" title="Extrude Shape"><span class="icon">⬆</span> Extrude</button>
           <button id="cad-revolve" class="cad-btn" title="Revolve Shape"><span class="icon">🔄</span> Revolve</button>
+        </div>
+        <div class="cad-toolbar-group">
+          <button id="cad-measure-tool" class="cad-btn" title="Measure (M)"><span class="icon">📏</span> Measure</button>
+          <button id="cad-section-tool" class="cad-btn" title="Section View"><span class="icon">✂</span> Section</button>
+          <button id="cad-grid-toggle" class="cad-btn active" title="Toggle Grid (G)"><span class="icon">⊞</span> Grid</button>
+          <button id="cad-fit-all" class="cad-btn" title="Fit All (F)"><span class="icon">⬜</span> Fit</button>
         </div>
         <div class="cad-toolbar-group">
           <button id="cad-import" class="cad-btn" title="Import STL/OBJ/GLTF"><span class="icon">📥</span> Import</button>
@@ -2126,11 +2132,16 @@
           <div class="cad-viewport">
             <!-- Camera view overlay -->
             <div class="cad-viewport-overlay">
-              <button class="cad-view-btn active" data-view="perspective">Persp</button>
-              <button class="cad-view-btn" data-view="top">Top</button>
-              <button class="cad-view-btn" data-view="front">Front</button>
-              <button class="cad-view-btn" data-view="right">Right</button>
+              <button class="cad-view-btn" data-view="front" title="Front (1)">Front</button>
+              <button class="cad-view-btn" data-view="back" title="Back (2)">Back</button>
+              <button class="cad-view-btn" data-view="left" title="Left (3)">Left</button>
+              <button class="cad-view-btn" data-view="right" title="Right (4)">Right</button>
+              <button class="cad-view-btn" data-view="top" title="Top (5)">Top</button>
+              <button class="cad-view-btn" data-view="bottom" title="Bottom (6)">Bottom</button>
+              <button class="cad-view-btn active" data-view="perspective" title="Isometric (7)">Iso</button>
             </div>
+            <!-- View Cube container (rendered by JS) -->
+            <div id="cad-view-cube" class="cad-view-cube"></div>
             <div class="cad-viewport-info" id="cad-viewport-info">
               <span id="cad-coords" class="cad-status-coord">X: 0.00  Y: 0.00  Z: 0.00</span>
             </div>
@@ -2208,18 +2219,38 @@
           <span id="cad-obj-count">Objects: 0</span>
         </div>
         <div class="cad-status-right">
-          <span>Snap: 0.5 | Shortcuts: G/R/S/F/Del</span>
+          <span>W/E/R=Move/Rotate/Scale | S=Radial | 1-7=Views | F=Fit | G=Grid | M=Measure</span>
         </div>
       </div>
 
       <!-- Context Menu -->
       <div id="cad-context-menu" class="cad-context-menu">
-        <div class="cad-context-item" data-action="move">✥ Move <span class="shortcut">G</span></div>
-        <div class="cad-context-item" data-action="rotate">↻ Rotate <span class="shortcut">R</span></div>
-        <div class="cad-context-item" data-action="scale">⤢ Scale <span class="shortcut">S</span></div>
-        <div class="cad-context-item separator" data-action="duplicate">📋 Duplicate <span class="shortcut">⌘D</span></div>
+        <div class="cad-context-item" data-action="move">✥ Move <span class="shortcut">W</span></div>
+        <div class="cad-context-item" data-action="rotate">↻ Rotate <span class="shortcut">E</span></div>
+        <div class="cad-context-item" data-action="scale">⤢ Scale <span class="shortcut">R</span></div>
+        <div class="cad-context-item separator" data-action="duplicate">📋 Duplicate <span class="shortcut">Ctrl+D</span></div>
         <div class="cad-context-item" data-action="delete">🗑 Delete <span class="shortcut">Del</span></div>
         <div class="cad-context-item separator" data-action="focus">◎ Focus <span class="shortcut">F</span></div>
+        <div class="cad-context-item separator" data-action="bool-union">➕ Boolean Union</div>
+        <div class="cad-context-item" data-action="bool-subtract">➖ Boolean Subtract</div>
+        <div class="cad-context-item" data-action="bool-intersect">✖ Boolean Intersect</div>
+        <div class="cad-context-item separator" data-action="set-material">🎨 Set Material</div>
+        <div class="cad-context-item" data-action="properties">📐 Properties <span class="shortcut">N</span></div>
+      </div>
+      <!-- S-key Radial Menu -->
+      <div id="cad-radial-menu" class="cad-radial-menu"></div>
+      <!-- Measurement Overlay -->
+      <canvas id="cad-measure-overlay" class="cad-measure-overlay"></canvas>
+      <!-- Clipping Plane Controls -->
+      <div id="cad-clip-controls" class="cad-clip-controls" style="display:none">
+        <div class="cad-clip-header">Section View <button id="cad-clip-close" class="cad-btn" style="padding:2px 6px;font-size:10px">X</button></div>
+        <div class="cad-prop-row-full"><span class="cad-prop-label" style="width:auto;min-width:30px">Axis</span>
+          <select id="cad-clip-axis" class="cad-select"><option value="x">X</option><option value="y">Y</option><option value="z">Z</option></select>
+        </div>
+        <div class="cad-prop-row-full"><span class="cad-prop-label" style="width:auto;min-width:30px">Pos</span>
+          <input type="range" id="cad-clip-pos" class="cad-prop-input" min="-20" max="20" step="0.1" value="0" />
+        </div>
+        <div class="cad-prop-row-full"><label><input type="checkbox" id="cad-clip-flip" /> Flip</label></div>
       </div>
     </div>
 

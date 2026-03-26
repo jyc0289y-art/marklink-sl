@@ -76,6 +76,10 @@ export async function initCadEditor() {
   bindViewportEvents(container);
   bindKeyboardShortcuts();
   bindImportExport(container);
+  bindNewToolbarButtons(container);
+  initViewCube();
+  initBoxSelect();
+  bindClippingControls();
   animate();
   handleResize();
 
@@ -200,6 +204,16 @@ function setupControls() {
   orbitControls.minDistance = 1;
   orbitControls.maxDistance = 200;
   orbitControls.target.set(0, 0, 0);
+
+  // Onshape-style mouse: middle=orbit, right=pan, scroll=zoom
+  orbitControls.mouseButtons = {
+    LEFT: null, // left click reserved for selection
+    MIDDLE: THREE.MOUSE.ROTATE,
+    RIGHT: THREE.MOUSE.PAN,
+  };
+  orbitControls.enableZoom = true;
+  orbitControls.zoomSpeed = 1.2;
+  orbitControls.panSpeed = 0.8;
 }
 
 function setupTransformControls() {
@@ -230,6 +244,7 @@ function animate() {
   requestAnimationFrame(animate);
   orbitControls.update();
   renderer.render(scene, camera);
+  renderViewCube();
   updateCoordinateDisplay();
 }
 
@@ -604,37 +619,44 @@ function setShadingMode(mode) {
 }
 
 /* ===================== Camera Views ===================== */
+const STANDARD_VIEWS = {
+  front:       { pos: [0, 0, 1],  label: 'Front (1)' },
+  back:        { pos: [0, 0, -1], label: 'Back (2)' },
+  left:        { pos: [-1, 0, 0], label: 'Left (3)' },
+  right:       { pos: [1, 0, 0],  label: 'Right (4)' },
+  top:         { pos: [0, 1, 0.001], label: 'Top (5)' },
+  bottom:      { pos: [0, -1, 0.001], label: 'Bottom (6)' },
+  perspective: { pos: [1, 0.75, 1], label: 'Iso (7)' },
+};
+
 function setCameraView(view) {
+  const def = STANDARD_VIEWS[view];
+  if (!def) return;
   const dist = 15;
   const target = orbitControls.target.clone();
+  const endPos = new THREE.Vector3(def.pos[0], def.pos[1], def.pos[2]).normalize().multiplyScalar(dist).add(target);
 
-  switch (view) {
-    case 'perspective':
-      camera.position.set(target.x + 8, target.y + 6, target.z + 8);
-      break;
-    case 'top':
-      camera.position.set(target.x, target.y + dist, target.z + 0.001);
-      break;
-    case 'front':
-      camera.position.set(target.x, target.y, target.z + dist);
-      break;
-    case 'right':
-      camera.position.set(target.x + dist, target.y, target.z);
-      break;
-    case 'back':
-      camera.position.set(target.x, target.y, target.z - dist);
-      break;
-    case 'left':
-      camera.position.set(target.x - dist, target.y, target.z);
-      break;
-  }
-
-  camera.lookAt(target);
-  orbitControls.update();
+  // Smooth animate camera
+  animateCamera(camera.position.clone(), endPos, target, 400);
 
   document.querySelectorAll('.cad-view-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.view === view);
   });
+  updateStatusBar(`View: ${def.label}`);
+}
+
+/** Smoothly animate camera from startPos to endPos over durationMs */
+function animateCamera(startPos, endPos, lookTarget, durationMs = 400) {
+  const startTime = performance.now();
+  const _step = (now) => {
+    const t = Math.min((now - startTime) / durationMs, 1);
+    const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // easeInOutQuad
+    camera.position.lerpVectors(startPos, endPos, ease);
+    camera.lookAt(lookTarget);
+    orbitControls.update();
+    if (t < 1) requestAnimationFrame(_step);
+  };
+  requestAnimationFrame(_step);
 }
 
 /* ===================== Boolean Operations (CSG-like) ===================== */
@@ -1300,19 +1322,70 @@ function bindViewportEvents(container) {
   const viewport = container.querySelector('.cad-viewport');
   if (!viewport) return;
 
-  // Click to select
+  // Click to select or measure
   viewport.addEventListener('click', (e) => {
-    // Ignore if we clicked on a control button
-    if (e.target.closest('.cad-viewport-overlay') || e.target.closest('.cad-viewport-info')) return;
+    // Ignore if we clicked on a control button or view cube
+    if (e.target.closest('.cad-viewport-overlay') || e.target.closest('.cad-viewport-info') || e.target.closest('.cad-view-cube')) return;
     // Ignore if transform controls are being used
     if (transformControls.dragging) return;
+
+    // Measurement tool takes priority
+    if (measurementMode) { handleMeasureClick(e); return; }
+
+    // Ctrl+click for multi-select
+    if (e.ctrlKey || e.metaKey) {
+      const rect = viewport.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      const rc = new THREE.Raycaster();
+      rc.setFromCamera(mouse, camera);
+      const hits = rc.intersectObjects(sceneObjects.filter((o) => o.visible), true);
+      if (hits.length > 0) {
+        let target = hits[0].object;
+        while (target && !target.userData.isCADObject && target.parent) target = target.parent;
+        if (target && target.userData.isCADObject) {
+          const idx = multiSelection.indexOf(target);
+          if (idx >= 0) {
+            multiSelection.splice(idx, 1);
+            if (target.material && target.material._originalEmissive !== undefined) {
+              target.material.emissive.setHex(target.material._originalEmissive);
+            }
+          } else {
+            multiSelection.push(target);
+            if (target.material) {
+              target.material._originalEmissive = target.material._originalEmissive ?? target.material.emissive.getHex();
+              target.material.emissive.setHex(0x111122);
+            }
+          }
+          if (multiSelection.length > 0) selectObject(multiSelection[multiSelection.length - 1]);
+          updateStatusBar(`Multi-select: ${multiSelection.length}`);
+          return;
+        }
+      }
+    }
+
     pickObject(e);
+    multiSelection = selectedObject ? [selectedObject] : [];
   });
 
-  // Context menu
+  // Context menu — track right-click drag to avoid conflict with pan
+  let _rightDownPos = null;
+  viewport.addEventListener('mousedown', (e) => {
+    if (e.button === 2) _rightDownPos = { x: e.clientX, y: e.clientY };
+  });
   viewport.addEventListener('contextmenu', (e) => {
     e.preventDefault();
-    showContextMenu(e.clientX, e.clientY);
+    // Only show context menu on right-click without drag (< 5px movement)
+    if (_rightDownPos) {
+      const dx = Math.abs(e.clientX - _rightDownPos.x);
+      const dy = Math.abs(e.clientY - _rightDownPos.y);
+      if (dx < 5 && dy < 5) {
+        showContextMenu(e.clientX, e.clientY);
+      }
+    }
+    _rightDownPos = null;
   });
 
   // Double-click to focus
@@ -1333,39 +1406,53 @@ function bindKeyboardShortcuts() {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
     const key = e.key.toLowerCase();
+    const mod = e.metaKey || e.ctrlKey;
 
-    if (key === 'delete' || key === 'backspace') {
-      e.preventDefault();
-      deleteSelected();
-    } else if (key === 'z' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
-      e.preventDefault();
-      undo();
-    } else if ((key === 'z' && (e.metaKey || e.ctrlKey) && e.shiftKey) || (key === 'y' && (e.metaKey || e.ctrlKey))) {
-      e.preventDefault();
-      redo();
-    } else if (key === 'g') {
-      setTransformMode('translate');
-    } else if (key === 'r') {
-      setTransformMode('rotate');
-    } else if (key === 's' && !e.metaKey && !e.ctrlKey) {
-      setTransformMode('scale');
-    } else if (key === 'f') {
-      focusSelected();
-    } else if (key === 'd' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      duplicateSelected();
-    } else if (key === 'escape') {
+    // --- Modifier combos first ---
+    if (key === 'z' && mod && !e.shiftKey) { e.preventDefault(); undo(); return; }
+    if ((key === 'z' && mod && e.shiftKey) || (key === 'y' && mod)) { e.preventDefault(); redo(); return; }
+    if (key === 'd' && mod) { e.preventDefault(); duplicateSelected(); return; }
+    if (key === 'a' && mod) { e.preventDefault(); selectAll(); return; }
+    if (key === 'c' && mod) { e.preventDefault(); copySelected(); return; }
+    if (key === 'v' && mod) { e.preventDefault(); pasteClipboard(); return; }
+
+    // --- Single keys ---
+    if (key === 'delete' || key === 'backspace') { e.preventDefault(); deleteSelected(); return; }
+
+    // Onshape-style: W=Move, E=Rotate, R=Scale
+    if (key === 'w') { setTransformMode('translate'); return; }
+    if (key === 'e') { setTransformMode('rotate'); return; }
+    if (key === 'r') { setTransformMode('scale'); return; }
+
+    // F = Fit all / zoom to fit (Onshape standard)
+    if (key === 'f') { fitAll(); return; }
+
+    // G = Toggle grid (Onshape convention)
+    if (key === 'g') { toggleGrid(); return; }
+
+    // N = Normal to face
+    if (key === 'n') { normalToFace(); return; }
+
+    // S = S-key radial shortcut menu (Onshape signature)
+    if (key === 's' && !mod) { e.preventDefault(); toggleRadialMenu(e); return; }
+
+    // M = Toggle measurement tool
+    if (key === 'm') { toggleMeasurementTool(); return; }
+
+    // Escape = Deselect / dismiss menus
+    if (key === 'escape') {
       selectObject(null);
       hideContextMenu();
-    } else if (key === '1') {
-      setCameraView('front');
-    } else if (key === '3') {
-      setCameraView('right');
-    } else if (key === '7') {
-      setCameraView('top');
-    } else if (key === '0') {
-      setCameraView('perspective');
+      hideRadialMenu();
+      if (measurementMode) toggleMeasurementTool();
+      return;
     }
+
+    // Standard views: 1=Front, 2=Back, 3=Left, 4=Right, 5=Top, 6=Bottom, 7=Isometric
+    const viewKeys = { '1': 'front', '2': 'back', '3': 'left', '4': 'right', '5': 'top', '6': 'bottom', '7': 'perspective' };
+    if (viewKeys[key]) { setCameraView(viewKeys[key]); return; }
+    // 0 = perspective (legacy compat)
+    if (key === '0') { setCameraView('perspective'); return; }
   });
 }
 
@@ -1389,6 +1476,575 @@ function bindImportExport(container) {
         e.target.value = '';
       }
     });
+  }
+}
+
+/* ===================== Fit All (Zoom to fit all objects) ===================== */
+function fitAll() {
+  if (sceneObjects.length === 0) {
+    orbitControls.target.set(0, 0, 0);
+    camera.position.set(8, 6, 8);
+    orbitControls.update();
+    updateStatusBar('Fit All (empty scene)');
+    return;
+  }
+
+  const box = new THREE.Box3();
+  sceneObjects.forEach((o) => { if (o.visible) box.expandByObject(o); });
+  if (box.isEmpty()) return;
+
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const fov = camera.fov * (Math.PI / 180);
+  let dist = maxDim / (2 * Math.tan(fov / 2)) * 1.8;
+  dist = Math.max(dist, 3);
+
+  const dir = camera.position.clone().sub(orbitControls.target).normalize();
+  const endPos = center.clone().add(dir.multiplyScalar(dist));
+  animateCamera(camera.position.clone(), endPos, center, 400);
+  orbitControls.target.copy(center);
+  updateStatusBar('Fit All');
+}
+
+/* ===================== Toggle Grid ===================== */
+let gridVisible = true;
+function toggleGrid() {
+  gridVisible = !gridVisible;
+  if (gridHelper) gridHelper.visible = gridVisible;
+  if (axesHelper) axesHelper.visible = gridVisible;
+  const btn = document.getElementById('cad-grid-toggle');
+  if (btn) btn.classList.toggle('active', gridVisible);
+  updateStatusBar(gridVisible ? 'Grid ON' : 'Grid OFF');
+}
+
+/* ===================== Normal to Face ===================== */
+function normalToFace() {
+  if (!selectedObject) { updateStatusBar('Select an object first'); return; }
+  // Orient camera to look along the face normal of the nearest face to the camera
+  const raycaster = new THREE.Raycaster();
+  const dir = camera.position.clone().sub(orbitControls.target).normalize();
+  raycaster.set(orbitControls.target, dir);
+  const hits = raycaster.intersectObject(selectedObject, true);
+  if (hits.length > 0 && hits[0].face) {
+    const normal = hits[0].face.normal.clone();
+    normal.transformDirection(selectedObject.matrixWorld);
+    const center = hits[0].point.clone();
+    const dist = camera.position.distanceTo(orbitControls.target);
+    const endPos = center.clone().add(normal.multiplyScalar(dist));
+    animateCamera(camera.position.clone(), endPos, center, 400);
+    orbitControls.target.copy(center);
+    updateStatusBar('Normal to face');
+  } else {
+    updateStatusBar('No face detected');
+  }
+}
+
+/* ===================== Select All ===================== */
+let multiSelection = [];
+function selectAll() {
+  multiSelection = [...sceneObjects];
+  if (sceneObjects.length > 0) selectObject(sceneObjects[0]);
+  // Highlight all
+  sceneObjects.forEach((o) => {
+    if (o.material) {
+      o.material._originalEmissive = o.material._originalEmissive ?? o.material.emissive.getHex();
+      o.material.emissive.setHex(0x111122);
+    }
+  });
+  updateStatusBar(`Selected all (${sceneObjects.length})`);
+  updateSceneTree();
+}
+
+/* ===================== Copy / Paste ===================== */
+let clipboardData = null;
+function copySelected() {
+  if (!selectedObject) return;
+  clipboardData = {
+    type: selectedObject.userData.type,
+    position: selectedObject.position.clone(),
+    rotation: selectedObject.rotation.clone(),
+    scale: selectedObject.scale.clone(),
+    color: selectedObject.material ? selectedObject.material.color.getHex() : 0xcccccc,
+    metalness: selectedObject.material ? selectedObject.material.metalness : 0,
+    roughness: selectedObject.material ? selectedObject.material.roughness : 0.5,
+    geometry: selectedObject.geometry.clone(),
+  };
+  updateStatusBar(`Copied ${selectedObject.name}`);
+}
+
+function pasteClipboard() {
+  if (!clipboardData) { updateStatusBar('Nothing to paste'); return; }
+  const material = new THREE.MeshStandardMaterial({
+    color: clipboardData.color,
+    metalness: clipboardData.metalness,
+    roughness: clipboardData.roughness,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(clipboardData.geometry.clone(), material);
+  objectCounter++;
+  mesh.name = `${clipboardData.type || 'Object'}_${objectCounter}`;
+  mesh.position.copy(clipboardData.position).add(new THREE.Vector3(2, 0, 2));
+  mesh.rotation.copy(clipboardData.rotation);
+  mesh.scale.copy(clipboardData.scale);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData.type = clipboardData.type;
+  mesh.userData.isCADObject = true;
+  scene.add(mesh);
+  sceneObjects.push(mesh);
+  selectObject(mesh);
+  pushUndo('add', mesh);
+  updateSceneTree();
+  updateStatusBar(`Pasted ${mesh.name}`);
+}
+
+/* ===================== S-Key Radial Menu (Onshape signature) ===================== */
+let radialMenuVisible = false;
+
+function toggleRadialMenu(e) {
+  if (radialMenuVisible) { hideRadialMenu(); return; }
+  showRadialMenu(e);
+}
+
+function showRadialMenu(e) {
+  const menu = document.getElementById('cad-radial-menu');
+  if (!menu) return;
+
+  const items = [
+    { icon: '🟦', label: 'Box', action: () => createPrimitive('box') },
+    { icon: '🔵', label: 'Sphere', action: () => createPrimitive('sphere') },
+    { icon: '🔷', label: 'Cylinder', action: () => createPrimitive('cylinder') },
+    { icon: '✥', label: 'Move', action: () => setTransformMode('translate') },
+    { icon: '↻', label: 'Rotate', action: () => setTransformMode('rotate') },
+    { icon: '⤢', label: 'Scale', action: () => setTransformMode('scale') },
+    { icon: '🗑', label: 'Delete', action: () => deleteSelected() },
+    { icon: '📋', label: 'Duplicate', action: () => duplicateSelected() },
+  ];
+
+  // Position near cursor or viewport center
+  const viewport = document.querySelector('.cad-viewport');
+  const rect = viewport ? viewport.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+  const cx = e && e.clientX ? e.clientX - rect.left : rect.width / 2;
+  const cy = e && e.clientY ? e.clientY - rect.top : rect.height / 2;
+
+  menu.style.left = (rect.left + cx - 100) + 'px';
+  menu.style.top = (rect.top + cy - 100) + 'px';
+
+  const radius = 80;
+  let html = '<div class="radial-center">S</div>';
+  items.forEach((item, i) => {
+    const angle = (i / items.length) * Math.PI * 2 - Math.PI / 2;
+    const x = Math.cos(angle) * radius + 100 - 24;
+    const y = Math.sin(angle) * radius + 100 - 24;
+    html += `<button class="radial-item" data-idx="${i}" style="left:${x}px;top:${y}px" title="${_esc(item.label)}">
+      <span class="radial-icon">${item.icon}</span>
+      <span class="radial-label">${_esc(item.label)}</span>
+    </button>`;
+  });
+  menu.innerHTML = html;
+  menu.classList.add('visible');
+  radialMenuVisible = true;
+
+  // Bind item clicks
+  menu.querySelectorAll('.radial-item').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      if (items[idx]) items[idx].action();
+      hideRadialMenu();
+    });
+  });
+
+  // Close on click outside (after a tick)
+  const _close = (ev) => {
+    if (!menu.contains(ev.target)) {
+      hideRadialMenu();
+      document.removeEventListener('mousedown', _close);
+    }
+  };
+  setTimeout(() => document.addEventListener('mousedown', _close), 0);
+}
+
+function hideRadialMenu() {
+  const menu = document.getElementById('cad-radial-menu');
+  if (menu) menu.classList.remove('visible');
+  radialMenuVisible = false;
+}
+
+/* ===================== View Cube ===================== */
+let viewCubeScene, viewCubeCamera, viewCubeRenderer;
+
+function initViewCube() {
+  const container = document.getElementById('cad-view-cube');
+  if (!container || viewCubeRenderer) return;
+
+  const size = 120;
+  viewCubeScene = new THREE.Scene();
+  viewCubeCamera = new THREE.OrthographicCamera(-1.8, 1.8, 1.8, -1.8, 0.1, 10);
+  viewCubeCamera.position.set(2, 1.5, 2);
+  viewCubeCamera.lookAt(0, 0, 0);
+
+  viewCubeRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+  viewCubeRenderer.setSize(size, size);
+  viewCubeRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(viewCubeRenderer.domElement);
+
+  // Create cube faces with labels
+  const faceColors = [0x3a5fcd, 0x3a5fcd, 0x2e8b57, 0x2e8b57, 0xcd3a3a, 0xcd3a3a];
+  const faceLabels = ['Right', 'Left', 'Top', 'Bottom', 'Front', 'Back'];
+  const materials = faceColors.map((c, i) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#' + c.toString(16).padStart(6, '0');
+    ctx.fillRect(0, 0, 128, 128);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(2, 2, 124, 124);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(faceLabels[i], 64, 64);
+    const tex = new THREE.CanvasTexture(canvas);
+    return new THREE.MeshBasicMaterial({ map: tex });
+  });
+
+  const cubeGeo = new THREE.BoxGeometry(1.4, 1.4, 1.4);
+  const cube = new THREE.Mesh(cubeGeo, materials);
+  cube.userData.isViewCube = true;
+  viewCubeScene.add(cube);
+
+  // Axes indicator
+  const axLen = 1.0;
+  const axGeo = new THREE.CylinderGeometry(0.03, 0.03, axLen, 6);
+  const makeAxis = (color, rotAxis, angle, posOffset) => {
+    const mat = new THREE.MeshBasicMaterial({ color });
+    const mesh = new THREE.Mesh(axGeo, mat);
+    if (rotAxis) mesh.rotation[rotAxis] = angle;
+    mesh.position.copy(posOffset);
+    viewCubeScene.add(mesh);
+  };
+  makeAxis(0xff4444, 'z', Math.PI / 2, new THREE.Vector3(axLen / 2, -0.8, -0.8)); // X
+  makeAxis(0x44ff44, null, 0, new THREE.Vector3(-0.8, axLen / 2 - 0.8, -0.8)); // Y
+  makeAxis(0x4444ff, 'x', Math.PI / 2, new THREE.Vector3(-0.8, -0.8, axLen / 2)); // Z
+
+  // Click handler
+  container.addEventListener('click', (e) => {
+    const rect = container.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const rc = new THREE.Raycaster();
+    rc.setFromCamera(mouse, viewCubeCamera);
+    const hits = rc.intersectObject(cube);
+    if (hits.length > 0) {
+      const faceIdx = Math.floor(hits[0].faceIndex / 2);
+      const viewMap = ['right', 'left', 'top', 'bottom', 'front', 'back'];
+      setCameraView(viewMap[faceIdx] || 'front');
+    }
+  });
+
+  // Hover effect
+  container.style.cursor = 'pointer';
+}
+
+function renderViewCube() {
+  if (!viewCubeRenderer || !viewCubeCamera) return;
+  // Sync view cube orientation with main camera
+  const dir = camera.position.clone().sub(orbitControls.target).normalize();
+  viewCubeCamera.position.copy(dir.multiplyScalar(3));
+  viewCubeCamera.lookAt(0, 0, 0);
+  viewCubeRenderer.render(viewCubeScene, viewCubeCamera);
+}
+
+/* ===================== Box Select ===================== */
+let boxSelectActive = false;
+let boxSelectStart = null;
+let boxSelectDiv = null;
+
+function initBoxSelect() {
+  const viewport = document.querySelector('.cad-viewport');
+  if (!viewport) return;
+
+  viewport.addEventListener('mousedown', (e) => {
+    // Only left click on empty space starts box select
+    if (e.button !== 0) return;
+    if (e.target.closest('.cad-viewport-overlay') || e.target.closest('.cad-viewport-info') || e.target.closest('.cad-view-cube')) return;
+    if (transformControls.dragging) return;
+
+    // Check if we clicked on an object — if so, skip box select
+    const rect = viewport.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const rc = new THREE.Raycaster();
+    rc.setFromCamera(mouse, camera);
+    const hits = rc.intersectObjects(sceneObjects.filter((o) => o.visible), true);
+    if (hits.length > 0) return; // clicked on an object, let normal select handle it
+
+    boxSelectStart = { x: e.clientX, y: e.clientY };
+    boxSelectActive = false; // becomes true only if drag distance > threshold
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!boxSelectStart) return;
+    const dx = e.clientX - boxSelectStart.x;
+    const dy = e.clientY - boxSelectStart.y;
+    if (!boxSelectActive && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+      boxSelectActive = true;
+      if (!boxSelectDiv) {
+        boxSelectDiv = document.createElement('div');
+        boxSelectDiv.className = 'cad-box-select';
+        document.body.appendChild(boxSelectDiv);
+      }
+      boxSelectDiv.style.display = 'block';
+    }
+    if (boxSelectActive && boxSelectDiv) {
+      const left = Math.min(e.clientX, boxSelectStart.x);
+      const top = Math.min(e.clientY, boxSelectStart.y);
+      const w = Math.abs(dx);
+      const h = Math.abs(dy);
+      boxSelectDiv.style.left = left + 'px';
+      boxSelectDiv.style.top = top + 'px';
+      boxSelectDiv.style.width = w + 'px';
+      boxSelectDiv.style.height = h + 'px';
+    }
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (boxSelectActive && boxSelectStart) {
+      // Find objects within box
+      const rect = viewport.getBoundingClientRect();
+      const x1 = Math.min(e.clientX, boxSelectStart.x);
+      const y1 = Math.min(e.clientY, boxSelectStart.y);
+      const x2 = Math.max(e.clientX, boxSelectStart.x);
+      const y2 = Math.max(e.clientY, boxSelectStart.y);
+
+      multiSelection = [];
+      sceneObjects.forEach((obj) => {
+        if (!obj.visible) return;
+        const pos = obj.position.clone().project(camera);
+        const sx = (pos.x * 0.5 + 0.5) * rect.width + rect.left;
+        const sy = (-pos.y * 0.5 + 0.5) * rect.height + rect.top;
+        if (sx >= x1 && sx <= x2 && sy >= y1 && sy <= y2) {
+          multiSelection.push(obj);
+          if (obj.material) {
+            obj.material._originalEmissive = obj.material._originalEmissive ?? obj.material.emissive.getHex();
+            obj.material.emissive.setHex(0x111122);
+          }
+        }
+      });
+      if (multiSelection.length > 0) {
+        selectObject(multiSelection[0]);
+        updateStatusBar(`Box selected ${multiSelection.length} objects`);
+      }
+    }
+    boxSelectStart = null;
+    boxSelectActive = false;
+    if (boxSelectDiv) boxSelectDiv.style.display = 'none';
+  });
+}
+
+/* ===================== Measurement Tool ===================== */
+let measurementMode = false;
+let measurePoints = [];
+let measureLines = [];
+
+function toggleMeasurementTool() {
+  measurementMode = !measurementMode;
+  measurePoints = [];
+  clearMeasureLines();
+  const btn = document.getElementById('cad-measure-tool');
+  if (btn) btn.classList.toggle('active', measurementMode);
+  updateStatusBar(measurementMode ? 'Measure: Click first point' : 'Measure OFF');
+  if (!measurementMode) {
+    const overlay = document.getElementById('cad-measure-overlay');
+    if (overlay) { const ctx = overlay.getContext('2d'); ctx.clearRect(0, 0, overlay.width, overlay.height); }
+  }
+}
+
+function handleMeasureClick(e) {
+  if (!measurementMode) return;
+  const viewport = document.querySelector('.cad-viewport');
+  if (!viewport) return;
+  const rect = viewport.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1
+  );
+  const rc = new THREE.Raycaster();
+  rc.setFromCamera(mouse, camera);
+  const hits = rc.intersectObjects(sceneObjects.filter((o) => o.visible), true);
+
+  if (hits.length === 0) return;
+  measurePoints.push(hits[0].point.clone());
+
+  if (measurePoints.length === 1) {
+    updateStatusBar('Measure: Click second point');
+    // Add sphere at first point
+    const dot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xff6600, depthTest: false })
+    );
+    dot.position.copy(hits[0].point);
+    dot.userData.isMeasure = true;
+    dot.renderOrder = 999;
+    scene.add(dot);
+    measureLines.push(dot);
+  } else if (measurePoints.length === 2) {
+    const p1 = measurePoints[0];
+    const p2 = measurePoints[1];
+    const distance = p1.distanceTo(p2);
+
+    // Draw line between points
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xff6600, linewidth: 2, depthTest: false });
+    const line = new THREE.Line(lineGeo, lineMat);
+    line.userData.isMeasure = true;
+    line.renderOrder = 999;
+    scene.add(line);
+    measureLines.push(line);
+
+    // Add sphere at second point
+    const dot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xff6600, depthTest: false })
+    );
+    dot.position.copy(p2);
+    dot.userData.isMeasure = true;
+    dot.renderOrder = 999;
+    scene.add(dot);
+    measureLines.push(dot);
+
+    // Draw distance label on 2D overlay
+    drawMeasurementLabel(p1, p2, distance);
+    updateStatusBar(`Distance: ${distance.toFixed(4)} units`);
+
+    // Update measurement panel
+    const measDiv = document.getElementById('cad-measurement');
+    if (measDiv) measDiv.textContent = `Distance: ${distance.toFixed(4)}`;
+
+    measurePoints = [];
+  }
+}
+
+function drawMeasurementLabel(p1, p2, distance) {
+  const overlay = document.getElementById('cad-measure-overlay');
+  if (!overlay) return;
+  const viewport = document.querySelector('.cad-viewport');
+  if (!viewport) return;
+  const rect = viewport.getBoundingClientRect();
+  overlay.width = rect.width;
+  overlay.height = rect.height;
+  overlay.style.width = rect.width + 'px';
+  overlay.style.height = rect.height + 'px';
+
+  const ctx = overlay.getContext('2d');
+  // Project midpoint to screen
+  const mid = p1.clone().add(p2).multiplyScalar(0.5).project(camera);
+  const sx = (mid.x * 0.5 + 0.5) * rect.width;
+  const sy = (-mid.y * 0.5 + 0.5) * rect.height;
+
+  ctx.font = 'bold 13px monospace';
+  ctx.fillStyle = '#ff6600';
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 3;
+  const text = `${distance.toFixed(3)}`;
+  ctx.strokeText(text, sx + 8, sy - 8);
+  ctx.fillText(text, sx + 8, sy - 8);
+}
+
+function clearMeasureLines() {
+  measureLines.forEach((obj) => {
+    scene.remove(obj);
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) obj.material.dispose();
+  });
+  measureLines = [];
+  const overlay = document.getElementById('cad-measure-overlay');
+  if (overlay) { const ctx = overlay.getContext('2d'); ctx.clearRect(0, 0, overlay.width, overlay.height); }
+}
+
+/* ===================== Section / Clipping Plane ===================== */
+let clippingPlane = null;
+let clippingHelper = null;
+let sectionActive = false;
+
+function toggleSectionView() {
+  sectionActive = !sectionActive;
+  const controls = document.getElementById('cad-clip-controls');
+  const btn = document.getElementById('cad-section-tool');
+
+  if (sectionActive) {
+    if (!clippingPlane) {
+      clippingPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
+    }
+    renderer.localClippingEnabled = true;
+    sceneObjects.forEach((o) => {
+      if (o.material) {
+        o.material.clippingPlanes = [clippingPlane];
+        o.material.needsUpdate = true;
+      }
+    });
+    // Show clipping helper plane
+    if (!clippingHelper) {
+      const planeGeo = new THREE.PlaneGeometry(40, 40);
+      const planeMat = new THREE.MeshBasicMaterial({
+        color: 0xff6600, transparent: true, opacity: 0.1,
+        side: THREE.DoubleSide, depthWrite: false
+      });
+      clippingHelper = new THREE.Mesh(planeGeo, planeMat);
+      clippingHelper.userData.isHelper = true;
+      scene.add(clippingHelper);
+    }
+    clippingHelper.visible = true;
+    if (controls) controls.style.display = 'block';
+    if (btn) btn.classList.add('active');
+    updateStatusBar('Section View ON');
+  } else {
+    renderer.localClippingEnabled = false;
+    sceneObjects.forEach((o) => {
+      if (o.material) {
+        o.material.clippingPlanes = [];
+        o.material.needsUpdate = true;
+      }
+    });
+    if (clippingHelper) clippingHelper.visible = false;
+    if (controls) controls.style.display = 'none';
+    if (btn) btn.classList.remove('active');
+    updateStatusBar('Section View OFF');
+  }
+}
+
+function updateClippingPlane() {
+  if (!clippingPlane) return;
+  const axis = document.getElementById('cad-clip-axis');
+  const pos = document.getElementById('cad-clip-pos');
+  const flip = document.getElementById('cad-clip-flip');
+  if (!axis || !pos) return;
+
+  const a = axis.value;
+  const p = parseFloat(pos.value);
+  const f = flip && flip.checked ? -1 : 1;
+
+  const normals = { x: new THREE.Vector3(f, 0, 0), y: new THREE.Vector3(0, f, 0), z: new THREE.Vector3(0, 0, f) };
+  clippingPlane.normal.copy(normals[a] || normals.y);
+  clippingPlane.constant = -p * f;
+
+  // Update helper
+  if (clippingHelper) {
+    clippingHelper.position.set(a === 'x' ? p : 0, a === 'y' ? p : 0, a === 'z' ? p : 0);
+    clippingHelper.rotation.set(
+      a === 'z' ? Math.PI / 2 : (a === 'y' ? 0 : 0),
+      0,
+      a === 'x' ? Math.PI / 2 : 0
+    );
+    if (a === 'x') { clippingHelper.rotation.set(0, Math.PI / 2, 0); }
+    if (a === 'y') { clippingHelper.rotation.set(Math.PI / 2, 0, 0); }
+    if (a === 'z') { clippingHelper.rotation.set(0, 0, 0); }
   }
 }
 
@@ -1475,6 +2131,16 @@ function handleContextAction(action) {
     case 'move': setTransformMode('translate'); break;
     case 'rotate': setTransformMode('rotate'); break;
     case 'scale': setTransformMode('scale'); break;
+    case 'bool-union': booleanOperation('union'); break;
+    case 'bool-subtract': booleanOperation('subtract'); break;
+    case 'bool-intersect': booleanOperation('intersect'); break;
+    case 'set-material':
+      // Scroll properties panel to material section
+      document.querySelector('.cad-right-panel')?.scrollTo({ top: 9999, behavior: 'smooth' });
+      break;
+    case 'properties':
+      if (selectedObject) normalToFace();
+      break;
   }
 }
 
@@ -1485,6 +2151,33 @@ function initContextMenu() {
   menu.querySelectorAll('[data-action]').forEach((item) => {
     item.addEventListener('click', () => handleContextAction(item.dataset.action));
   });
+}
+
+/* ===================== New Toolbar Buttons ===================== */
+function bindNewToolbarButtons(container) {
+  const measureBtn = document.getElementById('cad-measure-tool');
+  if (measureBtn) measureBtn.addEventListener('click', () => toggleMeasurementTool());
+
+  const sectionBtn = document.getElementById('cad-section-tool');
+  if (sectionBtn) sectionBtn.addEventListener('click', () => toggleSectionView());
+
+  const gridBtn = document.getElementById('cad-grid-toggle');
+  if (gridBtn) gridBtn.addEventListener('click', () => toggleGrid());
+
+  const fitBtn = document.getElementById('cad-fit-all');
+  if (fitBtn) fitBtn.addEventListener('click', () => fitAll());
+}
+
+function bindClippingControls() {
+  const axisEl = document.getElementById('cad-clip-axis');
+  const posEl = document.getElementById('cad-clip-pos');
+  const flipEl = document.getElementById('cad-clip-flip');
+  const closeEl = document.getElementById('cad-clip-close');
+
+  if (axisEl) axisEl.addEventListener('change', () => updateClippingPlane());
+  if (posEl) posEl.addEventListener('input', () => updateClippingPlane());
+  if (flipEl) flipEl.addEventListener('change', () => updateClippingPlane());
+  if (closeEl) closeEl.addEventListener('click', () => toggleSectionView());
 }
 
 // Call after DOM is ready
