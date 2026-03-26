@@ -488,6 +488,11 @@ export function initDocEditor() {
       e.preventDefault();
       toggleFindBar(true);
     }
+    // Ctrl+Shift+R = Reading Mode toggle
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'r') {
+      e.preventDefault();
+      toggleReadingMode();
+    }
   });
 
   // Smart paste: handle images from clipboard and clean external HTML
@@ -3725,15 +3730,36 @@ function toggleReadingMode() {
   if (readingModeActive) {
     readingModeOverlay = document.createElement('div');
     readingModeOverlay.className = 'doc-reading-overlay';
-    readingModeOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg-primary);z-index:9999;display:flex;justify-content:center;overflow-y:auto';
+    readingModeOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg-primary);z-index:9999;display:flex;overflow-y:auto';
+
+    // TOC sidebar
+    const tocPanel = document.createElement('div');
+    tocPanel.className = 'reading-toc-panel';
+    tocPanel.style.cssText = 'width:260px;min-width:260px;background:var(--bg-secondary);border-right:1px solid var(--border-color);padding:60px 16px 24px;overflow-y:auto;position:sticky;top:0;height:100vh;flex-shrink:0;display:none';
+
+    const tocHeader = document.createElement('div');
+    tocHeader.style.cssText = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);margin-bottom:12px;padding:0 4px';
+    tocHeader.textContent = 'Table of Contents';
+    tocPanel.appendChild(tocHeader);
+
+    const tocList = document.createElement('div');
+    tocList.className = 'reading-toc-list';
+    tocList.style.cssText = 'font-size:13px;line-height:1.6';
+    tocPanel.appendChild(tocList);
+    readingModeOverlay.appendChild(tocPanel);
+
+    // Main content area (centered)
+    const contentWrapper = document.createElement('div');
+    contentWrapper.style.cssText = 'flex:1;display:flex;justify-content:center;overflow-y:auto';
 
     const container = document.createElement('div');
     container.style.cssText = 'width:680px;max-width:90vw;padding:60px 40px;min-height:100vh';
 
     // Toolbar
     const toolbar = document.createElement('div');
-    toolbar.style.cssText = 'position:fixed;top:0;left:0;right:0;display:flex;justify-content:center;gap:12px;padding:12px;background:var(--bg-secondary);border-bottom:1px solid var(--border-color);z-index:10000';
+    toolbar.style.cssText = 'position:fixed;top:0;left:0;right:0;display:flex;justify-content:center;gap:8px;padding:10px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border-color);z-index:10000';
     toolbar.innerHTML = `
+      <button id="read-toc-toggle" style="border:1px solid var(--border-color);background:var(--bg-primary);color:var(--text-primary);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px" title="Toggle Table of Contents">TOC</button>
       <button id="read-font-up" style="border:1px solid var(--border-color);background:var(--bg-primary);color:var(--text-primary);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px">A+</button>
       <button id="read-font-down" style="border:1px solid var(--border-color);background:var(--bg-primary);color:var(--text-primary);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px">A-</button>
       <button id="read-serif-toggle" style="border:1px solid var(--border-color);background:var(--bg-primary);color:var(--text-primary);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px">Serif</button>
@@ -3744,61 +3770,148 @@ function toggleReadingMode() {
 
     // Content (read-only)
     const content = document.createElement('div');
+    content.className = 'reading-mode-content';
     content.style.cssText = 'font-size:18px;line-height:2;color:var(--text-primary);font-family:Georgia,serif;margin-top:60px';
     content.innerHTML = editorEl.innerHTML;
-    // Make images max-width
-    content.querySelectorAll('img').forEach(img => {
+
+    // Make images responsive
+    content.querySelectorAll('img').forEach((img) => {
       img.style.maxWidth = '100%';
       img.style.height = 'auto';
+      img.style.borderRadius = '8px';
+      img.style.margin = '16px 0';
     });
+
+    // Style headings
+    content.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((h, idx) => {
+      if (!h.id) h.id = `reading-heading-${idx}`;
+      h.style.marginTop = '1.5em';
+      h.style.marginBottom = '0.5em';
+    });
+
+    // Style paragraphs
+    content.querySelectorAll('p').forEach((p) => {
+      p.style.marginBottom = '1em';
+      p.style.textAlign = 'justify';
+    });
+
+    // Style blockquotes
+    content.querySelectorAll('blockquote').forEach((bq) => {
+      bq.style.cssText = 'border-left:3px solid var(--accent-color);padding:8px 20px;margin:16px 0;font-style:italic;opacity:0.85;background:rgba(0,0,0,0.02);border-radius:0 6px 6px 0';
+    });
+
     container.appendChild(content);
 
     // Reading progress bar
     const progressBar = document.createElement('div');
-    progressBar.style.cssText = 'position:fixed;top:0;left:0;height:3px;background:var(--accent-color);z-index:10001;transition:width 0.1s';
+    progressBar.style.cssText = 'position:fixed;top:0;left:0;height:3px;background:var(--accent-color);z-index:10001;transition:width 0.15s';
     readingModeOverlay.appendChild(progressBar);
 
-    readingModeOverlay.addEventListener('scroll', () => {
-      const scrollTop = readingModeOverlay.scrollTop;
-      const scrollHeight = readingModeOverlay.scrollHeight - readingModeOverlay.clientHeight;
+    contentWrapper.appendChild(container);
+    readingModeOverlay.appendChild(contentWrapper);
+    document.body.appendChild(readingModeOverlay);
+
+    // Build TOC from headings in content
+    let tocVisible = false;
+    const buildTOC = () => {
+      const headings = content.querySelectorAll('h1, h2, h3, h4, h5, h6');
+      tocList.innerHTML = '';
+      if (headings.length === 0) {
+        tocList.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;padding:8px 4px">No headings found in document.</div>';
+        return;
+      }
+
+      headings.forEach((h, idx) => {
+        const level = parseInt(h.tagName[1]);
+        const item = document.createElement('div');
+        item.className = 'reading-toc-item';
+        item.dataset.idx = idx;
+        item.style.cssText = `padding:4px ${4 + (level - 1) * 16}px;cursor:pointer;border-radius:4px;color:var(--text-primary);transition:background 0.15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:${level <= 2 ? '13px' : '12px'};font-weight:${level <= 2 ? '600' : '400'};opacity:${level <= 2 ? '1' : '0.8'}`;
+        item.textContent = h.textContent || 'Untitled';
+        item.title = h.textContent || 'Untitled';
+
+        item.addEventListener('click', () => {
+          h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          // Highlight
+          tocList.querySelectorAll('.reading-toc-item').forEach((el) => { el.style.background = ''; el.style.color = 'var(--text-primary)'; });
+          item.style.background = 'var(--accent-color)';
+          item.style.color = '#fff';
+        });
+        item.addEventListener('mouseenter', () => { if (item.style.background !== 'var(--accent-color)') item.style.background = 'var(--hover-bg)'; });
+        item.addEventListener('mouseleave', () => { if (item.style.color !== '#fff') item.style.background = ''; });
+        tocList.appendChild(item);
+      });
+    };
+    buildTOC();
+
+    // Scroll listener to update progress bar and highlight current heading in TOC
+    const scrollHandler = () => {
+      const scrollTop = contentWrapper.scrollTop;
+      const scrollHeight = contentWrapper.scrollHeight - contentWrapper.clientHeight;
       const pct = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0;
       progressBar.style.width = pct + '%';
-    });
 
-    readingModeOverlay.appendChild(container);
-    document.body.appendChild(readingModeOverlay);
+      // Highlight current heading in TOC
+      if (tocVisible) {
+        const headings = content.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        let activeIdx = 0;
+        headings.forEach((h, idx) => {
+          const rect = h.getBoundingClientRect();
+          if (rect.top < 150) activeIdx = idx;
+        });
+        tocList.querySelectorAll('.reading-toc-item').forEach((el, idx) => {
+          if (idx === activeIdx) {
+            el.style.background = 'var(--accent-color)';
+            el.style.color = '#fff';
+            el.scrollIntoView({ block: 'nearest' });
+          } else {
+            el.style.background = '';
+            el.style.color = 'var(--text-primary)';
+          }
+        });
+      }
+    };
+    contentWrapper.addEventListener('scroll', scrollHandler);
 
     let fontSize = 18;
     let isSerif = true;
     let isSepia = false;
 
-    toolbar.querySelector('#read-font-up').onclick = () => {
+    toolbar.querySelector('#read-toc-toggle').addEventListener('click', () => {
+      tocVisible = !tocVisible;
+      tocPanel.style.display = tocVisible ? '' : 'none';
+      toolbar.querySelector('#read-toc-toggle').style.background = tocVisible ? 'var(--accent-color)' : 'var(--bg-primary)';
+      toolbar.querySelector('#read-toc-toggle').style.color = tocVisible ? '#fff' : 'var(--text-primary)';
+      if (tocVisible) scrollHandler(); // Update highlighting
+    });
+    toolbar.querySelector('#read-font-up').addEventListener('click', () => {
       fontSize = Math.min(fontSize + 2, 32);
       content.style.fontSize = fontSize + 'px';
-    };
-    toolbar.querySelector('#read-font-down').onclick = () => {
+    });
+    toolbar.querySelector('#read-font-down').addEventListener('click', () => {
       fontSize = Math.max(fontSize - 2, 12);
       content.style.fontSize = fontSize + 'px';
-    };
-    toolbar.querySelector('#read-serif-toggle').onclick = () => {
+    });
+    toolbar.querySelector('#read-serif-toggle').addEventListener('click', () => {
       isSerif = !isSerif;
       content.style.fontFamily = isSerif ? 'Georgia, serif' : '-apple-system, sans-serif';
-    };
-    toolbar.querySelector('#read-sepia').onclick = () => {
+    });
+    toolbar.querySelector('#read-sepia').addEventListener('click', () => {
       isSepia = !isSepia;
       readingModeOverlay.style.background = isSepia ? '#f5f0e8' : 'var(--bg-primary)';
+      tocPanel.style.background = isSepia ? '#ede5d5' : 'var(--bg-secondary)';
       content.style.color = isSepia ? '#3e2c1c' : 'var(--text-primary)';
-    };
-    toolbar.querySelector('#read-close').onclick = () => toggleReadingMode();
+    });
+    toolbar.querySelector('#read-close').addEventListener('click', () => toggleReadingMode());
 
-    // ESC handler
-    const escHandler = (e) => {
+    // ESC + Ctrl+Shift+R handler
+    const keyHandler = (e) => {
       if (e.key === 'Escape') {
         toggleReadingMode();
-        document.removeEventListener('keydown', escHandler);
+        document.removeEventListener('keydown', keyHandler);
       }
     };
-    document.addEventListener('keydown', escHandler);
+    document.addEventListener('keydown', keyHandler);
 
     if (btn) btn.style.background = 'var(--accent-color)';
   } else {

@@ -1,6 +1,6 @@
 // OfficeLink SL — App Controller
 import { createEditor, onChange, getContent, setContent, wrapSelection } from './editor/editor.js';
-import { initPreview, updatePreview, updatePreviewImmediate } from './preview/preview.js';
+import { initPreview, updatePreview, updatePreviewImmediate, initBidirectionalScrollSync, initPreviewToolbar } from './preview/preview.js';
 import { registerAllPlugins } from './preview/plugins.js';
 import { getRenderer } from './preview/renderer.js';
 import { initSplitPane } from './ui/split-pane.js';
@@ -43,6 +43,8 @@ import { showSettings, initSettings } from './ui/settings.js';
 import { initPwaInstallEnhanced } from './ui/pwa-install.js';
 import { initErrorBoundary, safeSetItem } from './ui/error-boundary.js';
 import { initTemplates, showTemplatePicker } from './ui/templates.js';
+import { initPluginSystem, notifyFileSave } from './plugins/plugin-manager.js';
+import { initPerfDashboard } from './ui/perf-dashboard.js';
 
 // Default welcome content
 const WELCOME_MD = `# Welcome to OfficeLink SL ✦
@@ -357,6 +359,7 @@ export async function initApp() {
           updateFileName(result.name);
           setTabDirty(tab, false);
           broadcastFileEvent('file-save', result.name);
+          notifyFileSave(result.name);
           toastSuccess('File saved');
         }
       } catch (e) {
@@ -447,8 +450,11 @@ export async function initApp() {
     // Recent file click handler — no-op placeholder for now
   });
 
-  // 16. Scroll sync
-  initScrollSync(editorContainer, document.getElementById('preview-container'));
+  // 16. Scroll sync (bidirectional) + preview toolbar
+  const previewContainerEl = document.getElementById('preview-container');
+  initBidirectionalScrollSync(editorContainer, previewContainerEl);
+  const previewPaneEl = document.getElementById('preview-pane');
+  if (previewPaneEl) initPreviewToolbar(previewPaneEl);
 
   // 17. Tab navigation
   initTabs();
@@ -615,7 +621,13 @@ export async function initApp() {
     settingsBtn.addEventListener('click', () => showSettings());
   }
 
-  // 22d. Cross-Tab Sync (theme, language, file events, presence)
+  // 22d. Plugin System (word counter, pomodoro, clipboard history)
+  initPluginSystem();
+
+  // 22e. Performance Dashboard (Ctrl+Shift+P)
+  initPerfDashboard();
+
+  // 22f. Cross-Tab Sync (theme, language, file events, presence)
   initTabSync({
     onThemeChange: (theme) => {
       if (theme === 'auto') {

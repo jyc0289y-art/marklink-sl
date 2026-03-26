@@ -64,10 +64,11 @@ let acEl = null;
 let acIndex = -1;
 let acTarget = null; // the input element autocomplete is bound to
 
-// Undo/Redo
+// Undo/Redo — per-cell granular tracking
+// Each entry: { cellKey, oldValue, newValue, oldFormat, newFormat } or { type: 'bulk', changes: [...] }
 let undoStack = [];
 let redoStack = [];
-const MAX_UNDO = 50;
+const MAX_UNDO = 100;
 
 // DOM refs
 let gridEl, cellRefEl, formulaBarEl, containerEl;
@@ -1321,20 +1322,120 @@ function getCellInput() {
   return td?.querySelector('input');
 }
 
+/**
+ * Push a single-cell undo entry.
+ * @param {string} key - Cell key "r,c"
+ * @param {Object|null} oldCell - Previous cell data (deep clone or null)
+ * @param {Object|null} newCell - New cell data (deep clone or null)
+ */
+function pushUndoEntry(key, oldCell, newCell) {
+  undoStack.push({
+    type: 'cell',
+    cellKey: key,
+    oldValue: oldCell ? JSON.parse(JSON.stringify(oldCell)) : null,
+    newValue: newCell ? JSON.parse(JSON.stringify(newCell)) : null,
+  });
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0;
+}
+
+/**
+ * Push a bulk undo entry (for operations affecting multiple cells).
+ * @param {Array} changes - Array of { cellKey, oldValue, newValue }
+ */
+function pushBulkUndo(changes) {
+  if (!changes.length) return;
+  undoStack.push({ type: 'bulk', changes });
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0;
+}
+
+/**
+ * Legacy: save full snapshot undo (for complex operations like sort, delete row/col)
+ */
 function saveUndoState() {
   const sheet = getSheet();
   const snapshot = JSON.stringify(sheet.cells);
-  undoStack.push(snapshot);
+  undoStack.push({ type: 'snapshot', data: snapshot });
   if (undoStack.length > MAX_UNDO) undoStack.shift();
-  redoStack.length = 0; // clear redo on new action
+  redoStack.length = 0;
 }
+
+/**
+ * Apply a single undo entry in reverse
+ */
+const applyUndoEntry = (entry, sheet) => {
+  if (entry.type === 'cell') {
+    const key = entry.cellKey;
+    if (entry.oldValue) {
+      sheet.cells[key] = JSON.parse(JSON.stringify(entry.oldValue));
+    } else {
+      delete sheet.cells[key];
+    }
+  } else if (entry.type === 'bulk') {
+    entry.changes.forEach((change) => {
+      if (change.oldValue) {
+        sheet.cells[change.cellKey] = JSON.parse(JSON.stringify(change.oldValue));
+      } else {
+        delete sheet.cells[change.cellKey];
+      }
+    });
+  } else if (entry.type === 'snapshot') {
+    sheet.cells = JSON.parse(entry.data);
+  }
+};
+
+/**
+ * Apply a single redo entry (forward)
+ */
+const applyRedoEntry = (entry, sheet) => {
+  if (entry.type === 'cell') {
+    const key = entry.cellKey;
+    if (entry.newValue) {
+      sheet.cells[key] = JSON.parse(JSON.stringify(entry.newValue));
+    } else {
+      delete sheet.cells[key];
+    }
+  } else if (entry.type === 'bulk') {
+    entry.changes.forEach((change) => {
+      if (change.newValue) {
+        sheet.cells[change.cellKey] = JSON.parse(JSON.stringify(change.newValue));
+      } else {
+        delete sheet.cells[change.cellKey];
+      }
+    });
+  } else if (entry.type === 'snapshot') {
+    // For snapshot redo, we stored the "after" state in the redo entry
+    sheet.cells = JSON.parse(entry.data);
+  }
+};
 
 function sheetUndo() {
   if (!undoStack.length) return;
   const sheet = getSheet();
-  redoStack.push(JSON.stringify(sheet.cells));
-  const prev = undoStack.pop();
-  sheet.cells = JSON.parse(prev);
+  const entry = undoStack.pop();
+
+  // Save current state for redo
+  if (entry.type === 'snapshot') {
+    redoStack.push({ type: 'snapshot', data: JSON.stringify(sheet.cells) });
+  } else if (entry.type === 'cell') {
+    const currentCell = sheet.cells[entry.cellKey];
+    redoStack.push({
+      type: 'cell',
+      cellKey: entry.cellKey,
+      oldValue: entry.newValue,
+      newValue: currentCell ? JSON.parse(JSON.stringify(currentCell)) : null,
+    });
+  } else if (entry.type === 'bulk') {
+    const redoChanges = entry.changes.map((change) => ({
+      cellKey: change.cellKey,
+      oldValue: change.newValue,
+      newValue: sheet.cells[change.cellKey] ? JSON.parse(JSON.stringify(sheet.cells[change.cellKey])) : null,
+    }));
+    redoStack.push({ type: 'bulk', changes: redoChanges });
+  }
+
+  applyUndoEntry(entry, sheet);
   recalcAll(sheet);
   renderGrid();
   updateSelection();
@@ -1343,9 +1444,29 @@ function sheetUndo() {
 function sheetRedo() {
   if (!redoStack.length) return;
   const sheet = getSheet();
-  undoStack.push(JSON.stringify(sheet.cells));
-  const next = redoStack.pop();
-  sheet.cells = JSON.parse(next);
+  const entry = redoStack.pop();
+
+  // Save current state for undo
+  if (entry.type === 'snapshot') {
+    undoStack.push({ type: 'snapshot', data: JSON.stringify(sheet.cells) });
+  } else if (entry.type === 'cell') {
+    const currentCell = sheet.cells[entry.cellKey];
+    undoStack.push({
+      type: 'cell',
+      cellKey: entry.cellKey,
+      oldValue: currentCell ? JSON.parse(JSON.stringify(currentCell)) : null,
+      newValue: entry.newValue,
+    });
+  } else if (entry.type === 'bulk') {
+    const undoChanges = entry.changes.map((change) => ({
+      cellKey: change.cellKey,
+      oldValue: sheet.cells[change.cellKey] ? JSON.parse(JSON.stringify(sheet.cells[change.cellKey])) : null,
+      newValue: change.newValue,
+    }));
+    undoStack.push({ type: 'bulk', changes: undoChanges });
+  }
+
+  applyRedoEntry(entry, sheet);
   recalcAll(sheet);
   renderGrid();
   updateSelection();
@@ -1375,13 +1496,17 @@ function commitEdit(asArrayFormula = false) {
         }
       }
     }
-    saveUndoState();
+    const sheet = getSheet();
+    const key = `${editingRow},${editingCol}`;
+    const oldCell = sheet.cells[key] ? JSON.parse(JSON.stringify(sheet.cells[key])) : null;
     if (asArrayFormula && val.startsWith('=')) {
-      setCellArrayFormula(getSheet(), editingRow, editingCol, val);
+      setCellArrayFormula(sheet, editingRow, editingCol, val);
     } else {
-      setCell(getSheet(), editingRow, editingCol, val);
+      setCell(sheet, editingRow, editingCol, val);
     }
-    recalcAll(getSheet());
+    const newCell = sheet.cells[key] ? JSON.parse(JSON.stringify(sheet.cells[key])) : null;
+    pushUndoEntry(key, oldCell, newCell);
+    recalcAll(sheet);
   }
   isEditing = false;
   isFormulaMode = false;

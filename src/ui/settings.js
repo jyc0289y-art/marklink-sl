@@ -8,6 +8,7 @@ import { getLang, setLang, showLanguagePicker } from './i18n.js';
 import { getOllamaUrl, setOllamaUrl } from '../ai/ollama-client.js';
 import { toastSuccess, toastError, toastInfo } from './toast.js';
 import { broadcastThemeChange, broadcastLangChange } from './tab-sync.js';
+import { getPluginList, enablePlugin, disablePlugin } from '../plugins/plugin-manager.js';
 
 const SETTINGS_STORAGE_KEY = 'officelink-settings';
 let settingsOverlay = null;
@@ -98,6 +99,7 @@ export const showSettings = () => {
     { id: 'general', label: 'General', icon: '&#9881;' },
     { id: 'appearance', label: 'Appearance', icon: '&#127912;' },
     { id: 'editor', label: 'Editor', icon: '&#9998;' },
+    { id: 'plugins', label: 'Plugins', icon: '&#128268;' },
     { id: 'ai', label: 'AI', icon: '&#129302;' },
     { id: 'storage', label: 'Storage', icon: '&#128190;' },
     { id: 'about', label: 'About', icon: '&#8505;' },
@@ -119,6 +121,7 @@ export const showSettings = () => {
       case 'general': renderGeneralTab(contentArea, settings); break;
       case 'appearance': renderAppearanceTab(contentArea); break;
       case 'editor': renderEditorTab(contentArea, settings); break;
+      case 'plugins': renderPluginsTab(contentArea); break;
       case 'ai': renderAiTab(contentArea, settings); break;
       case 'storage': renderStorageTab(contentArea); break;
       case 'about': renderAboutTab(contentArea); break;
@@ -470,6 +473,48 @@ const renderAboutTab = (container) => {
     </div>
   `;
   container.appendChild(aboutDiv);
+};
+
+const renderPluginsTab = (container) => {
+  const plugins = getPluginList();
+
+  const headerSection = createSection('Installed Plugins');
+  const headerDesc = document.createElement('p');
+  headerDesc.style.cssText = 'font-size:12px;opacity:0.6;margin:0 0 12px;';
+  headerDesc.textContent = `${plugins.length} plugin${plugins.length !== 1 ? 's' : ''} installed. Toggle to enable or disable.`;
+  headerSection.appendChild(headerDesc);
+  container.appendChild(headerSection);
+
+  if (plugins.length === 0) {
+    const emptyMsg = document.createElement('div');
+    emptyMsg.style.cssText = 'text-align:center;padding:24px;opacity:0.5;font-size:13px;';
+    emptyMsg.textContent = 'No plugins installed.';
+    container.appendChild(emptyMsg);
+    return;
+  }
+
+  plugins.forEach(({ id, name, version, description, enabled }) => {
+    const pluginRow = document.createElement('div');
+    pluginRow.className = 'settings-section';
+    pluginRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:12px;border:1px solid var(--border-color,#333);border-radius:8px;margin-bottom:8px;';
+
+    const info = document.createElement('div');
+    info.style.cssText = 'flex:1;';
+    info.innerHTML = `
+      <div style="font-weight:600;font-size:13px;color:var(--text-primary,#fff);">${name} <span style="font-size:11px;opacity:0.5;">v${version}</span></div>
+      ${description ? `<div style="font-size:11px;opacity:0.6;margin-top:2px;">${description}</div>` : ''}
+    `;
+    pluginRow.appendChild(info);
+
+    const toggle = createToggle(enabled, (val) => {
+      if (val) enablePlugin(id);
+      else disablePlugin(id);
+      toastSuccess(`${name} ${val ? 'enabled' : 'disabled'}`);
+    });
+    pluginRow.appendChild(toggle);
+
+    container.appendChild(pluginRow);
+  });
 };
 
 // ── Helpers ──

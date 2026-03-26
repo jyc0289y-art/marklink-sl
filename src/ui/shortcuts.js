@@ -165,6 +165,8 @@ const closeTopOverlay = () => {
     '.template-library-overlay',
     '.settings-overlay',
     '.feedback-overlay',
+    '.perf-dashboard-overlay',
+    '.clipboard-history-overlay',
     '.tour-tooltip',
     '.version-history-overlay',
     '[class*="modal"]',

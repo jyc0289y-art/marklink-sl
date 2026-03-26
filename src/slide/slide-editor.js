@@ -1456,15 +1456,22 @@ function showSlideSorter() {
 
   saveCurrentSlide();
 
+  const selectedSet = new Set();
   const overlay = document.createElement('div');
   overlay.className = 'slide-sorter-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;z-index:5000;background:var(--bg-primary);overflow:auto;padding:24px';
 
   let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-    <h2 style="margin:0;font-size:20px;font-weight:700">Slide Sorter</h2>
-    <button id="sorter-close" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--text-primary)">&times;</button>
+    <div style="display:flex;align-items:center;gap:12px">
+      <h2 style="margin:0;font-size:20px;font-weight:700">Slide Sorter</h2>
+      <span id="sorter-sel-count" style="font-size:12px;color:var(--text-secondary);display:none">0 selected</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button id="sorter-del-selected" style="padding:4px 12px;border:1px solid #ef4444;border-radius:6px;background:transparent;color:#ef4444;cursor:pointer;font-size:12px;font-weight:600;display:none">Delete Selected</button>
+      <button id="sorter-close" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--text-primary)">&times;</button>
+    </div>
   </div>
-  <p style="font-size:12px;color:var(--text-secondary);margin-bottom:16px">Drag and drop to reorder slides. Click to select.</p>
+  <p style="font-size:12px;color:var(--text-secondary);margin-bottom:16px">Drag to reorder. Click to open. Ctrl+click to multi-select. Right-click for options.</p>
   <div id="sorter-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:16px">`;
 
   slides.forEach((slide, i) => {
@@ -1472,7 +1479,7 @@ function showSlideSorter() {
                     slide.theme === 'blue' ? 'background:#0f3460;color:#eee' :
                     slide.theme === 'gradient' ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff' :
                     'background:#fff;color:#333';
-    html += `<div class="sorter-card" draggable="true" data-idx="${i}" style="cursor:grab;border:2px solid ${i === activeSlideIdx ? 'var(--accent-color)' : 'var(--border-color)'};border-radius:8px;overflow:hidden;transition:all 0.2s">
+    html += `<div class="sorter-card" draggable="true" data-idx="${i}" style="cursor:grab;border:2px solid ${i === activeSlideIdx ? 'var(--accent-color)' : 'var(--border-color)'};border-radius:8px;overflow:hidden;transition:all 0.2s;position:relative">
       <div style="aspect-ratio:16/9;${bgStyle};padding:12px;font-size:9px;line-height:1.3;overflow:hidden;pointer-events:none">${slide.content}</div>
       <div style="padding:6px 8px;font-size:11px;display:flex;justify-content:space-between;align-items:center;background:var(--hover-bg)">
         <span style="font-weight:600">Slide ${i + 1}</span>
@@ -1485,28 +1492,60 @@ function showSlideSorter() {
   overlay.innerHTML = html;
   document.body.appendChild(overlay);
 
-  overlay.querySelector('#sorter-close').onclick = () => overlay.remove();
+  overlay.querySelector('#sorter-close').addEventListener('click', () => overlay.remove());
 
-  // Drag and drop reordering
   const grid = overlay.querySelector('#sorter-grid');
+  const selCountEl = overlay.querySelector('#sorter-sel-count');
+  const delSelBtn = overlay.querySelector('#sorter-del-selected');
   let dragIdx = -1;
 
-  grid.querySelectorAll('.sorter-card').forEach(card => {
+  const updateSelectionUI = () => {
+    grid.querySelectorAll('.sorter-card').forEach((card) => {
+      const idx = parseInt(card.dataset.idx);
+      const isSelected = selectedSet.has(idx);
+      card.style.borderColor = isSelected ? '#3b82f6' : (idx === activeSlideIdx ? 'var(--accent-color)' : 'var(--border-color)');
+      card.style.boxShadow = isSelected ? '0 0 0 2px rgba(59,130,246,0.3)' : '';
+    });
+    if (selectedSet.size > 0) {
+      selCountEl.style.display = '';
+      selCountEl.textContent = `${selectedSet.size} selected`;
+      delSelBtn.style.display = '';
+    } else {
+      selCountEl.style.display = 'none';
+      delSelBtn.style.display = 'none';
+    }
+  };
+
+  // Delete selected
+  delSelBtn.addEventListener('click', () => {
+    if (selectedSet.size === 0) return;
+    if (selectedSet.size >= slides.length) { alert('Cannot delete all slides'); return; }
+    if (!confirm(`Delete ${selectedSet.size} selected slide(s)?`)) return;
+    const idxArr = Array.from(selectedSet).sort((a, b) => b - a);
+    idxArr.forEach((idx) => slides.splice(idx, 1));
+    activeSlideIdx = Math.min(activeSlideIdx, slides.length - 1);
+    selectedSet.clear();
+    overlay.remove();
+    showSlideSorter();
+    renderPanel();
+    loadSlide(activeSlideIdx);
+  });
+
+  grid.querySelectorAll('.sorter-card').forEach((card) => {
     card.addEventListener('dragstart', (e) => {
       dragIdx = parseInt(card.dataset.idx);
       card.style.opacity = '0.5';
       e.dataTransfer.effectAllowed = 'move';
     });
-    card.addEventListener('dragend', () => {
-      card.style.opacity = '1';
-    });
+    card.addEventListener('dragend', () => { card.style.opacity = '1'; });
     card.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       card.style.borderColor = 'var(--accent-color)';
     });
     card.addEventListener('dragleave', () => {
-      card.style.borderColor = 'var(--border-color)';
+      const idx = parseInt(card.dataset.idx);
+      card.style.borderColor = selectedSet.has(idx) ? '#3b82f6' : 'var(--border-color)';
     });
     card.addEventListener('drop', (e) => {
       e.preventDefault();
@@ -1518,17 +1557,75 @@ function showSlideSorter() {
         else if (dragIdx < activeSlideIdx && dropIdx >= activeSlideIdx) activeSlideIdx--;
         else if (dragIdx > activeSlideIdx && dropIdx <= activeSlideIdx) activeSlideIdx++;
         overlay.remove();
-        showSlideSorter(); // Re-render
+        showSlideSorter();
         renderPanel();
       }
     });
-    card.addEventListener('click', () => {
-      activeSlideIdx = parseInt(card.dataset.idx);
-      renderPanel();
-      loadSlide(activeSlideIdx);
-      overlay.remove();
+    card.addEventListener('click', (e) => {
+      const idx = parseInt(card.dataset.idx);
+      if (e.ctrlKey || e.metaKey) {
+        // Multi-select toggle
+        if (selectedSet.has(idx)) selectedSet.delete(idx);
+        else selectedSet.add(idx);
+        updateSelectionUI();
+      } else {
+        // Normal click: open slide
+        activeSlideIdx = idx;
+        renderPanel();
+        loadSlide(activeSlideIdx);
+        overlay.remove();
+      }
+    });
+
+    // Right-click context menu
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const idx = parseInt(card.dataset.idx);
+      showSorterContextMenu(e.clientX, e.clientY, idx, overlay);
     });
   });
+}
+
+/**
+ * Show context menu for slide sorter cards.
+ */
+function showSorterContextMenu(x, y, idx, overlay) {
+  document.querySelector('.sorter-ctx-menu')?.remove();
+
+  const menu = document.createElement('div');
+  menu.className = 'sorter-ctx-menu';
+  menu.style.cssText = `position:fixed;top:${y}px;left:${x}px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.2);padding:4px 0;z-index:6000;min-width:160px`;
+
+  const items = [
+    { label: 'Edit Slide', action: () => { activeSlideIdx = idx; renderPanel(); loadSlide(idx); overlay.remove(); } },
+    { label: 'Duplicate', action: () => { const clone = structuredClone(slides[idx]); slides.splice(idx + 1, 0, clone); overlay.remove(); showSlideSorter(); renderPanel(); } },
+    { label: 'Move to Start', action: () => { if (idx === 0) return; const [s] = slides.splice(idx, 1); slides.unshift(s); activeSlideIdx = 0; overlay.remove(); showSlideSorter(); renderPanel(); loadSlide(0); } },
+    { label: 'Move to End', action: () => { if (idx === slides.length - 1) return; const [s] = slides.splice(idx, 1); slides.push(s); activeSlideIdx = slides.length - 1; overlay.remove(); showSlideSorter(); renderPanel(); loadSlide(activeSlideIdx); } },
+    { type: 'divider' },
+    { label: 'Delete', danger: true, action: () => { if (slides.length <= 1) { alert('Cannot delete the only slide'); return; } slides.splice(idx, 1); if (activeSlideIdx >= slides.length) activeSlideIdx = slides.length - 1; overlay.remove(); showSlideSorter(); renderPanel(); loadSlide(activeSlideIdx); } },
+  ];
+
+  items.forEach((item) => {
+    if (item.type === 'divider') {
+      const hr = document.createElement('div');
+      hr.style.cssText = 'height:1px;background:var(--border-color);margin:4px 0';
+      menu.appendChild(hr);
+      return;
+    }
+    const btn = document.createElement('button');
+    btn.textContent = item.label;
+    btn.style.cssText = `display:block;width:100%;padding:6px 16px;border:none;background:transparent;text-align:left;cursor:pointer;font-size:13px;color:${item.danger ? '#ef4444' : 'var(--text-primary)'}`;
+    btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--hover-bg)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; });
+    btn.addEventListener('click', () => { menu.remove(); item.action(); });
+    menu.appendChild(btn);
+  });
+
+  document.body.appendChild(menu);
+  const closeMenu = (e) => {
+    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeMenu); }
+  };
+  setTimeout(() => document.addEventListener('click', closeMenu), 0);
 }
 
 /* ==================== PPTX Export ==================== */
@@ -3668,7 +3765,10 @@ function openPresenterView() {
     </style></head><body>
     <div class="pv-header">
       <h2>Presenter View</h2>
-      <div class="pv-timer" id="pv-timer">${mins}:${secs}</div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <div class="pv-timer" id="pv-timer">${mins}:${secs}</div>
+        <div id="pv-clock" style="font-size:14px;color:#888;font-variant-numeric:tabular-nums">${new Date().toLocaleTimeString()}</div>
+      </div>
     </div>
     <div class="pv-main">
       <div class="pv-left">
@@ -3727,6 +3827,8 @@ function openPresenterView() {
     try {
       const timerEl = win.document.getElementById('pv-timer');
       if (timerEl) timerEl.textContent = `${mins}:${secs}`;
+      const clockEl = win.document.getElementById('pv-clock');
+      if (clockEl) clockEl.textContent = new Date().toLocaleTimeString();
     } catch (e) { /* cross-origin */ }
   }, 1000);
 
@@ -4245,7 +4347,7 @@ function renderSorterView(overlay) {
         sorterSelectedIndices.add(idx);
         renderSorterView(overlay);
       }
-      showSorterContextMenu(e.clientX, e.clientY, overlay);
+      showEnhancedSorterContextMenu(e.clientX, e.clientY, overlay);
     });
 
     // Drag and drop
@@ -4283,7 +4385,7 @@ function renderSorterView(overlay) {
   });
 }
 
-function showSorterContextMenu(x, y, overlay) {
+function showEnhancedSorterContextMenu(x, y, overlay) {
   // Remove any existing context menus
   document.querySelectorAll('.slide-context-menu').forEach((m) => m.remove());
 
@@ -4743,3 +4845,100 @@ function initNotesResize() {
 
 // Initialize notes resize after DOM is ready
 setTimeout(() => initNotesResize(), 0);
+
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE: Transition Preview on Hover
+   ═══════════════════════════════════════════════════════════════ */
+
+/**
+ * Initialize transition preview — when hovering over transition options
+ * in the select dropdown, show a small animation preview.
+ */
+function initTransitionPreview() {
+  const select = document.getElementById('slide-transition');
+  if (!select) return;
+
+  let previewEl = null;
+
+  select.addEventListener('mouseenter', () => {
+    if (previewEl) return;
+    const rect = select.getBoundingClientRect();
+    previewEl = document.createElement('div');
+    previewEl.className = 'transition-preview-popup';
+    previewEl.style.cssText = `position:fixed;top:${rect.bottom + 6}px;left:${rect.left}px;width:160px;height:90px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);z-index:3000;overflow:hidden;pointer-events:none`;
+
+    const inner = document.createElement('div');
+    inner.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary);font-family:sans-serif;background:var(--hover-bg)';
+    inner.textContent = 'Hover options to preview';
+    previewEl.appendChild(inner);
+    document.body.appendChild(previewEl);
+
+    // Preview animation when value changes or on focus
+    const showTransitionAnimation = () => {
+      const transition = select.value;
+      if (!previewEl || transition === 'none') {
+        if (previewEl) {
+          const innerEl = previewEl.firstChild;
+          innerEl.textContent = transition === 'none' ? 'No transition' : transition;
+          innerEl.style.transition = 'none';
+          innerEl.style.opacity = '1';
+          innerEl.style.transform = 'none';
+          innerEl.style.filter = '';
+        }
+        return;
+      }
+
+      const innerEl = previewEl.firstChild;
+      innerEl.textContent = transition;
+
+      // Reset
+      innerEl.style.transition = 'none';
+      innerEl.style.opacity = '0';
+      innerEl.style.transform = getTransitionPreviewFrom(transition);
+      innerEl.style.filter = transition === 'dissolve' ? 'blur(4px)' : '';
+      void innerEl.offsetWidth;
+
+      // Animate
+      innerEl.style.transition = 'all 0.5s ease';
+      innerEl.style.opacity = '1';
+      innerEl.style.transform = 'none';
+      innerEl.style.filter = '';
+    };
+
+    select.addEventListener('change', showTransitionAnimation);
+    select.addEventListener('input', showTransitionAnimation);
+    showTransitionAnimation();
+  });
+
+  select.addEventListener('mouseleave', (e) => {
+    // Delay removal so user can see the animation
+    setTimeout(() => {
+      if (previewEl && !select.matches(':hover')) {
+        previewEl.remove();
+        previewEl = null;
+      }
+    }, 600);
+  });
+}
+
+function getTransitionPreviewFrom(transition) {
+  const map = {
+    'fade': 'none',
+    'slide-left': 'translateX(100%)',
+    'slide-right': 'translateX(-100%)',
+    'slide-up': 'translateY(100%)',
+    'slide-down': 'translateY(-100%)',
+    'zoom': 'scale(0.3)',
+    'zoom-out': 'scale(2)',
+    'rotate': 'rotate(90deg) scale(0.5)',
+    'flip': 'perspective(200px) rotateY(90deg)',
+    'cube': 'perspective(200px) rotateY(90deg)',
+    'dissolve': 'none',
+    'wipe-right': 'none',
+    'split': 'none',
+    'morph': 'none',
+  };
+  return map[transition] || 'none';
+}
+
+setTimeout(() => initTransitionPreview(), 100);
