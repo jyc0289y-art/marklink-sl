@@ -1,6 +1,7 @@
 // OfficeLink SL — Slide Editor
 
 import { t } from '../ui/i18n.js';
+import { saveSlideAsPptx } from './slide-file.js';
 
 const LAYOUTS = {
   title: '<h1 class="slide-title">Title</h1><p class="slide-subtitle">Subtitle</p>',
@@ -288,8 +289,11 @@ function bindEvents() {
 
   // Export as image
   document.getElementById('slide-export-img')?.addEventListener('click', exportSlideAsImage);
-  // Export as PPTX
-  document.getElementById('slide-export-pptx')?.addEventListener('click', exportPPTX);
+  // Export as PPTX (uses JSZip-based export from slide-file.js)
+  document.getElementById('slide-export-pptx')?.addEventListener('click', async () => {
+    saveCurrentSlide();
+    await saveSlideAsPptx();
+  });
   // Print handout
   document.getElementById('slide-print-handout')?.addEventListener('click', printHandout);
   // Auto-advance

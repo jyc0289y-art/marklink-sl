@@ -158,8 +158,7 @@
   position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  /* width/height set via inline style for HiDPI support */
   pointer-events: none;
 }
 
@@ -181,8 +180,8 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
-  opacity: 0.25;
   line-height: 1;
+  /* opacity 1 — spans are already color:transparent so only selection highlights show */
 }
 
 .pdf-text-layer span {

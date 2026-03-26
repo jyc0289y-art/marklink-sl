@@ -540,9 +540,11 @@ const _escapeAttr = (str) => str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').
 
 /**
  * Export Document editor content → .docx file
+ * Supports full formatting: bold, italic, underline, strike, font color/size,
+ * highlight/background, nested formatting, images (base64), A4 page margins.
  */
 export async function exportDocx(fileName) {
-  const { Document, Packer, Paragraph, TextRun } = await getDocxLib();
+  const { Document, Packer, Paragraph, TextRun, convertInchesToTwip } = await getDocxLib();
   const content = getDocContent();
   const parser = new DOMParser();
   const doc = parser.parseFromString(`<body>${content}</body>`, 'text/html');
@@ -559,7 +561,25 @@ export async function exportDocx(fileName) {
   }
 
   const docx = new Document({
-    sections: [{ children }],
+    sections: [{
+      properties: {
+        page: {
+          size: {
+            width: 11906,   // A4 width in twips (210mm)
+            height: 16838,  // A4 height in twips (297mm)
+          },
+          margin: {
+            top: convertInchesToTwip(1),
+            right: convertInchesToTwip(1),
+            bottom: convertInchesToTwip(1),
+            left: convertInchesToTwip(1),
+            header: convertInchesToTwip(0.5),
+            footer: convertInchesToTwip(0.5),
+          },
+        },
+      },
+      children,
+    }],
   });
 
   const blob = await Packer.toBlob(docx);
@@ -593,9 +613,10 @@ export async function exportDocx(fileName) {
 
 /**
  * Convert HTML DOM node → docx elements
+ * Handles headings, paragraphs, lists, tables, images, blockquotes, hrs
  */
 async function convertNode(node) {
-  const { Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle,
+  const { Paragraph, TextRun, ImageRun, HeadingLevel, AlignmentType, BorderStyle,
           Table, TableRow, TableCell, WidthType } = await getDocxLib();
 
   if (node.nodeType === Node.TEXT_NODE) {
@@ -607,6 +628,13 @@ async function convertNode(node) {
 
   const tag = node.tagName.toLowerCase();
 
+  // Standalone image element
+  if (tag === 'img') {
+    const imgRun = _createImageRun(node, ImageRun);
+    if (imgRun) return [new Paragraph({ children: [imgRun] })];
+    return [new Paragraph({ children: [new TextRun('[Image]')] })];
+  }
+
   const headingMap = {
     h1: HeadingLevel.HEADING_1, h2: HeadingLevel.HEADING_2,
     h3: HeadingLevel.HEADING_3, h4: HeadingLevel.HEADING_4,
@@ -615,7 +643,7 @@ async function convertNode(node) {
   if (headingMap[tag]) {
     return [new Paragraph({
       heading: headingMap[tag],
-      children: _extractTextRuns(node, TextRun),
+      children: _extractTextRuns(node, TextRun, ImageRun),
     })];
   }
 
@@ -625,7 +653,7 @@ async function convertNode(node) {
       : style === 'right' ? AlignmentType.RIGHT
       : style === 'justify' ? AlignmentType.JUSTIFIED
       : AlignmentType.LEFT;
-    return [new Paragraph({ alignment: align, children: _extractTextRuns(node, TextRun) })];
+    return [new Paragraph({ alignment: align, children: _extractTextRuns(node, TextRun, ImageRun) })];
   }
 
   if (tag === 'ul' || tag === 'ol') {
@@ -634,7 +662,7 @@ async function convertNode(node) {
       items.push(new Paragraph({
         bullet: tag === 'ul' ? { level: 0 } : undefined,
         numbering: tag === 'ol' ? { reference: 'default-numbering', level: 0 } : undefined,
-        children: _extractTextRuns(li, TextRun),
+        children: _extractTextRuns(li, TextRun, ImageRun),
       }));
     }
     return items;
@@ -646,7 +674,7 @@ async function convertNode(node) {
       const cells = [];
       for (const td of tr.querySelectorAll('td, th')) {
         cells.push(new TableCell({
-          children: [new Paragraph({ children: _extractTextRuns(td, TextRun) })],
+          children: [new Paragraph({ children: _extractTextRuns(td, TextRun, ImageRun) })],
           width: { size: 100 / tr.children.length, type: WidthType.PERCENTAGE },
         }));
       }
@@ -659,7 +687,7 @@ async function convertNode(node) {
   }
 
   if (tag === 'blockquote') {
-    return [new Paragraph({ indent: { left: 720 }, children: _extractTextRuns(node, TextRun) })];
+    return [new Paragraph({ indent: { left: 720 }, children: _extractTextRuns(node, TextRun, ImageRun) })];
   }
 
   if (tag === 'hr') {
@@ -669,31 +697,234 @@ async function convertNode(node) {
     })];
   }
 
-  if (node.textContent.trim()) {
-    return [new Paragraph({ children: _extractTextRuns(node, TextRun) })];
+  if (node.textContent.trim() || node.querySelector('img')) {
+    return [new Paragraph({ children: _extractTextRuns(node, TextRun, ImageRun) })];
   }
   return [];
 }
 
-function _extractTextRuns(el, TextRun) {
+/**
+ * Recursively extract TextRuns from an HTML element, accumulating formatting
+ * from nested tags (bold, italic, underline, strike, color, size, highlight, font).
+ *
+ * Handles: <strong>/<b>, <em>/<i>, <u>, <s>/<del>/<strike>,
+ *          <span style="color:...; font-size:...; background-color:...; font-family:...">,
+ *          <img src="data:..."> → ImageRun,
+ *          <br> → break
+ *
+ * @param {Element} el - DOM element to extract from
+ * @param {Function} TextRun - docx TextRun constructor
+ * @param {Function} ImageRun - docx ImageRun constructor
+ * @param {Object} inherited - accumulated formatting from parent elements
+ */
+function _extractTextRuns(el, TextRun, ImageRun, inherited = {}) {
   const runs = [];
+
   for (const child of el.childNodes) {
     if (child.nodeType === Node.TEXT_NODE) {
-      if (child.textContent) runs.push(new TextRun({ text: child.textContent }));
-    } else if (child.nodeType === Node.ELEMENT_NODE) {
-      const ctag = child.tagName.toLowerCase();
-      if (ctag === 'br') { runs.push(new TextRun({ break: 1 })); continue; }
       const text = child.textContent;
       if (text) {
-        runs.push(new TextRun({
-          text,
-          bold: (ctag === 'strong' || ctag === 'b') || undefined,
-          italics: (ctag === 'em' || ctag === 'i') || undefined,
-          underline: ctag === 'u' ? {} : undefined,
-          strike: (ctag === 's' || ctag === 'del' || ctag === 'strike') || undefined,
-        }));
+        const opts = { text, ...inherited };
+        // Clean up falsy values
+        if (!opts.bold) delete opts.bold;
+        if (!opts.italics) delete opts.italics;
+        if (!opts.underline) delete opts.underline;
+        if (!opts.strike) delete opts.strike;
+        runs.push(new TextRun(opts));
       }
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      const ctag = child.tagName.toLowerCase();
+
+      // Line break
+      if (ctag === 'br') {
+        runs.push(new TextRun({ break: 1 }));
+        continue;
+      }
+
+      // Image element → ImageRun
+      if (ctag === 'img') {
+        const imgRun = _createImageRun(child, ImageRun);
+        if (imgRun) {
+          runs.push(imgRun);
+        } else {
+          runs.push(new TextRun({ text: '[Image]', ...inherited }));
+        }
+        continue;
+      }
+
+      // Build accumulated formatting for this element
+      const fmt = { ...inherited };
+
+      // Semantic formatting tags
+      if (ctag === 'strong' || ctag === 'b') fmt.bold = true;
+      if (ctag === 'em' || ctag === 'i') fmt.italics = true;
+      if (ctag === 'u') fmt.underline = {};
+      if (ctag === 's' || ctag === 'del' || ctag === 'strike') fmt.strike = true;
+
+      // Parse inline styles from any element (span, strong, em, etc.)
+      if (child.style) {
+        // Font color: style="color:#ff0000" or style="color:red"
+        const color = child.style.color;
+        if (color) {
+          const hex = _cssColorToHex(color);
+          if (hex) fmt.color = hex;
+        }
+
+        // Font size: style="font-size:14pt" or "font-size:18px"
+        const fontSize = child.style.fontSize;
+        if (fontSize) {
+          const halfPts = _cssFontSizeToHalfPoints(fontSize);
+          if (halfPts > 0) fmt.size = halfPts;
+        }
+
+        // Background/highlight: style="background-color:#ffff00"
+        const bgColor = child.style.backgroundColor;
+        if (bgColor) {
+          const hlName = _cssColorToHighlight(bgColor);
+          if (hlName) fmt.highlight = hlName;
+        }
+
+        // Font family: style="font-family:Arial"
+        const fontFamily = child.style.fontFamily;
+        if (fontFamily) {
+          // Remove quotes around font name
+          fmt.font = fontFamily.replace(/['"]/g, '').split(',')[0].trim();
+        }
+      }
+
+      // Recurse into children to handle nested formatting
+      const childRuns = _extractTextRuns(child, TextRun, ImageRun, fmt);
+      runs.push(...childRuns);
     }
   }
+
   return runs.length ? runs : [new TextRun('')];
+}
+
+/**
+ * Create an ImageRun from an <img> element with a data: URI src
+ * @returns {ImageRun|null}
+ */
+function _createImageRun(imgEl, ImageRun) {
+  const src = imgEl.getAttribute('src') || '';
+  if (!src.startsWith('data:')) return null;
+
+  try {
+    // Parse data URI: data:image/png;base64,iVBOR...
+    const match = src.match(/^data:image\/([\w+.-]+);base64,(.+)$/);
+    if (!match) return null;
+
+    const base64Data = match[2];
+    // Convert base64 to Uint8Array
+    const binaryStr = atob(base64Data);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    // Determine dimensions — use explicit width/height or defaults
+    const width = parseInt(imgEl.getAttribute('width') || imgEl.style?.width, 10) || 400;
+    const height = parseInt(imgEl.getAttribute('height') || imgEl.style?.height, 10) || 300;
+
+    // Cap to reasonable max (6 inches = 576pt at 96dpi)
+    const maxW = 576;
+    const maxH = 756;
+    let w = width, h = height;
+    if (w > maxW) { h = Math.round(h * (maxW / w)); w = maxW; }
+    if (h > maxH) { w = Math.round(w * (maxH / h)); h = maxH; }
+
+    return new ImageRun({
+      data: bytes,
+      transformation: { width: w, height: h },
+      type: match[1] === 'jpeg' || match[1] === 'jpg' ? 'jpg' : 'png',
+    });
+  } catch (e) {
+    console.warn('Failed to create ImageRun:', e);
+    return null;
+  }
+}
+
+/**
+ * Convert a CSS color value to a hex string without '#' (e.g. 'FF0000')
+ * Handles: #rgb, #rrggbb, rgb(r,g,b), named colors
+ */
+function _cssColorToHex(cssColor) {
+  if (!cssColor) return null;
+
+  // Already hex: #fff or #ffffff
+  const hexMatch = cssColor.match(/^#([0-9a-fA-F]{3,8})$/);
+  if (hexMatch) {
+    let hex = hexMatch[1];
+    if (hex.length === 3) {
+      hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+    }
+    return hex.substring(0, 6).toUpperCase();
+  }
+
+  // rgb(r, g, b) or rgba(r, g, b, a)
+  const rgbMatch = cssColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (rgbMatch) {
+    const r = parseInt(rgbMatch[1]).toString(16).padStart(2, '0');
+    const g = parseInt(rgbMatch[2]).toString(16).padStart(2, '0');
+    const b = parseInt(rgbMatch[3]).toString(16).padStart(2, '0');
+    return (r + g + b).toUpperCase();
+  }
+
+  // Named color fallback — use a temp element to resolve
+  try {
+    const temp = document.createElement('span');
+    temp.style.color = cssColor;
+    document.body.appendChild(temp);
+    const computed = getComputedStyle(temp).color;
+    document.body.removeChild(temp);
+    if (computed) return _cssColorToHex(computed);
+  } catch { /* ignore */ }
+
+  return null;
+}
+
+/**
+ * Convert CSS font-size to docx half-points
+ * "14pt" → 28, "18px" → ~27 (18px ≈ 13.5pt → 27 half-points)
+ */
+function _cssFontSizeToHalfPoints(fontSize) {
+  if (!fontSize) return 0;
+  const ptMatch = fontSize.match(/([\d.]+)\s*pt/i);
+  if (ptMatch) return Math.round(parseFloat(ptMatch[1]) * 2);
+
+  const pxMatch = fontSize.match(/([\d.]+)\s*px/i);
+  if (pxMatch) return Math.round(parseFloat(pxMatch[1]) * 0.75 * 2); // px → pt → half-pt
+
+  const emMatch = fontSize.match(/([\d.]+)\s*em/i);
+  if (emMatch) return Math.round(parseFloat(emMatch[1]) * 12 * 2); // assume 12pt base
+
+  return 0;
+}
+
+/**
+ * Map CSS background-color to a docx HighlightColor name.
+ * Returns the string expected by docx TextRun's `highlight` property.
+ */
+function _cssColorToHighlight(cssColor) {
+  const hex = _cssColorToHex(cssColor);
+  if (!hex) return null;
+
+  // Map common highlight hex values to docx highlight names
+  const map = {
+    'FFFF00': 'yellow', '00FF00': 'green', '00FFFF': 'cyan',
+    'FF00FF': 'magenta', '0000FF': 'blue', 'FF0000': 'red',
+    '00008B': 'darkBlue', '008B8B': 'darkCyan', '006400': 'darkGreen',
+    '8B008B': 'darkMagenta', '8B0000': 'darkRed', '808000': 'darkYellow',
+    'A9A9A9': 'darkGray', 'D3D3D3': 'lightGray', '000000': 'black',
+    'FFFFFF': 'white',
+  };
+
+  if (map[hex]) return map[hex];
+
+  // Try to find nearest match — for common variations
+  const upper = hex.toUpperCase();
+  // Yellow-ish
+  if (upper.startsWith('FF') && upper[2] >= 'C') return 'yellow';
+  // Generic fallback: if it's a bright color, use yellow highlight
+  return 'yellow';
 }

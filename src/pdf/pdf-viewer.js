@@ -71,6 +71,10 @@ let _boundDocMousemove = null;
 let _boundDocMouseup = null;
 let _initTimeout = null;
 
+// Virtual rendering: track which pages have been rendered
+let renderedPages = new Set(); // set of pageOrder indices that are fully rendered
+let pageObserver = null; // IntersectionObserver for lazy rendering
+
 export function initPdfViewer() {
   // Reset all state when (re-)initialising
   resetPdfState();
@@ -105,6 +109,30 @@ function bindEvents() {
   document.getElementById('pdf-fit')?.addEventListener('click', () => fitWidth());
   document.getElementById('pdf-fit-page')?.addEventListener('click', () => fitPage());
   document.getElementById('pdf-actual-size')?.addEventListener('click', () => setZoom(1.0));
+
+  // Scroll-based current page tracking
+  containerEl?.addEventListener('scroll', debounce(() => {
+    if (!pdfDoc || !pagesEl) return;
+    const wrappers = pagesEl.querySelectorAll('.pdf-page-wrapper');
+    if (!wrappers.length) return;
+    const containerRect = containerEl.getBoundingClientRect();
+    const containerMid = containerRect.top + containerRect.height / 3;
+    let closestIdx = 0;
+    let closestDist = Infinity;
+    wrappers.forEach((w, i) => {
+      const r = w.getBoundingClientRect();
+      const dist = Math.abs(r.top - containerMid);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestIdx = i;
+      }
+    });
+    const newPage = closestIdx + 1;
+    if (newPage !== currentPage) {
+      currentPage = newPage;
+      updatePageInfo();
+    }
+  }, 100));
 
   // Go-to-page input
   const gotoInput = document.getElementById('pdf-goto-page');
@@ -281,6 +309,13 @@ function resetPdfState() {
   // Blank page counter
   blankCounter = 0;
 
+  // Virtual rendering state
+  renderedPages = new Set();
+  if (pageObserver) {
+    pageObserver.disconnect();
+    pageObserver = null;
+  }
+
   document.querySelectorAll('.pdf-annot-btn').forEach(b => b.classList.remove('active'));
 }
 
@@ -354,94 +389,204 @@ async function loadPdfData(data) {
 }
 
 // ─── Render ─────────────────────────────────────────────────
+
+/**
+ * Get the device pixel ratio, clamped to a reasonable max for performance.
+ */
+function getDpr() {
+  return Math.min(window.devicePixelRatio || 1, 3);
+}
+
+/**
+ * Create placeholder wrappers for all pages, then use IntersectionObserver
+ * to lazily render only visible (and near-visible) pages.
+ * This ensures large PDFs (100+ pages) don't render everything upfront.
+ */
 async function renderAllPages() {
   pagesEl.innerHTML = '';
+  renderedPages = new Set();
+
+  // Disconnect previous observer
+  if (pageObserver) {
+    pageObserver.disconnect();
+    pageObserver = null;
+  }
+
+  // Phase 1: create lightweight placeholders for every page
+  // Use first page dimensions as default for fast placeholder creation
+  let defaultCssW = Math.floor(595 * scale);
+  let defaultCssH = Math.floor(842 * scale);
+  if (pdfDoc && pdfDoc.numPages > 0) {
+    const firstPage = await pdfDoc.getPage(1);
+    const firstVp = firstPage.getViewport({ scale, rotation: pageRotations[1] || 0 });
+    defaultCssW = Math.floor(firstVp.width);
+    defaultCssH = Math.floor(firstVp.height);
+  }
+
   for (let idx = 0; idx < pageOrder.length; idx++) {
     const id = pageOrder[idx];
-    const pageNum = pageIdToNum(id);
     const wrapper = document.createElement('div');
     wrapper.className = 'pdf-page-wrapper';
     wrapper.dataset.pageId = id;
     wrapper.dataset.idx = idx + 1;
 
-    if (pageNum) {
-      const page = await pdfDoc.getPage(pageNum);
-      const rotation = pageRotations[pageNum] || 0;
-      const viewport = page.getViewport({ scale, rotation });
-      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      canvas.dataset.page = pageNum;
-
-      const ctx = canvas.getContext('2d');
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      wrapper.appendChild(canvas);
-
-      // Text layer for selection & search
-      await buildTextLayer(wrapper, page, viewport, pageNum);
-
-      // Annotation overlay
-      const annotCanvas = document.createElement('canvas');
-      annotCanvas.className = 'pdf-annot-layer';
-      annotCanvas.width = viewport.width;
-      annotCanvas.height = viewport.height;
-      annotCanvas.dataset.page = pageNum;
-      wrapper.appendChild(annotCanvas);
-      bindAnnotEvents(annotCanvas, pageNum, viewport);
-
-      // Redraw saved annotations
-      redrawAnnotations(annotCanvas, pageNum, viewport);
-
-      // Form filling: detect and render form fields when form tool active
-      if (activeAnnotTool === 'formfill') {
-        await detectAndRenderFormFields(wrapper, page, viewport, pageNum);
-      }
-
-      // Bind page wrapper events for signature/stamp placement
-      bindPageWrapperEvents(wrapper, pageNum);
-
-      // Re-place saved signatures
-      if (signaturePlacements[pageNum]) {
-        for (const sig of signaturePlacements[pageNum]) {
-          placeSignatureOnPage(wrapper, pageNum, sig.dataUrl, sig.x, sig.y);
-        }
-      }
-
-      // Re-place saved stamps
-      if (stampPlacements[pageNum]) {
-        for (const st of stampPlacements[pageNum]) {
-          placeStampOnPage(wrapper, st.text, st.color, st.x, st.y);
-        }
-      }
-
-      // Re-draw redaction preview rects
-      if (redactionRects[pageNum]) {
-        for (const r of redactionRects[pageNum]) {
-          const rectEl = document.createElement('div');
-          rectEl.className = 'pdf-redact-rect preview';
-          rectEl.style.cssText = `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px`;
-          wrapper.appendChild(rectEl);
-        }
-      }
-    } else {
-      // Blank page
-      const canvas = document.createElement('canvas');
-      canvas.width = 595 * scale; // A4
-      canvas.height = 842 * scale;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = '#ddd';
-      ctx.setLineDash([5, 5]);
-      ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
-      ctx.fillStyle = '#ccc';
-      ctx.font = `${14 * scale}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.fillText('Blank Page', canvas.width / 2, canvas.height / 2);
-      wrapper.appendChild(canvas);
-    }
+    // Use default page size for placeholders (corrected when actually rendered)
+    wrapper.style.width = defaultCssW + 'px';
+    wrapper.style.height = defaultCssH + 'px';
+    wrapper.style.background = '#fff';
+    wrapper.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
 
     pagesEl.appendChild(wrapper);
+  }
+
+  // Phase 2: set up IntersectionObserver to render pages as they enter view
+  const rootEl = containerEl || pagesEl.parentElement;
+  pageObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.isIntersecting) {
+        const wrapper = entry.target;
+        const idx = parseInt(wrapper.dataset.idx, 10) - 1;
+        if (!renderedPages.has(idx)) {
+          renderedPages.add(idx);
+          renderSinglePage(wrapper, idx);
+        }
+      }
+    }
+  }, {
+    root: rootEl,
+    rootMargin: '200% 0px', // pre-render pages 2 viewports ahead/behind
+    threshold: 0,
+  });
+
+  const wrappers = pagesEl.querySelectorAll('.pdf-page-wrapper');
+  wrappers.forEach(w => pageObserver.observe(w));
+
+  // Phase 3: immediately render the current page (don't wait for observer)
+  const currentIdx = currentPage - 1;
+  if (currentIdx >= 0 && currentIdx < wrappers.length && !renderedPages.has(currentIdx)) {
+    renderedPages.add(currentIdx);
+    await renderSinglePage(wrappers[currentIdx], currentIdx);
+  }
+}
+
+/**
+ * Render a single page into its wrapper. Called lazily by IntersectionObserver.
+ * Supports HiDPI/Retina by rendering at devicePixelRatio resolution.
+ */
+async function renderSinglePage(wrapper, idx) {
+  const id = pageOrder[idx];
+  if (!id) return;
+  const pageNum = pageIdToNum(id);
+  const dpr = getDpr();
+
+  // Clear any previous content (e.g. on re-render after zoom)
+  wrapper.innerHTML = '';
+
+  if (pageNum) {
+    const page = await pdfDoc.getPage(pageNum);
+    const rotation = pageRotations[pageNum] || 0;
+    const viewport = page.getViewport({ scale, rotation });
+    const cssW = Math.floor(viewport.width);
+    const cssH = Math.floor(viewport.height);
+
+    // Main canvas — render at dpr × resolution for crisp HiDPI output
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(viewport.width * dpr);
+    canvas.height = Math.floor(viewport.height * dpr);
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    canvas.dataset.page = pageNum;
+
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    wrapper.appendChild(canvas);
+
+    // Apply sub-degree deskew CSS transform if present
+    if (pageRotations._deskew && pageRotations._deskew[pageNum]) {
+      canvas.style.transform = `rotate(${pageRotations._deskew[pageNum]}deg)`;
+    }
+
+    // Update wrapper sizing (remove placeholder styles)
+    wrapper.style.width = cssW + 'px';
+    wrapper.style.height = cssH + 'px';
+    wrapper.style.background = '';
+    wrapper.style.boxShadow = '';
+
+    // Text layer for selection & search
+    await buildTextLayer(wrapper, page, viewport, pageNum);
+
+    // Annotation overlay — also HiDPI-aware
+    const annotCanvas = document.createElement('canvas');
+    annotCanvas.className = 'pdf-annot-layer';
+    annotCanvas.width = Math.floor(viewport.width * dpr);
+    annotCanvas.height = Math.floor(viewport.height * dpr);
+    annotCanvas.style.width = cssW + 'px';
+    annotCanvas.style.height = cssH + 'px';
+    annotCanvas.dataset.page = pageNum;
+    const annotCtx = annotCanvas.getContext('2d');
+    annotCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    wrapper.appendChild(annotCanvas);
+    bindAnnotEvents(annotCanvas, pageNum, viewport);
+
+    // Redraw saved annotations
+    redrawAnnotations(annotCanvas, pageNum, viewport);
+
+    // Form filling: always detect and render form fields for interactive PDFs
+    await detectAndRenderFormFields(wrapper, page, viewport, pageNum);
+
+    // Bind page wrapper events for signature/stamp placement
+    bindPageWrapperEvents(wrapper, pageNum);
+
+    // Re-place saved signatures
+    if (signaturePlacements[pageNum]) {
+      for (const sig of signaturePlacements[pageNum]) {
+        placeSignatureOnPage(wrapper, pageNum, sig.dataUrl, sig.x, sig.y);
+      }
+    }
+
+    // Re-place saved stamps
+    if (stampPlacements[pageNum]) {
+      for (const st of stampPlacements[pageNum]) {
+        placeStampOnPage(wrapper, st.text, st.color, st.x, st.y);
+      }
+    }
+
+    // Re-draw redaction preview rects
+    if (redactionRects[pageNum]) {
+      for (const r of redactionRects[pageNum]) {
+        const rectEl = document.createElement('div');
+        rectEl.className = 'pdf-redact-rect preview';
+        rectEl.style.cssText = `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px`;
+        wrapper.appendChild(rectEl);
+      }
+    }
+  } else {
+    // Blank page — also HiDPI-aware
+    const cssW = Math.floor(595 * scale);
+    const cssH = Math.floor(842 * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(cssW * dpr);
+    canvas.height = Math.floor(cssH * dpr);
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, cssW, cssH);
+    ctx.strokeStyle = '#ddd';
+    ctx.setLineDash([5, 5]);
+    ctx.strokeRect(10, 10, cssW - 20, cssH - 20);
+    ctx.fillStyle = '#ccc';
+    ctx.font = `${14 * scale}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('Blank Page', cssW / 2, cssH / 2);
+    wrapper.appendChild(canvas);
+
+    wrapper.style.width = cssW + 'px';
+    wrapper.style.height = cssH + 'px';
+    wrapper.style.background = '';
+    wrapper.style.boxShadow = '';
   }
 }
 
@@ -449,10 +594,13 @@ async function buildTextLayer(wrapper, page, viewport, pageNum) {
   const textContent = await page.getTextContent();
   textContentCache[pageNum] = textContent;
 
+  const cssW = Math.floor(viewport.width);
+  const cssH = Math.floor(viewport.height);
+
   const textLayer = document.createElement('div');
   textLayer.className = 'pdf-text-layer';
-  textLayer.style.width = viewport.width + 'px';
-  textLayer.style.height = viewport.height + 'px';
+  textLayer.style.width = cssW + 'px';
+  textLayer.style.height = cssH + 'px';
   textLayer.dataset.page = pageNum;
 
   textContent.items.forEach((item, i) => {
@@ -463,6 +611,10 @@ async function buildTextLayer(wrapper, page, viewport, pageNum) {
     span.style.top = (tx[5] - fontHeight) + 'px';
     span.style.fontSize = fontHeight + 'px';
     span.style.fontFamily = item.fontName || 'sans-serif';
+    if (item.width) {
+      span.style.width = (item.width * viewport.scale) + 'px';
+      span.style.transformOrigin = 'left top';
+    }
     span.textContent = item.str;
     span.dataset.idx = i;
     textLayer.appendChild(span);
@@ -594,6 +746,8 @@ async function setZoom(newScale) {
   if (!pdfDoc) return;
   scale = Math.max(0.25, Math.min(5, newScale));
   updatePageInfo();
+  // Re-render at new resolution (not just CSS-scaled) for crisp zoom
+  renderedPages = new Set();
   await renderAllPages();
 }
 
@@ -644,10 +798,10 @@ async function deskewPage() {
   const rotation = pageRotations[pageNum] || 0;
   const viewport = page.getViewport({ scale: 1, rotation });
 
-  // Render page to temp canvas for edge detection
+  // Render page to temp canvas for edge detection (1x scale, no DPR needed for analysis)
   const tmpCanvas = document.createElement('canvas');
-  tmpCanvas.width = viewport.width;
-  tmpCanvas.height = viewport.height;
+  tmpCanvas.width = Math.floor(viewport.width);
+  tmpCanvas.height = Math.floor(viewport.height);
   const tmpCtx = tmpCanvas.getContext('2d');
   await page.render({ canvasContext: tmpCtx, viewport }).promise;
 
@@ -769,14 +923,17 @@ async function extractCurrentPage() {
   const pageNum = pageIdToNum(id);
   if (!pageNum) { alert('Cannot extract a blank page.'); return; }
 
-  // Re-render this single page at full scale and download as PDF via canvas → image → PDF
+  // Re-render this single page at high resolution and download as PNG
   const page = await pdfDoc.getPage(pageNum);
   const rotation = pageRotations[pageNum] || 0;
-  const viewport = page.getViewport({ scale: 2, rotation });
+  const exportScale = 2;
+  const viewport = page.getViewport({ scale: exportScale, rotation });
   const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
+  const dpr = getDpr();
+  canvas.width = Math.floor(viewport.width * dpr);
+  canvas.height = Math.floor(viewport.height * dpr);
   const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   await page.render({ canvasContext: ctx, viewport }).promise;
 
   // Download as PNG (simpler than reconstructing PDF)
@@ -1155,26 +1312,7 @@ function highlightActiveMatch() {
   if (infoEl) infoEl.textContent = `${searchIdx + 1}/${searchMatches.length}`;
 }
 
-// ─── Deskew render override ─────────────────────────────────
-// Override renderAllPages to apply sub-degree deskew transforms
-const _origRenderAllPages = renderAllPages;
-
-// We patch the render by applying CSS transform after rendering
-async function renderAllPagesWithDeskew() {
-  await _origRenderAllPages.call(this);
-
-  // Apply deskew CSS transforms
-  if (pageRotations._deskew) {
-    for (const [pageNumStr, angle] of Object.entries(pageRotations._deskew)) {
-      const pageNum = parseInt(pageNumStr, 10);
-      if (!angle) continue;
-      const wrapper = pagesEl.querySelector(`.pdf-page-wrapper canvas[data-page="${pageNum}"]`);
-      if (wrapper) {
-        wrapper.style.transform = `rotate(${angle}deg)`;
-      }
-    }
-  }
-}
+// Deskew is now integrated into renderSinglePage — no separate override needed
 
 // Replace renderAllPages with deskew-aware version
 // (We do this inline rather than changing the function above to keep the diff minimal)
@@ -2544,6 +2682,12 @@ export function destroyPdfViewer() {
   if (_boundDocMouseup) {
     document.removeEventListener('mouseup', _boundDocMouseup);
     _boundDocMouseup = null;
+  }
+
+  // Disconnect page observer
+  if (pageObserver) {
+    pageObserver.disconnect();
+    pageObserver = null;
   }
 
   // Reset all state

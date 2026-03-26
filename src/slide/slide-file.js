@@ -778,6 +778,545 @@ function extractSlideBackground(slideXml, themeColors) {
 
 /* ─── END PPTX Import ────────────────────────────────────────── */
 
+/* ─── PPTX Export (Office Open XML via JSZip) ─────────────────── */
+
+/**
+ * EMU constants: 1 inch = 914400 EMU, slide = 10in x 7.5in (standard 4:3)
+ */
+const SLIDE_W = 9144000;
+const SLIDE_H = 6858000;
+const MARGIN_L = 457200;   // 0.5in
+const MARGIN_T = 274638;
+const BODY_W = 8229600;    // ~9in
+const BODY_H = 5851525;
+
+const ptToEmu = (pt) => Math.round(pt * 12700);
+
+/**
+ * XML-escape a string for OOXML content
+ */
+const escXmlExport = (s) => String(s)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&apos;');
+
+/**
+ * Parse CSS color (#rgb, #rrggbb, rgb(...), named) → 6-char hex (no #)
+ */
+function cssColorToHex(colorStr) {
+  if (!colorStr) return null;
+  colorStr = colorStr.trim();
+  // #rrggbb
+  if (/^#[0-9A-Fa-f]{6}$/.test(colorStr)) return colorStr.slice(1).toUpperCase();
+  // #rgb
+  if (/^#[0-9A-Fa-f]{3}$/.test(colorStr)) {
+    const r = colorStr[1], g = colorStr[2], b = colorStr[3];
+    return (r + r + g + g + b + b).toUpperCase();
+  }
+  // rgb(r, g, b)
+  const m = colorStr.match(/^rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (m) {
+    const hex = (n) => parseInt(n, 10).toString(16).padStart(2, '0');
+    return (hex(m[1]) + hex(m[2]) + hex(m[3])).toUpperCase();
+  }
+  return null;
+}
+
+/**
+ * Parse inline style string to key-value map
+ */
+function parseInlineStyle(styleStr) {
+  const map = {};
+  if (!styleStr) return map;
+  styleStr.split(';').forEach((pair) => {
+    const idx = pair.indexOf(':');
+    if (idx > 0) {
+      map[pair.slice(0, idx).trim().toLowerCase()] = pair.slice(idx + 1).trim();
+    }
+  });
+  return map;
+}
+
+/**
+ * Convert slide HTML content into OOXML shapes.
+ * Returns { shapesXml, images: [{ rId, ext, mime, base64 }] }
+ */
+function htmlToOoxmlShapes(htmlStr, slideIndex) {
+  const div = document.createElement('div');
+  div.innerHTML = htmlStr || '';
+
+  const shapes = [];
+  const images = [];
+  let shapeId = 2;  // id=1 is reserved for grpSpPr
+  let rIdCounter = 2; // rId1 = slideLayout
+
+  /**
+   * Build <a:r> run XML from text + format options
+   */
+  function makeRun(text, opts = {}) {
+    const sz = opts.fontSize || 1800;
+    let rPrAttrs = ` lang="ko-KR" sz="${sz}" dirty="0"`;
+    if (opts.bold) rPrAttrs += ' b="1"';
+    if (opts.italic) rPrAttrs += ' i="1"';
+    if (opts.underline) rPrAttrs += ' u="sng"';
+
+    let rPrChildren = '';
+    if (opts.color) {
+      const hex = cssColorToHex(opts.color);
+      if (hex) rPrChildren += `<a:solidFill><a:srgbClr val="${hex}"/></a:solidFill>`;
+    }
+
+    return `<a:r><a:rPr${rPrAttrs}>${rPrChildren}</a:rPr><a:t>${escXmlExport(text)}</a:t></a:r>`;
+  }
+
+  /**
+   * Recursively walk a DOM node and collect text runs
+   */
+  function collectRuns(node, inherited = {}) {
+    const runs = [];
+    if (node.nodeType === 3) {
+      const text = node.textContent;
+      if (text) {
+        runs.push({ text, ...inherited });
+      }
+      return runs;
+    }
+    if (node.nodeType !== 1) return runs;
+
+    const tag = node.tagName.toLowerCase();
+    const style = parseInlineStyle(node.getAttribute('style') || '');
+    const fmt = { ...inherited };
+
+    if (tag === 'strong' || tag === 'b' || style['font-weight'] === 'bold' || style['font-weight'] === '700') fmt.bold = true;
+    if (tag === 'em' || tag === 'i') fmt.italic = true;
+    if (tag === 'u') fmt.underline = true;
+    if (style.color) fmt.color = style.color;
+    if (tag === 'h1') fmt.fontSize = 4400;
+    else if (tag === 'h2') fmt.fontSize = 3200;
+    else if (tag === 'h3') fmt.fontSize = 2800;
+    else if (style['font-size']) {
+      const ptMatch = style['font-size'].match(/^(\d+)pt$/);
+      if (ptMatch) fmt.fontSize = parseInt(ptMatch[1], 10) * 100;
+    }
+
+    for (const child of node.childNodes) {
+      runs.push(...collectRuns(child, fmt));
+    }
+    return runs;
+  }
+
+  /**
+   * Build a text body XML from an array of paragraphs,
+   * each paragraph being an array of run objects
+   */
+  function buildTextBody(paragraphs, defaultFontSize) {
+    let xml = '<a:bodyPr wrap="square" rtlCol="0"/><a:lstStyle/>';
+    for (const para of paragraphs) {
+      xml += '<a:p>';
+      if (para.bullet) {
+        xml += '<a:pPr><a:buChar char="\u2022"/></a:pPr>';
+      } else if (para.numbered) {
+        xml += '<a:pPr><a:buAutoNum type="arabicPeriod"/></a:pPr>';
+      }
+      if (para.align) {
+        const algnMap = { center: 'ctr', right: 'r', left: 'l', justify: 'just' };
+        const algn = algnMap[para.align];
+        if (algn) {
+          const hasParaPr = para.bullet || para.numbered;
+          if (!hasParaPr) xml = xml.slice(0, -4) + `<a:pPr algn="${algn}"/><a:p>`.slice(4); // insert pPr
+          // Actually let's just rebuild — simpler:
+        }
+      }
+      if (para.runs && para.runs.length > 0) {
+        for (const r of para.runs) {
+          xml += makeRun(r.text, { fontSize: r.fontSize || defaultFontSize, bold: r.bold, italic: r.italic, underline: r.underline, color: r.color });
+        }
+      } else {
+        xml += `<a:endParaRPr lang="ko-KR" sz="${defaultFontSize}"/>`;
+      }
+      xml += '</a:p>';
+    }
+    return xml;
+  }
+
+  /**
+   * Create a text shape at given position
+   */
+  function makeTextShape(name, x, y, cx, cy, textBodyXml) {
+    const id = shapeId++;
+    return `<p:sp>
+  <p:nvSpPr><p:cNvPr id="${id}" name="${escXmlExport(name)}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
+  <p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>
+  <p:txBody>${textBodyXml}</p:txBody>
+</p:sp>`;
+  }
+
+  /**
+   * Process a top-level block element
+   */
+  function processBlock(el) {
+    const tag = el.tagName.toLowerCase();
+    const style = parseInlineStyle(el.getAttribute('style') || '');
+
+    // --- Image ---
+    if (tag === 'img') {
+      const src = el.getAttribute('src') || '';
+      if (src.startsWith('data:')) {
+        const dataMatch = src.match(/^data:([^;]+);base64,(.+)$/);
+        if (dataMatch) {
+          const mime = dataMatch[1];
+          const base64 = dataMatch[2];
+          const extMap = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/gif': 'gif', 'image/svg+xml': 'svg', 'image/webp': 'webp' };
+          const ext = extMap[mime] || 'png';
+          const rId = `rId${rIdCounter++}`;
+          const mediaName = `image${slideIndex + 1}_${images.length + 1}.${ext}`;
+          images.push({ rId, ext, mime, base64, mediaName });
+
+          // Default image size: 6in x 4.5in centered
+          const imgW = 5486400;
+          const imgH = 4114800;
+          const imgX = Math.round((SLIDE_W - imgW) / 2);
+          const imgY = Math.round((SLIDE_H - imgH) / 2);
+          const id = shapeId++;
+
+          shapes.push(`<p:pic>
+  <p:nvPicPr><p:cNvPr id="${id}" name="Picture ${id}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>
+  <p:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>
+  <p:spPr><a:xfrm><a:off x="${imgX}" y="${imgY}"/><a:ext cx="${imgW}" cy="${imgH}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>
+</p:pic>`);
+          return;
+        }
+      }
+      // Non-data images: skip or placeholder
+      return;
+    }
+
+    // --- Table ---
+    if (tag === 'table') {
+      const rows = el.querySelectorAll('tr');
+      if (rows.length === 0) return;
+
+      const numCols = Math.max(...Array.from(rows).map((r) => r.querySelectorAll('td,th').length));
+      if (numCols === 0) return;
+
+      const colW = Math.round(BODY_W / numCols);
+      const rowH = 370840; // ~0.4in per row
+      const tableH = rows.length * rowH;
+      const id = shapeId++;
+
+      let tableXml = `<p:graphicFrame>
+  <p:nvGraphicFramePr><p:cNvPr id="${id}" name="Table ${id}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>
+  <p:xfrm><a:off x="${MARGIN_L}" y="${MARGIN_T}"/><a:ext cx="${BODY_W}" cy="${tableH}"/></p:xfrm>
+  <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table">
+    <a:tbl><a:tblPr firstRow="1" bandRow="1"><a:tblStyle val="{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}"/></a:tblPr>
+      <a:tblGrid>${Array(numCols).fill(`<a:gridCol w="${colW}"/>`).join('')}</a:tblGrid>`;
+
+      rows.forEach((row) => {
+        tableXml += '<a:tr h="' + rowH + '">';
+        const cells = row.querySelectorAll('td,th');
+        for (let c = 0; c < numCols; c++) {
+          const cell = cells[c];
+          const cellText = cell ? cell.textContent.trim() : '';
+          tableXml += `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="ko-KR" sz="1400" dirty="0"/><a:t>${escXmlExport(cellText)}</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc>`;
+        }
+        tableXml += '</a:tr>';
+      });
+
+      tableXml += '</a:tbl></a:graphicData></a:graphic></p:graphicFrame>';
+      shapes.push(tableXml);
+      return;
+    }
+
+    // --- Lists (ul, ol) ---
+    if (tag === 'ul' || tag === 'ol') {
+      const isOrdered = tag === 'ol';
+      const paragraphs = [];
+      el.querySelectorAll('li').forEach((li) => {
+        const runs = collectRuns(li, { fontSize: 1800 });
+        paragraphs.push({
+          runs,
+          bullet: !isOrdered,
+          numbered: isOrdered,
+        });
+      });
+      if (paragraphs.length > 0) {
+        const bodyXml = buildTextBody(paragraphs, 1800);
+        shapes.push(makeTextShape('List', MARGIN_L, MARGIN_T, BODY_W, BODY_H, bodyXml));
+      }
+      return;
+    }
+
+    // --- Headings and paragraphs ---
+    if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'blockquote', 'span'].includes(tag)) {
+      let fontSize = 1800;
+      if (tag === 'h1') fontSize = 4400;
+      else if (tag === 'h2') fontSize = 3200;
+      else if (tag === 'h3') fontSize = 2800;
+
+      const runs = collectRuns(el, { fontSize });
+      if (runs.length === 0 || runs.every((r) => !r.text.trim())) return;
+
+      // Check for nested images
+      const nestedImgs = el.querySelectorAll('img');
+      nestedImgs.forEach((img) => processBlock(img));
+
+      // Check for nested tables
+      const nestedTables = el.querySelectorAll('table');
+      nestedTables.forEach((tbl) => processBlock(tbl));
+
+      // Check for nested lists
+      const nestedLists = el.querySelectorAll('ul, ol');
+      nestedLists.forEach((list) => processBlock(list));
+
+      const paragraphs = [{ runs }];
+      const bodyXml = buildTextBody(paragraphs, fontSize);
+      shapes.push(makeTextShape(tag.toUpperCase(), MARGIN_L, MARGIN_T, BODY_W, BODY_H, bodyXml));
+      return;
+    }
+  }
+
+  // Process all top-level children
+  for (const child of div.children) {
+    processBlock(child);
+  }
+
+  // If nothing was extracted, add a blank text box
+  if (shapes.length === 0) {
+    const bodyXml = '<a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ko-KR"/></a:p>';
+    shapes.push(makeTextShape('Content', MARGIN_L, MARGIN_T, BODY_W, BODY_H, bodyXml));
+  }
+
+  const shapesXml = shapes.join('\n      ');
+  return { shapesXml, images };
+}
+
+/**
+ * Build background XML for a slide based on its background/theme data
+ */
+function buildSlideBackground(slide) {
+  const bg = slide.background;
+  if (!bg) {
+    // Use theme-based background
+    const themeStyle = THEMES[slide.theme] || THEMES.default;
+    const styleMap = parseInlineStyle(themeStyle);
+    const bgVal = styleMap.background || '#FFFFFF';
+
+    // Handle linear-gradient
+    const gradMatch = bgVal.match(/linear-gradient\s*\([^,]+,\s*([^,)]+),\s*([^)]+)\)/);
+    if (gradMatch) {
+      const c1 = cssColorToHex(gradMatch[1].trim());
+      const c2 = cssColorToHex(gradMatch[2].trim());
+      if (c1 && c2) {
+        return `<p:bg><p:bgPr><a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="${c1}"/></a:gs><a:gs pos="100000"><a:srgbClr val="${c2}"/></a:gs></a:gsLst><a:lin ang="2700000" scaled="1"/></a:gradFill><a:effectLst/></p:bgPr></p:bg>`;
+      }
+    }
+
+    const hex = cssColorToHex(bgVal);
+    if (hex && hex !== 'FFFFFF') {
+      return `<p:bg><p:bgPr><a:solidFill><a:srgbClr val="${hex}"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>`;
+    }
+    return '';
+  }
+
+  // Explicit background value
+  if (typeof bg === 'string') {
+    // Gradient
+    const gradMatch = bg.match(/linear-gradient\s*\([^,]+,\s*([^,)]+),\s*([^)]+)\)/);
+    if (gradMatch) {
+      const c1 = cssColorToHex(gradMatch[1].trim());
+      const c2 = cssColorToHex(gradMatch[2].trim());
+      if (c1 && c2) {
+        return `<p:bg><p:bgPr><a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="${c1}"/></a:gs><a:gs pos="100000"><a:srgbClr val="${c2}"/></a:gs></a:gsLst><a:lin ang="2700000" scaled="1"/></a:gradFill><a:effectLst/></p:bgPr></p:bg>`;
+      }
+    }
+    const hex = cssColorToHex(bg);
+    if (hex) {
+      return `<p:bg><p:bgPr><a:solidFill><a:srgbClr val="${hex}"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>`;
+    }
+  }
+
+  return '';
+}
+
+/**
+ * Save slides as PPTX using JSZip
+ */
+export async function saveSlideAsPptx() {
+  const JSZip = (await import('jszip')).default;
+  const slides = getSlidesData();
+
+  if (!slides || slides.length === 0) {
+    alert('No slides to export.');
+    return null;
+  }
+
+  const zip = new JSZip();
+
+  // Collect all slide XML and image data
+  const allSlideData = [];
+  const allMediaFiles = []; // { path, base64, mime }
+
+  for (let i = 0; i < slides.length; i++) {
+    const { shapesXml, images } = htmlToOoxmlShapes(slides[i].content, i);
+    allSlideData.push({ shapesXml, images, slide: slides[i] });
+
+    for (const img of images) {
+      allMediaFiles.push({
+        path: `ppt/media/${img.mediaName}`,
+        base64: img.base64,
+        mime: img.mime,
+        slideIdx: i,
+        rId: img.rId,
+      });
+    }
+  }
+
+  // ─── [Content_Types].xml ───
+  let contentTypesOverrides = '';
+  for (let i = 0; i < slides.length; i++) {
+    contentTypesOverrides += `\n  <Override PartName="/ppt/slides/slide${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`;
+  }
+
+  // Media content type defaults
+  const mediaExts = new Set();
+  allMediaFiles.forEach((f) => {
+    const ext = f.path.split('.').pop().toLowerCase();
+    mediaExts.add(ext);
+  });
+  let mediaDefaults = '';
+  const mimeForExt = { png: 'image/png', jpeg: 'image/jpeg', jpg: 'image/jpeg', gif: 'image/gif', svg: 'image/svg+xml', webp: 'image/webp' };
+  mediaExts.forEach((ext) => {
+    if (mimeForExt[ext]) {
+      mediaDefaults += `\n  <Default Extension="${ext}" ContentType="${mimeForExt[ext]}"/>`;
+    }
+  });
+
+  zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>${mediaDefaults}
+  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>${contentTypesOverrides}
+  <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
+  <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
+</Types>`);
+
+  // ─── _rels/.rels ───
+  zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+</Relationships>`);
+
+  // ─── ppt/presentation.xml ───
+  let slideListXml = '';
+  let slideRelListXml = '';
+  for (let i = 0; i < slides.length; i++) {
+    slideListXml += `<p:sldId id="${256 + i}" r:id="rId${i + 2}"/>`;
+    slideRelListXml += `\n  <Relationship Id="rId${i + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${i + 1}.xml"/>`;
+  }
+
+  zip.file('ppt/presentation.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>
+  <p:sldIdLst>${slideListXml}</p:sldIdLst>
+  <p:sldSz cx="${SLIDE_W}" cy="${SLIDE_H}" type="screen4x3"/>
+  <p:notesSz cx="${SLIDE_H}" cy="${SLIDE_W}"/>
+</p:presentation>`);
+
+  // ─── ppt/_rels/presentation.xml.rels ───
+  zip.file('ppt/_rels/presentation.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>${slideRelListXml}
+</Relationships>`);
+
+  // ─── Slide master & layout ───
+  zip.file('ppt/slideMasters/slideMaster1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld><p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>
+  <p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst>
+</p:sldMaster>`);
+
+  zip.file('ppt/slideMasters/_rels/slideMaster1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+</Relationships>`);
+
+  zip.file('ppt/slideLayouts/slideLayout1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank">
+  <p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+</p:sldLayout>`);
+
+  zip.file('ppt/slideLayouts/_rels/slideLayout1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>
+</Relationships>`);
+
+  // ─── Individual slides ───
+  for (let i = 0; i < slides.length; i++) {
+    const { shapesXml, images: slideImages, slide } = allSlideData[i];
+    const bgXml = buildSlideBackground(slide);
+
+    zip.file(`ppt/slides/slide${i + 1}.xml`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>${bgXml}
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
+      ${shapesXml}
+    </p:spTree>
+  </p:cSld>
+</p:sld>`);
+
+    // Slide relationships (layout + images)
+    let slideRelXml = `  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>`;
+    for (const img of slideImages) {
+      slideRelXml += `\n  <Relationship Id="${img.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${img.mediaName}"/>`;
+    }
+
+    zip.file(`ppt/slides/_rels/slide${i + 1}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${slideRelXml}
+</Relationships>`);
+  }
+
+  // ─── Media files ───
+  for (const media of allMediaFiles) {
+    zip.file(media.path, media.base64, { base64: true });
+  }
+
+  // ─── Generate and download ───
+  const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+  const tsName = generateTimestampFilename(currentName.replace(/\.(html?|json|pptx)$/i, ''), 'pptx');
+
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: tsName,
+        types: [{ description: 'PowerPoint Presentation', accept: { 'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return { name: handle.name || tsName };
+    } catch (e) {
+      if (e.name === 'AbortError') return null; // user cancelled
+      // Fallback to download link
+    }
+  }
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = tsName;
+  a.click();
+  URL.revokeObjectURL(url);
+  return { name: tsName };
+}
+
+/* ─── END PPTX Export ────────────────────────────────────────── */
+
 /**
  * Save slides as JSON (preserves all features: transitions, animations, notes, etc.)
  */

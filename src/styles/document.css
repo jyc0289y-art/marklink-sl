@@ -95,21 +95,234 @@
   border-color: var(--brand-color);
 }
 
-.doc-editor h1 { font-size: 2em; margin: 0.67em 0; }
-.doc-editor h2 { font-size: 1.5em; margin: 0.75em 0; }
-.doc-editor h3 { font-size: 1.17em; margin: 0.83em 0; }
+/* ─── Headings (word-processor style) ──────── */
+.doc-editor h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin: 0.8em 0 0.4em;
+  line-height: 1.2;
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--border-color);
+  padding-bottom: 0.2em;
+}
+.doc-editor h2 {
+  font-size: 1.6em;
+  font-weight: 700;
+  margin: 0.75em 0 0.35em;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+.doc-editor h3 {
+  font-size: 1.3em;
+  font-weight: 600;
+  margin: 0.7em 0 0.3em;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+.doc-editor h4 {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 0.6em 0 0.25em;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+.doc-editor h5 {
+  font-size: 0.95em;
+  font-weight: 600;
+  margin: 0.5em 0 0.2em;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+.doc-editor h6 {
+  font-size: 0.85em;
+  font-weight: 600;
+  font-style: italic;
+  margin: 0.5em 0 0.2em;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+/* ─── Paragraph ────────────────────────────── */
 .doc-editor p { margin: 0.5em 0; }
-.doc-editor ul, .doc-editor ol { padding-left: 2em; margin: 0.5em 0; }
+
+/* ─── Lists (proper indentation & bullets) ─── */
+.doc-editor ul, .doc-editor ol {
+  padding-left: 2.4em;
+  margin: 0.6em 0;
+}
+.doc-editor ul { list-style-type: disc; }
+.doc-editor ul ul { list-style-type: circle; }
+.doc-editor ul ul ul { list-style-type: square; }
+.doc-editor ol { list-style-type: decimal; }
+.doc-editor ol ol { list-style-type: lower-alpha; }
+.doc-editor ol ol ol { list-style-type: lower-roman; }
+.doc-editor li {
+  margin: 0.25em 0;
+  line-height: 1.6;
+}
+.doc-editor li > ul,
+.doc-editor li > ol {
+  margin: 0.2em 0;
+}
+
+/* ─── Horizontal Rule ─────────────────────── */
 .doc-editor hr { border: none; border-top: 1px solid var(--border-color); margin: 1em 0; }
+
+/* ─── Page Break (from DOCX import <hr class="page-break">) ─── */
+.doc-editor hr.page-break {
+  border: none;
+  border-top: 2px dashed var(--border-color, #ccc);
+  margin: 28px 0;
+  position: relative;
+  height: 0;
+}
+.doc-editor hr.page-break::after {
+  content: 'Page Break';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--preview-bg, #fff);
+  padding: 0 12px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-tertiary, #999);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ─── Page Break (inserted via toolbar <div>) ─── */
+.doc-editor .doc-page-break {
+  page-break-after: always;
+  border-top: 2px dashed var(--border-color, #ccc);
+  margin: 24px 0;
+  padding: 4px 0;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-tertiary, #999);
+  user-select: none;
+  cursor: default;
+}
+
+/* ─── Links ───────────────────────────────── */
 .doc-editor a { color: var(--brand-color); }
-.doc-editor img { max-width: 100%; height: auto; }
-.doc-editor table { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
+
+/* ─── Images (resizable) ──────────────────── */
+.doc-editor img {
+  max-width: 100%;
+  height: auto;
+  cursor: pointer;
+  transition: outline 0.15s;
+}
+.doc-editor img:hover {
+  outline: 2px solid rgba(59, 130, 246, 0.3);
+  outline-offset: 2px;
+}
+.doc-editor .doc-img-resize-wrap {
+  display: inline-block;
+  position: relative;
+  line-height: 0;
+  border: 2px solid #3b82f6;
+}
+.doc-editor .doc-img-resize-wrap img {
+  outline: none;
+}
+.doc-editor .doc-img-size-label {
+  position: absolute;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ─── Tables (imported DOCX/HWPX) ─────────── */
+.doc-editor table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+  table-layout: auto;
+}
 .doc-editor td, .doc-editor th {
-  border: 1px solid var(--border-color);
-  padding: 6px 10px;
+  border: 1px solid #ccc;
+  padding: 8px;
+  min-width: 40px;
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.5;
+}
+.doc-editor th {
+  background: #f5f5f5;
+  font-weight: 600;
+}
+/* Dark mode table overrides */
+[data-theme="dark"] .doc-editor td,
+[data-theme="dark"] .doc-editor th {
+  border-color: var(--border-color, #444);
+}
+[data-theme="dark"] .doc-editor th {
+  background: var(--pane-header-bg, #2a2a2a);
+}
+.doc-editor caption {
+  caption-side: top;
+  font-size: 0.9em;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
   text-align: left;
 }
-.doc-editor th { background: var(--pane-header-bg); font-weight: 600; }
+
+/* ─── Blockquote ──────────────────────────── */
+.doc-editor blockquote {
+  border-left: 4px solid var(--brand-color, #0071e3);
+  margin: 1em 0;
+  padding: 12px 20px;
+  background: rgba(0, 113, 227, 0.04);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.7;
+}
+.doc-editor blockquote blockquote {
+  margin: 0.5em 0;
+  border-left-color: var(--text-tertiary, #999);
+  background: rgba(0, 0, 0, 0.02);
+}
+.doc-editor blockquote p {
+  margin: 0.3em 0;
+}
+
+/* ─── Code / Preformatted ─────────────────── */
+.doc-editor pre {
+  background: var(--sidebar-bg, #f5f5f5);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.9em;
+  line-height: 1.5;
+  overflow-x: auto;
+  margin: 0.8em 0;
+}
+.doc-editor code {
+  background: var(--sidebar-bg, #f0f0f0);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.9em;
+}
+.doc-editor pre code {
+  background: none;
+  padding: 0;
+}
 
 /* Document view layout */
 #view-document {
@@ -241,10 +454,7 @@ mark.doc-find-highlight.doc-find-current {
   border-top: 1px solid var(--border-color);
 }
 
-/* Headings H4-H6 */
-.doc-editor h4 { font-size: 1em; font-weight: 700; margin: 0.83em 0; }
-.doc-editor h5 { font-size: 0.83em; font-weight: 700; margin: 0.83em 0; }
-.doc-editor h6 { font-size: 0.75em; font-weight: 700; margin: 0.83em 0; color: var(--text-secondary); }
+/* Headings H4-H6: see main heading block above */
 
 /* Footnotes */
 .doc-footnotes {

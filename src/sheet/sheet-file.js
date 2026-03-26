@@ -242,9 +242,15 @@ async function importFile(file) {
               // Boolean
               setCell(sheetData, r, c, cell.v ? 'TRUE' : 'FALSE');
             } else if (cellType === 'd') {
-              // Date: format as ISO date string
+              // Date: store as Excel serial number so roundtrip preserves it
               if (cell.v instanceof Date) {
-                setCell(sheetData, r, c, cell.v.toISOString().split('T')[0]);
+                const epoch = new Date(1899, 11, 30);
+                const serial = (cell.v.getTime() - epoch.getTime()) / 86400000;
+                setCell(sheetData, r, c, String(serial));
+                // Apply date numFormat so it displays as a date
+                if (!cell.z && !cell.s?.numFmt) {
+                  setCellFormat(sheetData, r, c, 'numFormat', 'yyyy-mm-dd');
+                }
               } else {
                 setCell(sheetData, r, c, cell.v != null ? String(cell.v) : '');
               }
@@ -332,6 +338,60 @@ async function importFile(file) {
             sheetData.rowHeights[idx] = Math.round(row.hpt * 1.333);
           }
         });
+      }
+
+      // 8. Freeze panes — SheetJS stores as ws['!freeze'] or ws['!views']
+      if (ws['!freeze']) {
+        // { xSplit: cols, ySplit: rows }
+        sheetData.freezeRows = ws['!freeze'].ySplit || 0;
+        sheetData.freezeCols = ws['!freeze'].xSplit || 0;
+      } else if (ws['!views'] && ws['!views'].length > 0) {
+        const view = ws['!views'][0];
+        if (view.state === 'frozen') {
+          sheetData.freezeRows = view.ySplit || 0;
+          sheetData.freezeCols = view.xSplit || 0;
+        }
+      }
+
+      // 9. Data validation — SheetJS stores as ws['!dataValidation']
+      if (ws['!dataValidation'] && ws['!dataValidation'].length) {
+        for (const dv of ws['!dataValidation']) {
+          // dv.sqref is a space-separated list of cell ranges like "A1:C5"
+          if (!dv.sqref) continue;
+          const refs = dv.sqref.split(/\s+/);
+          for (const ref of refs) {
+            const dvRange = XLSX.utils.decode_range(ref);
+            for (let dr = dvRange.s.r; dr <= dvRange.e.r; dr++) {
+              for (let dc = dvRange.s.c; dc <= dvRange.e.c; dc++) {
+                const rule = {};
+                if (dv.type === 'list') {
+                  rule.type = 'list';
+                  // formula1 contains the list values (comma-separated or range)
+                  rule.values = dv.formula1 ? dv.formula1.split(',').map(s => s.trim().replace(/^"|"$/g, '')) : [];
+                } else if (dv.type === 'whole' || dv.type === 'decimal') {
+                  rule.type = dv.type === 'whole' ? 'number' : 'decimal';
+                  rule.operator = dv.operator || 'between';
+                  if (dv.formula1) rule.min = parseFloat(dv.formula1);
+                  if (dv.formula2) rule.max = parseFloat(dv.formula2);
+                } else if (dv.type === 'textLength') {
+                  rule.type = 'textLength';
+                  rule.operator = dv.operator || 'between';
+                  if (dv.formula1) rule.min = parseInt(dv.formula1);
+                  if (dv.formula2) rule.max = parseInt(dv.formula2);
+                } else {
+                  // Store generic type for potential future handling
+                  rule.type = dv.type || 'any';
+                }
+                if (dv.errorTitle) rule.errorTitle = dv.errorTitle;
+                if (dv.error) rule.errorMessage = dv.error;
+                if (dv.promptTitle) rule.promptTitle = dv.promptTitle;
+                if (dv.prompt) rule.prompt = dv.prompt;
+                if (dv.allowBlank) rule.allowBlank = true;
+                sheetData.validations[cellKey(dr, dc)] = rule;
+              }
+            }
+          }
+        }
       }
 
       recalcAll(sheetData);
@@ -463,6 +523,14 @@ async function exportToWorkbook() {
           ws[addr].t = 's';
           ws[addr].v = String(val);
         }
+      } else {
+        // Non-formula cells: ensure numeric values (including dates stored as
+        // serial numbers) are written as numbers, not display strings from AOA
+        const val = cellData.value;
+        if (typeof val === 'number') {
+          ws[addr].t = 'n';
+          ws[addr].v = val;
+        }
       }
 
       // Styles: build cell.s object from format
@@ -527,6 +595,58 @@ async function exportToWorkbook() {
         rows[i] = { hpx };
       }
       if (rows.length > 0) ws['!rows'] = rows;
+    }
+
+    // Freeze panes
+    if (sheet.freezeRows > 0 || sheet.freezeCols > 0) {
+      ws['!freeze'] = {
+        xSplit: sheet.freezeCols || 0,
+        ySplit: sheet.freezeRows || 0,
+      };
+      // Also set as views for broader compatibility
+      ws['!views'] = [{
+        state: 'frozen',
+        xSplit: sheet.freezeCols || 0,
+        ySplit: sheet.freezeRows || 0,
+      }];
+    }
+
+    // Data validation
+    if (sheet.validations && Object.keys(sheet.validations).length > 0) {
+      const dvList = [];
+      // Group validations by identical rules to produce merged sqref ranges
+      const ruleMap = new Map();
+      for (const [key, rule] of Object.entries(sheet.validations)) {
+        const [r, c] = key.split(',').map(Number);
+        const ruleKey = JSON.stringify(rule);
+        if (!ruleMap.has(ruleKey)) ruleMap.set(ruleKey, { rule, cells: [] });
+        ruleMap.get(ruleKey).cells.push({ r, c });
+      }
+      for (const { rule, cells } of ruleMap.values()) {
+        const sqref = cells.map(({ r, c }) => XLSX.utils.encode_cell({ r, c })).join(' ');
+        const dv = { sqref };
+        if (rule.type === 'list') {
+          dv.type = 'list';
+          dv.formula1 = (rule.values || []).join(',');
+        } else if (rule.type === 'number' || rule.type === 'decimal') {
+          dv.type = rule.type === 'number' ? 'whole' : 'decimal';
+          dv.operator = rule.operator || 'between';
+          if (rule.min != null) dv.formula1 = String(rule.min);
+          if (rule.max != null) dv.formula2 = String(rule.max);
+        } else if (rule.type === 'textLength') {
+          dv.type = 'textLength';
+          dv.operator = rule.operator || 'between';
+          if (rule.min != null) dv.formula1 = String(rule.min);
+          if (rule.max != null) dv.formula2 = String(rule.max);
+        }
+        if (rule.errorTitle) dv.errorTitle = rule.errorTitle;
+        if (rule.errorMessage) dv.error = rule.errorMessage;
+        if (rule.promptTitle) dv.promptTitle = rule.promptTitle;
+        if (rule.prompt) dv.prompt = rule.prompt;
+        if (rule.allowBlank) dv.allowBlank = true;
+        dvList.push(dv);
+      }
+      if (dvList.length > 0) ws['!dataValidation'] = dvList;
     }
 
     const sheetName = sheet.name || `Sheet${idx + 1}`;

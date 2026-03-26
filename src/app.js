@@ -59,6 +59,7 @@ const openSheetFile = async () => { const m = await loadSheetFile(); return m.op
 const saveSheetFile = async () => { const m = await loadSheetFile(); return m.saveSheetFile(); };
 const openSlideFile = async () => { const m = await loadSlideFile(); return m.openSlideFile(); };
 const saveSlideFile = async () => { const m = await loadSlideFile(); return m.saveSlideFile(); };
+const saveSlideAsPptx = async () => { const m = await loadSlideFile(); return m.saveSlideAsPptx(); };
 const openPdf = async () => { const m = await loadPdfViewer(); return m.openPdf(); };
 const openPhotoFile = async () => { const m = await loadPhotoEditor(); return m.openPhotoFile(); };
 

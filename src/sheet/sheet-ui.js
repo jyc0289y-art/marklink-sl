@@ -1205,8 +1205,10 @@ function bindEvents() {
 
   // Sheet tabs
   document.getElementById('sheet-add-tab')?.addEventListener('click', () => {
+    _saveSheetState();
     sheets.push(createSheetData());
     activeSheetIdx = sheets.length - 1;
+    _loadSheetState();
     renderSheetTabs(); renderGrid();
     selectedRow = 0; selectedCol = 0;
     updateSelection();
@@ -1215,7 +1217,13 @@ function bindEvents() {
   document.getElementById('sheet-tabs')?.addEventListener('click', (e) => {
     const tab = e.target.closest('.sheet-tab');
     if (tab && tab.dataset.sheet != null) {
-      activeSheetIdx = parseInt(tab.dataset.sheet, 10);
+      const newIdx = parseInt(tab.dataset.sheet, 10);
+      if (newIdx !== activeSheetIdx) {
+        _saveSheetState();
+        activeSheetIdx = newIdx;
+        colWidths = {}; rowHeights = {};
+        _loadSheetState();
+      }
       renderSheetTabs(); renderGrid();
       selectedRow = 0; selectedCol = 0;
       updateSelection();
@@ -2036,8 +2044,10 @@ function renderSheetTabs() {
     tab.addEventListener('click', (e) => {
       const idx = parseInt(tab.dataset.sheet, 10);
       if (idx !== activeSheetIdx) {
+        _saveSheetState();  // Persist freeze/condFormats/validations to old sheet
         activeSheetIdx = idx;
         colWidths = {}; rowHeights = {};  // Reset for new sheet's imported dims
+        _loadSheetState();  // Load freeze/condFormats/validations from new sheet
         renderSheetTabs(); renderGrid();
         selectedRow = 0; selectedCol = 0;
         updateSelection();
@@ -7484,13 +7494,38 @@ function getArrayFormulaDisplay(r, c) {
 
 /* ==================== Export ==================== */
 
-export function getSheetsData() { return sheets; }
+export function getSheetsData() {
+  // Persist current UI state back to sheet data before returning
+  _saveSheetState();
+  return sheets;
+}
 
 export function setSheetsData(newSheets) {
   sheets = newSheets;
   activeSheetIdx = 0;
   colWidths = {}; rowHeights = {};  // Reset so imported dims are picked up
+  _loadSheetState();  // Sync UI vars from first sheet's data model
   renderSheetTabs(); renderGrid();
   selectedRow = 0; selectedCol = 0;
   updateSelection();
+}
+
+/** Save per-sheet UI state (freeze, condFormats, validations) back to the sheet data model */
+function _saveSheetState() {
+  const sheet = sheets[activeSheetIdx];
+  if (!sheet) return;
+  sheet.freezeRows = freezeRows;
+  sheet.freezeCols = freezeCols;
+  sheet.condFormats = condFormats;
+  sheet.validations = validations;
+}
+
+/** Load per-sheet UI state from the sheet data model into module-level vars */
+function _loadSheetState() {
+  const sheet = sheets[activeSheetIdx];
+  if (!sheet) return;
+  freezeRows = sheet.freezeRows || 0;
+  freezeCols = sheet.freezeCols || 0;
+  condFormats = sheet.condFormats || [];
+  validations = sheet.validations || {};
 }
