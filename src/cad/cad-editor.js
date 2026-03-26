@@ -77,6 +77,7 @@ export async function initCadEditor() {
   bindKeyboardShortcuts();
   bindImportExport(container);
   bindNewToolbarButtons(container);
+  bindSketchEvents();
   initViewCube();
   initBoxSelect();
   bindClippingControls();
@@ -86,6 +87,7 @@ export async function initCadEditor() {
   isInitialized = true;
   updateStatusBar('Ready');
   updateSceneTree();
+  updateFeatureTree();
 
   // Observe theme changes and update 3D scene colors
   updateCadThemeColors();
@@ -328,6 +330,7 @@ function createPrimitive(type) {
   selectObject(mesh);
   pushUndo('add', mesh);
   updateSceneTree();
+  updateFeatureTree();
   updateStatusBar(`Created ${name}`);
 }
 
@@ -415,6 +418,7 @@ function deleteSelected() {
   selectedObject = null;
   clearPropertiesPanel();
   updateSceneTree();
+  updateFeatureTree();
   updateStatusBar(`Deleted ${name}`);
 }
 
@@ -827,10 +831,1078 @@ function mergeGeometries(geoA, geoB) {
   return merged;
 }
 
-/* ===================== Extrude / Revolve ===================== */
+/* ===================== SKETCH MODE ===================== */
+let sketchMode = false;
+let sketchPlane = null; // { normal: Vector3, origin: Vector3, name: 'XY'|'XZ'|'YZ' }
+let sketchEntities = []; // { type, points, radius?, sides?, id }
+let sketchCounter = 0;
+let sketchTool = 'line'; // line | circle | rect | arc | polygon | dimension
+let sketchGridSnap = true;
+let sketchPointSnap = true;
+let sketchGridSize = 0.5;
+let sketchDrawing = false;
+let sketchTempPoints = [];
+let sketchDimensions = []; // { entityId, value, position }
+let sketchConstraints = []; // { type: 'horizontal'|'vertical'|'coincident'|'dimension', entityIds, value }
+let allSketches = []; // saved sketch profiles: { id, name, plane, entities, dimensions, constraints }
+let featureTree = []; // { type: 'sketch'|'extrude'|'revolve'|'boolean'|'primitive', name, id, meshUuid, sketchId?, suppressed }
+let featureCounter = 0;
+let polygonSides = 6;
+let extrudePreviewMesh = null;
+let revolvePreviewMesh = null;
+
+/** Enter sketch mode */
+function enterSketchMode(planeName) {
+  if (sketchMode) return;
+  sketchMode = true;
+  sketchEntities = [];
+  sketchDimensions = [];
+  sketchConstraints = [];
+  sketchTempPoints = [];
+  sketchDrawing = false;
+  sketchTool = 'line';
+  sketchCounter++;
+
+  // Define sketch plane
+  const planes = {
+    XY: { normal: new THREE.Vector3(0, 0, 1), up: new THREE.Vector3(0, 1, 0), right: new THREE.Vector3(1, 0, 0) },
+    XZ: { normal: new THREE.Vector3(0, 1, 0), up: new THREE.Vector3(0, 0, -1), right: new THREE.Vector3(1, 0, 0) },
+    YZ: { normal: new THREE.Vector3(1, 0, 0), up: new THREE.Vector3(0, 1, 0), right: new THREE.Vector3(0, 0, 1) },
+  };
+  const p = planes[planeName] || planes.XY;
+  sketchPlane = { normal: p.normal.clone(), up: p.up.clone(), right: p.right.clone(), origin: new THREE.Vector3(0, 0, 0), name: planeName };
+
+  // Orient camera perpendicular to sketch plane
+  const dist = 15;
+  const endPos = sketchPlane.normal.clone().multiplyScalar(dist);
+  animateCamera(camera.position.clone(), endPos, sketchPlane.origin, 400);
+  orbitControls.target.copy(sketchPlane.origin);
+
+  // Show sketch toolbar, hide 3D toolbar groups
+  const sketchTb = document.getElementById('cad-sketch-toolbar');
+  if (sketchTb) sketchTb.style.display = 'flex';
+  // Dim other toolbar groups
+  document.querySelectorAll('.cad-toolbar > .cad-toolbar-group:not(.cad-sketch-toolbar):not(#cad-sketch-group)').forEach((g) => {
+    g.style.opacity = '0.3';
+    g.style.pointerEvents = 'none';
+  });
+
+  // Show sketch grid on the plane
+  showSketchGrid();
+
+  // Setup sketch overlay canvas
+  setupSketchOverlay();
+
+  updateStatusBar(`Sketch Mode — ${planeName} plane | L=Line C=Circle R=Rect A=Arc P=Polygon D=Dim | Esc=Finish`);
+  updateFeatureTree();
+}
+
+/** Exit sketch mode */
+function exitSketchMode() {
+  if (!sketchMode) return;
+  sketchMode = false;
+
+  // Save sketch as profile
+  if (sketchEntities.length > 0) {
+    const sketchId = `sketch_${sketchCounter}`;
+    allSketches.push({
+      id: sketchId,
+      name: `Sketch ${sketchCounter}`,
+      plane: { ...sketchPlane, normal: sketchPlane.normal.clone(), up: sketchPlane.up.clone(), right: sketchPlane.right.clone(), origin: sketchPlane.origin.clone() },
+      entities: JSON.parse(JSON.stringify(sketchEntities)),
+      dimensions: JSON.parse(JSON.stringify(sketchDimensions)),
+      constraints: JSON.parse(JSON.stringify(sketchConstraints)),
+    });
+    // Add to feature tree
+    featureCounter++;
+    featureTree.push({ type: 'sketch', name: `Sketch ${sketchCounter}`, id: `feat_${featureCounter}`, sketchId, suppressed: false });
+    updateStatusBar(`Sketch ${sketchCounter} saved (${sketchEntities.length} entities)`);
+  }
+
+  // Hide sketch toolbar, restore 3D toolbar
+  const sketchTb = document.getElementById('cad-sketch-toolbar');
+  if (sketchTb) sketchTb.style.display = 'none';
+  document.querySelectorAll('.cad-toolbar > .cad-toolbar-group:not(.cad-sketch-toolbar):not(#cad-sketch-group)').forEach((g) => {
+    g.style.opacity = '1';
+    g.style.pointerEvents = 'auto';
+  });
+
+  // Remove sketch grid
+  hideSketchGrid();
+
+  // Clear overlay
+  const overlay = document.getElementById('cad-sketch-overlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+    const ctx = overlay.getContext('2d');
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+  }
+
+  sketchDrawing = false;
+  sketchTempPoints = [];
+  updateFeatureTree();
+  updateSceneTree();
+}
+
+/** Show sketch plane grid */
+let sketchGridMesh = null;
+function showSketchGrid() {
+  if (sketchGridMesh) { scene.remove(sketchGridMesh); sketchGridMesh.geometry.dispose(); sketchGridMesh.material.dispose(); }
+  const size = 20;
+  const gridGeo = new THREE.PlaneGeometry(size, size);
+  const gridMat = new THREE.MeshBasicMaterial({ color: 0x3366cc, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false });
+  sketchGridMesh = new THREE.Mesh(gridGeo, gridMat);
+  sketchGridMesh.userData.isHelper = true;
+
+  // Orient to sketch plane
+  const q = new THREE.Quaternion();
+  q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), sketchPlane.normal);
+  sketchGridMesh.quaternion.copy(q);
+  sketchGridMesh.position.copy(sketchPlane.origin);
+  scene.add(sketchGridMesh);
+}
+
+function hideSketchGrid() {
+  if (sketchGridMesh) {
+    scene.remove(sketchGridMesh);
+    sketchGridMesh.geometry.dispose();
+    sketchGridMesh.material.dispose();
+    sketchGridMesh = null;
+  }
+}
+
+/** Setup the 2D sketch overlay canvas */
+function setupSketchOverlay() {
+  const overlay = document.getElementById('cad-sketch-overlay');
+  if (!overlay) return;
+  const viewport = document.querySelector('.cad-viewport');
+  if (!viewport) return;
+  const rect = viewport.getBoundingClientRect();
+  overlay.width = rect.width;
+  overlay.height = rect.height;
+  overlay.style.width = rect.width + 'px';
+  overlay.style.height = rect.height + 'px';
+  overlay.style.display = 'block';
+
+  // Remove old listeners by replacing the element
+  const newOverlay = overlay.cloneNode(false);
+  overlay.parentNode.replaceChild(newOverlay, overlay);
+  newOverlay.id = 'cad-sketch-overlay';
+  newOverlay.className = 'cad-sketch-overlay';
+  newOverlay.width = rect.width;
+  newOverlay.height = rect.height;
+  newOverlay.style.width = rect.width + 'px';
+  newOverlay.style.height = rect.height + 'px';
+  newOverlay.style.display = 'block';
+
+  newOverlay.addEventListener('mousedown', (e) => handleSketchMouseDown(e));
+  newOverlay.addEventListener('mousemove', (e) => handleSketchMouseMove(e));
+  newOverlay.addEventListener('mouseup', (e) => handleSketchMouseUp(e));
+  newOverlay.addEventListener('dblclick', (e) => handleSketchDblClick(e));
+}
+
+/** Convert screen coords to sketch plane 2D coords */
+function screenToSketchCoords(clientX, clientY) {
+  const viewport = document.querySelector('.cad-viewport');
+  if (!viewport) return { x: 0, y: 0 };
+  const rect = viewport.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((clientX - rect.left) / rect.width) * 2 - 1,
+    -((clientY - rect.top) / rect.height) * 2 + 1
+  );
+  const rc = new THREE.Raycaster();
+  rc.setFromCamera(mouse, camera);
+  const plane3 = new THREE.Plane();
+  plane3.setFromNormalAndCoplanarPoint(sketchPlane.normal, sketchPlane.origin);
+  const intersection = new THREE.Vector3();
+  rc.ray.intersectPlane(plane3, intersection);
+  if (!intersection) return { x: 0, y: 0 };
+
+  // Project onto sketch 2D coords using right and up vectors
+  const local = intersection.clone().sub(sketchPlane.origin);
+  let x = local.dot(sketchPlane.right);
+  let y = local.dot(sketchPlane.up);
+
+  // Snap to grid
+  if (sketchGridSnap) {
+    x = Math.round(x / sketchGridSize) * sketchGridSize;
+    y = Math.round(y / sketchGridSize) * sketchGridSize;
+  }
+
+  // Snap to existing endpoints
+  if (sketchPointSnap) {
+    const snapDist = 0.3;
+    for (const ent of sketchEntities) {
+      if (!ent.points) continue;
+      for (const pt of ent.points) {
+        if (Math.abs(pt.x - x) < snapDist && Math.abs(pt.y - y) < snapDist) {
+          x = pt.x;
+          y = pt.y;
+          break;
+        }
+      }
+    }
+  }
+
+  return { x, y };
+}
+
+/** Convert sketch 2D coords back to screen pixel coords */
+function sketchToScreen(sx, sy) {
+  const p3d = sketchPlane.origin.clone()
+    .add(sketchPlane.right.clone().multiplyScalar(sx))
+    .add(sketchPlane.up.clone().multiplyScalar(sy));
+  const projected = p3d.project(camera);
+  const viewport = document.querySelector('.cad-viewport');
+  if (!viewport) return { x: 0, y: 0 };
+  const rect = viewport.getBoundingClientRect();
+  return {
+    x: (projected.x * 0.5 + 0.5) * rect.width,
+    y: (-projected.y * 0.5 + 0.5) * rect.height,
+  };
+}
+
+let sketchEntityIdCounter = 0;
+
+function handleSketchMouseDown(e) {
+  if (!sketchMode) return;
+  if (e.button !== 0) return;
+  const pos = screenToSketchCoords(e.clientX, e.clientY);
+
+  if (sketchTool === 'dimension') {
+    // Click on existing entity to add dimension
+    handleDimensionClick(pos);
+    return;
+  }
+
+  if (sketchTool === 'line') {
+    sketchTempPoints.push(pos);
+    sketchDrawing = true;
+  } else if (sketchTool === 'circle') {
+    sketchTempPoints = [pos];
+    sketchDrawing = true;
+  } else if (sketchTool === 'rect') {
+    sketchTempPoints = [pos];
+    sketchDrawing = true;
+  } else if (sketchTool === 'arc') {
+    sketchTempPoints.push(pos);
+    sketchDrawing = true;
+  } else if (sketchTool === 'polygon') {
+    sketchTempPoints = [pos];
+    sketchDrawing = true;
+  }
+}
+
+function handleSketchMouseMove(e) {
+  if (!sketchMode) return;
+  const pos = screenToSketchCoords(e.clientX, e.clientY);
+  renderSketchOverlay(pos);
+}
+
+function handleSketchMouseUp(e) {
+  if (!sketchMode || !sketchDrawing) return;
+  if (e.button !== 0) return;
+  const pos = screenToSketchCoords(e.clientX, e.clientY);
+
+  if (sketchTool === 'line') {
+    if (sketchTempPoints.length >= 2) {
+      // Commit line segment
+      sketchEntityIdCounter++;
+      const p1 = sketchTempPoints[sketchTempPoints.length - 2];
+      const p2 = sketchTempPoints[sketchTempPoints.length - 1];
+      if (Math.abs(p1.x - p2.x) > 0.01 || Math.abs(p1.y - p2.y) > 0.01) {
+        sketchEntities.push({ type: 'line', points: [p1, p2], id: sketchEntityIdCounter });
+        applyAutoConstraints(sketchEntities[sketchEntities.length - 1]);
+      }
+      // Keep last point as start of next line for chain drawing
+    }
+  } else if (sketchTool === 'circle') {
+    const center = sketchTempPoints[0];
+    const radius = Math.sqrt((pos.x - center.x) ** 2 + (pos.y - center.y) ** 2);
+    if (radius > 0.05) {
+      sketchEntityIdCounter++;
+      sketchEntities.push({ type: 'circle', points: [center], radius, id: sketchEntityIdCounter });
+    }
+    sketchTempPoints = [];
+    sketchDrawing = false;
+  } else if (sketchTool === 'rect') {
+    const corner1 = sketchTempPoints[0];
+    if (Math.abs(pos.x - corner1.x) > 0.05 && Math.abs(pos.y - corner1.y) > 0.05) {
+      sketchEntityIdCounter++;
+      // Rectangle = 4 lines
+      const c2 = { x: pos.x, y: corner1.y };
+      const c3 = pos;
+      const c4 = { x: corner1.x, y: pos.y };
+      sketchEntities.push({ type: 'line', points: [corner1, c2], id: ++sketchEntityIdCounter });
+      sketchEntities.push({ type: 'line', points: [c2, c3], id: ++sketchEntityIdCounter });
+      sketchEntities.push({ type: 'line', points: [c3, c4], id: ++sketchEntityIdCounter });
+      sketchEntities.push({ type: 'line', points: [c4, corner1], id: ++sketchEntityIdCounter });
+    }
+    sketchTempPoints = [];
+    sketchDrawing = false;
+  } else if (sketchTool === 'polygon') {
+    const center = sketchTempPoints[0];
+    const radius = Math.sqrt((pos.x - center.x) ** 2 + (pos.y - center.y) ** 2);
+    if (radius > 0.05) {
+      const sides = polygonSides;
+      const pts = [];
+      for (let i = 0; i < sides; i++) {
+        const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
+        pts.push({ x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius });
+      }
+      for (let i = 0; i < sides; i++) {
+        sketchEntityIdCounter++;
+        sketchEntities.push({ type: 'line', points: [pts[i], pts[(i + 1) % sides]], id: sketchEntityIdCounter });
+      }
+    }
+    sketchTempPoints = [];
+    sketchDrawing = false;
+  }
+
+  renderSketchOverlay(pos);
+}
+
+function handleSketchDblClick(_e) {
+  // Double-click finishes line chain
+  if (sketchTool === 'line' && sketchDrawing) {
+    sketchTempPoints = [];
+    sketchDrawing = false;
+  }
+}
+
+function handleArcClick(pos) {
+  if (sketchTempPoints.length === 3) {
+    sketchEntityIdCounter++;
+    sketchEntities.push({ type: 'arc', points: [sketchTempPoints[0], sketchTempPoints[1], sketchTempPoints[2]], id: sketchEntityIdCounter });
+    sketchTempPoints = [];
+    sketchDrawing = false;
+  }
+}
+
+function handleDimensionClick(pos) {
+  // Find nearest entity
+  let nearest = null;
+  let minDist = Infinity;
+  for (const ent of sketchEntities) {
+    if (ent.type === 'line') {
+      const mid = { x: (ent.points[0].x + ent.points[1].x) / 2, y: (ent.points[0].y + ent.points[1].y) / 2 };
+      const d = Math.sqrt((pos.x - mid.x) ** 2 + (pos.y - mid.y) ** 2);
+      if (d < minDist) { minDist = d; nearest = ent; }
+    } else if (ent.type === 'circle') {
+      const d = Math.sqrt((pos.x - ent.points[0].x) ** 2 + (pos.y - ent.points[0].y) ** 2);
+      if (d < minDist) { minDist = d; nearest = ent; }
+    }
+  }
+  if (nearest && minDist < 3) {
+    let value;
+    if (nearest.type === 'line') {
+      const dx = nearest.points[1].x - nearest.points[0].x;
+      const dy = nearest.points[1].y - nearest.points[0].y;
+      value = Math.sqrt(dx * dx + dy * dy);
+    } else if (nearest.type === 'circle') {
+      value = nearest.radius;
+    }
+    const newValue = prompt(`Enter dimension value (current: ${value.toFixed(3)}):`);
+    if (newValue !== null && !isNaN(parseFloat(newValue))) {
+      const nv = parseFloat(newValue);
+      if (nearest.type === 'line') {
+        // Scale line to match dimension
+        const dx = nearest.points[1].x - nearest.points[0].x;
+        const dy = nearest.points[1].y - nearest.points[0].y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 0) {
+          const scale = nv / len;
+          nearest.points[1].x = nearest.points[0].x + dx * scale;
+          nearest.points[1].y = nearest.points[0].y + dy * scale;
+        }
+      } else if (nearest.type === 'circle') {
+        nearest.radius = nv;
+      }
+      sketchEntityIdCounter++;
+      sketchDimensions.push({ entityId: nearest.id, value: nv, id: sketchEntityIdCounter });
+      sketchConstraints.push({ type: 'dimension', entityIds: [nearest.id], value: nv });
+    }
+    renderSketchOverlay(pos);
+  }
+}
+
+/** Apply auto horizontal/vertical constraints */
+function applyAutoConstraints(entity) {
+  if (entity.type !== 'line') return;
+  const dx = Math.abs(entity.points[1].x - entity.points[0].x);
+  const dy = Math.abs(entity.points[1].y - entity.points[0].y);
+  const tolerance = 0.15;
+  if (dy < tolerance && dx > tolerance) {
+    entity.points[1].y = entity.points[0].y;
+    sketchConstraints.push({ type: 'horizontal', entityIds: [entity.id] });
+  } else if (dx < tolerance && dy > tolerance) {
+    entity.points[1].x = entity.points[0].x;
+    sketchConstraints.push({ type: 'vertical', entityIds: [entity.id] });
+  }
+  // Coincident snap
+  for (const other of sketchEntities) {
+    if (other.id === entity.id || !other.points) continue;
+    for (const pt of other.points) {
+      for (const mypt of entity.points) {
+        if (Math.abs(pt.x - mypt.x) < 0.2 && Math.abs(pt.y - mypt.y) < 0.2) {
+          mypt.x = pt.x;
+          mypt.y = pt.y;
+          sketchConstraints.push({ type: 'coincident', entityIds: [entity.id, other.id] });
+        }
+      }
+    }
+  }
+}
+
+/** Render all sketch entities on the overlay canvas */
+function renderSketchOverlay(cursorPos) {
+  const overlay = document.getElementById('cad-sketch-overlay');
+  if (!overlay) return;
+  const ctx = overlay.getContext('2d');
+  const w = overlay.width;
+  const h = overlay.height;
+  ctx.clearRect(0, 0, w, h);
+
+  // Draw grid lines on overlay
+  ctx.strokeStyle = 'rgba(51, 102, 204, 0.15)';
+  ctx.lineWidth = 0.5;
+  const gridRange = 20;
+  for (let i = -gridRange; i <= gridRange; i++) {
+    const pStart = sketchToScreen(i * sketchGridSize, -gridRange * sketchGridSize);
+    const pEnd = sketchToScreen(i * sketchGridSize, gridRange * sketchGridSize);
+    ctx.beginPath();
+    ctx.moveTo(pStart.x, pStart.y);
+    ctx.lineTo(pEnd.x, pEnd.y);
+    ctx.stroke();
+    const pStart2 = sketchToScreen(-gridRange * sketchGridSize, i * sketchGridSize);
+    const pEnd2 = sketchToScreen(gridRange * sketchGridSize, i * sketchGridSize);
+    ctx.beginPath();
+    ctx.moveTo(pStart2.x, pStart2.y);
+    ctx.lineTo(pEnd2.x, pEnd2.y);
+    ctx.stroke();
+  }
+
+  // Draw entities
+  for (const ent of sketchEntities) {
+    drawSketchEntity(ctx, ent, false);
+  }
+
+  // Draw dimensions
+  ctx.font = 'bold 12px monospace';
+  for (const dim of sketchDimensions) {
+    const ent = sketchEntities.find((e) => e.id === dim.entityId);
+    if (!ent) continue;
+    ctx.fillStyle = '#ff00ff';
+    ctx.strokeStyle = '#ff00ff';
+    ctx.lineWidth = 1;
+    if (ent.type === 'line') {
+      const mid = { x: (ent.points[0].x + ent.points[1].x) / 2, y: (ent.points[0].y + ent.points[1].y) / 2 };
+      const scr = sketchToScreen(mid.x, mid.y);
+      ctx.fillText(dim.value.toFixed(2), scr.x + 5, scr.y - 8);
+      // Dimension arrows
+      const s1 = sketchToScreen(ent.points[0].x, ent.points[0].y);
+      const s2 = sketchToScreen(ent.points[1].x, ent.points[1].y);
+      ctx.beginPath();
+      ctx.moveTo(s1.x, s1.y - 12);
+      ctx.lineTo(s2.x, s2.y - 12);
+      ctx.stroke();
+    } else if (ent.type === 'circle') {
+      const scr = sketchToScreen(ent.points[0].x, ent.points[0].y);
+      ctx.fillText(`R${dim.value.toFixed(2)}`, scr.x + 5, scr.y - 5);
+    }
+  }
+
+  // Draw constraint icons
+  for (const con of sketchConstraints) {
+    if (con.type === 'horizontal' || con.type === 'vertical') {
+      const ent = sketchEntities.find((e) => e.id === con.entityIds[0]);
+      if (!ent || !ent.points) continue;
+      const mid = { x: (ent.points[0].x + ent.points[1].x) / 2, y: (ent.points[0].y + ent.points[1].y) / 2 };
+      const scr = sketchToScreen(mid.x, mid.y);
+      ctx.fillStyle = '#ff00ff';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText(con.type === 'horizontal' ? 'H' : 'V', scr.x - 4, scr.y + 16);
+    }
+  }
+
+  // Draw temp preview
+  if (sketchDrawing && cursorPos) {
+    ctx.setLineDash([4, 4]);
+    if (sketchTool === 'line' && sketchTempPoints.length > 0) {
+      const last = sketchTempPoints[sketchTempPoints.length - 1];
+      const s1 = sketchToScreen(last.x, last.y);
+      const s2 = sketchToScreen(cursorPos.x, cursorPos.y);
+      ctx.strokeStyle = '#4488ff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(s1.x, s1.y);
+      ctx.lineTo(s2.x, s2.y);
+      ctx.stroke();
+    } else if (sketchTool === 'circle' && sketchTempPoints.length === 1) {
+      const center = sketchTempPoints[0];
+      const radius = Math.sqrt((cursorPos.x - center.x) ** 2 + (cursorPos.y - center.y) ** 2);
+      const scr = sketchToScreen(center.x, center.y);
+      const edgeScr = sketchToScreen(center.x + radius, center.y);
+      const pixelR = Math.sqrt((edgeScr.x - scr.x) ** 2 + (edgeScr.y - scr.y) ** 2);
+      ctx.strokeStyle = '#4488ff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, pixelR, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (sketchTool === 'rect' && sketchTempPoints.length === 1) {
+      const c1 = sketchTempPoints[0];
+      const s1 = sketchToScreen(c1.x, c1.y);
+      const s2 = sketchToScreen(cursorPos.x, c1.y);
+      const s3 = sketchToScreen(cursorPos.x, cursorPos.y);
+      const s4 = sketchToScreen(c1.x, cursorPos.y);
+      ctx.strokeStyle = '#4488ff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(s1.x, s1.y);
+      ctx.lineTo(s2.x, s2.y);
+      ctx.lineTo(s3.x, s3.y);
+      ctx.lineTo(s4.x, s4.y);
+      ctx.closePath();
+      ctx.stroke();
+    } else if (sketchTool === 'polygon' && sketchTempPoints.length === 1) {
+      const center = sketchTempPoints[0];
+      const radius = Math.sqrt((cursorPos.x - center.x) ** 2 + (cursorPos.y - center.y) ** 2);
+      ctx.strokeStyle = '#4488ff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = 0; i <= polygonSides; i++) {
+        const angle = (i / polygonSides) * Math.PI * 2 - Math.PI / 2;
+        const px = center.x + Math.cos(angle) * radius;
+        const py = center.y + Math.sin(angle) * radius;
+        const scr = sketchToScreen(px, py);
+        if (i === 0) ctx.moveTo(scr.x, scr.y);
+        else ctx.lineTo(scr.x, scr.y);
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  // Draw cursor coordinates
+  if (cursorPos) {
+    ctx.fillStyle = '#ccd6f6';
+    ctx.font = '11px monospace';
+    const viewport = document.querySelector('.cad-viewport');
+    if (viewport) {
+      const rect = viewport.getBoundingClientRect();
+      ctx.fillText(`(${cursorPos.x.toFixed(2)}, ${cursorPos.y.toFixed(2)})`, w - 140, h - 10);
+    }
+  }
+}
+
+function drawSketchEntity(ctx, ent, isPreview) {
+  ctx.strokeStyle = isPreview ? '#4488ff88' : '#4488ff';
+  ctx.lineWidth = isPreview ? 1 : 2;
+  ctx.setLineDash(isPreview ? [4, 4] : []);
+
+  if (ent.type === 'line') {
+    const s1 = sketchToScreen(ent.points[0].x, ent.points[0].y);
+    const s2 = sketchToScreen(ent.points[1].x, ent.points[1].y);
+    ctx.beginPath();
+    ctx.moveTo(s1.x, s1.y);
+    ctx.lineTo(s2.x, s2.y);
+    ctx.stroke();
+    // Draw endpoints
+    ctx.fillStyle = '#66aaff';
+    for (const p of ent.points) {
+      const scr = sketchToScreen(p.x, p.y);
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (ent.type === 'circle') {
+    const center = ent.points[0];
+    const scr = sketchToScreen(center.x, center.y);
+    const edgeScr = sketchToScreen(center.x + ent.radius, center.y);
+    const pixelR = Math.sqrt((edgeScr.x - scr.x) ** 2 + (edgeScr.y - scr.y) ** 2);
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, pixelR, 0, Math.PI * 2);
+    ctx.stroke();
+    // Center point
+    ctx.fillStyle = '#66aaff';
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (ent.type === 'arc' && ent.points.length === 3) {
+    // 3-point arc
+    const s1 = sketchToScreen(ent.points[0].x, ent.points[0].y);
+    const s2 = sketchToScreen(ent.points[1].x, ent.points[1].y);
+    const s3 = sketchToScreen(ent.points[2].x, ent.points[2].y);
+    ctx.beginPath();
+    ctx.moveTo(s1.x, s1.y);
+    ctx.quadraticCurveTo(s2.x, s2.y, s3.x, s3.y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+
+/** Show sketch plane selection dialog */
+function showPlaneDialog() {
+  const dialog = document.getElementById('cad-sketch-plane-dialog');
+  if (dialog) dialog.style.display = 'flex';
+}
+
+function hidePlaneDialog() {
+  const dialog = document.getElementById('cad-sketch-plane-dialog');
+  if (dialog) dialog.style.display = 'none';
+}
+
+/** Build a THREE.Shape from sketch entities (closed profile) */
+function buildShapeFromSketch(sketch) {
+  const entities = sketch.entities;
+  // Collect all line segments
+  const lines = entities.filter((e) => e.type === 'line');
+  if (lines.length === 0) {
+    // Check for circle
+    const circle = entities.find((e) => e.type === 'circle');
+    if (circle) {
+      const shape = new THREE.Shape();
+      const c = circle.points[0];
+      const r = circle.radius;
+      shape.absarc(c.x, c.y, r, 0, Math.PI * 2, false);
+      return shape;
+    }
+    return null;
+  }
+
+  // Try to chain line segments into a closed path
+  const shape = new THREE.Shape();
+  const used = new Set();
+  const tolerance = 0.25;
+
+  // Start with first line
+  let current = lines[0];
+  used.add(current.id);
+  shape.moveTo(current.points[0].x, current.points[0].y);
+  shape.lineTo(current.points[1].x, current.points[1].y);
+  let endPoint = current.points[1];
+
+  for (let iter = 0; iter < lines.length * 2; iter++) {
+    let found = false;
+    for (const line of lines) {
+      if (used.has(line.id)) continue;
+      // Check if either endpoint matches current end
+      if (Math.abs(line.points[0].x - endPoint.x) < tolerance && Math.abs(line.points[0].y - endPoint.y) < tolerance) {
+        shape.lineTo(line.points[1].x, line.points[1].y);
+        endPoint = line.points[1];
+        used.add(line.id);
+        found = true;
+        break;
+      }
+      if (Math.abs(line.points[1].x - endPoint.x) < tolerance && Math.abs(line.points[1].y - endPoint.y) < tolerance) {
+        shape.lineTo(line.points[0].x, line.points[0].y);
+        endPoint = line.points[0];
+        used.add(line.id);
+        found = true;
+        break;
+      }
+    }
+    if (!found) break;
+  }
+
+  shape.closePath();
+  return shape;
+}
+
+/* ===================== EXTRUDE FROM SKETCH ===================== */
+function showExtrudeDialog() {
+  if (allSketches.length === 0) {
+    updateStatusBar('No sketches available. Create a sketch first (Shift+S)');
+    return;
+  }
+  const dialog = document.getElementById('cad-extrude-dialog');
+  if (!dialog) return;
+
+  // Populate profile dropdown
+  const profileSelect = document.getElementById('cad-extrude-profile');
+  if (profileSelect) {
+    profileSelect.innerHTML = allSketches.map((s) => `<option value="${s.id}">${_esc(s.name)} (${s.entities.length} entities)</option>`).join('');
+  }
+
+  dialog.style.display = 'flex';
+  // Show preview
+  updateExtrudePreview();
+}
+
+function hideExtrudeDialog() {
+  const dialog = document.getElementById('cad-extrude-dialog');
+  if (dialog) dialog.style.display = 'none';
+  removeExtrudePreview();
+}
+
+function updateExtrudePreview() {
+  removeExtrudePreview();
+  const profileSelect = document.getElementById('cad-extrude-profile');
+  const distInput = document.getElementById('cad-extrude-dist');
+  const symCheck = document.getElementById('cad-extrude-symmetric');
+  if (!profileSelect || !distInput) return;
+
+  const sketch = allSketches.find((s) => s.id === profileSelect.value);
+  if (!sketch) return;
+
+  const shape = buildShapeFromSketch(sketch);
+  if (!shape) return;
+
+  const dist = parseFloat(distInput.value) || 5;
+  const symmetric = symCheck ? symCheck.checked : false;
+  const bevelCheck = document.getElementById('cad-extrude-bevel');
+  const bevel = bevelCheck ? bevelCheck.checked : false;
+
+  const settings = {
+    depth: symmetric ? dist : dist,
+    bevelEnabled: bevel,
+    bevelThickness: bevel ? 0.1 : 0,
+    bevelSize: bevel ? 0.1 : 0,
+    bevelSegments: bevel ? 2 : 0,
+  };
+
+  const geometry = new THREE.ExtrudeGeometry(shape, settings);
+  const material = new THREE.MeshStandardMaterial({ color: 0x4488ff, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+  extrudePreviewMesh = new THREE.Mesh(geometry, material);
+  extrudePreviewMesh.userData.isHelper = true;
+
+  // Orient to sketch plane
+  const q = new THREE.Quaternion();
+  const planeInfo = sketch.plane;
+  q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), planeInfo.normal);
+  extrudePreviewMesh.quaternion.copy(q);
+  extrudePreviewMesh.position.copy(planeInfo.origin);
+  if (symmetric) {
+    extrudePreviewMesh.position.add(planeInfo.normal.clone().multiplyScalar(-dist / 2));
+  }
+
+  scene.add(extrudePreviewMesh);
+}
+
+function removeExtrudePreview() {
+  if (extrudePreviewMesh) {
+    scene.remove(extrudePreviewMesh);
+    extrudePreviewMesh.geometry.dispose();
+    extrudePreviewMesh.material.dispose();
+    extrudePreviewMesh = null;
+  }
+}
+
+function executeExtrude() {
+  const profileSelect = document.getElementById('cad-extrude-profile');
+  const distInput = document.getElementById('cad-extrude-dist');
+  const symCheck = document.getElementById('cad-extrude-symmetric');
+  const bevelCheck = document.getElementById('cad-extrude-bevel');
+  if (!profileSelect || !distInput) return;
+
+  const sketch = allSketches.find((s) => s.id === profileSelect.value);
+  if (!sketch) { updateStatusBar('No sketch selected'); return; }
+
+  const shape = buildShapeFromSketch(sketch);
+  if (!shape) { updateStatusBar('Cannot create shape from sketch'); return; }
+
+  const dist = parseFloat(distInput.value) || 5;
+  const symmetric = symCheck ? symCheck.checked : false;
+  const bevel = bevelCheck ? bevelCheck.checked : false;
+
+  const settings = {
+    depth: dist,
+    bevelEnabled: bevel,
+    bevelThickness: bevel ? 0.1 : 0,
+    bevelSize: bevel ? 0.1 : 0,
+    bevelSegments: bevel ? 2 : 0,
+  };
+
+  const geometry = new THREE.ExtrudeGeometry(shape, settings);
+  const material = new THREE.MeshStandardMaterial({ color: getRandomPastelColor(), metalness: 0.2, roughness: 0.5, side: THREE.DoubleSide });
+  objectCounter++;
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = `Extrude_${objectCounter}`;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData.type = 'extrude';
+  mesh.userData.isCADObject = true;
+  mesh.userData.sketchId = sketch.id;
+
+  // Orient to sketch plane
+  const q = new THREE.Quaternion();
+  q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), sketch.plane.normal);
+  mesh.quaternion.copy(q);
+  mesh.position.copy(sketch.plane.origin);
+  if (symmetric) {
+    mesh.position.add(sketch.plane.normal.clone().multiplyScalar(-dist / 2));
+  }
+
+  scene.add(mesh);
+  sceneObjects.push(mesh);
+  selectObject(mesh);
+  pushUndo('add', mesh);
+
+  // Add to feature tree
+  featureCounter++;
+  featureTree.push({
+    type: 'extrude', name: `Extrude ${objectCounter} (${sketch.name})`,
+    id: `feat_${featureCounter}`, meshUuid: mesh.uuid, sketchId: sketch.id, suppressed: false,
+  });
+
+  hideExtrudeDialog();
+  updateSceneTree();
+  updateFeatureTree();
+  updateStatusBar(`Created ${mesh.name} from ${sketch.name}`);
+}
+
+/* ===================== REVOLVE FROM SKETCH ===================== */
+function showRevolveDialog() {
+  if (allSketches.length === 0) {
+    updateStatusBar('No sketches available. Create a sketch first (Shift+S)');
+    return;
+  }
+  const dialog = document.getElementById('cad-revolve-dialog');
+  if (!dialog) return;
+
+  const profileSelect = document.getElementById('cad-revolve-profile');
+  if (profileSelect) {
+    profileSelect.innerHTML = allSketches.map((s) => `<option value="${s.id}">${_esc(s.name)} (${s.entities.length} entities)</option>`).join('');
+  }
+
+  dialog.style.display = 'flex';
+  updateRevolvePreview();
+}
+
+function hideRevolveDialog() {
+  const dialog = document.getElementById('cad-revolve-dialog');
+  if (dialog) dialog.style.display = 'none';
+  removeRevolvePreview();
+}
+
+function updateRevolvePreview() {
+  removeRevolvePreview();
+  const profileSelect = document.getElementById('cad-revolve-profile');
+  const angleInput = document.getElementById('cad-revolve-angle');
+  if (!profileSelect || !angleInput) return;
+
+  const sketch = allSketches.find((s) => s.id === profileSelect.value);
+  if (!sketch) return;
+
+  // Build 2D profile points for lathe
+  const pts = buildLathePoints(sketch);
+  if (!pts || pts.length < 2) return;
+
+  const angle = THREE.MathUtils.degToRad(parseFloat(angleInput.value) || 360);
+  const geometry = new THREE.LatheGeometry(pts, 32, 0, angle);
+  const material = new THREE.MeshStandardMaterial({ color: 0x44ff88, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+  revolvePreviewMesh = new THREE.Mesh(geometry, material);
+  revolvePreviewMesh.userData.isHelper = true;
+  revolvePreviewMesh.position.copy(sketch.plane.origin);
+  scene.add(revolvePreviewMesh);
+}
+
+function removeRevolvePreview() {
+  if (revolvePreviewMesh) {
+    scene.remove(revolvePreviewMesh);
+    revolvePreviewMesh.geometry.dispose();
+    revolvePreviewMesh.material.dispose();
+    revolvePreviewMesh = null;
+  }
+}
+
+function buildLathePoints(sketch) {
+  // Extract unique points from sketch entities and build a 2D profile
+  const entities = sketch.entities;
+  const lines = entities.filter((e) => e.type === 'line');
+  if (lines.length === 0) {
+    const circle = entities.find((e) => e.type === 'circle');
+    if (circle) {
+      // Approximate circle with points for lathe
+      const pts = [];
+      const c = circle.points[0];
+      const r = circle.radius;
+      for (let i = 0; i <= 16; i++) {
+        const angle = (i / 16) * Math.PI * 2;
+        pts.push(new THREE.Vector2(Math.abs(c.x + Math.cos(angle) * r), c.y + Math.sin(angle) * r));
+      }
+      return pts;
+    }
+    return null;
+  }
+
+  // Chain points from lines
+  const pts = [new THREE.Vector2(Math.abs(lines[0].points[0].x), lines[0].points[0].y)];
+  const used = new Set();
+  used.add(lines[0].id);
+  let endPoint = lines[0].points[0];
+
+  // First, add the second point of the first line
+  pts.push(new THREE.Vector2(Math.abs(lines[0].points[1].x), lines[0].points[1].y));
+  endPoint = lines[0].points[1];
+
+  for (let iter = 0; iter < lines.length * 2; iter++) {
+    let found = false;
+    for (const line of lines) {
+      if (used.has(line.id)) continue;
+      if (Math.abs(line.points[0].x - endPoint.x) < 0.25 && Math.abs(line.points[0].y - endPoint.y) < 0.25) {
+        pts.push(new THREE.Vector2(Math.abs(line.points[1].x), line.points[1].y));
+        endPoint = line.points[1];
+        used.add(line.id);
+        found = true;
+        break;
+      }
+      if (Math.abs(line.points[1].x - endPoint.x) < 0.25 && Math.abs(line.points[1].y - endPoint.y) < 0.25) {
+        pts.push(new THREE.Vector2(Math.abs(line.points[0].x), line.points[0].y));
+        endPoint = line.points[0];
+        used.add(line.id);
+        found = true;
+        break;
+      }
+    }
+    if (!found) break;
+  }
+
+  return pts.length >= 2 ? pts : null;
+}
+
+function executeRevolve() {
+  const profileSelect = document.getElementById('cad-revolve-profile');
+  const angleInput = document.getElementById('cad-revolve-angle');
+  const axisSelect = document.getElementById('cad-revolve-axis');
+  if (!profileSelect || !angleInput) return;
+
+  const sketch = allSketches.find((s) => s.id === profileSelect.value);
+  if (!sketch) { updateStatusBar('No sketch selected'); return; }
+
+  const pts = buildLathePoints(sketch);
+  if (!pts || pts.length < 2) { updateStatusBar('Cannot build profile for revolve'); return; }
+
+  const angle = THREE.MathUtils.degToRad(parseFloat(angleInput.value) || 360);
+  const geometry = new THREE.LatheGeometry(pts, 32, 0, angle);
+  const material = new THREE.MeshStandardMaterial({ color: getRandomPastelColor(), metalness: 0.3, roughness: 0.4, side: THREE.DoubleSide });
+  objectCounter++;
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = `Revolve_${objectCounter}`;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData.type = 'revolve';
+  mesh.userData.isCADObject = true;
+  mesh.userData.sketchId = sketch.id;
+  mesh.position.copy(sketch.plane.origin);
+
+  // Apply axis rotation if not Y
+  const axisVal = axisSelect ? axisSelect.value : 'y';
+  if (axisVal === 'x') {
+    mesh.rotation.z = Math.PI / 2;
+  } else if (axisVal === 'z') {
+    mesh.rotation.x = Math.PI / 2;
+  }
+
+  scene.add(mesh);
+  sceneObjects.push(mesh);
+  selectObject(mesh);
+  pushUndo('add', mesh);
+
+  featureCounter++;
+  featureTree.push({
+    type: 'revolve', name: `Revolve ${objectCounter} (${sketch.name})`,
+    id: `feat_${featureCounter}`, meshUuid: mesh.uuid, sketchId: sketch.id, suppressed: false,
+  });
+
+  hideRevolveDialog();
+  updateSceneTree();
+  updateFeatureTree();
+  updateStatusBar(`Created ${mesh.name} from ${sketch.name}`);
+}
+
+/* ===================== FEATURE TREE ===================== */
+function updateFeatureTree() {
+  const tree = document.getElementById('cad-feature-tree');
+  if (!tree) return;
+  tree.innerHTML = '';
+
+  // Add primitives that were added outside of sketch workflow to feature tree if not already there
+  for (const obj of sceneObjects) {
+    if (!featureTree.find((f) => f.meshUuid === obj.uuid)) {
+      featureCounter++;
+      featureTree.push({
+        type: 'primitive', name: obj.name, id: `feat_${featureCounter}`,
+        meshUuid: obj.uuid, suppressed: false,
+      });
+    }
+  }
+
+  // Remove features whose mesh no longer exists (except sketches)
+  featureTree = featureTree.filter((f) => {
+    if (f.type === 'sketch') return true;
+    if (!f.meshUuid) return true;
+    return sceneObjects.some((o) => o.uuid === f.meshUuid);
+  });
+
+  const featureIcons = { sketch: '✏', extrude: '⬆', revolve: '🔄', boolean: '⊕', primitive: '🔲' };
+
+  featureTree.forEach((feat, idx) => {
+    const item = document.createElement('div');
+    item.className = 'cad-tree-item cad-feature-item' + (feat.suppressed ? ' suppressed' : '');
+    item.dataset.featureId = feat.id;
+    item.innerHTML = `
+      <span class="tree-icon">${featureIcons[feat.type] || '🔲'}</span>
+      <span class="tree-name" title="${_esc(feat.name)}">${_esc(feat.name)}</span>
+      <span class="tree-feat-actions">
+        ${feat.type !== 'sketch' ? `<button class="cad-feat-btn" data-action="suppress" title="${feat.suppressed ? 'Unsuppress' : 'Suppress'}">${feat.suppressed ? '👁' : '🚫'}</button>` : ''}
+        <button class="cad-feat-btn" data-action="delete" title="Delete">✕</button>
+      </span>
+    `;
+
+    // Click to select corresponding mesh
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.cad-feat-btn')) return;
+      if (feat.meshUuid) {
+        const mesh = sceneObjects.find((o) => o.uuid === feat.meshUuid);
+        if (mesh) selectObject(mesh);
+      }
+    });
+
+    // Action buttons
+    item.querySelectorAll('.cad-feat-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const action = btn.dataset.action;
+        if (action === 'suppress') {
+          feat.suppressed = !feat.suppressed;
+          const mesh = sceneObjects.find((o) => o.uuid === feat.meshUuid);
+          if (mesh) mesh.visible = !feat.suppressed;
+          updateFeatureTree();
+        } else if (action === 'delete') {
+          if (feat.meshUuid) {
+            const mesh = sceneObjects.find((o) => o.uuid === feat.meshUuid);
+            if (mesh) {
+              if (mesh === selectedObject) { transformControls.detach(); selectedObject = null; }
+              scene.remove(mesh);
+              sceneObjects = sceneObjects.filter((o) => o !== mesh);
+              if (mesh.geometry) mesh.geometry.dispose();
+              if (mesh.material) mesh.material.dispose();
+            }
+          }
+          if (feat.type === 'sketch') {
+            allSketches = allSketches.filter((s) => s.id !== feat.sketchId);
+          }
+          featureTree.splice(idx, 1);
+          updateFeatureTree();
+          updateSceneTree();
+        }
+      });
+    });
+
+    // Context menu for right-click
+    item.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      // Simple context: show suppress/delete options (already have buttons)
+    });
+
+    tree.appendChild(item);
+  });
+}
+
+/* ===================== Legacy Extrude / Revolve (quick-add without sketch) ===================== */
 function extrudeShape() {
   objectCounter++;
-  // Create a star-shaped extrusion as example
   const shape = new THREE.Shape();
   const outerR = 1, innerR = 0.5, points = 5;
   for (let i = 0; i < points * 2; i++) {
@@ -859,12 +1931,12 @@ function extrudeShape() {
   selectObject(mesh);
   pushUndo('add', mesh);
   updateSceneTree();
+  updateFeatureTree();
   updateStatusBar(`Created ${mesh.name}`);
 }
 
 function revolveShape() {
   objectCounter++;
-  // Revolve a profile (vase shape)
   const pts = [];
   for (let i = 0; i < 10; i++) {
     const t = i / 9;
@@ -886,6 +1958,7 @@ function revolveShape() {
   selectObject(mesh);
   pushUndo('add', mesh);
   updateSceneTree();
+  updateFeatureTree();
   updateStatusBar(`Created ${mesh.name}`);
 }
 
@@ -1202,11 +2275,11 @@ function bindToolbarEvents(container) {
   if (subBtn) subBtn.addEventListener('click', () => booleanOperation('subtract'));
   if (interBtn) interBtn.addEventListener('click', () => booleanOperation('intersect'));
 
-  // Extrude / Revolve
+  // Extrude / Revolve — use new dialog if sketches exist, else legacy
   const extBtn = document.getElementById('cad-extrude');
   const revBtn = document.getElementById('cad-revolve');
-  if (extBtn) extBtn.addEventListener('click', () => extrudeShape());
-  if (revBtn) revBtn.addEventListener('click', () => revolveShape());
+  if (extBtn) extBtn.addEventListener('click', () => { allSketches.length > 0 ? showExtrudeDialog() : extrudeShape(); });
+  if (revBtn) revBtn.addEventListener('click', () => { allSketches.length > 0 ? showRevolveDialog() : revolveShape(); });
 
   // Focus selected
   const focusBtn = document.getElementById('cad-focus');
@@ -1416,6 +2489,24 @@ function bindKeyboardShortcuts() {
     if (key === 'c' && mod) { e.preventDefault(); copySelected(); return; }
     if (key === 'v' && mod) { e.preventDefault(); pasteClipboard(); return; }
 
+    // --- Shift combos (Sketch workflow) ---
+    if (key === 's' && e.shiftKey && !mod) { e.preventDefault(); showPlaneDialog(); return; }
+    if (key === 'e' && e.shiftKey && !mod) { e.preventDefault(); showExtrudeDialog(); return; }
+    if (key === 'r' && e.shiftKey && !mod) { e.preventDefault(); showRevolveDialog(); return; }
+
+    // --- Sketch mode keys ---
+    if (sketchMode) {
+      if (key === 'l') { setSketchTool('line'); return; }
+      if (key === 'c') { setSketchTool('circle'); return; }
+      if (key === 'r' && !e.shiftKey) { setSketchTool('rect'); return; }
+      if (key === 'a') { setSketchTool('arc'); return; }
+      if (key === 'p') { setSketchTool('polygon'); return; }
+      if (key === 'd') { setSketchTool('dimension'); return; }
+      if (key === 'g') { sketchGridSnap = !sketchGridSnap; updateSketchSnapButtons(); updateStatusBar(sketchGridSnap ? 'Grid Snap ON' : 'Grid Snap OFF'); return; }
+      if (key === 'escape') { e.preventDefault(); exitSketchMode(); return; }
+      return; // Don't process other keys in sketch mode
+    }
+
     // --- Single keys ---
     if (key === 'delete' || key === 'backspace') { e.preventDefault(); deleteSelected(); return; }
 
@@ -1434,7 +2525,7 @@ function bindKeyboardShortcuts() {
     if (key === 'n') { normalToFace(); return; }
 
     // S = S-key radial shortcut menu (Onshape signature)
-    if (key === 's' && !mod) { e.preventDefault(); toggleRadialMenu(e); return; }
+    if (key === 's' && !mod && !e.shiftKey) { e.preventDefault(); toggleRadialMenu(e); return; }
 
     // M = Toggle measurement tool
     if (key === 'm') { toggleMeasurementTool(); return; }
@@ -2166,6 +3257,119 @@ function bindNewToolbarButtons(container) {
 
   const fitBtn = document.getElementById('cad-fit-all');
   if (fitBtn) fitBtn.addEventListener('click', () => fitAll());
+}
+
+/** Set active sketch tool */
+function setSketchTool(tool) {
+  sketchTool = tool;
+  sketchTempPoints = [];
+  sketchDrawing = false;
+  document.querySelectorAll('.cad-sketch-tool-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.tool === tool);
+  });
+  updateStatusBar(`Sketch tool: ${tool}`);
+
+  // If polygon, ask for sides
+  if (tool === 'polygon') {
+    const dialog = document.getElementById('cad-polygon-sides-dialog');
+    if (dialog) dialog.style.display = 'flex';
+  }
+}
+
+function updateSketchSnapButtons() {
+  const gridBtn = document.getElementById('cad-sketch-snap-grid');
+  const ptBtn = document.getElementById('cad-sketch-snap-point');
+  if (gridBtn) gridBtn.classList.toggle('active', sketchGridSnap);
+  if (ptBtn) ptBtn.classList.toggle('active', sketchPointSnap);
+}
+
+function bindSketchEvents() {
+  // Sketch start button
+  const sketchStartBtn = document.getElementById('cad-sketch-start');
+  if (sketchStartBtn) sketchStartBtn.addEventListener('click', () => showPlaneDialog());
+
+  // Plane dialog buttons
+  document.querySelectorAll('.cad-plane-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      hidePlaneDialog();
+      enterSketchMode(btn.dataset.plane);
+    });
+  });
+  const planeCancel = document.getElementById('cad-sketch-plane-cancel');
+  if (planeCancel) planeCancel.addEventListener('click', () => hidePlaneDialog());
+
+  // Sketch tool buttons
+  document.querySelectorAll('.cad-sketch-tool-btn').forEach((btn) => {
+    btn.addEventListener('click', () => setSketchTool(btn.dataset.tool));
+  });
+
+  // Finish sketch button
+  const finishBtn = document.getElementById('cad-sketch-finish');
+  if (finishBtn) finishBtn.addEventListener('click', () => exitSketchMode());
+
+  // Sketch snap toggles
+  const snapGridBtn = document.getElementById('cad-sketch-snap-grid');
+  if (snapGridBtn) snapGridBtn.addEventListener('click', () => {
+    sketchGridSnap = !sketchGridSnap;
+    updateSketchSnapButtons();
+  });
+  const snapPtBtn = document.getElementById('cad-sketch-snap-point');
+  if (snapPtBtn) snapPtBtn.addEventListener('click', () => {
+    sketchPointSnap = !sketchPointSnap;
+    updateSketchSnapButtons();
+  });
+
+  // H/V constraint button
+  const hvBtn = document.getElementById('cad-sketch-constraint-hv');
+  if (hvBtn) hvBtn.addEventListener('click', () => {
+    hvBtn.classList.toggle('active');
+    updateStatusBar(hvBtn.classList.contains('active') ? 'H/V constraint: Auto-apply' : 'H/V constraint: Off');
+  });
+
+  // Extrude dialog
+  const extOk = document.getElementById('cad-extrude-ok');
+  const extCancel = document.getElementById('cad-extrude-cancel');
+  if (extOk) extOk.addEventListener('click', () => executeExtrude());
+  if (extCancel) extCancel.addEventListener('click', () => hideExtrudeDialog());
+
+  // Extrude slider sync
+  const extSlider = document.getElementById('cad-extrude-dist-slider');
+  const extInput = document.getElementById('cad-extrude-dist');
+  if (extSlider && extInput) {
+    extSlider.addEventListener('input', () => { extInput.value = extSlider.value; updateExtrudePreview(); });
+    extInput.addEventListener('input', () => { extSlider.value = extInput.value; updateExtrudePreview(); });
+  }
+  const extProfile = document.getElementById('cad-extrude-profile');
+  if (extProfile) extProfile.addEventListener('change', () => updateExtrudePreview());
+  const extSym = document.getElementById('cad-extrude-symmetric');
+  if (extSym) extSym.addEventListener('change', () => updateExtrudePreview());
+  const extBevel = document.getElementById('cad-extrude-bevel');
+  if (extBevel) extBevel.addEventListener('change', () => updateExtrudePreview());
+
+  // Revolve dialog
+  const revOk = document.getElementById('cad-revolve-ok');
+  const revCancel = document.getElementById('cad-revolve-cancel');
+  if (revOk) revOk.addEventListener('click', () => executeRevolve());
+  if (revCancel) revCancel.addEventListener('click', () => hideRevolveDialog());
+
+  // Revolve slider sync
+  const revSlider = document.getElementById('cad-revolve-angle-slider');
+  const revInput = document.getElementById('cad-revolve-angle');
+  if (revSlider && revInput) {
+    revSlider.addEventListener('input', () => { revInput.value = revSlider.value; updateRevolvePreview(); });
+    revInput.addEventListener('input', () => { revSlider.value = revInput.value; updateRevolvePreview(); });
+  }
+  const revProfile = document.getElementById('cad-revolve-profile');
+  if (revProfile) revProfile.addEventListener('change', () => updateRevolvePreview());
+
+  // Polygon sides dialog
+  const polySidesOk = document.getElementById('cad-polygon-sides-ok');
+  if (polySidesOk) polySidesOk.addEventListener('click', () => {
+    const sidesInput = document.getElementById('cad-polygon-sides');
+    if (sidesInput) polygonSides = parseInt(sidesInput.value) || 6;
+    const dialog = document.getElementById('cad-polygon-sides-dialog');
+    if (dialog) dialog.style.display = 'none';
+  });
 }
 
 function bindClippingControls() {

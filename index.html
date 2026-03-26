@@ -2068,9 +2068,25 @@
           <button id="cad-bool-subtract" class="cad-btn" title="Subtract">∖</button>
           <button id="cad-bool-intersect" class="cad-btn" title="Intersect">∩</button>
         </div>
-        <div class="cad-toolbar-group">
-          <button id="cad-extrude" class="cad-btn" title="Extrude Shape"><span class="icon">⬆</span> Extrude</button>
-          <button id="cad-revolve" class="cad-btn" title="Revolve Shape"><span class="icon">🔄</span> Revolve</button>
+        <div class="cad-toolbar-group" id="cad-sketch-group">
+          <button id="cad-sketch-start" class="cad-btn" title="New Sketch (Shift+S)"><span class="icon">✏</span> Sketch</button>
+          <button id="cad-extrude" class="cad-btn" title="Extrude (Shift+E)"><span class="icon">⬆</span> Extrude</button>
+          <button id="cad-revolve" class="cad-btn" title="Revolve (Shift+R)"><span class="icon">🔄</span> Revolve</button>
+        </div>
+        <!-- Sketch Toolbar (shown only in sketch mode, replaces 3D toolbar) -->
+        <div class="cad-toolbar-group cad-sketch-toolbar" id="cad-sketch-toolbar" style="display:none">
+          <button id="cad-sketch-line" class="cad-btn cad-sketch-tool-btn active" data-tool="line" title="Line (L)"><span class="icon">╲</span> Line</button>
+          <button id="cad-sketch-circle" class="cad-btn cad-sketch-tool-btn" data-tool="circle" title="Circle (C)"><span class="icon">◯</span> Circle</button>
+          <button id="cad-sketch-rect" class="cad-btn cad-sketch-tool-btn" data-tool="rect" title="Rectangle (R)"><span class="icon">▭</span> Rect</button>
+          <button id="cad-sketch-arc" class="cad-btn cad-sketch-tool-btn" data-tool="arc" title="Arc (A)"><span class="icon">◠</span> Arc</button>
+          <button id="cad-sketch-polygon" class="cad-btn cad-sketch-tool-btn" data-tool="polygon" title="Polygon (P)"><span class="icon">⬡</span> Polygon</button>
+          <button id="cad-sketch-dim" class="cad-btn cad-sketch-tool-btn" data-tool="dimension" title="Dimension (D)"><span class="icon">↔</span> Dim</button>
+          <span class="cad-toolbar-sep">|</span>
+          <button id="cad-sketch-snap-grid" class="cad-btn active" title="Snap to Grid (G)"><span class="icon">⊞</span></button>
+          <button id="cad-sketch-snap-point" class="cad-btn active" title="Snap to Points"><span class="icon">⊙</span></button>
+          <button id="cad-sketch-constraint-hv" class="cad-btn" title="H/V Constraint"><span class="icon">⊥</span> H/V</button>
+          <span class="cad-toolbar-sep">|</span>
+          <button id="cad-sketch-finish" class="cad-btn cad-sketch-finish-btn" title="Finish Sketch (Esc)"><span class="icon">✓</span> Finish Sketch</button>
         </div>
         <div class="cad-toolbar-group">
           <button id="cad-measure-tool" class="cad-btn" title="Measure (M)"><span class="icon">📏</span> Measure</button>
@@ -2109,7 +2125,11 @@
             </div>
           </div>
 
-          <div class="cad-panel-section" style="flex:1;display:flex;flex-direction:column;min-height:0">
+          <div class="cad-panel-section" style="flex:0.6;display:flex;flex-direction:column;min-height:0">
+            <div class="cad-panel-title" data-i18n="cad.featureTree">Feature Tree <span class="collapse-icon">▼</span></div>
+            <div id="cad-feature-tree" class="cad-scene-tree cad-feature-tree"></div>
+          </div>
+          <div class="cad-panel-section" style="flex:0.4;display:flex;flex-direction:column;min-height:0">
             <div class="cad-panel-title" data-i18n="cad.sceneTree">Scene Tree <span class="collapse-icon">▼</span></div>
             <div id="cad-scene-tree" class="cad-scene-tree"></div>
           </div>
@@ -2219,7 +2239,7 @@
           <span id="cad-obj-count">Objects: 0</span>
         </div>
         <div class="cad-status-right">
-          <span>W/E/R=Move/Rotate/Scale | S=Radial | 1-7=Views | F=Fit | G=Grid | M=Measure</span>
+          <span>W/E/R=Move/Rotate/Scale | Shift+S=Sketch | Shift+E=Extrude | Shift+R=Revolve | S=Radial | 1-7=Views | F=Fit</span>
         </div>
       </div>
 
@@ -2239,6 +2259,82 @@
       </div>
       <!-- S-key Radial Menu -->
       <div id="cad-radial-menu" class="cad-radial-menu"></div>
+      <!-- Sketch 2D Overlay Canvas -->
+      <canvas id="cad-sketch-overlay" class="cad-sketch-overlay"></canvas>
+      <!-- Sketch Plane Selection Dialog -->
+      <div id="cad-sketch-plane-dialog" class="cad-modal-dialog" style="display:none">
+        <div class="cad-modal-content">
+          <div class="cad-modal-title">Select Sketch Plane</div>
+          <div class="cad-plane-options">
+            <button class="cad-plane-btn" data-plane="XY">XY <small>(Top)</small></button>
+            <button class="cad-plane-btn" data-plane="XZ">XZ <small>(Front)</small></button>
+            <button class="cad-plane-btn" data-plane="YZ">YZ <small>(Right)</small></button>
+          </div>
+          <button id="cad-sketch-plane-cancel" class="cad-btn" style="margin-top:8px;width:100%">Cancel</button>
+        </div>
+      </div>
+      <!-- Extrude Dialog -->
+      <div id="cad-extrude-dialog" class="cad-modal-dialog" style="display:none">
+        <div class="cad-modal-content">
+          <div class="cad-modal-title">Extrude</div>
+          <div class="cad-prop-row-full">
+            <span class="cad-prop-label" style="width:auto;min-width:60px">Profile</span>
+            <select id="cad-extrude-profile" class="cad-select" style="flex:1"></select>
+          </div>
+          <div class="cad-prop-row-full">
+            <span class="cad-prop-label" style="width:auto;min-width:60px">Distance</span>
+            <input type="range" id="cad-extrude-dist-slider" class="cad-prop-input" min="0.1" max="50" step="0.1" value="5" style="flex:1" />
+            <input type="number" id="cad-extrude-dist" class="cad-prop-input" min="0.1" max="100" step="0.1" value="5" style="width:60px" />
+          </div>
+          <div class="cad-prop-row-full">
+            <label><input type="checkbox" id="cad-extrude-symmetric" /> Symmetric (both directions)</label>
+          </div>
+          <div class="cad-prop-row-full">
+            <label><input type="checkbox" id="cad-extrude-bevel" /> Bevel edges</label>
+          </div>
+          <div class="cad-modal-actions">
+            <button id="cad-extrude-ok" class="cad-btn cad-btn-primary">OK</button>
+            <button id="cad-extrude-cancel" class="cad-btn">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <!-- Revolve Dialog -->
+      <div id="cad-revolve-dialog" class="cad-modal-dialog" style="display:none">
+        <div class="cad-modal-content">
+          <div class="cad-modal-title">Revolve</div>
+          <div class="cad-prop-row-full">
+            <span class="cad-prop-label" style="width:auto;min-width:60px">Profile</span>
+            <select id="cad-revolve-profile" class="cad-select" style="flex:1"></select>
+          </div>
+          <div class="cad-prop-row-full">
+            <span class="cad-prop-label" style="width:auto;min-width:60px">Axis</span>
+            <select id="cad-revolve-axis" class="cad-select" style="flex:1">
+              <option value="x">X axis</option>
+              <option value="y" selected>Y axis</option>
+              <option value="z">Z axis</option>
+            </select>
+          </div>
+          <div class="cad-prop-row-full">
+            <span class="cad-prop-label" style="width:auto;min-width:60px">Angle</span>
+            <input type="range" id="cad-revolve-angle-slider" class="cad-prop-input" min="1" max="360" step="1" value="360" style="flex:1" />
+            <input type="number" id="cad-revolve-angle" class="cad-prop-input" min="1" max="360" step="1" value="360" style="width:60px" />
+          </div>
+          <div class="cad-modal-actions">
+            <button id="cad-revolve-ok" class="cad-btn cad-btn-primary">OK</button>
+            <button id="cad-revolve-cancel" class="cad-btn">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <!-- Polygon Sides Input -->
+      <div id="cad-polygon-sides-dialog" class="cad-modal-dialog" style="display:none">
+        <div class="cad-modal-content" style="max-width:200px">
+          <div class="cad-modal-title">Polygon Sides</div>
+          <input type="number" id="cad-polygon-sides" class="cad-prop-input" min="3" max="32" value="6" style="width:100%" />
+          <div class="cad-modal-actions">
+            <button id="cad-polygon-sides-ok" class="cad-btn cad-btn-primary">OK</button>
+          </div>
+        </div>
+      </div>
       <!-- Measurement Overlay -->
       <canvas id="cad-measure-overlay" class="cad-measure-overlay"></canvas>
       <!-- Clipping Plane Controls -->

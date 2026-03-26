@@ -865,3 +865,201 @@
   border-color: #0071e3;
   background: rgba(0, 113, 227, 0.08);
 }
+
+/* ===================== Sketch Mode ===================== */
+
+/* Sketch overlay canvas — positioned over viewport */
+.cad-sketch-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 15;
+  pointer-events: auto;
+  cursor: crosshair;
+  display: none;
+}
+
+/* Sketch toolbar styling */
+.cad-sketch-toolbar {
+  background: #0a2540 !important;
+  border: 1px solid #1a6bff;
+  border-radius: 4px;
+  padding: 2px 6px !important;
+}
+
+.cad-toolbar-sep {
+  color: #334;
+  margin: 0 2px;
+  font-size: 14px;
+}
+
+.cad-sketch-finish-btn {
+  background: #1a5533 !important;
+  border-color: #22cc66 !important;
+  color: #22cc66 !important;
+}
+.cad-sketch-finish-btn:hover {
+  background: #226644 !important;
+}
+
+/* ===================== Modal Dialogs ===================== */
+.cad-modal-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.cad-modal-content {
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 300px;
+  max-width: 420px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.cad-modal-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #64ffda;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cad-modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+
+.cad-btn-primary {
+  background: #0f3460 !important;
+  border-color: #64ffda !important;
+  color: #64ffda !important;
+}
+.cad-btn-primary:hover {
+  background: #1a4a7a !important;
+}
+
+/* Plane selection buttons */
+.cad-plane-options {
+  display: flex;
+  gap: 8px;
+}
+
+.cad-plane-btn {
+  flex: 1;
+  background: #1a1a2e;
+  color: #ccd6f6;
+  border: 2px solid #233554;
+  border-radius: 6px;
+  padding: 12px 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+.cad-plane-btn:hover {
+  background: #0f3460;
+  border-color: #64ffda;
+  color: #64ffda;
+}
+.cad-plane-btn small {
+  display: block;
+  font-size: 10px;
+  color: #8892b0;
+  margin-top: 4px;
+  font-weight: 400;
+}
+
+/* ===================== Feature Tree ===================== */
+.cad-feature-tree {
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.cad-feature-item {
+  position: relative;
+}
+
+.cad-feature-item.suppressed {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.cad-feature-item .tree-feat-actions {
+  display: none;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.cad-feature-item:hover .tree-feat-actions {
+  display: flex;
+}
+
+.cad-feat-btn {
+  background: transparent;
+  border: none;
+  color: #8892b0;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+.cad-feat-btn:hover {
+  background: #233554;
+  color: #ff6b6b;
+}
+
+/* ===================== Light theme overrides for sketch/feature ===================== */
+[data-theme="light"] .cad-sketch-toolbar {
+  background: #e0eef9 !important;
+  border-color: #0071e3;
+}
+[data-theme="light"] .cad-sketch-finish-btn {
+  background: #d4edda !important;
+  border-color: #28a745 !important;
+  color: #155724 !important;
+}
+[data-theme="light"] .cad-modal-content {
+  background: #fff;
+  border-color: #ccc;
+  color: #333;
+}
+[data-theme="light"] .cad-modal-title {
+  color: #0071e3;
+}
+[data-theme="light"] .cad-plane-btn {
+  background: #f8f9fa;
+  color: #333;
+  border-color: #ddd;
+}
+[data-theme="light"] .cad-plane-btn:hover {
+  background: #e0eef9;
+  border-color: #0071e3;
+  color: #0071e3;
+}
+[data-theme="light"] .cad-plane-btn small {
+  color: #888;
+}
+[data-theme="light"] .cad-btn-primary {
+  background: #0071e3 !important;
+  border-color: #0071e3 !important;
+  color: #fff !important;
+}
+[data-theme="light"] .cad-feat-btn:hover {
+  background: #eee;
+}
