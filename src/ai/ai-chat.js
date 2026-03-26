@@ -105,6 +105,9 @@ export function initAiChat() {
   // Export chat history as Markdown
   document.getElementById('ai-export-btn')?.addEventListener('click', () => exportChatAsMarkdown());
 
+  // Stop generation
+  document.getElementById('ai-stop-btn')?.addEventListener('click', () => stopGeneration());
+
   // System prompt settings (collapsible)
   initSystemPromptSettings();
 
@@ -360,8 +363,7 @@ function initApiKeySettings() {
       const endpoint = cloudInput?.value?.trim();
       if (key && key !== '••••••••') setApiKey(key);
       if (endpoint) setCloudEndpoint(endpoint);
-      addSystemMessage('Cloud LLM settings saved.');
-      showToast('API key and endpoint saved');
+      addSystemMessage('Cloud LLM settings saved. API key and endpoint updated.');
     });
   }
 
@@ -372,7 +374,6 @@ function initApiKeySettings() {
       if (apiKeyInput) apiKeyInput.value = '';
       if (cloudInput) cloudInput.value = '';
       addSystemMessage('Cloud LLM settings cleared. Using local Ollama.');
-      showToast('Cloud settings cleared');
     });
   }
 }
@@ -921,6 +922,7 @@ function addAiMessage(text) {
   const div = document.createElement('div');
   div.className = 'ai-msg ai-msg-ai';
   div.innerHTML = renderMarkdown(text);
+  attachCodeCopyListeners(div);
   chatListEl?.appendChild(div);
   scrollToBottom();
   return div;
@@ -1005,6 +1007,47 @@ function renderMarkdown(text) {
   return html;
 }
 
+/**
+ * Attach click listeners to copy-code buttons inside a rendered message.
+ * Safe to call multiple times — uses data attribute to avoid duplicate binding.
+ */
+function attachCodeCopyListeners(containerEl) {
+  if (!containerEl) return;
+  containerEl.querySelectorAll('.ai-code-copy-btn').forEach(btn => {
+    if (btn.dataset.bound) return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const codeId = btn.dataset.codeId;
+      const codeEl = containerEl.querySelector(`#${codeId}`);
+      if (codeEl) {
+        navigator.clipboard.writeText(codeEl.textContent).then(() => {
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+        }).catch(() => {
+          // fallback: select and copy
+          const range = document.createRange();
+          range.selectNodeContents(codeEl);
+          window.getSelection()?.removeAllRanges();
+          window.getSelection()?.addRange(range);
+          document.execCommand('copy');
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+        });
+      }
+    });
+  });
+}
+
+/**
+ * Stop the current AI generation
+ */
+function stopGeneration() {
+  if (currentAbortController) {
+    currentAbortController.abort();
+  }
+}
+
 // ─── Send Message ───────────────────────────────────────
 
 async function sendMessage() {
@@ -1047,31 +1090,84 @@ async function sendMessage() {
 
   const streamDiv = createStreamingMessage();
 
+  // Create abort controller for stop generation
+  currentAbortController = new AbortController();
+  lastUserMessage = text;
+
+  // Show stop button
+  const stopBtn = document.getElementById('ai-stop-btn');
+  if (stopBtn) stopBtn.classList.remove('hidden');
+
   try {
-    const result = await chat(selectedModel, history, getSystemPrompt(), (token, full) => {
+    // Trim history to avoid context window overflow (keep system + last N messages)
+    const MAX_HISTORY_MESSAGES = 40; // 20 user + 20 assistant pairs
+    const trimmedHistory = history.length > MAX_HISTORY_MESSAGES
+      ? history.slice(-MAX_HISTORY_MESSAGES)
+      : history;
+
+    const result = await streamChat(selectedModel, trimmedHistory, getSystemPrompt(), (token, full) => {
       streamDiv.innerHTML = renderMarkdown(full);
+      attachCodeCopyListeners(streamDiv);
       streamDiv.classList.remove('streaming');
       scrollToBottom();
-    });
+    }, currentAbortController.signal);
 
-    history.push({ role: 'assistant', content: result.content });
+    if (result.aborted) {
+      // User stopped generation
+      if (result.content) {
+        history.push({ role: 'assistant', content: result.content });
+        const stoppedEl = document.createElement('div');
+        stoppedEl.className = 'ai-token-stats';
+        stoppedEl.textContent = '(generation stopped by user)';
+        streamDiv.appendChild(stoppedEl);
+      } else {
+        streamDiv.innerHTML = '<span class="ai-msg-system">Generation stopped.</span>';
+      }
+    } else {
+      history.push({ role: 'assistant', content: result.content });
 
-    // Show token stats
-    if (result.tokenStats) {
-      const stats = result.tokenStats;
-      const statsEl = document.createElement('div');
-      statsEl.className = 'ai-token-stats';
-      statsEl.textContent = `${stats.promptTokens + stats.completionTokens} tokens · ${stats.totalDurationMs}ms · ${stats.model}`;
-      streamDiv.appendChild(statsEl);
+      // Attach copy listeners to final render
+      attachCodeCopyListeners(streamDiv);
+
+      // Show token stats
+      if (result.tokenStats) {
+        const stats = result.tokenStats;
+        const statsEl = document.createElement('div');
+        statsEl.className = 'ai-token-stats';
+        statsEl.textContent = `${stats.promptTokens + stats.completionTokens} tokens · ${stats.totalDurationMs}ms · ${stats.model}`;
+        streamDiv.appendChild(statsEl);
+      }
     }
 
     // Save session after AI response
     saveSession();
   } catch (e) {
-    streamDiv.innerHTML = `<span class="ai-error">Error: ${_escapeHtml(e.message)}</span>`;
+    if (e.name === 'AbortError') {
+      streamDiv.innerHTML = '<span class="ai-msg-system">Generation stopped.</span>';
+    } else {
+      streamDiv.innerHTML = `<span class="ai-error">Error: ${_escapeHtml(e.message)}</span>`;
+      // Add retry button
+      const retryBtn = document.createElement('button');
+      retryBtn.className = 'ai-retry-btn';
+      retryBtn.textContent = 'Retry';
+      retryBtn.addEventListener('click', () => {
+        // Remove the failed assistant message from history if it was pushed
+        if (history.length > 0 && history[history.length - 1].role === 'user') {
+          // user message is still the last, good
+        }
+        streamDiv.remove();
+        chatInputEl.value = lastUserMessage;
+        sendMessage();
+      });
+      streamDiv.appendChild(retryBtn);
+    }
     streamDiv.classList.remove('streaming');
   } finally {
     isSending = false;
+    currentAbortController = null;
+    // Hide stop button
+    const stopBtn2 = document.getElementById('ai-stop-btn');
+    if (stopBtn2) stopBtn2.classList.add('hidden');
   }
 }
 
@@ -1861,5 +1957,5 @@ export {
   togglePanel as toggleAiPanel, showSessionsModal,
   enterAiFullscreen, exitAiFullscreen,
   showDiagnosticsPanel, detectPlatform, getInstallCommands,
-  exportChatAsMarkdown
+  exportChatAsMarkdown, stopGeneration
 };

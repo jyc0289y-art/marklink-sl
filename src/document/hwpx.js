@@ -122,13 +122,35 @@ export async function importHwpx(file) {
     throw new Error('No sections found in HWPX file');
   }
 
-  // Read header.xml for page setup metadata (task 5)
+  // Read header.xml for page setup metadata and font map (task 5)
   let headerMeta = '';
+  const fontMap = {}; // fontRef ID → font face name
   const headerFile = zip.file('Contents/header.xml') || zip.file('Contents/Header.xml');
   if (headerFile) {
     try {
       const headerXml = await headerFile.async('string');
       headerMeta = parseHeaderMeta(headerXml);
+      // Build font map from <hp:fontface>/<hp:font> elements
+      const hDoc = new DOMParser().parseFromString(headerXml, 'text/xml');
+      const allEls = hDoc.querySelectorAll('*');
+      for (const el of allEls) {
+        const tag = localName(el);
+        if (tag === 'font') {
+          const face = el.getAttribute('face') || el.getAttribute('name') || '';
+          const id = el.getAttribute('id') || '';
+          if (face && id) fontMap[id] = face;
+          // Also map by index within parent fontface
+          if (face && el.parentNode) {
+            const parentTag = localName(el.parentNode);
+            if (parentTag === 'fontface') {
+              const lang = el.parentNode.getAttribute('lang') || '';
+              const siblings = findChildren(el.parentNode, 'font');
+              const idx = siblings.indexOf(el);
+              if (idx >= 0) fontMap[`${lang}_${idx}`] = face;
+            }
+          }
+        }
+      }
     } catch { /* ignore header parse errors */ }
   }
 
@@ -165,7 +187,7 @@ export async function importHwpx(file) {
   if (headerMeta) html += headerMeta;
   const footnoteCollector = { notes: [] };
   for (const xml of sections) {
-    html += parseOwpmlToHTML(xml, binDataMap, footnoteCollector);
+    html += parseOwpmlToHTML(xml, binDataMap, footnoteCollector, fontMap);
   }
 
   // Append collected footnotes/endnotes at the bottom (task 6)
@@ -258,16 +280,22 @@ export async function exportHwpx(fileName) {
  * Parse OWPML section XML → HTML
  * Handles: text formatting, paragraph properties, tables, lists, images, links
  */
-function parseOwpmlToHTML(xml, binDataMap = {}, footnoteCollector = null) {
+function parseOwpmlToHTML(xml, binDataMap = {}, footnoteCollector = null, fontMap = {}) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xml, 'text/xml');
   let html = '';
 
-  // Get the root section element — could be hp:sec or sec
-  const root = doc.documentElement;
+  // Get the root section element — could be hp:sec, sec, body, or other wrapper
+  let root = doc.documentElement;
+  const rootTag = localName(root);
+  // If root is a wrapper (body, document), find the first sec child
+  if (rootTag === 'body' || rootTag === 'document') {
+    const secChild = findChild(root, 'sec') || findChild(root, 'section');
+    if (secChild) root = secChild;
+  }
 
   // Process all top-level children (paragraphs, tables, etc.)
-  html += processChildren(root, binDataMap, footnoteCollector);
+  html += processChildren(root, binDataMap, footnoteCollector, fontMap);
 
   return html;
 }
@@ -276,7 +304,7 @@ function parseOwpmlToHTML(xml, binDataMap = {}, footnoteCollector = null) {
  * Process child nodes of a container element, returning HTML.
  * Handles <p>, <tbl>, and other OWPML elements.
  */
-function processChildren(container, binDataMap, footnoteCollector = null) {
+function processChildren(container, binDataMap, footnoteCollector = null, fontMap = {}) {
   let html = '';
   // Track consecutive list items for grouping into <ul>/<ol>
   let listBuffer = [];
@@ -292,7 +320,7 @@ function processChildren(container, binDataMap, footnoteCollector = null) {
         // This paragraph is a list item
         if (listType && listType !== listInfo.type) {
           // Different list type — flush previous
-          html += flushListBuffer(listBuffer, listType);
+          html += flushListBuffer(listBuffer, listType, binDataMap, fontMap);
           listBuffer = [];
         }
         listType = listInfo.type;
@@ -300,16 +328,16 @@ function processChildren(container, binDataMap, footnoteCollector = null) {
       } else {
         // Not a list item — flush any pending list
         if (listBuffer.length > 0) {
-          html += flushListBuffer(listBuffer, listType);
+          html += flushListBuffer(listBuffer, listType, binDataMap, fontMap);
           listBuffer = [];
           listType = null;
         }
-        html += parseParagraph(node, binDataMap, footnoteCollector);
+        html += parseParagraph(node, binDataMap, footnoteCollector, fontMap);
       }
     } else if (tag === 'tbl') {
       // Flush list buffer before table
       if (listBuffer.length > 0) {
-        html += flushListBuffer(listBuffer, listType);
+        html += flushListBuffer(listBuffer, listType, binDataMap, fontMap);
         listBuffer = [];
         listType = null;
       }
@@ -317,26 +345,28 @@ function processChildren(container, binDataMap, footnoteCollector = null) {
     } else if (tag === 'sec' || tag === 'subDoc') {
       // Nested section — insert page break before new section
       if (listBuffer.length > 0) {
-        html += flushListBuffer(listBuffer, listType);
+        html += flushListBuffer(listBuffer, listType, binDataMap, fontMap);
         listBuffer = [];
         listType = null;
       }
       html += '<hr class="page-break" style="page-break-before:always;border:none;border-top:2px dashed #ccc;margin:24px 0">';
-      html += processChildren(node, binDataMap, footnoteCollector);
-    } else if (tag === 'secPr' || tag === 'colSz') {
+      html += processChildren(node, binDataMap, footnoteCollector, fontMap);
+    } else if (tag === 'secPr') {
       // Section properties — add page break marker
       if (listBuffer.length > 0) {
-        html += flushListBuffer(listBuffer, listType);
+        html += flushListBuffer(listBuffer, listType, binDataMap, fontMap);
         listBuffer = [];
         listType = null;
       }
       html += '<hr class="page-break" style="page-break-before:always;border:none;border-top:2px dashed #ccc;margin:24px 0">';
+    } else if (tag === 'colSz' || tag === 'colDef') {
+      // Column sizing info — skip (does not represent a page break)
     }
   }
 
   // Flush remaining list
   if (listBuffer.length > 0) {
-    html += flushListBuffer(listBuffer, listType);
+    html += flushListBuffer(listBuffer, listType, binDataMap, fontMap);
   }
 
   return html;
@@ -345,11 +375,11 @@ function processChildren(container, binDataMap, footnoteCollector = null) {
 /**
  * Flush accumulated list items into <ul> or <ol>
  */
-function flushListBuffer(items, type, binDataMap = {}) {
+function flushListBuffer(items, type, binDataMap = {}, fontMap = {}) {
   const tag = type === 'ol' ? 'ol' : 'ul';
   let html = `<${tag}>\n`;
   for (const p of items) {
-    const content = parseRunsContent(p, binDataMap);
+    const content = parseRunsContent(p, binDataMap, null, fontMap);
     html += `<li>${content || '&nbsp;'}</li>\n`;
   }
   html += `</${tag}>\n`;
@@ -388,7 +418,7 @@ function getListInfo(pNode) {
 /**
  * Parse a single paragraph element → HTML
  */
-function parseParagraph(pNode, binDataMap, footnoteCollector = null) {
+function parseParagraph(pNode, binDataMap, footnoteCollector = null, fontMap = {}) {
   const paraPr = findChild(pNode, 'paraPr') || findChild(pNode, 'pPr');
   const styleId = paraPr?.getAttribute('styleIDRef') || paraPr?.getAttribute('style') || '';
 
@@ -498,7 +528,7 @@ function parseParagraph(pNode, binDataMap, footnoteCollector = null) {
   const styleAttr = paraStyles.length > 0 ? ` style="${paraStyles.join(';')}"` : '';
 
   // Get run content (with footnote collection)
-  const content = parseRunsContent(pNode, binDataMap, footnoteCollector);
+  const content = parseRunsContent(pNode, binDataMap, footnoteCollector, fontMap);
 
   if (headingLevel) {
     return `<h${headingLevel}${styleAttr}>${content || '&nbsp;'}</h${headingLevel}>\n`;
@@ -529,7 +559,7 @@ function getHeadingLevel(styleId) {
 /**
  * Parse all runs inside a paragraph and return inner HTML string
  */
-function parseRunsContent(pNode, binDataMap, footnoteCollector = null) {
+function parseRunsContent(pNode, binDataMap, footnoteCollector = null, fontMap = {}) {
   let content = '';
 
   for (const child of pNode.childNodes) {
@@ -537,7 +567,7 @@ function parseRunsContent(pNode, binDataMap, footnoteCollector = null) {
     const tag = localName(child);
 
     if (tag === 'run' || tag === 'r') {
-      content += parseRun(child, binDataMap, footnoteCollector);
+      content += parseRun(child, binDataMap, footnoteCollector, fontMap);
     } else if (tag === 't') {
       // Direct text element
       content += escapeHTML(child.textContent);
@@ -571,7 +601,7 @@ function parseRunsContent(pNode, binDataMap, footnoteCollector = null) {
 /**
  * Parse a single run element → HTML string
  */
-function parseRun(runNode, binDataMap, footnoteCollector = null) {
+function parseRun(runNode, binDataMap, footnoteCollector = null, fontMap = {}) {
   const charPr = findChild(runNode, 'charPr') || findChild(runNode, 'rPr');
 
   // Collect formatting
@@ -586,6 +616,15 @@ function parseRun(runNode, binDataMap, footnoteCollector = null) {
     charPr.getAttribute('strikeout') === '1' ||
     charPr.getAttribute('strike') === '1' ||
     charPr.getAttribute('s') === '1'
+  );
+  const isSuperscript = charPr && (
+    charPr.getAttribute('supscript') === '1' ||
+    charPr.getAttribute('superscript') === '1' ||
+    charPr.getAttribute('vertAlign') === 'superscript'
+  );
+  const isSubscript = charPr && (
+    charPr.getAttribute('subscript') === '1' ||
+    charPr.getAttribute('vertAlign') === 'subscript'
   );
 
   // Inline styles
@@ -603,16 +642,22 @@ function parseRun(runNode, binDataMap, footnoteCollector = null) {
     }
 
     // Color — HWPX may use BGR or RGB format
+    // Note: we preserve explicit black (000000) since it matters on colored backgrounds
     const color = charPr.getAttribute('color') || charPr.getAttribute('textColor') || '';
-    if (color && color !== '0' && color !== '000000') {
+    if (color && color !== '0') {
       const hex = normalizeHwpxColor(color);
       if (hex) inlineStyles.push(`color:#${hex}`);
     }
 
-    // Font family
+    // Font family — resolve fontRef via fontMap from header.xml, or use direct face name
     const fontRef = charPr.getAttribute('fontRef') || charPr.getAttribute('face') || '';
     if (fontRef) {
-      inlineStyles.push(`font-family:'${fontRef}'`);
+      // Try to resolve font ID through the font map
+      const resolvedFont = fontMap[fontRef] || fontRef;
+      // Only set if it looks like an actual font name (not a numeric ID)
+      if (resolvedFont && !/^\d+$/.test(resolvedFont)) {
+        inlineStyles.push(`font-family:'${resolvedFont}'`);
+      }
     }
 
     // Task 3: Character spacing (letter-spacing)
@@ -638,6 +683,10 @@ function parseRun(runNode, binDataMap, footnoteCollector = null) {
 
     if (tag === 't') {
       html += escapeHTML(child.textContent);
+    } else if (tag === 'lineBreak' || tag === 'br') {
+      html += '<br>';
+    } else if (tag === 'tab') {
+      html += '<span style="display:inline-block;width:2em">&nbsp;</span>';
     } else if (tag === 'img' || tag === 'drawingObject' || tag === 'pic' || tag === 'drawing') {
       html += parseImage(child, binDataMap);
     } else if (tag === 'markpenBegin' || tag === 'markpenEnd' ||
@@ -677,12 +726,17 @@ function parseRun(runNode, binDataMap, footnoteCollector = null) {
     }
   }
 
+  // Don't wrap empty content in formatting tags
+  if (!html) return '';
+
   // Wrap with formatting tags (inside out: style span → strike → underline → italic → bold)
   if (styleAttr) html = `<span${styleAttr}>${html}</span>`;
   if (isStrike) html = `<s>${html}</s>`;
   if (isUnderline) html = `<u>${html}</u>`;
   if (isItalic) html = `<em>${html}</em>`;
   if (isBold) html = `<strong>${html}</strong>`;
+  if (isSuperscript) html = `<sup>${html}</sup>`;
+  else if (isSubscript) html = `<sub>${html}</sub>`;
 
   return html;
 }

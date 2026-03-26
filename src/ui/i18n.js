@@ -3,6 +3,7 @@
 // Searchable overlay modal + IP-based language recommendation
 
 import { TRANSLATIONS } from '../i18n/translations.js';
+import { activateFocusTrap } from '../utils/focus-trap.js';
 
 const LANG_KEY = 'marklink-lang';
 const LANG_ASKED_KEY = 'marklink-lang-asked';
@@ -299,6 +300,9 @@ export function showLanguagePicker() {
 
   const overlay = document.createElement('div');
   overlay.className = 'lang-picker-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', t('lang.title'));
 
   const langEntries = Object.entries(LANGUAGES);
 
@@ -306,7 +310,7 @@ export function showLanguagePicker() {
     <div class="lang-picker-modal">
       <div class="lang-picker-header">
         <h2>${t('lang.title')}</h2>
-        <button class="lang-picker-close">&times;</button>
+        <button class="lang-picker-close" aria-label="${t('common.close')}">&times;</button>
       </div>
       <div class="lang-picker-search-wrap">
         <input type="text" class="lang-picker-search" placeholder="${t('lang.search')}" autofocus>
@@ -323,8 +327,14 @@ export function showLanguagePicker() {
     </div>
   `;
 
+  // Focus trap for accessibility
+  let deactivateTrap;
+
   // Close handlers
-  const close = () => overlay.remove();
+  const close = () => {
+    if (deactivateTrap) deactivateTrap();
+    overlay.remove();
+  };
   overlay.querySelector('.lang-picker-close').addEventListener('click', close);
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) close();
@@ -359,5 +369,6 @@ export function showLanguagePicker() {
   document.addEventListener('keydown', keyHandler);
 
   document.body.appendChild(overlay);
+  deactivateTrap = activateFocusTrap(overlay);
   searchInput.focus();
 }

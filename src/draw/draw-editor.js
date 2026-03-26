@@ -973,9 +973,19 @@ function resizeObject(obj, handle, wx, wy, orig) {
   } else if (obj.type === 'ellipse') {
     const b = getObjectBounds({ ...orig, type: 'ellipse' });
     if (handle.includes('e')) b.w = wx - b.x;
+    if (handle.includes('w')) { b.w = (b.x + b.w) - wx; b.x = wx; }
     if (handle.includes('s')) b.h = wy - b.y;
+    if (handle.includes('n')) { b.h = (b.y + b.h) - wy; b.y = wy; }
+    obj.cx = b.x + Math.abs(b.w) / 2;
+    obj.cy = b.y + Math.abs(b.h) / 2;
     obj.rx = Math.max(5, Math.abs(b.w) / 2);
     obj.ry = Math.max(5, Math.abs(b.h) / 2);
+  } else if (obj.type === 'polygon' || obj.type === 'star') {
+    // Resize by adjusting radius based on drag distance from center
+    const origBounds = getObjectBounds({ ...orig, type: obj.type });
+    const origCx = orig.cx, origCy = orig.cy;
+    const newR = Math.max(5, Math.hypot(wx - origCx, wy - origCy));
+    obj.r = newR;
   } else if (obj.type === 'image') {
     const b = { x: orig.x, y: orig.y, w: orig.w, h: orig.h };
     if (handle.includes('e')) b.w = wx - b.x;
@@ -983,6 +993,13 @@ function resizeObject(obj, handle, wx, wy, orig) {
     if (handle.includes('s')) b.h = wy - b.y;
     if (handle.includes('n')) { b.h = (orig.y + orig.h) - wy; b.y = wy; }
     obj.x = b.x; obj.y = b.y; obj.w = Math.max(10, b.w); obj.h = Math.max(10, b.h);
+  } else if (obj.type === 'line' || obj.type === 'arrow') {
+    // Resize line/arrow by moving endpoint closest to the handle
+    if (handle === 'nw' || handle === 'sw') {
+      obj.x1 = wx; obj.y1 = wy;
+    } else {
+      obj.x2 = wx; obj.y2 = wy;
+    }
   }
 }
 
@@ -1109,13 +1126,12 @@ function handleTextDown(wx, wy) {
 
 function handleEraser(wx, wy) {
   const layer = getActiveLayer();
-  const eraserRadius = lineWidth * 2;
   const toRemove = [];
   layer.objects.forEach((obj, i) => {
     if (isPointInObject(obj, wx, wy)) toRemove.push(i);
   });
   if (toRemove.length > 0) {
-    pushUndo();
+    pushUndoDebounced();
     for (let i = toRemove.length - 1; i >= 0; i--) {
       layer.objects.splice(toRemove[i], 1);
     }
@@ -1399,8 +1415,38 @@ function clearOverlay() {
 function handleKeyDown(e) {
   const ctrl = e.ctrlKey || e.metaKey;
 
+  if (ctrl && e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); redo(); return; }
   if (ctrl && e.key === 'z') { e.preventDefault(); undo(); return; }
   if (ctrl && e.key === 'y') { e.preventDefault(); redo(); return; }
+  if (ctrl && (e.key === 'a' || e.key === 'A')) {
+    e.preventDefault();
+    selectedObjects = [];
+    layers.forEach((layer) => { if (layer.visible) selectedObjects.push(...layer.objects); });
+    if (currentTool !== 'select') selectTool('select');
+    render();
+    return;
+  }
+  if (ctrl && (e.key === 'd' || e.key === 'D')) {
+    if (selectedObjects.length > 0) {
+      e.preventDefault();
+      pushUndo();
+      const dupes = [];
+      selectedObjects.forEach((obj) => {
+        const dupe = JSON.parse(JSON.stringify(obj));
+        // Offset duplicate slightly
+        if (dupe.type === 'path') dupe.points.forEach((p) => { p.x += 20; p.y += 20; });
+        else if (dupe.x1 !== undefined) { dupe.x1 += 20; dupe.y1 += 20; dupe.x2 += 20; dupe.y2 += 20; }
+        else if (dupe.cx !== undefined) { dupe.cx += 20; dupe.cy += 20; }
+        else { dupe.x = (dupe.x || 0) + 20; dupe.y = (dupe.y || 0) + 20; }
+        getActiveLayer().objects.push(dupe);
+        dupes.push(dupe);
+      });
+      selectedObjects = dupes;
+      render();
+      renderLayerList();
+    }
+    return;
+  }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (selectedObjects.length > 0) {
       e.preventDefault();

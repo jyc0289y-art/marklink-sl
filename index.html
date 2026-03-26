@@ -89,7 +89,7 @@
   </script>
 </head>
 <body>
-  <a href="#main-content" class="skip-to-content">Skip to content</a>
+  <a href="#app" class="skip-to-content">Skip to content</a>
   <!-- Toolbar -->
   <header id="toolbar" class="toolbar">
     <div class="toolbar-left">
@@ -175,7 +175,7 @@
   </nav>
 
   <!-- Main Content -->
-  <main id="app" class="app-container" role="main">
+  <main id="app" class="app-container" role="main" tabindex="-1">
     <!-- Sidebar (hidden by default) -->
     <aside id="sidebar" class="sidebar hidden">
       <div class="sidebar-header">
@@ -1031,7 +1031,7 @@
         </div>
       </div>
       <!-- Compare Modal -->
-      <div id="pdf-compare-modal" class="pdf-modal-overlay" style="display:none">
+      <div id="pdf-compare-modal" class="pdf-modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-label="Compare PDFs">
         <div class="pdf-modal" style="width:90vw;max-width:1200px;height:85vh;display:flex;flex-direction:column">
           <div class="pdf-modal-header">
             <span>Compare PDFs</span>
@@ -1039,7 +1039,7 @@
               <button class="toolbar-btn" id="pdf-compare-prev" title="Previous Page">&larr;</button>
               <span id="pdf-compare-page-info" style="font-size:12px;font-weight:600">0 / 0</span>
               <button class="toolbar-btn" id="pdf-compare-next" title="Next Page">&rarr;</button>
-              <button class="pdf-modal-close" id="pdf-compare-close">&times;</button>
+              <button class="pdf-modal-close" id="pdf-compare-close" aria-label="Close">&times;</button>
             </div>
           </div>
           <div style="display:flex;gap:4px;padding:8px 16px;border-bottom:1px solid var(--border-color);font-size:12px">
@@ -2358,7 +2358,7 @@
       <!-- Sketch 2D Overlay Canvas -->
       <canvas id="cad-sketch-overlay" class="cad-sketch-overlay"></canvas>
       <!-- Sketch Plane Selection Dialog -->
-      <div id="cad-sketch-plane-dialog" class="cad-modal-dialog" style="display:none">
+      <div id="cad-sketch-plane-dialog" class="cad-modal-dialog" style="display:none" role="dialog" aria-modal="true" aria-label="Select Sketch Plane">
         <div class="cad-modal-content">
           <div class="cad-modal-title">Select Sketch Plane</div>
           <div class="cad-plane-options">
@@ -2370,7 +2370,7 @@
         </div>
       </div>
       <!-- Extrude Dialog -->
-      <div id="cad-extrude-dialog" class="cad-modal-dialog" style="display:none">
+      <div id="cad-extrude-dialog" class="cad-modal-dialog" style="display:none" role="dialog" aria-modal="true" aria-label="Extrude">
         <div class="cad-modal-content">
           <div class="cad-modal-title">Extrude</div>
           <div class="cad-prop-row-full">
@@ -2395,7 +2395,7 @@
         </div>
       </div>
       <!-- Revolve Dialog -->
-      <div id="cad-revolve-dialog" class="cad-modal-dialog" style="display:none">
+      <div id="cad-revolve-dialog" class="cad-modal-dialog" style="display:none" role="dialog" aria-modal="true" aria-label="Revolve">
         <div class="cad-modal-content">
           <div class="cad-modal-title">Revolve</div>
           <div class="cad-prop-row-full">
@@ -2422,7 +2422,7 @@
         </div>
       </div>
       <!-- Polygon Sides Input -->
-      <div id="cad-polygon-sides-dialog" class="cad-modal-dialog" style="display:none">
+      <div id="cad-polygon-sides-dialog" class="cad-modal-dialog" style="display:none" role="dialog" aria-modal="true" aria-label="Polygon Sides">
         <div class="cad-modal-content" style="max-width:200px">
           <div class="cad-modal-title">Polygon Sides</div>
           <input type="number" id="cad-polygon-sides" class="cad-prop-input" min="3" max="32" value="6" style="width:100%" />
@@ -2445,7 +2445,7 @@
         <div class="cad-prop-row-full"><label><input type="checkbox" id="cad-clip-flip" /> Flip</label></div>
       </div>
       <!-- Fillet Dialog -->
-      <div id="cad-fillet-dialog" class="cad-modal-dialog" style="display:none">
+      <div id="cad-fillet-dialog" class="cad-modal-dialog" style="display:none" role="dialog" aria-modal="true" aria-label="Fillet Edges">
         <div class="cad-modal-content" style="max-width:280px">
           <div class="cad-modal-title">Fillet Edges</div>
           <div class="cad-fillet-info" style="font-size:11px;color:#8892b0;margin-bottom:8px"></div>
@@ -2461,7 +2461,7 @@
         </div>
       </div>
       <!-- Chamfer Dialog -->
-      <div id="cad-chamfer-dialog" class="cad-modal-dialog" style="display:none">
+      <div id="cad-chamfer-dialog" class="cad-modal-dialog" style="display:none" role="dialog" aria-modal="true" aria-label="Chamfer Edges">
         <div class="cad-modal-content" style="max-width:280px">
           <div class="cad-modal-title">Chamfer Edges</div>
           <div class="cad-chamfer-info" style="font-size:11px;color:#8892b0;margin-bottom:8px"></div>
@@ -2477,7 +2477,7 @@
         </div>
       </div>
       <!-- Shell Dialog -->
-      <div id="cad-shell-dialog" class="cad-modal-dialog" style="display:none">
+      <div id="cad-shell-dialog" class="cad-modal-dialog" style="display:none" role="dialog" aria-modal="true" aria-label="Shell (Hollow)">
         <div class="cad-modal-content" style="max-width:280px">
           <div class="cad-modal-title">Shell (Hollow)</div>
           <div class="cad-shell-info" style="font-size:11px;color:#8892b0;margin-bottom:8px"></div>
@@ -2656,6 +2656,7 @@
       <div class="ai-input-row">
         <textarea id="ai-chat-input" class="ai-chat-input" rows="1" data-placeholder="ai.input.placeholder" placeholder="AI에게 질문하세요 — 문서 분석, 번역, 요약, 수식 등"></textarea>
         <button id="ai-send-btn" class="ai-send-btn" data-tip="ai.send">&#9654;</button>
+        <button id="ai-stop-btn" class="ai-stop-btn hidden" title="Stop generation">&#9632;</button>
       </div>
     </div>
     <div class="ai-bottom-actions">

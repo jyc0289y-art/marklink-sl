@@ -198,17 +198,29 @@ export async function pullModel(modelName, onProgress) {
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
+  let lineBuffer = '';
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     const text = decoder.decode(value, { stream: true });
-    for (const line of text.split('\n').filter(Boolean)) {
+    lineBuffer += text;
+    const lines = lineBuffer.split('\n');
+    lineBuffer = lines.pop() || '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
       try {
         const data = JSON.parse(line);
         if (onProgress) onProgress(data);
-      } catch { /* skip partial JSON */ }
+      } catch { /* skip malformed JSON */ }
     }
+  }
+  // Process remaining buffer
+  if (lineBuffer.trim()) {
+    try {
+      const data = JSON.parse(lineBuffer);
+      if (onProgress) onProgress(data);
+    } catch { /* ignore */ }
   }
 }
 
@@ -261,12 +273,18 @@ export async function chat(model, messages, systemPrompt, onToken, abortSignal) 
   const decoder = new TextDecoder();
   let fullContent = '';
   let tokenStats = null;
+  let lineBuffer = ''; // Buffer for partial JSON lines across chunks
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     const text = decoder.decode(value, { stream: true });
-    for (const line of text.split('\n').filter(Boolean)) {
+    lineBuffer += text;
+    const lines = lineBuffer.split('\n');
+    // Keep the last (potentially incomplete) line in the buffer
+    lineBuffer = lines.pop() || '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
       try {
         const data = JSON.parse(line);
         if (data.message?.content) {
@@ -281,8 +299,18 @@ export async function chat(model, messages, systemPrompt, onToken, abortSignal) 
             model,
           };
         }
-      } catch { /* skip partial JSON */ }
+      } catch { /* skip malformed JSON */ }
     }
+  }
+  // Process any remaining buffered content
+  if (lineBuffer.trim()) {
+    try {
+      const data = JSON.parse(lineBuffer);
+      if (data.message?.content) {
+        fullContent += data.message.content;
+        if (onToken) onToken(data.message.content, fullContent);
+      }
+    } catch { /* ignore */ }
   }
 
   return { content: fullContent, tokenStats };
@@ -361,16 +389,22 @@ export async function streamChat(model, messages, systemPrompt, onToken, abortSi
   let fullContent = '';
   let tokenStats = null;
   let aborted = false;
+  let lineBuffer = ''; // Buffer for partial lines across chunks
 
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       const text = decoder.decode(value, { stream: true });
+      lineBuffer += text;
+      const lines = lineBuffer.split('\n');
+      // Keep the last (potentially incomplete) line in the buffer
+      lineBuffer = lines.pop() || '';
 
       if (cloudEndpoint) {
         // OpenAI-compatible SSE format
-        for (const line of text.split('\n').filter(Boolean)) {
+        for (const line of lines) {
+          if (!line.trim()) continue;
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
             if (data === '[DONE]') break;
@@ -394,7 +428,8 @@ export async function streamChat(model, messages, systemPrompt, onToken, abortSi
         }
       } else {
         // Ollama format
-        for (const line of text.split('\n').filter(Boolean)) {
+        for (const line of lines) {
+          if (!line.trim()) continue;
           try {
             const data = JSON.parse(line);
             if (data.message?.content) {
@@ -409,9 +444,31 @@ export async function streamChat(model, messages, systemPrompt, onToken, abortSi
                 model,
               };
             }
-          } catch { /* skip partial JSON */ }
+          } catch { /* skip malformed JSON */ }
         }
       }
+    }
+    // Process any remaining buffered content
+    if (lineBuffer.trim()) {
+      try {
+        if (cloudEndpoint && lineBuffer.startsWith('data: ')) {
+          const data = lineBuffer.slice(6);
+          if (data !== '[DONE]') {
+            const parsed = JSON.parse(data);
+            const delta = parsed.choices?.[0]?.delta?.content || '';
+            if (delta) {
+              fullContent += delta;
+              if (onToken) onToken(delta, fullContent);
+            }
+          }
+        } else if (!cloudEndpoint) {
+          const data = JSON.parse(lineBuffer);
+          if (data.message?.content) {
+            fullContent += data.message.content;
+            if (onToken) onToken(data.message.content, fullContent);
+          }
+        }
+      } catch { /* ignore */ }
     }
   } catch (e) {
     if (e.name === 'AbortError') {

@@ -23,9 +23,12 @@ const escapeHtml = (str) => {
 const encodeContent = (content) => {
   try {
     const bytes = new TextEncoder().encode(content);
-    // Use built-in compression if available (CompressionStream)
-    // Fallback to plain base64
-    const base64 = btoa(String.fromCharCode(...bytes));
+    // Convert bytes to string safely (spread operator fails on large arrays)
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
     // Make URL-safe
     return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   } catch {

@@ -33,6 +33,9 @@ export const initToast = () => {
   if (container) return;
   container = document.createElement('div');
   container.id = 'toast-container';
+  container.setAttribute('role', 'log');
+  container.setAttribute('aria-live', 'polite');
+  container.setAttribute('aria-label', 'Notifications');
   container.style.cssText = `
     position: fixed;
     bottom: 24px;

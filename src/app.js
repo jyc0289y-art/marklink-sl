@@ -65,6 +65,7 @@ const openPhotoFile = async () => { const m = await loadPhotoEditor(); return m.
 
 import { initAiChat, setContextProviders, enterAiFullscreen, exitAiFullscreen } from './ai/ai-chat.js';
 import { initI18n, setLang, getLang, showLanguagePicker, onLangChange, t } from './ui/i18n.js';
+import { autoTrapModal } from './utils/focus-trap.js';
 import { initAdBanners } from './ui/ad-banner.js';
 // CAD and Drawing are loaded dynamically to avoid blocking app init
 // import { initCadEditor } from './cad/cad-editor.js';
@@ -941,6 +942,14 @@ export async function initApp() {
       e.returnValue = '';
     }
   });
+
+  // Accessibility: auto-activate focus traps on modal dialogs
+  const modalIds = [
+    'pdf-sig-modal', 'pdf-merge-modal', 'pdf-split-modal', 'pdf-compare-modal',
+    'cad-sketch-plane-dialog', 'cad-extrude-dialog', 'cad-revolve-dialog',
+    'cad-polygon-sides-dialog', 'cad-fillet-dialog', 'cad-chamfer-dialog', 'cad-shell-dialog',
+  ];
+  modalIds.forEach(id => autoTrapModal(id));
 
   // End startup measurement
   const startupTime = endStartup();

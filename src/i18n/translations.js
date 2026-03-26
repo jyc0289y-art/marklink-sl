@@ -120,6 +120,10 @@ export const TRANSLATIONS = {
     en: 'Italic', ko: '기울임', ja: '斜体', zh: '斜体',
     es: 'Cursiva', fr: 'Italique', de: 'Kursiv',
   },
+  'tip.strikethrough': {
+    en: 'Strikethrough', ko: '취소선', ja: '取り消し線', zh: '删除线',
+    es: 'Tachado', fr: 'Barré', de: 'Durchgestrichen',
+  },
   'tip.heading': {
     en: 'Heading', ko: '제목', ja: '見出し', zh: '标题',
     es: 'Encabezado', fr: 'Titre', de: 'Überschrift',
@@ -1907,6 +1911,24 @@ export const TRANSLATIONS = {
   'cad.object': {
     en: 'Object', ko: '객체', ja: 'オブジェクト', zh: '对象',
     es: 'Objeto', fr: 'Objet', de: 'Objekt',
+  },
+  'cad.featureTree': {
+    en: 'Feature Tree', ko: '피처 트리', ja: 'フィーチャーツリー', zh: '特征树',
+    es: 'Árbol de características', fr: 'Arbre de fonctions', de: 'Feature-Baum',
+  },
+
+  // ===== PDF MODALS =====
+  'pdf.mergePdfs': {
+    en: 'Merge PDFs', ko: 'PDF 병합', ja: 'PDF結合', zh: '合并PDF',
+    es: 'Fusionar PDFs', fr: 'Fusionner les PDF', de: 'PDFs zusammenführen',
+  },
+  'pdf.splitPdf': {
+    en: 'Split PDF', ko: 'PDF 분할', ja: 'PDF分割', zh: '拆分PDF',
+    es: 'Dividir PDF', fr: 'Diviser le PDF', de: 'PDF teilen',
+  },
+  'pdf.comparePdfs': {
+    en: 'Compare PDFs', ko: 'PDF 비교', ja: 'PDF比較', zh: '比较PDF',
+    es: 'Comparar PDFs', fr: 'Comparer les PDF', de: 'PDFs vergleichen',
   },
 
   // ===== TUTORIAL & HELP =====

@@ -11,9 +11,11 @@ import { broadcastThemeChange, broadcastLangChange } from './tab-sync.js';
 import { getPluginList, enablePlugin, disablePlugin } from '../plugins/plugin-manager.js';
 import { buildShortcutsSettingsPanel } from './shortcut-customizer.js';
 import { downloadBlob } from '../utils/download.js';
+import { activateFocusTrap } from '../utils/focus-trap.js';
 
 const SETTINGS_STORAGE_KEY = 'officelink-settings';
 let settingsOverlay = null;
+let deactivateSettingsTrap = null;
 
 // Editable settings with defaults
 const DEFAULT_SETTINGS = {
@@ -162,16 +164,15 @@ export const showSettings = () => {
   document.body.appendChild(settingsOverlay);
   renderTabContent('general');
 
-  // Focus trap
-  requestAnimationFrame(() => {
-    modal.querySelector('.settings-tab-btn')?.focus();
-  });
+  // Focus trap for accessibility
+  deactivateSettingsTrap = activateFocusTrap(settingsOverlay);
 };
 
 /**
  * Close settings modal
  */
 export const closeSettings = () => {
+  if (deactivateSettingsTrap) { deactivateSettingsTrap(); deactivateSettingsTrap = null; }
   settingsOverlay?.remove();
   settingsOverlay = null;
 };

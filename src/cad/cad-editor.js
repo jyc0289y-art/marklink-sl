@@ -228,7 +228,10 @@ export function destroyCadEditor() {
     renderer = null;
   }
 
-  // 9. Clear OCCT shape references
+  // 9. Dispose OCCT shape references (free WASM memory)
+  occtShapes.forEach((shape) => {
+    try { if (shape && typeof shape.delete === 'function') shape.delete(); } catch { /* already freed */ }
+  });
   occtShapes.clear();
   occtEnabled = false;
 
@@ -559,6 +562,13 @@ function deleteSelected() {
   sceneObjects = sceneObjects.filter((o) => o !== selectedObject);
   const name = selectedObject.name;
 
+  // Dispose OCCT B-Rep shape (free WASM memory)
+  const occtShape = occtShapes.get(selectedObject.uuid);
+  if (occtShape) {
+    try { if (typeof occtShape.delete === 'function') occtShape.delete(); } catch { /* already freed */ }
+    occtShapes.delete(selectedObject.uuid);
+  }
+
   // Dispose geometry and material
   if (selectedObject.geometry) selectedObject.geometry.dispose();
   if (selectedObject.material) {
@@ -585,6 +595,22 @@ function duplicateSelected() {
   clone.name = `${selectedObject.userData.type || 'Object'}_${objectCounter}`;
   clone.position.x += 2;
   clone.userData = { ...selectedObject.userData };
+
+  // If source has B-Rep data, deep-copy the OCCT shape for the clone
+  const srcShape = occtShapes.get(selectedObject.uuid);
+  if (srcShape && OCCT.isOCCTReady()) {
+    try {
+      const oc = OCCT.getOC();
+      const copy = new oc.BRepBuilderAPI_Copy_2(srcShape, true, false);
+      const clonedShape = copy.Shape();
+      copy.delete();
+      occtShapes.set(clone.uuid, clonedShape);
+    } catch {
+      // If copy fails, mark clone as non-BRep
+      clone.userData.isBRep = false;
+    }
+  }
+
   scene.add(clone);
   sceneObjects.push(clone);
   selectObject(clone);
@@ -626,6 +652,12 @@ function restoreState(state) {
   sceneObjects.forEach((o) => {
     transformControls.detach();
     scene.remove(o);
+    // Clean up OCCT shape references (undo loses B-Rep precision)
+    const occtShape = occtShapes.get(o.uuid);
+    if (occtShape) {
+      try { if (typeof occtShape.delete === 'function') occtShape.delete(); } catch { /* already freed */ }
+      occtShapes.delete(o.uuid);
+    }
     if (o.geometry) o.geometry.dispose();
     if (o.material) o.material.dispose();
   });
@@ -2363,7 +2395,19 @@ function updateMeasurement(obj) {
 
   const box = new THREE.Box3().setFromObject(obj);
   const size = box.getSize(new THREE.Vector3());
-  measDiv.textContent = `Size: ${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)}`;
+  let html = `Size: ${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)}`;
+
+  // Show B-Rep measurements if available
+  const occtShape = occtShapes.get(obj.uuid);
+  if (occtShape && occtEnabled) {
+    const area = OCCT.getSurfaceArea(occtShape);
+    const volume = OCCT.getVolume(occtShape);
+    if (area >= 0) html += `<br>Area: ${area.toFixed(4)}`;
+    if (volume > 0) html += ` | Vol: ${volume.toFixed(4)}`;
+    html += `<br>Faces: ${OCCT.getFaceCount(occtShape)} | Edges: ${OCCT.getEdgeCount(occtShape)}`;
+  }
+
+  measDiv.innerHTML = html;
 }
 
 /* ===================== Coordinate Display ===================== */
@@ -3659,6 +3703,12 @@ function clearScene() {
   sceneObjects.forEach((obj) => {
     transformControls.detach();
     scene.remove(obj);
+    // Dispose OCCT B-Rep shape
+    const occtShape = occtShapes.get(obj.uuid);
+    if (occtShape) {
+      try { if (typeof occtShape.delete === 'function') occtShape.delete(); } catch { /* already freed */ }
+      occtShapes.delete(obj.uuid);
+    }
     if (obj.geometry) obj.geometry.dispose();
     if (obj.material) obj.material.dispose();
   });
@@ -4330,14 +4380,17 @@ function handleSTEPImport(file) {
       mesh.userData.isCADObject = true;
       mesh.userData.isBRep = true;
 
-      // Auto-scale
+      // Auto-scale and center
       const box = new THREE.Box3().setFromObject(mesh);
       const size = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
-      if (maxDim > 10) mesh.scale.multiplyScalar(5 / maxDim);
+      const scaleFactor = maxDim > 10 ? 5 / maxDim : 1;
+      if (scaleFactor !== 1) mesh.scale.multiplyScalar(scaleFactor);
 
-      // Center
-      const center = box.getCenter(new THREE.Vector3());
+      // Re-compute bounding box after scaling to get correct center
+      mesh.updateMatrixWorld(true);
+      const scaledBox = new THREE.Box3().setFromObject(mesh);
+      const center = scaledBox.getCenter(new THREE.Vector3());
       mesh.position.sub(center);
       mesh.position.y = 0;
 

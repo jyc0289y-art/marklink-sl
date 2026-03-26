@@ -226,6 +226,9 @@ export const isOCCTReady = () => occtReady;
 export const getOCCTError = () => occtLoadError;
 export const getOC = () => oc;
 
+/** Safely delete an OCCT shape (exported for use by cad-editor cleanup) */
+export const deleteShape = (shape) => safeDelete(shape);
+
 /* ===================== Primitive B-Rep Creation ===================== */
 
 /**
@@ -240,8 +243,11 @@ export const createBox = (width = 2, height = 2, depth = 2) => {
   return safeOCCT('createBox', () => {
     const maker = new oc.BRepPrimAPI_MakeBox_1(width, height, depth);
     const shape = maker.Shape();
-    safeDelete(maker);
-    return shape;
+    // Shape() returns a reference owned by maker — deep copy before deleting maker
+    const copy = new oc.BRepBuilderAPI_Copy_2(shape, true, false);
+    const result = copy.Shape();
+    safeDelete(copy, maker);
+    return result;
   });
 };
 
@@ -257,8 +263,10 @@ export const createSphere = (radius = 1) => {
   return safeOCCT('createSphere', () => {
     const maker = new oc.BRepPrimAPI_MakeSphere_1(radius);
     const shape = maker.Shape();
-    safeDelete(maker);
-    return shape;
+    const copy = new oc.BRepBuilderAPI_Copy_2(shape, true, false);
+    const result = copy.Shape();
+    safeDelete(copy, maker);
+    return result;
   });
 };
 
@@ -274,8 +282,10 @@ export const createCylinder = (radius = 1, height = 2) => {
   return safeOCCT('createCylinder', () => {
     const maker = new oc.BRepPrimAPI_MakeCylinder_1(radius, height);
     const shape = maker.Shape();
-    safeDelete(maker);
-    return shape;
+    const copy = new oc.BRepBuilderAPI_Copy_2(shape, true, false);
+    const result = copy.Shape();
+    safeDelete(copy, maker);
+    return result;
   });
 };
 
@@ -295,8 +305,10 @@ export const createCone = (r1 = 1, r2 = 0, height = 2) => {
   return safeOCCT('createCone', () => {
     const maker = new oc.BRepPrimAPI_MakeCone_1(r1, r2, height);
     const shape = maker.Shape();
-    safeDelete(maker);
-    return shape;
+    const copy = new oc.BRepBuilderAPI_Copy_2(shape, true, false);
+    const result = copy.Shape();
+    safeDelete(copy, maker);
+    return result;
   });
 };
 
@@ -316,8 +328,10 @@ export const createTorus = (majorR = 1, minorR = 0.4) => {
   return safeOCCT('createTorus', () => {
     const maker = new oc.BRepPrimAPI_MakeTorus_1(majorR, minorR);
     const shape = maker.Shape();
-    safeDelete(maker);
-    return shape;
+    const copy = new oc.BRepBuilderAPI_Copy_2(shape, true, false);
+    const result = copy.Shape();
+    safeDelete(copy, maker);
+    return result;
   });
 };
 
@@ -486,11 +500,16 @@ export const revolveShape = (profile, axis, angleDeg = 360) => {
 export const booleanUnion = (shape1, shape2) => {
   if (!oc || !shape1 || !shape2) return null;
   try {
-    const fuse = new oc.BRepAlgoAPI_Fuse_3(shape1, shape2, new oc.Message_ProgressRange_1());
+    const progress = new oc.Message_ProgressRange_1();
+    const fuse = new oc.BRepAlgoAPI_Fuse_3(shape1, shape2, progress);
+    safeDelete(progress);
     if (!fuse.IsDone()) { fuse.delete(); return null; }
     const result = fuse.Shape();
-    fuse.delete();
-    return result;
+    // Deep copy result before deleting the algorithm object
+    const copy = new oc.BRepBuilderAPI_Copy_2(result, true, false);
+    const copied = copy.Shape();
+    safeDelete(copy, fuse);
+    return copied;
   } catch (e) {
     console.error('[OCCT] booleanUnion error:', e);
     return null;
@@ -504,11 +523,15 @@ export const booleanUnion = (shape1, shape2) => {
 export const booleanSubtract = (shape1, shape2) => {
   if (!oc || !shape1 || !shape2) return null;
   try {
-    const cut = new oc.BRepAlgoAPI_Cut_3(shape1, shape2, new oc.Message_ProgressRange_1());
+    const progress = new oc.Message_ProgressRange_1();
+    const cut = new oc.BRepAlgoAPI_Cut_3(shape1, shape2, progress);
+    safeDelete(progress);
     if (!cut.IsDone()) { cut.delete(); return null; }
     const result = cut.Shape();
-    cut.delete();
-    return result;
+    const copy = new oc.BRepBuilderAPI_Copy_2(result, true, false);
+    const copied = copy.Shape();
+    safeDelete(copy, cut);
+    return copied;
   } catch (e) {
     console.error('[OCCT] booleanSubtract error:', e);
     return null;
@@ -522,11 +545,15 @@ export const booleanSubtract = (shape1, shape2) => {
 export const booleanIntersect = (shape1, shape2) => {
   if (!oc || !shape1 || !shape2) return null;
   try {
-    const common = new oc.BRepAlgoAPI_Common_3(shape1, shape2, new oc.Message_ProgressRange_1());
+    const progress = new oc.Message_ProgressRange_1();
+    const common = new oc.BRepAlgoAPI_Common_3(shape1, shape2, progress);
+    safeDelete(progress);
     if (!common.IsDone()) { common.delete(); return null; }
     const result = common.Shape();
-    common.delete();
-    return result;
+    const copy = new oc.BRepBuilderAPI_Copy_2(result, true, false);
+    const copied = copy.Shape();
+    safeDelete(copy, common);
+    return copied;
   } catch (e) {
     console.error('[OCCT] booleanIntersect error:', e);
     return null;
@@ -565,6 +592,13 @@ export const filletEdges = (shape, radius = 0.2, edgeIndices = []) => {
           fillet.Add_2(radius, edges[idx]);
         }
       });
+    }
+
+    fillet.Build(new oc.Message_ProgressRange_1());
+    if (!fillet.IsDone()) {
+      fillet.delete();
+      console.warn('[OCCT] filletEdges: build failed — try a smaller radius');
+      return null;
     }
 
     const result = fillet.Shape();
@@ -617,6 +651,12 @@ export const chamferEdges = (shape, distance = 0.2, edgeIndices = []) => {
     }
 
     edgeMap.delete();
+    chamfer.Build(new oc.Message_ProgressRange_1());
+    if (!chamfer.IsDone()) {
+      chamfer.delete();
+      console.warn('[OCCT] chamferEdges: build failed — try a smaller distance');
+      return null;
+    }
     const result = chamfer.Shape();
     chamfer.delete();
     return result;
@@ -654,6 +694,7 @@ export const shellShape = (shape, thickness = 0.2, faceIndicesToRemove = [0]) =>
       }
     });
 
+    const progress = new oc.Message_ProgressRange_1();
     shell.MakeThickSolidByJoin(
       shape,
       facesToRemove,
@@ -664,8 +705,9 @@ export const shellShape = (shape, thickness = 0.2, faceIndicesToRemove = [0]) =>
       false, // selfInter
       oc.GeomAbs_JoinType.GeomAbs_Arc,
       false, // removeIntEdges
-      new oc.Message_ProgressRange_1()
+      progress
     );
+    safeDelete(progress);
 
     facesToRemove.delete();
 
@@ -693,7 +735,9 @@ export const loftShapes = (wires) => {
   try {
     const loft = new oc.BRepOffsetAPI_ThruSections(true, false, 1e-6);
     wires.forEach((wire) => loft.AddWire(wire));
-    loft.Build(new oc.Message_ProgressRange_1());
+    const progress = new oc.Message_ProgressRange_1();
+    loft.Build(progress);
+    safeDelete(progress);
 
     if (!loft.IsDone()) { loft.delete(); return null; }
     const result = loft.Shape();
@@ -719,7 +763,9 @@ export const tessellate = (shape, deflection = 0.1) => {
   try {
     // Perform tessellation
     const mesh = new oc.BRepMesh_IncrementalMesh_2(shape, deflection, false, deflection * 5, true);
-    mesh.Perform(new oc.Message_ProgressRange_1());
+    const meshProgress = new oc.Message_ProgressRange_1();
+    mesh.Perform(meshProgress);
+    safeDelete(meshProgress);
 
     const vertices = [];
     const normals = [];
@@ -845,18 +891,19 @@ export const exportSTEP = (shapes) => {
     writer.SetTolerance(1e-6);
 
     shapes.forEach((shape) => {
-      writer.Transfer(shape, oc.STEPControl_StepModelType.STEPControl_AsIs, true, new oc.Message_ProgressRange_1());
+      const progress = new oc.Message_ProgressRange_1();
+      writer.Transfer(shape, oc.STEPControl_StepModelType.STEPControl_AsIs, true, progress);
+      safeDelete(progress);
     });
 
-    const status = writer.Write('output.step');
+    // Write to virtual FS — path must start with '/'
+    const status = writer.Write('/output.step');
     if (status !== oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
       writer.delete();
       return null;
     }
 
-    // Read the virtual file
     const fileContent = oc.FS.readFile('/output.step', { encoding: 'utf8' });
-    // Clean up virtual FS
     try { oc.FS.unlink('/output.step'); } catch { /* ignore */ }
     writer.delete();
     return fileContent;
@@ -886,7 +933,9 @@ export const importSTEP = (stepContent) => {
       return null;
     }
 
-    reader.TransferRoots(new oc.Message_ProgressRange_1());
+    const progress = new oc.Message_ProgressRange_1();
+    reader.TransferRoots(progress);
+    safeDelete(progress);
     const shape = reader.OneShape();
 
     reader.delete();
@@ -927,6 +976,39 @@ export const exportIGES = (shapes) => {
 };
 
 /**
+ * Import an IGES file
+ * @param {string} igesContent - IGES file contents
+ * @returns {TopoDS_Shape|null}
+ */
+export const importIGES = (igesContent) => {
+  if (!oc || !igesContent) return null;
+  try {
+    oc.FS.writeFile('/import.iges', igesContent);
+
+    const reader = new oc.IGESControl_Reader_1();
+    const status = reader.ReadFile('/import.iges');
+
+    if (status !== oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
+      reader.delete();
+      try { oc.FS.unlink('/import.iges'); } catch { /* ignore */ }
+      return null;
+    }
+
+    const progress = new oc.Message_ProgressRange_1();
+    reader.TransferRoots(progress);
+    safeDelete(progress);
+    const shape = reader.OneShape();
+
+    reader.delete();
+    try { oc.FS.unlink('/import.iges'); } catch { /* ignore */ }
+    return shape;
+  } catch (e) {
+    console.error('[OCCT] importIGES error:', e);
+    return null;
+  }
+};
+
+/**
  * Export a single shape to BRep format
  * @param {TopoDS_Shape} shape
  * @returns {string|null}
@@ -934,8 +1016,10 @@ export const exportIGES = (shapes) => {
 export const exportBRep = (shape) => {
   if (!oc || !shape) return null;
   try {
-    const writer = new oc.BRepTools();
-    writer.Write_2(shape, '/output.brep', new oc.Message_ProgressRange_1());
+    const progress = new oc.Message_ProgressRange_1();
+    // BRepTools is a static utility — call Write_2 directly on the class
+    oc.BRepTools.Write_2(shape, '/output.brep', progress);
+    safeDelete(progress);
     const fileContent = oc.FS.readFile('/output.brep', { encoding: 'utf8' });
     try { oc.FS.unlink('/output.brep'); } catch { /* ignore */ }
     return fileContent;
@@ -1005,4 +1089,64 @@ export const getFaceCount = (shape) => {
   while (explorer.More()) { count++; explorer.Next(); }
   explorer.delete();
   return count;
+};
+
+/* ===================== B-Rep Measurements ===================== */
+
+/**
+ * Compute the surface area of a shape using GProp
+ * @param {TopoDS_Shape} shape
+ * @returns {number} surface area, or -1 on failure
+ */
+export const getSurfaceArea = (shape) => {
+  if (!oc || !shape) return -1;
+  try {
+    const props = new oc.GProp_GProps_1();
+    oc.BRepGProp.SurfaceProperties_1(shape, props, 1e-6, false);
+    const area = props.Mass();
+    props.delete();
+    return area;
+  } catch (e) {
+    console.error('[OCCT] getSurfaceArea error:', e);
+    return -1;
+  }
+};
+
+/**
+ * Compute the volume of a solid shape using GProp
+ * @param {TopoDS_Shape} shape
+ * @returns {number} volume, or -1 on failure
+ */
+export const getVolume = (shape) => {
+  if (!oc || !shape) return -1;
+  try {
+    const props = new oc.GProp_GProps_1();
+    oc.BRepGProp.VolumeProperties_1(shape, props, 1e-6, false, false);
+    const volume = props.Mass();
+    props.delete();
+    return volume;
+  } catch (e) {
+    console.error('[OCCT] getVolume error:', e);
+    return -1;
+  }
+};
+
+/**
+ * Compute the center of mass of a shape
+ * @param {TopoDS_Shape} shape
+ * @returns {{x: number, y: number, z: number}|null}
+ */
+export const getCenterOfMass = (shape) => {
+  if (!oc || !shape) return null;
+  try {
+    const props = new oc.GProp_GProps_1();
+    oc.BRepGProp.VolumeProperties_1(shape, props, 1e-6, false, false);
+    const center = props.CentreOfMass();
+    const result = { x: center.X(), y: center.Y(), z: center.Z() };
+    props.delete();
+    return result;
+  } catch (e) {
+    console.error('[OCCT] getCenterOfMass error:', e);
+    return null;
+  }
 };

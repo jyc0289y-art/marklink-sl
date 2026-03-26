@@ -299,6 +299,17 @@ async function extractDocxWithJSZip(arrayBuffer) {
         const px = Math.round((rightTwips / 1440) * 96);
         styles.push(`margin-right:${px}px`);
       }
+      // First-line indent (w:firstLine) or hanging indent (w:hanging)
+      const firstLine = parseInt(getAttr(ind, 'firstLine') || '0', 10);
+      if (firstLine > 0) {
+        const px = Math.round((firstLine / 1440) * 96);
+        styles.push(`text-indent:${px}px`);
+      }
+      const hanging = parseInt(getAttr(ind, 'hanging') || '0', 10);
+      if (hanging > 0) {
+        const px = Math.round((hanging / 1440) * 96);
+        styles.push(`text-indent:-${px}px`);
+      }
     }
 
     // Spacing (twips → pt for before/after; line depends on lineRule)
@@ -339,7 +350,10 @@ async function extractDocxWithJSZip(arrayBuffer) {
     const isBold = rPr && queryFirst(rPr, 'b') !== null;
     const isItalic = rPr && queryFirst(rPr, 'i') !== null;
     const isUnderline = rPr && queryFirst(rPr, 'u') !== null;
-    const isStrike = rPr && queryFirst(rPr, 'strike') !== null;
+    const isStrike = rPr && (queryFirst(rPr, 'strike') !== null || queryFirst(rPr, 'dstrike') !== null);
+    // Superscript / subscript from w:vertAlign
+    const vertAlignEl = rPr && queryFirst(rPr, 'vertAlign');
+    const vertAlignVal = vertAlignEl ? getAttr(vertAlignEl, 'val') : '';
 
     const textNodes = queryAll(r, 't');
     let text = textNodes.map((t) => t.textContent).join('');
@@ -373,6 +387,8 @@ async function extractDocxWithJSZip(arrayBuffer) {
     if (isItalic) text = `<em>${text}</em>`;
     if (isUnderline) text = `<u>${text}</u>`;
     if (isStrike) text = `<s>${text}</s>`;
+    if (vertAlignVal === 'superscript') text = `<sup>${text}</sup>`;
+    else if (vertAlignVal === 'subscript') text = `<sub>${text}</sub>`;
 
     // Wrap in span with inline styles if needed
     const inlineStyle = extractRunStyles(rPr);
@@ -451,24 +467,23 @@ async function extractDocxWithJSZip(arrayBuffer) {
   };
 
   /**
-   * Process paragraph content (runs, hyperlinks, drawings, picts)
+   * Process paragraph content (runs, hyperlinks, drawings, picts, smartTags)
    */
   const processParaContent = async (p) => {
     let content = '';
     for (const child of p.children) {
       const ln = child.localName;
       if (ln === 'r') {
-        // Check for drawing or pict inside run
+        // Process text AND inline images in the same run (don't skip text)
         const drawing = queryFirst(child, 'drawing');
         if (drawing) {
           content += await processDrawing(drawing);
-          continue;
         }
         const pict = queryFirst(child, 'pict');
         if (pict) {
           content += await processPict(pict);
-          continue;
         }
+        // Always process run text (even if it also contained images)
         content += processRun(child);
       } else if (ln === 'hyperlink') {
         content += processHyperlink(child);
@@ -476,6 +491,12 @@ async function extractDocxWithJSZip(arrayBuffer) {
         content += await processDrawing(child);
       } else if (ln === 'pict') {
         content += await processPict(child);
+      } else if (ln === 'smartTag') {
+        // Process runs inside smart tags
+        const innerRuns = queryAll(child, 'r');
+        for (const ir of innerRuns) {
+          content += processRun(ir);
+        }
       }
     }
     return content;
@@ -506,14 +527,56 @@ async function extractDocxWithJSZip(arrayBuffer) {
       tableHtml += '</colgroup>';
     }
 
+    // Pre-compute vertical merge rowspans
+    // Build a grid: vMergeMap[rowIdx][cellIdx] = { isRestart, rowspan, isContinue }
     const rows = queryDirectChildren(tbl, 'tr');
-    for (const tr of rows) {
+    const vMergeRowspans = []; // [rowIdx][cellIdx] → rowspan count
+    for (let ri = 0; ri < rows.length; ri++) {
+      vMergeRowspans[ri] = [];
+      const cells = queryDirectChildren(rows[ri], 'tc');
+      for (let ci = 0; ci < cells.length; ci++) {
+        vMergeRowspans[ri][ci] = 1;
+      }
+    }
+    // For each column, walk rows to find restart→continue chains
+    const maxCols = Math.max(...vMergeRowspans.map(r => r.length), 0);
+    for (let ci = 0; ci < maxCols; ci++) {
+      let restartRow = -1;
+      for (let ri = 0; ri < rows.length; ri++) {
+        const cells = queryDirectChildren(rows[ri], 'tc');
+        if (ci >= cells.length) continue;
+        const tcPr = queryFirst(cells[ci], 'tcPr');
+        const vMerge = tcPr ? queryFirst(tcPr, 'vMerge') : null;
+        if (vMerge) {
+          const mergeVal = getAttr(vMerge, 'val');
+          if (mergeVal === 'restart') {
+            restartRow = ri;
+          } else if (!mergeVal || mergeVal === 'continue') {
+            if (restartRow >= 0) {
+              vMergeRowspans[restartRow][ci]++;
+              vMergeRowspans[ri][ci] = 0; // mark as consumed
+            }
+          }
+        } else {
+          restartRow = -1; // reset chain
+        }
+      }
+    }
+
+    for (let ri = 0; ri < rows.length; ri++) {
+      const tr = rows[ri];
       tableHtml += '<tr>';
       const cells = queryDirectChildren(tr, 'tc');
-      for (const tc of cells) {
+      for (let ci = 0; ci < cells.length; ci++) {
+        const tc = cells[ci];
         const tcPr = queryFirst(tc, 'tcPr');
         let cellAttrs = '';
         let cellStyle = '';
+
+        // Skip cells consumed by vertical merge
+        if (vMergeRowspans[ri] && vMergeRowspans[ri][ci] === 0) {
+          continue;
+        }
 
         // Column span
         if (tcPr) {
@@ -521,14 +584,9 @@ async function extractDocxWithJSZip(arrayBuffer) {
           const spanVal = parseInt(getAttr(gridSpan, 'val') || '1', 10);
           if (spanVal > 1) cellAttrs += ` colspan="${spanVal}"`;
 
-          // Vertical merge
-          const vMerge = queryFirst(tcPr, 'vMerge');
-          if (vMerge) {
-            const mergeVal = getAttr(vMerge, 'val');
-            if (!mergeVal || mergeVal === 'continue') {
-              continue;
-            }
-          }
+          // Vertical merge rowspan
+          const rowspan = vMergeRowspans[ri] && vMergeRowspans[ri][ci];
+          if (rowspan > 1) cellAttrs += ` rowspan="${rowspan}"`;
 
           // Cell shading (w:shd)
           const shd = queryFirst(tcPr, 'shd');
@@ -588,12 +646,15 @@ async function extractDocxWithJSZip(arrayBuffer) {
 
         if (cellStyle) cellAttrs += ` style="${cellStyle}"`;
 
-        // Process paragraphs inside cell
-        const cellParas = queryDirectChildren(tc, 'p');
+        // Process paragraphs and nested tables inside cell
         let cellContent = '';
-        for (const cp of cellParas) {
-          const pc = await processParaContent(cp);
-          cellContent += pc;
+        for (const cellChild of tc.children) {
+          const cln = cellChild.localName;
+          if (cln === 'p') {
+            cellContent += await processParaContent(cellChild);
+          } else if (cln === 'tbl') {
+            cellContent += await processTable(cellChild);
+          }
         }
         tableHtml += `<td${cellAttrs}>${cellContent}</td>`;
       }
@@ -612,6 +673,35 @@ async function extractDocxWithJSZip(arrayBuffer) {
     if (ln === 'tbl') {
       html += await processTable(child);
       html += '\n';
+      continue;
+    }
+
+    // Structured Document Tags (sdt) — extract content from sdtContent
+    if (ln === 'sdt') {
+      const sdtContent = queryFirst(child, 'sdtContent');
+      if (sdtContent) {
+        for (const sc of sdtContent.children) {
+          if (sc.localName === 'p') {
+            // Re-inject into body iteration conceptually — process inline
+            const spc = await processParaContent(sc);
+            const spPr = queryFirst(sc, 'pPr');
+            const sps = queryFirst(spPr, 'pStyle');
+            const sv = getAttr(sps, 'val');
+            let stag = 'p';
+            if (/^heading\s*1$/i.test(sv) || /^title$/i.test(sv)) stag = 'h1';
+            else if (/^heading\s*2$/i.test(sv) || /^subtitle$/i.test(sv)) stag = 'h2';
+            else if (/^heading\s*3$/i.test(sv)) stag = 'h3';
+            else if (/^heading\s*4$/i.test(sv)) stag = 'h4';
+            else if (/^heading\s*5$/i.test(sv)) stag = 'h5';
+            else if (/^heading\s*6$/i.test(sv)) stag = 'h6';
+            const sStyle = extractParaStyles(spPr);
+            const ssa = sStyle ? ` style="${sStyle}"` : '';
+            html += `<${stag}${ssa}>${spc}</${stag}>\n`;
+          } else if (sc.localName === 'tbl') {
+            html += await processTable(sc);
+          }
+        }
+      }
       continue;
     }
 
@@ -670,7 +760,7 @@ async function extractDocxWithJSZip(arrayBuffer) {
   html = html.replace(/((?:<li data-list-type="(ol|ul)"[^>]*>.*?<\/li>\n?)+)/g, (match, _group, type) => {
     // Use the type from the first li in the group
     const firstType = type || 'ul';
-    const cleaned = match.replace(/ data-list-type="(?:ol|ul)"/g, '');
+    const cleaned = match.replace(/ data-list-type="(?:ol|ul)"/g, '').replace(/ data-level="\d+"/g, '');
     return `<${firstType}>\n${cleaned}</${firstType}>\n`;
   });
 

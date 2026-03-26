@@ -184,7 +184,7 @@ function bindCalcEvents(container) {
       }).catch(() => {});
       return;
     }
-    else if (key === 'Escape' || key === 'c' || key === 'C') { e.preventDefault(); handleAction('clear'); }
+    else if (key === 'Escape') { e.preventDefault(); handleAction('clear'); }
   };
   document.addEventListener('keydown', _onKeydown);
   _calcCleanups.push(() => document.removeEventListener('keydown', _onKeydown));
@@ -288,6 +288,7 @@ function handleMemory(op) {
   switch (op) {
     case 'mc': memory = 0; break;
     case 'mr': expression = String(memory); result = formatNumber(memory); updateDisplay(); return;
+    case 'ms': memory = val; break;
     case 'm+': memory += val; break;
     case 'm-': memory -= val; break;
   }
@@ -298,11 +299,16 @@ function handleMemory(op) {
 function evalExpression(expr) {
   let clean = expr
     .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-')
-    .replace(/π/g, String(Math.PI))
+    .replace(/π/g, `(${Math.PI})`)
     .replace(/\^/g, '**')
-    .replace(/(?<![a-zA-Z])e(?![a-zA-Z])/g, String(Math.E))
+    .replace(/(?<![a-zA-Z])e(?![a-zA-Z\d.])/g, `(${Math.E})`)
     .replace(/mod/g, '%');
-  if (!/^[\d\s+\-*/().%e]+$/i.test(clean)) return null;
+  // Insert implicit multiplication: 2(3) -> 2*(3), (2)(3) -> (2)*(3), 5π -> 5*(π)
+  clean = clean
+    .replace(/(\d)\s*\(/g, '$1*(')
+    .replace(/\)\s*(\d)/g, ')*$1')
+    .replace(/\)\s*\(/g, ')*(');
+  if (!/^[\d\s+\-*/().%]+$/i.test(clean)) return null;
   return Function(`"use strict"; return (${clean})`)();
 }
 
@@ -485,8 +491,17 @@ function evalGraphExpr(exprStr, x) {
     .replace(/\bln\b/g, 'Math.log').replace(/\blog\b/g, 'Math.log10')
     .replace(/\bsqrt\b/g, 'Math.sqrt').replace(/\bcbrt\b/g, 'Math.cbrt')
     .replace(/\babs\b/g, 'Math.abs').replace(/\bexp\b/g, 'Math.exp')
-    .replace(/\bpi\b/gi, 'Math.PI').replace(/(?<![a-zA-Z])e(?![a-zA-Z])/g, 'Math.E')
+    .replace(/\bpi\b/gi, 'Math.PI').replace(/(?<![a-zA-Z.])e(?![a-zA-Z\d.])/g, 'Math.E')
     .replace(/\^/g, '**');
+  // Implicit multiplication: 2x -> 2*x, 2sin -> 2*sin, )x -> )*x, x( -> x*(
+  clean = clean
+    .replace(/(\d)([a-zA-Z(])/g, '$1*$2')
+    .replace(/\)([a-zA-Z\d(])/g, ')*$1')
+    .replace(/([a-zA-Z\d])\(/g, (match, p1) => {
+      // Don't insert * before function call parens
+      if (/[a-zA-Z]$/.test(p1)) return match;
+      return p1 + '*(';
+    });
   try {
     return Function('x', `"use strict"; return (${clean})`)(x);
   } catch { return NaN; }
@@ -2310,8 +2325,16 @@ function eval3DExpr(exprStr, x, y) {
     .replace(/\bln\b/g, 'Math.log').replace(/\blog\b/g, 'Math.log10')
     .replace(/\bsqrt\b/g, 'Math.sqrt').replace(/\bcbrt\b/g, 'Math.cbrt')
     .replace(/\babs\b/g, 'Math.abs').replace(/\bexp\b/g, 'Math.exp')
-    .replace(/\bpi\b/gi, 'Math.PI').replace(/(?<![a-zA-Z])e(?![a-zA-Z])/g, 'Math.E')
+    .replace(/\bpi\b/gi, 'Math.PI').replace(/(?<![a-zA-Z.])e(?![a-zA-Z\d.])/g, 'Math.E')
     .replace(/\^/g, '**');
+  // Implicit multiplication: 2x -> 2*x, 2sin -> 2*sin
+  clean = clean
+    .replace(/(\d)([a-zA-Z(])/g, '$1*$2')
+    .replace(/\)([a-zA-Z\d(])/g, ')*$1')
+    .replace(/([a-zA-Z\d])\(/g, (match, p1) => {
+      if (/[a-zA-Z]$/.test(p1)) return match;
+      return p1 + '*(';
+    });
   try {
     return Function('x', 'y', `"use strict"; return (${clean})`)(x, y);
   } catch { return NaN; }
@@ -3107,7 +3130,7 @@ function renderFinanceChart(type, data) {
   const barW = (canvas.width - 40) / data.length;
 
   // Background
-  ctx.fillStyle = 'var(--bg-secondary, #f5f5f5)';
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-secondary')?.trim() || '#f5f5f5';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // Bars
@@ -3207,7 +3230,7 @@ if (_origLoanCompute) {
       const ctx = canvas.getContext('2d');
       const maxVal = P;
       const barW = (canvas.width - 40) / chartData.length;
-      ctx.fillStyle = '#fafafa';
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-secondary')?.trim() || '#fafafa';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       chartData.forEach((d, i) => {
         const barH = (d.value / maxVal) * (canvas.height - 40);

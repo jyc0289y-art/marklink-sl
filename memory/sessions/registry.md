@@ -61,3 +61,8 @@
 | P9.13wc | App Shell & UI Systems Quality Audit | 2026-03-26 | 없음 | 진행중 |
 | P9.14wc | Markdown & Photo Editor Quality Audit | 2026-03-26 | 없음 | 진행중 |
 | P9.15wc | Sheet Formula Engine Expansion | 2026-03-26 | 없음 | 진행중 |
+| P9.16wc | AI Chat & Collab Quality Audit | 2026-03-27 | 없음 | 진행중 |
+| P9.17wc | Calculator & Draw Editor Quality Audit | 2026-03-27 | 없음 | 진행중 |
+| P9.18wc | Accessibility & i18n Audit | 2026-03-27 | 없음 | 진행중 |
+| P9.19wc | CAD OCCT Engine Quality Audit & Bugfix | 2026-03-27 | 없음 | 진행중 |
+| P9.20wc | DOCX/HWPX Import Quality Fundamentals | 2026-03-27 | 없음 | 진행중 |
