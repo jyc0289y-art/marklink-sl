@@ -130,6 +130,122 @@ export function setCellFormat(sheet, r, c, prop, val) {
   sheet.cells[key].format[prop] = val;
 }
 
+/** Convert Excel serial date number to JS Date.
+ *  Excel epoch: Jan 1, 1900. Includes Lotus 1-2-3 bug where 1900 is treated as leap year. */
+export const excelDateToJSDate = (serial) => {
+  // Dec 30, 1899 as base to account for Excel's 1-based counting + Lotus bug
+  const epoch = new Date(1899, 11, 30);
+  return new Date(epoch.getTime() + serial * 86400000);
+};
+
+/** Format a JS Date to a date string according to an Excel-style format pattern */
+const formatDateStr = (d, fmt) => {
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  const pad = (n) => String(n).padStart(2, '0');
+  return fmt
+    .replace(/yyyy/gi, y)
+    .replace(/yy/gi, String(y).slice(-2))
+    .replace(/mm/, pad(m))
+    .replace(/m/, m)
+    .replace(/dd/gi, pad(day))
+    .replace(/d/, day);
+};
+
+/** Format a fractional day value to a time string */
+const formatTimeStr = (frac, fmt) => {
+  const totalSec = Math.round(frac * 86400);
+  const h = Math.floor(totalSec / 3600);
+  const min = Math.floor((totalSec % 3600) / 60);
+  const sec = totalSec % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  if (/h:mm:ss/i.test(fmt)) return `${pad(h)}:${pad(min)}:${pad(sec)}`;
+  if (/h:mm/i.test(fmt)) return `${pad(h)}:${pad(min)}`;
+  return `${pad(h)}:${pad(min)}:${pad(sec)}`;
+};
+
+/** Apply an Excel-style format string to a numeric value.
+ *  Handles common patterns: 0, 0.00, #,##0, 0%, currency, dates, times, scientific, text (@). */
+export const applyExcelFormat = (value, formatStr) => {
+  if (!formatStr || formatStr === 'General') return String(value);
+
+  const fs = formatStr.trim();
+
+  // Text format
+  if (fs === '@') return String(value);
+
+  // For non-number values, just return as string
+  if (typeof value !== 'number') return String(value);
+
+  // Scientific notation: 0.00E+00
+  if (/^0\.0+E\+0+$/i.test(fs)) {
+    const decimals = (fs.match(/\.(0+)E/i) || ['', '00'])[1].length;
+    return value.toExponential(decimals);
+  }
+
+  // Percentage: 0%, 0.00%
+  if (fs.endsWith('%')) {
+    const inner = fs.slice(0, -1);
+    const decMatch = inner.match(/\.(0+)$/);
+    const decimals = decMatch ? decMatch[1].length : 0;
+    return (value * 100).toFixed(decimals) + '%';
+  }
+
+  // Date formats: yyyy-mm-dd, mm/dd/yyyy, dd/mm/yyyy, yyyy/mm/dd, m/d/yy
+  if (/^[ymd]{1,4}[\-\/][ymd]{1,4}[\-\/][ymd]{1,4}$/i.test(fs)) {
+    const d = excelDateToJSDate(value);
+    return formatDateStr(d, fs);
+  }
+
+  // Time formats: h:mm, h:mm:ss, hh:mm:ss
+  if (/^h{1,2}:mm(:(ss|s))?$/i.test(fs)) {
+    const frac = value % 1;
+    return formatTimeStr(frac, fs);
+  }
+
+  // Currency with symbol prefix: $#,##0.00, €#,##0.00, ¥#,##0, ₩#,##0
+  const currencyMatch = fs.match(/^([$€¥£₩])(#,##0)(\.0+)?$/);
+  if (currencyMatch) {
+    const symbol = currencyMatch[1];
+    const decMatch = currencyMatch[3];
+    const decimals = decMatch ? decMatch.length - 1 : 0;
+    const formatted = decimals > 0
+      ? value.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+      : Math.round(value).toLocaleString('en-US');
+    return symbol + formatted;
+  }
+
+  // Accounting format: _(* #,##0.00_) or _("$"* #,##0.00_)
+  if (/^_\(/.test(fs)) {
+    const decMatch = fs.match(/\.(0+)/);
+    const decimals = decMatch ? decMatch[1].length : 0;
+    const symMatch = fs.match(/["']?(\$|€|¥|£|₩)["']?/);
+    const symbol = symMatch ? symMatch[1] : '';
+    const formatted = decimals > 0
+      ? value.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+      : Math.round(value).toLocaleString('en-US');
+    return symbol ? `${symbol} ${formatted}` : formatted;
+  }
+
+  // Thousands separator with decimals: #,##0.00
+  const thousandsDecMatch = fs.match(/^#,##0(\.(0+))?$/);
+  if (thousandsDecMatch) {
+    const decimals = thousandsDecMatch[2] ? thousandsDecMatch[2].length : 0;
+    return value.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  }
+
+  // Fixed decimal zeros: 0, 0.0, 0.00, 0.000
+  const fixedMatch = fs.match(/^0(\.(0+))?$/);
+  if (fixedMatch) {
+    const decimals = fixedMatch[2] ? fixedMatch[2].length : 0;
+    return decimals === 0 ? String(Math.round(value)) : value.toFixed(decimals);
+  }
+
+  // Fallback: return value as string
+  return String(value);
+};
+
 /** Get display value */
 export function getDisplayValue(sheet, r, c) {
   const cell = getCell(sheet, r, c);
@@ -174,7 +290,14 @@ export function getDisplayValue(sheet, r, c) {
         }
         return String(v);
       }
+      default:
+        // Not a preset name — try Excel format string
+        return applyExcelFormat(v, fmt);
     }
+  }
+  // If fmt is set but value is not a number, still try text/@ format
+  if (fmt) {
+    if (fmt === '@' || fmt === 'General') return String(v);
   }
   return String(v);
 }

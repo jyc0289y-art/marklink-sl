@@ -35,13 +35,59 @@ function isHwpxFile(file) {
 }
 
 /**
+ * Check if a file is HWP (binary or HWPX) format
+ */
+function isHwpFile(file) {
+  return /\.hwp$/i.test(file.name);
+}
+
+/**
+ * Check for OLE compound file magic bytes (D0 CF 11 E0) — binary HWP
+ */
+async function hasOleMagicBytes(file) {
+  try {
+    const header = await file.slice(0, 4).arrayBuffer();
+    const bytes = new Uint8Array(header);
+    return bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Process a file — auto-detect format and convert to HTML
  */
 async function processDocFile(file) {
   // Check magic bytes for ZIP-based formats (DOCX) even if extension is wrong
   const isZip = await hasZipMagicBytes(file);
 
-  if (isDocxFile(file) || (isZip && !isHwpxFile(file))) {
+  // Check for binary HWP (.hwp with OLE magic bytes) BEFORE generic binary detection
+  if (isHwpFile(file) || /\.hwp$/i.test(file.name)) {
+    const isOle = await hasOleMagicBytes(file);
+    if (isOle) {
+      // Binary HWP detected — show clear conversion message
+      setDocContent(
+        '<div style="text-align:center;padding:60px 20px">' +
+        '<p style="font-size:48px;margin-bottom:16px">📄</p>' +
+        '<p style="color:#c62828;font-size:18px;font-weight:600;margin-bottom:12px">' +
+        '이 파일은 바이너리 HWP 형식입니다.</p>' +
+        '<p style="color:#555;font-size:14px;line-height:1.8">' +
+        '한컴오피스에서 HWPX 형식으로 다시 저장해 주세요.<br>' +
+        '<strong>파일 → 다른 이름으로 저장 → HWPX</strong></p>' +
+        '<p style="color:#888;font-size:12px;margin-top:20px">' +
+        'This file is in binary HWP format. Please re-save as HWPX in Hancom Office.</p>' +
+        '</div>'
+      );
+      return { name: file.name, content: '' };
+    }
+    // .hwp file but ZIP-based — could be HWPX saved with .hwp extension
+    if (isZip) {
+      const { importHwpx } = await import('./hwpx.js');
+      return await importHwpx(file);
+    }
+  }
+
+  if (isDocxFile(file) || (isZip && !isHwpxFile(file) && !isHwpFile(file))) {
     // DOCX → HTML via mammoth (with JSZip fallback)
     const { importDocx } = await import('./docx.js');
     return await importDocx(file);
@@ -79,12 +125,13 @@ export async function openDocFile() {
           'text/html': ['.html', '.htm'],
           'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
           'application/hwpx': ['.hwpx'],
+          'application/x-hwp': ['.hwp'],
         }},
       ],
     });
     const file = await handle.getFile();
     const result = await processDocFile(file);
-    currentHandle = isDocxFile(file) || isHwpxFile(file) ? null : handle;
+    currentHandle = isDocxFile(file) || isHwpxFile(file) || isHwpFile(file) ? null : handle;
     currentName = file.name;
     return result;
   }
@@ -93,7 +140,7 @@ export async function openDocFile() {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.html,.htm,.docx,.hwpx';
+    input.accept = '.html,.htm,.docx,.hwpx,.hwp';
     input.onchange = async () => {
       const file = input.files[0];
       if (!file) return resolve(null);

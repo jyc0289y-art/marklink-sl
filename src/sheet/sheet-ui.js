@@ -227,8 +227,25 @@ const _renderRowHtml = (sheet, r) => {
 // Cache visible rows between render calls (invalidated by renderGrid)
 let _cachedVisibleRows = null;
 
+function _syncSheetDimensions(sheet) {
+  // Sync imported colWidths/rowHeights from sheet data to the local resize state
+  if (sheet.colWidths) {
+    for (const [idx, w] of Object.entries(sheet.colWidths)) {
+      const ci = Number(idx);
+      if (w && !(ci in colWidths)) colWidths[ci] = w;
+    }
+  }
+  if (sheet.rowHeights) {
+    for (const [idx, h] of Object.entries(sheet.rowHeights)) {
+      const ri = Number(idx);
+      if (h && !(ri in rowHeights)) rowHeights[ri] = h;
+    }
+  }
+}
+
 function renderGrid() {
   const sheet = getSheet();
+  _syncSheetDimensions(sheet);
   const visibleRows = _buildVisibleRows();
   _cachedVisibleRows = visibleRows;
 
@@ -2020,6 +2037,7 @@ function renderSheetTabs() {
       const idx = parseInt(tab.dataset.sheet, 10);
       if (idx !== activeSheetIdx) {
         activeSheetIdx = idx;
+        colWidths = {}; rowHeights = {};  // Reset for new sheet's imported dims
         renderSheetTabs(); renderGrid();
         selectedRow = 0; selectedCol = 0;
         updateSelection();
@@ -7471,6 +7489,7 @@ export function getSheetsData() { return sheets; }
 export function setSheetsData(newSheets) {
   sheets = newSheets;
   activeSheetIdx = 0;
+  colWidths = {}; rowHeights = {};  // Reset so imported dims are picked up
   renderSheetTabs(); renderGrid();
   selectedRow = 0; selectedCol = 0;
   updateSelection();

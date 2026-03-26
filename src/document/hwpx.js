@@ -38,19 +38,96 @@ export async function importHwpx(file) {
     );
   }
 
-  // Read sections
+  // Read section file paths from content.hpf (canonical source)
+  const sectionPaths = [];
+  const hpfFile = zip.file('Contents/content.hpf');
+  if (hpfFile) {
+    const hpfXml = await hpfFile.async('string');
+    const hpfDoc = new DOMParser().parseFromString(hpfXml, 'text/xml');
+    // Parse <opf:itemref idref="section0"/> or <itemref idref="..."/>
+    const itemrefs = hpfDoc.querySelectorAll('itemref');
+    for (const ref of itemrefs) {
+      const idref = ref.getAttribute('idref') || '';
+      if (idref) sectionPaths.push(idref);
+    }
+    // Also check <opf:item> elements with href attributes
+    if (sectionPaths.length === 0) {
+      const items = hpfDoc.querySelectorAll('item');
+      for (const item of items) {
+        const href = item.getAttribute('href') || '';
+        if (href && /section/i.test(href)) sectionPaths.push(href);
+      }
+    }
+  }
+
+  // Resolve section paths → actual ZIP entries
   const sections = [];
-  let i = 0;
-  while (true) {
-    const sectionFile = zip.file(`Contents/section${i}.xml`);
-    if (!sectionFile) break;
-    const xml = await sectionFile.async('string');
-    sections.push(xml);
-    i++;
+
+  if (sectionPaths.length > 0) {
+    for (const sp of sectionPaths) {
+      // Try multiple path patterns for each section reference
+      const candidates = [
+        `Contents/${sp}.xml`,
+        `Contents/${sp}`,
+        sp,
+        // Handle case-insensitive: Section0 vs section0
+        `Contents/${sp.charAt(0).toUpperCase() + sp.slice(1)}.xml`,
+        `Contents/${sp.toLowerCase()}.xml`,
+      ];
+      let found = false;
+      for (const candidate of candidates) {
+        const f = zip.file(candidate);
+        if (f) {
+          sections.push(await f.async('string'));
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        // Try case-insensitive search across all zip entries
+        const spLower = sp.toLowerCase();
+        zip.forEach((path, entry) => {
+          if (!found && !entry.dir && path.toLowerCase().includes(spLower) && path.toLowerCase().endsWith('.xml')) {
+            found = true;
+            // async push handled below
+          }
+        });
+        // Brute force async read
+        for (const [path, entry] of Object.entries(zip.files)) {
+          if (!entry.dir && path.toLowerCase().includes(spLower) && path.toLowerCase().endsWith('.xml')) {
+            sections.push(await entry.async('string'));
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback: try section{i}.xml and Section{i}.xml patterns
+  if (sections.length === 0) {
+    let i = 0;
+    while (true) {
+      const f = zip.file(`Contents/section${i}.xml`) ||
+                zip.file(`Contents/Section${i}.xml`) ||
+                zip.file(`Contents/SECTION${i}.XML`);
+      if (!f) break;
+      sections.push(await f.async('string'));
+      i++;
+    }
   }
 
   if (sections.length === 0) {
     throw new Error('No sections found in HWPX file');
+  }
+
+  // Read header.xml for page setup metadata (task 5)
+  let headerMeta = '';
+  const headerFile = zip.file('Contents/header.xml') || zip.file('Contents/Header.xml');
+  if (headerFile) {
+    try {
+      const headerXml = await headerFile.async('string');
+      headerMeta = parseHeaderMeta(headerXml);
+    } catch { /* ignore header parse errors */ }
   }
 
   // Collect binary data (images) from the ZIP
@@ -83,8 +160,20 @@ export async function importHwpx(file) {
 
   // Parse OWPML XML → HTML
   let html = '';
+  if (headerMeta) html += headerMeta;
+  const footnoteCollector = { notes: [] };
   for (const xml of sections) {
-    html += parseOwpmlToHTML(xml, binDataMap);
+    html += parseOwpmlToHTML(xml, binDataMap, footnoteCollector);
+  }
+
+  // Append collected footnotes/endnotes at the bottom (task 6)
+  if (footnoteCollector.notes.length > 0) {
+    html += '<hr style="margin-top:40px;border:none;border-top:1px solid #999">';
+    html += '<div style="font-size:0.85em;color:#555;padding:8px 0">';
+    for (const fn of footnoteCollector.notes) {
+      html += `<p id="fn-${fn.num}" style="margin:4px 0"><sup>${fn.num}</sup> ${fn.text}</p>`;
+    }
+    html += '</div>';
   }
 
   setDocContent(html || '<p>(Empty document)</p>');
@@ -172,7 +261,7 @@ export async function exportHwpx(fileName) {
  * Parse OWPML section XML → HTML
  * Handles: text formatting, paragraph properties, tables, lists, images, links
  */
-function parseOwpmlToHTML(xml, binDataMap = {}) {
+function parseOwpmlToHTML(xml, binDataMap = {}, footnoteCollector = null) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xml, 'text/xml');
   let html = '';
@@ -181,7 +270,7 @@ function parseOwpmlToHTML(xml, binDataMap = {}) {
   const root = doc.documentElement;
 
   // Process all top-level children (paragraphs, tables, etc.)
-  html += processChildren(root, binDataMap);
+  html += processChildren(root, binDataMap, footnoteCollector);
 
   return html;
 }
@@ -190,7 +279,7 @@ function parseOwpmlToHTML(xml, binDataMap = {}) {
  * Process child nodes of a container element, returning HTML.
  * Handles <p>, <tbl>, and other OWPML elements.
  */
-function processChildren(container, binDataMap) {
+function processChildren(container, binDataMap, footnoteCollector = null) {
   let html = '';
   // Track consecutive list items for grouping into <ul>/<ol>
   let listBuffer = [];
@@ -218,7 +307,7 @@ function processChildren(container, binDataMap) {
           listBuffer = [];
           listType = null;
         }
-        html += parseParagraph(node, binDataMap);
+        html += parseParagraph(node, binDataMap, footnoteCollector);
       }
     } else if (tag === 'tbl') {
       // Flush list buffer before table
@@ -235,7 +324,7 @@ function processChildren(container, binDataMap) {
         listBuffer = [];
         listType = null;
       }
-      html += processChildren(node, binDataMap);
+      html += processChildren(node, binDataMap, footnoteCollector);
     }
   }
 
@@ -293,7 +382,7 @@ function getListInfo(pNode) {
 /**
  * Parse a single paragraph element → HTML
  */
-function parseParagraph(pNode, binDataMap) {
+function parseParagraph(pNode, binDataMap, footnoteCollector = null) {
   const paraPr = findChild(pNode, 'paraPr') || findChild(pNode, 'pPr');
   const styleId = paraPr?.getAttribute('styleIDRef') || paraPr?.getAttribute('style') || '';
 
@@ -341,12 +430,42 @@ function parseParagraph(pNode, binDataMap) {
       const pct = parseInt(lsVal, 10);
       paraStyles.push(`line-height:${(pct / 100).toFixed(2)}`);
     }
+
+    // Task 4: Paragraph border
+    const border = findChild(paraPr, 'border');
+    if (border) {
+      const borderType = border.getAttribute('type') || border.getAttribute('style') || 'solid';
+      const borderWidth = border.getAttribute('width') || '1';
+      const borderColor = border.getAttribute('color') || '000000';
+      const bHex = normalizeHwpxColor(borderColor);
+      const bwPx = Math.max(1, Math.round(parseInt(borderWidth, 10) / 75) || 1);
+      const cssType = borderType.toLowerCase().includes('dash') ? 'dashed'
+        : borderType.toLowerCase().includes('dot') ? 'dotted' : 'solid';
+      paraStyles.push(`border:${bwPx}px ${cssType} #${bHex || '000'}`);
+      paraStyles.push('padding:8px 12px');
+    }
+
+    // Task 4: Paragraph background color
+    const bgColor = paraPr.getAttribute('bgColor') || paraPr.getAttribute('backgroundColor') || '';
+    if (bgColor && bgColor !== '0' && bgColor.toLowerCase() !== 'none') {
+      const hex = normalizeHwpxColor(bgColor);
+      if (hex) paraStyles.push(`background-color:#${hex}`);
+    }
+    // Also check <hp:fillBrush> or <hp:fill> child
+    const fill = findChild(paraPr, 'fillBrush') || findChild(paraPr, 'fill');
+    if (fill) {
+      const fillColor = fill.getAttribute('color') || fill.getAttribute('bgColor') || '';
+      if (fillColor && fillColor !== '0') {
+        const hex = normalizeHwpxColor(fillColor);
+        if (hex) paraStyles.push(`background-color:#${hex}`);
+      }
+    }
   }
 
   const styleAttr = paraStyles.length > 0 ? ` style="${paraStyles.join(';')}"` : '';
 
-  // Get run content
-  const content = parseRunsContent(pNode, binDataMap);
+  // Get run content (with footnote collection)
+  const content = parseRunsContent(pNode, binDataMap, footnoteCollector);
 
   if (headingLevel) {
     return `<h${headingLevel}${styleAttr}>${content || '&nbsp;'}</h${headingLevel}>\n`;
@@ -377,7 +496,7 @@ function getHeadingLevel(styleId) {
 /**
  * Parse all runs inside a paragraph and return inner HTML string
  */
-function parseRunsContent(pNode, binDataMap) {
+function parseRunsContent(pNode, binDataMap, footnoteCollector = null) {
   let content = '';
 
   for (const child of pNode.childNodes) {
@@ -385,7 +504,7 @@ function parseRunsContent(pNode, binDataMap) {
     const tag = localName(child);
 
     if (tag === 'run' || tag === 'r') {
-      content += parseRun(child, binDataMap);
+      content += parseRun(child, binDataMap, footnoteCollector);
     } else if (tag === 't') {
       // Direct text element
       content += escapeHTML(child.textContent);
@@ -394,6 +513,22 @@ function parseRunsContent(pNode, binDataMap) {
       content += parseTable(child, binDataMap);
     } else if (tag === 'img' || tag === 'drawingObject' || tag === 'pic' || tag === 'drawing') {
       content += parseImage(child, binDataMap);
+    } else if (tag === 'fn' || tag === 'footnote') {
+      // Task 6: Footnote
+      if (footnoteCollector) {
+        const fnNum = footnoteCollector.notes.length + 1;
+        const fnText = child.textContent.trim() || '';
+        footnoteCollector.notes.push({ num: fnNum, text: escapeHTML(fnText) });
+        content += `<sup><a href="#fn-${fnNum}" style="color:#1565c0;text-decoration:none">${fnNum}</a></sup>`;
+      }
+    } else if (tag === 'en' || tag === 'endnote') {
+      // Task 6: Endnote (treated same as footnote)
+      if (footnoteCollector) {
+        const fnNum = footnoteCollector.notes.length + 1;
+        const fnText = child.textContent.trim() || '';
+        footnoteCollector.notes.push({ num: fnNum, text: escapeHTML(fnText) });
+        content += `<sup><a href="#fn-${fnNum}" style="color:#1565c0;text-decoration:none">${fnNum}</a></sup>`;
+      }
     }
   }
 
@@ -403,7 +538,7 @@ function parseRunsContent(pNode, binDataMap) {
 /**
  * Parse a single run element → HTML string
  */
-function parseRun(runNode, binDataMap) {
+function parseRun(runNode, binDataMap, footnoteCollector = null) {
   const charPr = findChild(runNode, 'charPr') || findChild(runNode, 'rPr');
 
   // Collect formatting
@@ -446,6 +581,17 @@ function parseRun(runNode, binDataMap) {
     if (fontRef) {
       inlineStyles.push(`font-family:'${fontRef}'`);
     }
+
+    // Task 3: Character spacing (letter-spacing)
+    const charSpacing = charPr.getAttribute('charSpacing') || charPr.getAttribute('spacing') || '';
+    if (charSpacing) {
+      const sp = parseInt(charSpacing, 10);
+      if (sp !== 0) {
+        // HWPX charSpacing in 1/100pt or HWP units — convert to px
+        const px = sp >= 100 || sp <= -100 ? Math.round(sp / 100) : sp;
+        inlineStyles.push(`letter-spacing:${px}px`);
+      }
+    }
   }
 
   const styleAttr = inlineStyles.length > 0 ? ` style="${inlineStyles.join(';')}"` : '';
@@ -466,6 +612,22 @@ function parseRun(runNode, binDataMap) {
       // Skip metadata elements
     } else if (tag === 'tbl') {
       html += parseTable(child, binDataMap);
+    } else if (tag === 'fn' || tag === 'footnote') {
+      // Task 6: Footnote inside a run
+      if (footnoteCollector) {
+        const fnNum = footnoteCollector.notes.length + 1;
+        const fnText = child.textContent.trim() || '';
+        footnoteCollector.notes.push({ num: fnNum, text: escapeHTML(fnText) });
+        html += `<sup><a href="#fn-${fnNum}" style="color:#1565c0;text-decoration:none">${fnNum}</a></sup>`;
+      }
+    } else if (tag === 'en' || tag === 'endnote') {
+      // Task 6: Endnote inside a run
+      if (footnoteCollector) {
+        const fnNum = footnoteCollector.notes.length + 1;
+        const fnText = child.textContent.trim() || '';
+        footnoteCollector.notes.push({ num: fnNum, text: escapeHTML(fnText) });
+        html += `<sup><a href="#fn-${fnNum}" style="color:#1565c0;text-decoration:none">${fnNum}</a></sup>`;
+      }
     } else if (tag === 'fieldBegin') {
       // Hyperlink field
       const command = child.getAttribute('command') || child.getAttribute('fieldName') || '';
@@ -756,6 +918,78 @@ function extractRuns(el) {
     }
   }
   return runs.length ? runs : [{ text: el.textContent || '', bold: false, italic: false, underline: false, strike: false }];
+}
+
+// ──────────────────────────────────────────────
+// Task 5: Page header/footer metadata extraction
+// ──────────────────────────────────────────────
+
+/**
+ * Parse header.xml for page setup metadata (margins, orientation, page size).
+ * Returns an HTML comment + optional visible meta info block.
+ */
+function parseHeaderMeta(headerXml) {
+  if (!headerXml) return '';
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(headerXml, 'text/xml');
+  const root = doc.documentElement;
+
+  const metaParts = [];
+
+  // Look for page definition: <hp:pageDef> or <pageDef>
+  const pageDefs = root.querySelectorAll('*');
+  for (const el of pageDefs) {
+    const tag = localName(el);
+    if (tag === 'pageDef' || tag === 'secDef' || tag === 'secPr') {
+      const landscape = el.getAttribute('landscape') || el.getAttribute('orientation') || '';
+      const width = el.getAttribute('width') || el.getAttribute('pageWidth') || '';
+      const height = el.getAttribute('height') || el.getAttribute('pageHeight') || '';
+
+      if (landscape === '1' || landscape.toLowerCase() === 'landscape') {
+        metaParts.push('Orientation: Landscape');
+      }
+      if (width && height) {
+        // Convert HWP units to mm (1 HWP unit = 1/7200 inch ≈ 0.00353mm)
+        const wMm = Math.round(parseInt(width, 10) * 25.4 / 7200);
+        const hMm = Math.round(parseInt(height, 10) * 25.4 / 7200);
+        if (wMm > 0 && hMm > 0) metaParts.push(`Page: ${wMm}mm x ${hMm}mm`);
+      }
+
+      // Margins
+      const marginNames = ['marginLeft', 'marginRight', 'marginTop', 'marginBottom'];
+      const margins = {};
+      for (const mn of marginNames) {
+        const val = el.getAttribute(mn) || '';
+        if (val) {
+          const mm = Math.round(parseInt(val, 10) * 25.4 / 7200);
+          if (mm > 0) margins[mn.replace('margin', '')] = mm;
+        }
+      }
+      if (Object.keys(margins).length > 0) {
+        const parts = Object.entries(margins).map(([k, v]) => `${k}: ${v}mm`);
+        metaParts.push(`Margins: ${parts.join(', ')}`);
+      }
+    }
+
+    // Look for margin child elements
+    if (tag === 'margin' || tag === 'pageMargin') {
+      const left = el.getAttribute('left') || '';
+      const right = el.getAttribute('right') || '';
+      const top = el.getAttribute('top') || '';
+      const bottom = el.getAttribute('bottom') || '';
+      const parts = [];
+      for (const [name, val] of [['Left', left], ['Right', right], ['Top', top], ['Bottom', bottom]]) {
+        if (val) {
+          const mm = Math.round(parseInt(val, 10) * 25.4 / 7200);
+          if (mm > 0) parts.push(`${name}: ${mm}mm`);
+        }
+      }
+      if (parts.length > 0) metaParts.push(`Margins: ${parts.join(', ')}`);
+    }
+  }
+
+  if (metaParts.length === 0) return '';
+  return `<!-- HWPX Page Setup: ${metaParts.join(' | ')} -->\n`;
 }
 
 // ──────────────────────────────────────────────
