@@ -736,7 +736,7 @@ body,
 /* Tab switching: fade animation for app views */
 .app-view {
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.15s ease;
 }
 
 .app-view.active {
@@ -765,11 +765,13 @@ body,
 /* Sidebar slide animation */
 .sidebar {
   transform: translateX(-100%);
-  transition: transform 0.25s ease, width 0.2s ease;
+  opacity: 0;
+  transition: transform 0.2s ease, opacity 0.2s ease, width 0.2s ease;
 }
 
 .sidebar:not(.hidden) {
   transform: translateX(0);
+  opacity: 1;
 }
 
 /* Toolbar tooltip fade-in with upward motion */

@@ -392,6 +392,7 @@
           <input type="text" id="doc-find-input" class="doc-find-input" data-i18n-placeholder="doc.find" placeholder="Find...">
           <button class="toolbar-btn" id="doc-find-regex" data-i18n-title="doc.findRegex" title="Use Regular Expression" style="font-size:10px;opacity:0.6">.*</button>
           <button class="toolbar-btn" id="doc-find-case" data-i18n-title="doc.findCase" title="Match Case" style="font-size:10px;opacity:0.6">Aa</button>
+          <button class="toolbar-btn" id="doc-find-whole" title="Whole Word" style="font-size:10px;opacity:0.6">W</button>
           <button class="toolbar-btn" id="doc-find-prev" title="Previous">&#9650;</button>
           <button class="toolbar-btn" id="doc-find-next" title="Next">&#9660;</button>
           <span id="doc-find-count" class="doc-find-count"></span>
@@ -2457,6 +2458,7 @@
             <select id="ai-full-model-select" class="ai-full-model-select" title="AI Model">
               <option value="">Checking...</option>
             </select>
+            <span class="ai-health-dot health-red" title="Checking..."></span>
           </div>
           <div class="ai-full-features">
             <h4 data-t="ai.features.title">What can AI do?</h4>
@@ -2530,6 +2532,8 @@
       <select id="ai-model-select" title="AI Model">
         <option value="">Checking...</option>
       </select>
+      <span class="ai-health-dot health-red" title="Checking..."></span>
+      <button id="ai-export-btn" class="toolbar-btn" title="Export chat as Markdown" style="font-size:13px">&#8681;</button>
       <button id="ai-url-settings-btn" class="toolbar-btn" title="Ollama URL Settings" style="font-size:14px">&#9881;</button>
       <button id="ai-panel-close" class="toolbar-btn" title="Close">&times;</button>
     </div>
@@ -2560,6 +2564,16 @@
             </div>
           </div>
         </details>
+      </div>
+    </div>
+    <div id="ai-system-prompt-settings" class="ai-system-prompt-settings">
+      <button class="ai-sysprompt-toggle">System Prompt &#9662;</button>
+      <div class="ai-sysprompt-body">
+        <textarea id="ai-system-prompt-input" class="ai-sysprompt-input" rows="4" placeholder="Enter custom system prompt..."></textarea>
+        <div class="ai-sysprompt-actions">
+          <button id="ai-sysprompt-save-btn" class="ai-url-save-btn">Save</button>
+          <button id="ai-sysprompt-reset-btn" class="ai-url-reset-btn">Reset</button>
+        </div>
       </div>
     </div>
     <div id="ai-chat-list" class="ai-chat-list">

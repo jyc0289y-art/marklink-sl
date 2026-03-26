@@ -908,3 +908,135 @@ kbd {
     padding: 6px 16px;
   }
 }
+
+/* ─── Connection Health Indicator ──────────────────────── */
+.ai-health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  transition: background-color 0.3s ease;
+}
+.ai-health-dot.health-green { background: #4caf50; box-shadow: 0 0 4px rgba(76,175,80,0.5); }
+.ai-health-dot.health-yellow { background: #ff9800; box-shadow: 0 0 4px rgba(255,152,0,0.5); }
+.ai-health-dot.health-red { background: #f44336; box-shadow: 0 0 4px rgba(244,67,54,0.5); }
+
+/* ─── System Prompt Settings (collapsible) ─────────────── */
+.ai-system-prompt-settings {
+  border-bottom: 1px solid var(--border-color);
+  overflow: hidden;
+}
+.ai-sysprompt-toggle {
+  width: 100%;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--pane-header-bg);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ai-sysprompt-toggle:hover {
+  color: var(--text-primary);
+  background: var(--sidebar-bg);
+}
+.ai-sysprompt-body {
+  display: none;
+  padding: 8px 12px;
+}
+.ai-system-prompt-settings.expanded .ai-sysprompt-body {
+  display: block;
+}
+.ai-system-prompt-settings.expanded .ai-sysprompt-toggle::after {
+  content: '';
+}
+.ai-sysprompt-input {
+  width: 100%;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  resize: vertical;
+  box-sizing: border-box;
+  line-height: 1.4;
+}
+.ai-sysprompt-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+/* ─── Message Editing ──────────────────────────────────── */
+.ai-msg-user {
+  position: relative;
+}
+.ai-msg-edit-btn {
+  position: absolute;
+  top: 4px;
+  left: -28px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: var(--sidebar-bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+.ai-msg-user:hover .ai-msg-edit-btn {
+  opacity: 0.7;
+}
+.ai-msg-edit-btn:hover {
+  opacity: 1 !important;
+  background: var(--border-color);
+}
+.ai-msg-edit-textarea {
+  width: 100%;
+  font-size: 13px;
+  font-family: inherit;
+  padding: 6px 8px;
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  resize: vertical;
+  box-sizing: border-box;
+  margin-top: 6px;
+  line-height: 1.4;
+}
+.ai-msg-edit-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  justify-content: flex-end;
+}
+.ai-msg-edit-save,
+.ai-msg-edit-cancel {
+  padding: 3px 12px;
+  font-size: 11px;
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 4px;
+  cursor: pointer;
+  color: #fff;
+  background: transparent;
+}
+.ai-msg-edit-save {
+  background: rgba(76,175,80,0.3);
+  border-color: #4caf50;
+}
+.ai-msg-edit-save:hover { background: rgba(76,175,80,0.5); }
+.ai-msg-edit-cancel:hover { background: rgba(255,255,255,0.15); }

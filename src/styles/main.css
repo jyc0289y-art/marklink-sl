@@ -34,6 +34,52 @@
   outline-offset: 2px;
 }
 
+/* Ensure focus indicators on all interactive elements */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="menuitem"]:focus-visible,
+[tabindex]:focus-visible,
+.toolbar-btn:focus-visible,
+.tab-item:focus-visible,
+.settings-tab-btn:focus-visible,
+.sidebar-label:focus-visible,
+.recent-files li:focus-visible,
+.lang-btn:focus-visible,
+.snippet-item:focus-visible,
+.snippet-cat-tab:focus-visible,
+.md-outline-item:focus-visible,
+.ac-item:focus-visible,
+.theme-mode-btn:focus-visible,
+.size-btn:focus-visible,
+.color-swatch:focus-visible,
+.settings-toggle:focus-visible,
+.shortcut-row:focus-visible,
+.lang-picker-item:focus-visible,
+.empty-state-action:focus-visible,
+.print-btn-cancel:focus-visible,
+.print-btn-print:focus-visible,
+.settings-btn:focus-visible,
+.settings-close-btn:focus-visible,
+.tour-tooltip-next:focus-visible,
+.tour-tooltip-dismiss:focus-visible {
+  outline: 2px solid var(--brand-color, #0071e3);
+  outline-offset: 2px;
+}
+
+/* Remove default browser outline only when focus-visible handles it */
+button:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+select:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible),
+a:focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -533,6 +579,7 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: background 0.1s ease, color 0.1s ease;
 }
 
 .recent-files li:hover {
@@ -1105,6 +1152,41 @@ html, body {
   font-weight: 600;
 }
 
+/* ========== Custom Scrollbar Styling ========== */
+/* Thin, themed scrollbars for the entire app */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track, transparent);
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, rgba(128, 128, 128, 0.3));
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, rgba(128, 128, 128, 0.5));
+  background-clip: padding-box;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb, rgba(128, 128, 128, 0.3)) var(--scrollbar-track, transparent);
+}
+
+/* Keep tab-bar scrollbar hidden */
+.tab-bar {
+  scrollbar-width: none;
+}
+
 /* ========== @media print — Clean Output ========== */
 @media print {
   /* Hide all chrome */
@@ -1115,6 +1197,7 @@ html, body {
   .ai-panel,
   .ai-full-sidebar,
   .ad-banner,
+  .ad-banner-wrapper,
   .drop-overlay,
   .print-preview-overlay,
   .tour-highlight,
@@ -1134,7 +1217,16 @@ html, body {
   .photo-sidebar,
   .calc-toolbar,
   .md-toolbar,
+  .md-stats-bar,
+  .md-outline-panel,
   .draw-toolbar,
+  .settings-overlay,
+  .autosave-restore-dialog,
+  .tab-sync-conflict-warning,
+  .tab-loading-overlay,
+  .tab-skeleton,
+  .calculator-container,
+  .cad-container,
   footer {
     display: none !important;
   }
@@ -1145,6 +1237,15 @@ html, body {
     height: auto !important;
     background: #fff !important;
     color: #000 !important;
+    font-family: 'Georgia', 'Times New Roman', 'Noto Serif', serif !important;
+    font-size: 12pt !important;
+    line-height: 1.6 !important;
+  }
+
+  /* Page margins */
+  @page {
+    margin: 20mm 18mm;
+    size: A4;
   }
 
   .app-container {
@@ -1161,11 +1262,13 @@ html, body {
   /* Show only active view */
   .app-view {
     display: none !important;
+    opacity: 1 !important;
   }
   .app-view.active {
     display: block !important;
     overflow: visible !important;
     height: auto !important;
+    opacity: 1 !important;
   }
 
   /* Document editor print */
@@ -1178,11 +1281,17 @@ html, body {
     color: #000 !important;
     min-height: auto !important;
     overflow: visible !important;
+    font-family: 'Georgia', 'Times New Roman', serif !important;
   }
 
   .doc-page-wrapper {
     background: #fff !important;
     padding: 0 !important;
+  }
+
+  /* Editor container — hide in print, show preview only */
+  .editor-pane {
+    display: none !important;
   }
 
   /* Sheet print */
@@ -1214,10 +1323,35 @@ html, body {
   }
 
   /* Markdown preview */
+  .preview-pane {
+    flex: 1 !important;
+    display: block !important;
+  }
+
   .preview-container {
     overflow: visible !important;
     background: #fff !important;
     padding: 0 !important;
+    font-family: 'Georgia', 'Times New Roman', serif !important;
+    font-size: 12pt !important;
+    line-height: 1.7 !important;
+    color: #000 !important;
+  }
+
+  /* Preview content typography for print */
+  .preview-container h1,
+  .preview-container h2,
+  .preview-container h3,
+  .preview-container h4,
+  .preview-container h5,
+  .preview-container h6 {
+    font-family: 'Georgia', 'Times New Roman', serif !important;
+    color: #000 !important;
+  }
+
+  .preview-container code,
+  .preview-container pre {
+    font-size: 10pt !important;
   }
 
   /* Page break rules */
@@ -1241,6 +1375,12 @@ html, body {
   a[href^="#"]:after,
   a[href^="javascript"]:after {
     content: "";
+  }
+
+  /* Disable all transitions and animations in print */
+  * {
+    transition: none !important;
+    animation: none !important;
   }
 }
 
@@ -1693,7 +1833,7 @@ html.rtl .lang-picker-grid {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
 }
 .empty-state-action:hover {
   background: rgba(0, 113, 227, 0.08);

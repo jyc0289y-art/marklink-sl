@@ -22,6 +22,8 @@ let isSending = false; // prevent duplicate sends
 let pendingImages = []; // base64 images to attach to next message (for vision models)
 let isOffline = false; // offline mode tracking
 let offlineQueue = []; // queued messages when offline
+let lastLatencyMs = -1; // last measured latency for health indicator
+let healthCheckInterval = null; // periodic health check timer
 
 // ─── Office context providers (set by app.js) ──────────
 let contextProviders = {};
@@ -30,21 +32,21 @@ export function setContextProviders(providers) {
 }
 
 // ─── System prompt for office assistant ─────────────────
-function getSystemPrompt() {
-  return `You are OfficeLink AI, a helpful office assistant built into OfficeLink SL — a free web office suite.
-You help users with:
-- Writing, editing, and formatting documents
-- Creating spreadsheet formulas and data analysis
-- Designing presentations
-- Translating text
-- Summarizing content
-- General writing assistance
+const SYSTEM_PROMPT_KEY = 'marklink-ai-system-prompt';
+const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant integrated into OfficeLink SL, a document editing suite.';
 
-When the user shares document content, analyze it and provide helpful suggestions.
-When asked to generate content, provide it in a format suitable for the active editor.
-For spreadsheet tasks, suggest formulas using standard Excel-compatible syntax.
-Respond in the same language the user writes in.
-Keep responses concise and actionable.`;
+function getSystemPrompt() {
+  const custom = localStorage.getItem(SYSTEM_PROMPT_KEY);
+  if (custom && custom.trim()) return custom.trim();
+  return DEFAULT_SYSTEM_PROMPT;
+}
+
+function setCustomSystemPrompt(prompt) {
+  if (prompt && prompt.trim() && prompt.trim() !== DEFAULT_SYSTEM_PROMPT) {
+    localStorage.setItem(SYSTEM_PROMPT_KEY, prompt.trim());
+  } else {
+    localStorage.removeItem(SYSTEM_PROMPT_KEY);
+  }
 }
 
 /**
@@ -97,6 +99,12 @@ export function initAiChat() {
     addSystemMessage('Chat cleared.');
   });
 
+  // Export chat history as Markdown
+  document.getElementById('ai-export-btn')?.addEventListener('click', () => exportChatAsMarkdown());
+
+  // System prompt settings (collapsible)
+  initSystemPromptSettings();
+
   // Sessions
   document.getElementById('ai-sessions-btn')?.addEventListener('click', showSessionsModal);
 
@@ -136,6 +144,9 @@ export function initAiChat() {
 
   // Check Ollama status & restore session
   checkStatus().then(() => restoreLastSession());
+
+  // Start periodic health check for connection indicator
+  startHealthCheck();
 }
 
 // ─── URL Settings ────────────────────────────────────────
@@ -572,6 +583,9 @@ async function checkStatus() {
     const models = await listModels();
     populateModelSelect(models);
   }
+
+  // Update health indicator alongside status
+  updateHealthIndicator();
 }
 
 function updateStatusUI(running, corsError) {
@@ -625,6 +639,114 @@ function updateStatusBarWidget(running) {
   widget.title = running ? 'AI: Connected' : 'AI: Disconnected — click to configure';
 }
 
+// ─── Connection Health Indicator ─────────────────────────
+
+/**
+ * Start periodic health checks to update the connection health dot.
+ * Green = connected & fast (<2s), Yellow = connected but slow (>=2s), Red = disconnected.
+ */
+const startHealthCheck = () => {
+  if (healthCheckInterval) clearInterval(healthCheckInterval);
+  // Run immediately
+  updateHealthIndicator();
+  // Then every 15 seconds
+  healthCheckInterval = setInterval(() => updateHealthIndicator(), 15000);
+};
+
+const updateHealthIndicator = async () => {
+  const latency = await measureLatency();
+  lastLatencyMs = latency;
+
+  let healthClass = 'health-red';
+  let healthTitle = 'Disconnected';
+  if (latency >= 0 && latency < 2000) {
+    healthClass = 'health-green';
+    healthTitle = `Connected (${latency}ms)`;
+  } else if (latency >= 2000) {
+    healthClass = 'health-yellow';
+    healthTitle = `Slow connection (${latency}ms)`;
+  }
+
+  // Update all health dots (sidebar + fullscreen)
+  document.querySelectorAll('.ai-health-dot').forEach((dot) => {
+    dot.className = `ai-health-dot ${healthClass}`;
+    dot.title = healthTitle;
+  });
+};
+
+// ─── System Prompt Settings ─────────────────────────────
+
+const initSystemPromptSettings = () => {
+  const container = document.getElementById('ai-system-prompt-settings');
+  if (!container) return;
+
+  const textarea = container.querySelector('#ai-system-prompt-input');
+  const saveBtn = container.querySelector('#ai-sysprompt-save-btn');
+  const resetBtn = container.querySelector('#ai-sysprompt-reset-btn');
+  const toggle = container.querySelector('.ai-sysprompt-toggle');
+
+  if (textarea) textarea.value = getSystemPrompt();
+
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      container.classList.toggle('expanded');
+      if (textarea && container.classList.contains('expanded')) {
+        textarea.value = getSystemPrompt();
+      }
+    });
+  }
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      const val = textarea?.value || '';
+      setCustomSystemPrompt(val);
+      addSystemMessage('System prompt updated.');
+    });
+  }
+
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      localStorage.removeItem(SYSTEM_PROMPT_KEY);
+      if (textarea) textarea.value = DEFAULT_SYSTEM_PROMPT;
+      addSystemMessage('System prompt reset to default.');
+    });
+  }
+};
+
+// ─── Chat Export ─────────────────────────────────────────
+
+const exportChatAsMarkdown = () => {
+  if (history.length === 0) {
+    addSystemMessage('No messages to export.');
+    return;
+  }
+
+  const lines = ['# Chat Export', ''];
+  const timestamp = new Date().toLocaleString();
+  lines.push(`*Exported: ${timestamp}*`, `*Model: ${selectedModel || 'unknown'}*`, '');
+
+  for (const msg of history) {
+    if (msg.role === 'user') {
+      lines.push('## User', '', msg.content, '');
+    } else if (msg.role === 'assistant') {
+      lines.push('## Assistant', '', msg.content, '');
+    }
+  }
+
+  const markdown = lines.join('\n');
+  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const dateStr = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+  a.download = `chat-export-${dateStr}.md`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  addSystemMessage('Chat exported as Markdown file.');
+};
+
 function populateModelSelect(models) {
   if (!modelSelectEl) return;
   modelSelectEl.innerHTML = '';
@@ -672,13 +794,132 @@ function togglePanel() {
 
 // ─── Messages ───────────────────────────────────────────
 
-function addUserMessage(text) {
+function addUserMessage(text, historyIndex) {
   const div = document.createElement('div');
   div.className = 'ai-msg ai-msg-user';
-  div.textContent = text;
+
+  const textSpan = document.createElement('span');
+  textSpan.className = 'ai-msg-text';
+  textSpan.textContent = text;
+  div.appendChild(textSpan);
+
+  // Edit icon (visible on hover)
+  const editBtn = document.createElement('button');
+  editBtn.className = 'ai-msg-edit-btn';
+  editBtn.innerHTML = '&#9998;'; // pencil
+  editBtn.title = 'Edit & resend';
+  editBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const idx = typeof historyIndex === 'number' ? historyIndex : findUserMsgHistoryIndex(div);
+    startEditMessage(div, idx);
+  });
+  div.appendChild(editBtn);
+
   chatListEl?.appendChild(div);
   scrollToBottom();
 }
+
+/**
+ * Find the history index for a user message DOM element.
+ */
+const findUserMsgHistoryIndex = (msgEl) => {
+  if (!chatListEl) return -1;
+  const userMsgs = chatListEl.querySelectorAll('.ai-msg-user');
+  let userIdx = 0;
+  for (const el of userMsgs) {
+    if (el === msgEl) break;
+    userIdx++;
+  }
+  // Map to history array: find the Nth user message
+  let count = 0;
+  for (let i = 0; i < history.length; i++) {
+    if (history[i].role === 'user') {
+      if (count === userIdx) return i;
+      count++;
+    }
+  }
+  return -1;
+};
+
+/**
+ * Start editing a user message. Shows an inline textarea.
+ * On submit, removes all subsequent messages and re-sends.
+ */
+const startEditMessage = (msgEl, historyIdx) => {
+  if (isSending || historyIdx < 0) return;
+
+  const currentText = history[historyIdx]?.content || '';
+  const textSpan = msgEl.querySelector('.ai-msg-text');
+  const editBtn = msgEl.querySelector('.ai-msg-edit-btn');
+  if (!textSpan) return;
+
+  // Hide edit btn during editing
+  if (editBtn) editBtn.style.display = 'none';
+
+  // Replace text with textarea
+  const textarea = document.createElement('textarea');
+  textarea.className = 'ai-msg-edit-textarea';
+  textarea.value = currentText;
+  textarea.rows = Math.min(6, currentText.split('\n').length + 1);
+
+  const actions = document.createElement('div');
+  actions.className = 'ai-msg-edit-actions';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = 'Send';
+  saveBtn.className = 'ai-msg-edit-save';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.className = 'ai-msg-edit-cancel';
+
+  actions.appendChild(saveBtn);
+  actions.appendChild(cancelBtn);
+
+  textSpan.style.display = 'none';
+  msgEl.appendChild(textarea);
+  msgEl.appendChild(actions);
+  textarea.focus();
+
+  const cleanup = () => {
+    textarea.remove();
+    actions.remove();
+    textSpan.style.display = '';
+    if (editBtn) editBtn.style.display = '';
+  };
+
+  cancelBtn.addEventListener('click', () => cleanup());
+
+  saveBtn.addEventListener('click', () => {
+    const newText = textarea.value.trim();
+    if (!newText) { cleanup(); return; }
+
+    // Remove all messages after this one from history
+    history = history.slice(0, historyIdx);
+
+    // Remove all DOM elements after this message
+    const allMsgs = Array.from(chatListEl.querySelectorAll('.ai-msg'));
+    const msgIndex = allMsgs.indexOf(msgEl);
+    for (let i = allMsgs.length - 1; i > msgIndex; i--) {
+      allMsgs[i].remove();
+    }
+    // Remove the current user message too (will be re-added by sendMessage)
+    msgEl.remove();
+
+    // Set the input and send
+    chatInputEl.value = newText;
+    sendMessage();
+  });
+
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      saveBtn.click();
+    } else if (e.key === 'Escape') {
+      cleanup();
+    }
+  });
+};
 
 function addAiMessage(text) {
   const div = document.createElement('div');
@@ -1341,8 +1582,9 @@ function loadSession(sessionId) {
   if (chatListEl) chatListEl.innerHTML = '';
   addSystemMessage(`Session loaded: ${session.title} (${session.messageCount} messages)`);
 
-  for (const msg of history) {
-    if (msg.role === 'user') addUserMessage(msg.content);
+  for (let i = 0; i < history.length; i++) {
+    const msg = history[i];
+    if (msg.role === 'user') addUserMessage(msg.content, i);
     else if (msg.role === 'assistant') addAiMessage(msg.content);
   }
 
@@ -1377,8 +1619,9 @@ function forkSession(sourceSessionId) {
   if (chatListEl) chatListEl.innerHTML = '';
   addSystemMessage(`Forked from session "${source.title}". Context preserved (${history.length} messages).`);
 
-  for (const msg of history) {
-    if (msg.role === 'user') addUserMessage(msg.content);
+  for (let i = 0; i < history.length; i++) {
+    const msg = history[i];
+    if (msg.role === 'user') addUserMessage(msg.content, i);
     else if (msg.role === 'assistant') addAiMessage(msg.content);
   }
 
@@ -1575,5 +1818,6 @@ function exitAiFullscreen() {
 export {
   togglePanel as toggleAiPanel, showSessionsModal,
   enterAiFullscreen, exitAiFullscreen,
-  showDiagnosticsPanel, detectPlatform, getInstallCommands
+  showDiagnosticsPanel, detectPlatform, getInstallCommands,
+  exportChatAsMarkdown
 };

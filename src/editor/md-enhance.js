@@ -1195,3 +1195,475 @@ function markdownToBasicHtml(md) {
     .replace(/`(.+?)`/g, '<code>$1</code>')
     .replace(/\n/g, '<br>');
 }
+
+/* ════════════════════════════════════════════════════════════════
+   10. FLOATING TOC SIDEBAR — auto-generated from headings
+   ════════════════════════════════════════════════════════════════ */
+
+let tocPanelEl = null;
+let tocVisible = false;
+let tocUpdateTimer = null;
+
+export function initFloatingToc() {
+  const btn = document.getElementById('btn-floating-toc');
+  if (btn) {
+    btn.addEventListener('click', () => toggleFloatingToc());
+  }
+
+  // Keyboard shortcut: Ctrl+Shift+T
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'T') {
+      e.preventDefault();
+      toggleFloatingToc();
+    }
+  });
+}
+
+const toggleFloatingToc = () => {
+  tocVisible = !tocVisible;
+  const btn = document.getElementById('btn-floating-toc');
+  if (btn) btn.classList.toggle('active', tocVisible);
+
+  if (tocVisible) {
+    showFloatingToc();
+    updateFloatingToc(getContent());
+  } else {
+    hideFloatingToc();
+  }
+};
+
+const showFloatingToc = () => {
+  if (tocPanelEl) return;
+
+  tocPanelEl = document.createElement('div');
+  tocPanelEl.className = 'md-floating-toc';
+  tocPanelEl.innerHTML = `
+    <div class="floating-toc-header">
+      <span>Table of Contents</span>
+      <button class="floating-toc-close" title="Close">&times;</button>
+    </div>
+    <div class="floating-toc-list"></div>
+  `;
+
+  document.body.appendChild(tocPanelEl);
+
+  tocPanelEl.querySelector('.floating-toc-close').addEventListener('click', () => {
+    tocVisible = false;
+    const btn = document.getElementById('btn-floating-toc');
+    if (btn) btn.classList.remove('active');
+    hideFloatingToc();
+  });
+
+  // Make draggable
+  let isDragging = false;
+  let dragOffsetX = 0, dragOffsetY = 0;
+  const header = tocPanelEl.querySelector('.floating-toc-header');
+
+  header.addEventListener('mousedown', (e) => {
+    if (e.target.closest('.floating-toc-close')) return;
+    isDragging = true;
+    const rect = tocPanelEl.getBoundingClientRect();
+    dragOffsetX = e.clientX - rect.left;
+    dragOffsetY = e.clientY - rect.top;
+    tocPanelEl.style.transition = 'none';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    tocPanelEl.style.left = `${e.clientX - dragOffsetX}px`;
+    tocPanelEl.style.top = `${e.clientY - dragOffsetY}px`;
+    tocPanelEl.style.right = 'auto';
+  });
+
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+    if (tocPanelEl) tocPanelEl.style.transition = '';
+  });
+};
+
+const hideFloatingToc = () => {
+  if (tocPanelEl) {
+    tocPanelEl.remove();
+    tocPanelEl = null;
+  }
+};
+
+export const updateFloatingToc = (markdownText) => {
+  if (!tocVisible || !tocPanelEl) return;
+  if (tocUpdateTimer) clearTimeout(tocUpdateTimer);
+  tocUpdateTimer = setTimeout(() => buildFloatingToc(markdownText), 300);
+};
+
+const buildFloatingToc = (markdownText) => {
+  const list = tocPanelEl?.querySelector('.floating-toc-list');
+  if (!list) return;
+
+  const lines = markdownText.split('\n');
+  const headings = [];
+  let inCodeBlock = false;
+  let lineNumber = 0;
+
+  for (const line of lines) {
+    lineNumber++;
+    if (line.trim().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock) continue;
+
+    const match = line.match(/^(#{1,6})\s+(.+)/);
+    if (match) {
+      const level = match[1].length;
+      const text = match[2].replace(/[#*_`\[\]]/g, '').trim();
+      if (text) {
+        headings.push({ level, text, line: lineNumber });
+      }
+    }
+  }
+
+  if (headings.length === 0) {
+    list.innerHTML = '<div class="floating-toc-empty">No headings found</div>';
+    return;
+  }
+
+  list.innerHTML = headings.map((h) =>
+    `<button class="floating-toc-item" data-line="${h.line}" data-level="${h.level}" style="padding-left:${(h.level - 1) * 12 + 8}px;">
+      <span class="floating-toc-level">H${h.level}</span>
+      <span class="floating-toc-text">${escapeAttr(h.text)}</span>
+    </button>`
+  ).join('');
+
+  list.querySelectorAll('.floating-toc-item').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const lineNum = parseInt(btn.dataset.line);
+      scrollEditorToLine(lineNum);
+      // Highlight active
+      list.querySelectorAll('.floating-toc-item').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+};
+
+const scrollEditorToLine = (lineNum) => {
+  const view = getEditorView();
+  if (!view) return;
+
+  try {
+    const line = view.state.doc.line(lineNum);
+    view.dispatch({
+      selection: { anchor: line.from },
+      effects: [],
+    });
+    const coords = view.coordsAtPos(line.from);
+    if (coords) {
+      view.scrollDOM.scrollTo({
+        top: view.scrollDOM.scrollTop + coords.top - view.scrollDOM.getBoundingClientRect().top - 80,
+        behavior: 'smooth',
+      });
+    }
+    view.focus();
+  } catch {
+    // Line might be out of range
+  }
+};
+
+/* ════════════════════════════════════════════════════════════════
+   11. WORD GOAL / TARGET — progress bar toward a word count goal
+   ════════════════════════════════════════════════════════════════ */
+
+const WORD_GOAL_STORAGE_KEY = 'marklink-word-goals';
+
+const getWordGoals = () => {
+  try { return JSON.parse(localStorage.getItem(WORD_GOAL_STORAGE_KEY) || '{}'); }
+  catch { return {}; }
+};
+
+const saveWordGoals = (goals) => {
+  localStorage.setItem(WORD_GOAL_STORAGE_KEY, JSON.stringify(goals));
+};
+
+const getCurrentFileId = () => {
+  // Try to get current file name/path for per-file goals
+  const fileNameEl = document.querySelector('.status-bar-filename');
+  const tabEl = document.querySelector('.tab-item.active');
+  return fileNameEl?.textContent?.trim() || tabEl?.dataset?.filename || '_default';
+};
+
+let wordGoalBarEl = null;
+
+export function initWordGoal() {
+  // Create the word goal bar (inserted after md-stats-bar)
+  const statsBar = document.getElementById('md-stats-bar');
+  if (!statsBar) return;
+
+  wordGoalBarEl = document.createElement('div');
+  wordGoalBarEl.className = 'md-word-goal-bar';
+  wordGoalBarEl.style.display = 'none';
+  statsBar.parentNode.insertBefore(wordGoalBarEl, statsBar.nextSibling);
+
+  // Add set-goal button to stats bar
+  const goalBtn = document.createElement('button');
+  goalBtn.className = 'stat-item word-goal-btn';
+  goalBtn.title = 'Set word count goal';
+  goalBtn.textContent = 'Goal';
+  goalBtn.addEventListener('click', () => showWordGoalDialog());
+  statsBar.appendChild(goalBtn);
+
+  // Check if there's an existing goal for current file
+  updateWordGoalDisplay(0);
+}
+
+const showWordGoalDialog = () => {
+  const fileId = getCurrentFileId();
+  const goals = getWordGoals();
+  const currentGoal = goals[fileId] || 0;
+  const input = prompt('Set word count goal (0 to disable):', String(currentGoal));
+  if (input === null) return;
+
+  const goal = Math.max(0, parseInt(input) || 0);
+  if (goal === 0) {
+    delete goals[fileId];
+  } else {
+    goals[fileId] = goal;
+  }
+  saveWordGoals(goals);
+
+  // Refresh display
+  const content = getContent();
+  const stats = getMarkdownStats(content);
+  updateWordGoalDisplay(stats.words);
+};
+
+export const updateWordGoalDisplay = (wordCount) => {
+  if (!wordGoalBarEl) return;
+
+  const fileId = getCurrentFileId();
+  const goals = getWordGoals();
+  const goal = goals[fileId];
+
+  if (!goal || goal <= 0) {
+    wordGoalBarEl.style.display = 'none';
+    return;
+  }
+
+  wordGoalBarEl.style.display = 'flex';
+  const pct = Math.min(100, Math.round((wordCount / goal) * 100));
+  const remaining = Math.max(0, goal - wordCount);
+  const isComplete = wordCount >= goal;
+
+  wordGoalBarEl.innerHTML = `
+    <div class="word-goal-info">
+      <span class="word-goal-label">${isComplete ? 'Goal reached!' : `${remaining.toLocaleString()} words remaining`}</span>
+      <span class="word-goal-fraction">${wordCount.toLocaleString()} / ${goal.toLocaleString()}</span>
+    </div>
+    <div class="word-goal-track">
+      <div class="word-goal-fill ${isComplete ? 'complete' : ''}" style="width:${pct}%"></div>
+    </div>
+    <span class="word-goal-pct">${pct}%</span>
+  `;
+};
+
+/* ════════════════════════════════════════════════════════════════
+   12. READING TIME ESTIMATE — displayed in status bar
+   ════════════════════════════════════════════════════════════════ */
+
+export const updateReadingTimeEstimate = (text) => {
+  // Reading time is already computed in getMarkdownStats but we also
+  // render it in the global status bar (footer) for visibility
+  const statusRight = document.getElementById('status-right');
+  if (!statusRight) return;
+
+  const stats = getMarkdownStats(text);
+  // Preserve existing status-right content, only update reading-time span
+  let readingEl = statusRight.querySelector('.reading-time-estimate');
+  if (!readingEl) {
+    readingEl = document.createElement('span');
+    readingEl.className = 'reading-time-estimate';
+    readingEl.style.cssText = 'margin-left:8px;font-size:11px;opacity:0.8;';
+    statusRight.appendChild(readingEl);
+  }
+  readingEl.textContent = `${stats.readingTime} read`;
+};
+
+/* ════════════════════════════════════════════════════════════════
+   13. MARKDOWN LINTING INDICATORS — subtle visual issue markers
+   ════════════════════════════════════════════════════════════════ */
+
+let lintPanelEl = null;
+let lintUpdateTimer = null;
+
+export function initMarkdownLint() {
+  // Create lint indicator in stats bar
+  const statsBar = document.getElementById('md-stats-bar');
+  if (!statsBar) return;
+
+  const lintIndicator = document.createElement('span');
+  lintIndicator.className = 'stat-sep';
+  lintIndicator.textContent = '|';
+  statsBar.appendChild(lintIndicator);
+
+  const lintBtn = document.createElement('button');
+  lintBtn.className = 'stat-item md-lint-btn';
+  lintBtn.id = 'md-lint-indicator';
+  lintBtn.title = 'Markdown lint issues';
+  lintBtn.innerHTML = '<span class="lint-dot clean"></span> <span class="lint-count">0 issues</span>';
+  lintBtn.addEventListener('click', () => toggleLintPanel());
+  statsBar.appendChild(lintBtn);
+}
+
+export const updateMarkdownLint = (text) => {
+  const issues = runMarkdownLint(text);
+
+  // Update indicator
+  const indicator = document.getElementById('md-lint-indicator');
+  if (indicator) {
+    const dot = indicator.querySelector('.lint-dot');
+    const count = indicator.querySelector('.lint-count');
+    if (dot) {
+      dot.className = 'lint-dot ' + (issues.length === 0 ? 'clean' : issues.some((i) => i.severity === 'warning') ? 'warning' : 'info');
+    }
+    if (count) {
+      count.textContent = `${issues.length} issue${issues.length !== 1 ? 's' : ''}`;
+    }
+  }
+
+  // Update panel if visible
+  if (lintPanelEl) {
+    renderLintPanel(issues);
+  }
+
+  return issues;
+};
+
+const runMarkdownLint = (text) => {
+  const issues = [];
+  const lines = text.split('\n');
+  let inCodeBlock = false;
+  let lastHeadingLevel = 0;
+  let lineNumber = 0;
+
+  for (const line of lines) {
+    lineNumber++;
+
+    if (line.trim().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock) continue;
+
+    // Rule 1: Heading level skip (e.g., h1 -> h3)
+    const headingMatch = line.match(/^(#{1,6})\s+/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      if (lastHeadingLevel > 0 && level > lastHeadingLevel + 1) {
+        issues.push({
+          line: lineNumber,
+          severity: 'warning',
+          rule: 'heading-skip',
+          message: `Heading skips level: H${lastHeadingLevel} -> H${level}`,
+          excerpt: line.substring(0, 60),
+        });
+      }
+      lastHeadingLevel = level;
+    }
+
+    // Rule 2: Lines exceeding 120 characters
+    if (line.length > 120) {
+      issues.push({
+        line: lineNumber,
+        severity: 'info',
+        rule: 'line-length',
+        message: `Line exceeds 120 chars (${line.length})`,
+        excerpt: line.substring(0, 60) + '...',
+      });
+    }
+
+    // Rule 3: Empty links [text]() or []()
+    if (/\[[^\]]*\]\(\s*\)/.test(line)) {
+      issues.push({
+        line: lineNumber,
+        severity: 'warning',
+        rule: 'empty-link',
+        message: 'Empty link URL',
+        excerpt: line.substring(0, 60),
+      });
+    }
+
+    // Rule 4: Empty images ![alt]() or ![]()
+    if (/!\[[^\]]*\]\(\s*\)/.test(line)) {
+      issues.push({
+        line: lineNumber,
+        severity: 'warning',
+        rule: 'empty-image',
+        message: 'Empty image URL',
+        excerpt: line.substring(0, 60),
+      });
+    }
+  }
+
+  return issues;
+};
+
+const toggleLintPanel = () => {
+  if (lintPanelEl) {
+    lintPanelEl.remove();
+    lintPanelEl = null;
+    return;
+  }
+
+  lintPanelEl = document.createElement('div');
+  lintPanelEl.className = 'md-lint-panel';
+
+  const statsBar = document.getElementById('md-stats-bar');
+  if (statsBar) {
+    statsBar.parentNode.insertBefore(lintPanelEl, statsBar);
+  } else {
+    document.body.appendChild(lintPanelEl);
+  }
+
+  const content = getContent();
+  const issues = runMarkdownLint(content);
+  renderLintPanel(issues);
+};
+
+const renderLintPanel = (issues) => {
+  if (!lintPanelEl) return;
+
+  if (issues.length === 0) {
+    lintPanelEl.innerHTML = `
+      <div class="lint-panel-header">
+        <span>Lint Issues</span>
+        <button class="lint-panel-close">&times;</button>
+      </div>
+      <div class="lint-panel-empty">No issues found</div>
+    `;
+  } else {
+    lintPanelEl.innerHTML = `
+      <div class="lint-panel-header">
+        <span>Lint Issues (${issues.length})</span>
+        <button class="lint-panel-close">&times;</button>
+      </div>
+      <div class="lint-panel-list">
+        ${issues.map((issue) =>
+          `<button class="lint-issue-item" data-line="${issue.line}">
+            <span class="lint-issue-dot ${issue.severity}"></span>
+            <span class="lint-issue-line">L${issue.line}</span>
+            <span class="lint-issue-msg">${escapeAttr(issue.message)}</span>
+          </button>`
+        ).join('')}
+      </div>
+    `;
+  }
+
+  lintPanelEl.querySelector('.lint-panel-close')?.addEventListener('click', () => {
+    lintPanelEl?.remove();
+    lintPanelEl = null;
+  });
+
+  lintPanelEl.querySelectorAll('.lint-issue-item').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const lineNum = parseInt(btn.dataset.line);
+      scrollEditorToLine(lineNum);
+    });
+  });
+};

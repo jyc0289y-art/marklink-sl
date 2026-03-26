@@ -302,13 +302,21 @@ export function initDocEditor() {
     showPageSetupDialog();
   });
 
-  // Line spacing
+  // Line spacing — apply to selected block(s) or fallback to whole editor
   const lineSpacing = document.getElementById('doc-line-spacing');
   if (lineSpacing) {
     lineSpacing.addEventListener('change', () => {
-      if (editorEl) {
+      const sel = window.getSelection();
+      const node = sel?.anchorNode;
+      const block = node?.nodeType === 3
+        ? node.parentElement?.closest('p, h1, h2, h3, h4, h5, h6, li, div, blockquote')
+        : node?.closest('p, h1, h2, h3, h4, h5, h6, li, div, blockquote');
+      if (block && editorEl?.contains(block)) {
+        block.style.lineHeight = lineSpacing.value;
+      } else if (editorEl) {
         editorEl.style.lineHeight = lineSpacing.value;
       }
+      dirty = true;
     });
   }
 
@@ -582,9 +590,10 @@ export function initDocEditor() {
   if (typeof SESSION_START_KEY !== 'undefined') localStorage.setItem(SESSION_START_KEY, String(sessionStartTime));
   if (typeof updateWritingStreak === 'function') updateWritingStreak();
 
-  // Initial word count + ruler
+  // Initial word count + ruler + page break indicators
   updateWordCount();
   setTimeout(() => renderRuler(), 100);
+  setTimeout(() => initPageBreakIndicators(), 200);
 
   // Table context toolbar
   editorEl.addEventListener('click', (e) => {
@@ -669,6 +678,7 @@ export function destroyDocEditor() {
   document.querySelector('.doc-highlight-palette')?.remove();
   document.querySelector('.doc-table-color-picker')?.remove();
   hideTableToolbar();
+  destroyPageBreakIndicators();
 
   // Reset state
   editorEl = null;
@@ -678,6 +688,10 @@ export function destroyDocEditor() {
   findBarEl = null;
   findInput = null;
   replaceInput = null;
+  findCurrentIndex = 0;
+  findUseRegex = false;
+  findMatchCase = false;
+  findWholeWord = false;
 
   // Remove goal progress bar
   document.getElementById('doc-goal-progress')?.remove();
@@ -837,6 +851,19 @@ let replaceInput = null;
 let highlightedNodes = [];
 let findUseRegex = false;
 let findMatchCase = false;
+let findWholeWord = false;
+let findCurrentIndex = 0;
+
+// Page break indicator state
+let pageBreakObserver = null;
+let pageBreakDebounceTimer = null;
+
+function _updateToggleBtn(btn, active) {
+  if (!btn) return;
+  btn.style.opacity = active ? '1' : '0.6';
+  btn.style.background = active ? 'var(--accent-color)' : '';
+  btn.style.color = active ? '#fff' : '';
+}
 
 function initFindReplace() {
   findBarEl = document.getElementById('doc-find-bar');
@@ -844,9 +871,13 @@ function initFindReplace() {
   replaceInput = document.getElementById('doc-replace-input');
   if (!findBarEl || !findInput) return;
 
-  findInput.addEventListener('input', () => doFind());
-  document.getElementById('doc-find-next')?.addEventListener('click', () => doFind(true));
-  document.getElementById('doc-find-prev')?.addEventListener('click', () => doFind(false));
+  findInput.addEventListener('input', () => { findCurrentIndex = 0; doFind(); });
+  findInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); e.shiftKey ? navigateFind(false) : navigateFind(true); }
+    if (e.key === 'Escape') { e.preventDefault(); closeFindBar(); }
+  });
+  document.getElementById('doc-find-next')?.addEventListener('click', () => navigateFind(true));
+  document.getElementById('doc-find-prev')?.addEventListener('click', () => navigateFind(false));
   document.getElementById('doc-replace-btn')?.addEventListener('click', () => doReplace());
   document.getElementById('doc-replace-all')?.addEventListener('click', () => doReplaceAll());
   document.getElementById('doc-find-close')?.addEventListener('click', () => closeFindBar());
@@ -855,18 +886,24 @@ function initFindReplace() {
   const regexBtn = document.getElementById('doc-find-regex');
   regexBtn?.addEventListener('click', () => {
     findUseRegex = !findUseRegex;
-    regexBtn.style.opacity = findUseRegex ? '1' : '0.6';
-    regexBtn.style.background = findUseRegex ? 'var(--accent-color)' : '';
-    regexBtn.style.color = findUseRegex ? '#fff' : '';
+    _updateToggleBtn(regexBtn, findUseRegex);
+    findCurrentIndex = 0;
     doFind();
   });
   // Case toggle
   const caseBtn = document.getElementById('doc-find-case');
   caseBtn?.addEventListener('click', () => {
     findMatchCase = !findMatchCase;
-    caseBtn.style.opacity = findMatchCase ? '1' : '0.6';
-    caseBtn.style.background = findMatchCase ? 'var(--accent-color)' : '';
-    caseBtn.style.color = findMatchCase ? '#fff' : '';
+    _updateToggleBtn(caseBtn, findMatchCase);
+    findCurrentIndex = 0;
+    doFind();
+  });
+  // Whole word toggle
+  const wholeBtn = document.getElementById('doc-find-whole');
+  wholeBtn?.addEventListener('click', () => {
+    findWholeWord = !findWholeWord;
+    _updateToggleBtn(wholeBtn, findWholeWord);
+    findCurrentIndex = 0;
     doFind();
   });
 }
@@ -901,18 +938,20 @@ function closeFindBar() {
   editorEl?.focus();
 }
 
-function doFind(forward = true) {
+function doFind() {
   clearHighlights();
   const query = findInput?.value;
-  if (!query || !editorEl) return;
+  if (!query || !editorEl) { updateFindCount(0, 0); return; }
 
   const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT);
   let node;
   const matches = [];
 
   if (findUseRegex) {
+    let pattern = query;
+    if (findWholeWord) pattern = `\\b${pattern}\\b`;
     let re;
-    try { re = new RegExp(query, findMatchCase ? 'g' : 'gi'); } catch { updateFindCount(0, 0); return; }
+    try { re = new RegExp(pattern, findMatchCase ? 'g' : 'gi'); } catch { updateFindCount(0, 0); return; }
     while ((node = walker.nextNode())) {
       const text = node.textContent;
       let m;
@@ -922,12 +961,17 @@ function doFind(forward = true) {
       }
     }
   } else {
+    const searchQuery = findMatchCase ? query : query.toLowerCase();
     while ((node = walker.nextNode())) {
       let idx = 0;
       const text = node.textContent;
       const searchText = findMatchCase ? text : text.toLowerCase();
-      const searchQuery = findMatchCase ? query : query.toLowerCase();
       while ((idx = searchText.indexOf(searchQuery, idx)) !== -1) {
+        if (findWholeWord) {
+          const before = idx > 0 ? searchText[idx - 1] : ' ';
+          const after = idx + searchQuery.length < searchText.length ? searchText[idx + searchQuery.length] : ' ';
+          if (/\w/.test(before) || /\w/.test(after)) { idx += 1; continue; }
+        }
         matches.push({ node, start: idx, length: query.length });
         idx += query.length;
       }
@@ -939,7 +983,7 @@ function doFind(forward = true) {
     return;
   }
 
-  // Highlight all matches
+  // Highlight all matches (reverse order to preserve offsets)
   for (let i = matches.length - 1; i >= 0; i--) {
     const m = matches[i];
     const range = document.createRange();
@@ -952,12 +996,28 @@ function doFind(forward = true) {
   }
   highlightedNodes.reverse();
 
-  // Focus first match
-  if (highlightedNodes.length > 0) {
-    highlightedNodes[0].classList.add('doc-find-current');
-    highlightedNodes[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // Clamp current index
+  if (findCurrentIndex >= highlightedNodes.length) findCurrentIndex = 0;
+  if (findCurrentIndex < 0) findCurrentIndex = highlightedNodes.length - 1;
+
+  // Focus current match
+  highlightedNodes[findCurrentIndex].classList.add('doc-find-current');
+  highlightedNodes[findCurrentIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  updateFindCount(findCurrentIndex + 1, highlightedNodes.length);
+}
+
+function navigateFind(forward) {
+  if (highlightedNodes.length === 0) { doFind(); return; }
+  // Remove current highlight
+  highlightedNodes[findCurrentIndex]?.classList.remove('doc-find-current');
+  if (forward) {
+    findCurrentIndex = (findCurrentIndex + 1) % highlightedNodes.length;
+  } else {
+    findCurrentIndex = (findCurrentIndex - 1 + highlightedNodes.length) % highlightedNodes.length;
   }
-  updateFindCount(1, highlightedNodes.length);
+  highlightedNodes[findCurrentIndex].classList.add('doc-find-current');
+  highlightedNodes[findCurrentIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  updateFindCount(findCurrentIndex + 1, highlightedNodes.length);
 }
 
 function clearHighlights() {
@@ -3364,40 +3424,68 @@ function showParagraphSpacingDialog() {
   const node = sel?.anchorNode;
   const block = node?.nodeType === 3 ? node.parentElement?.closest('p, h1, h2, h3, h4, h5, h6, li, div') : node?.closest('p, h1, h2, h3, h4, h5, h6, li, div');
 
+  const currentLineHeight = block?.style.lineHeight || getComputedStyle(block || editorEl).lineHeight;
+  // Normalize computed lineHeight (e.g. "25.6px" on 16px font = ~1.6)
+  let currentLH = '1.6';
+  if (currentLineHeight) {
+    const parsed = parseFloat(currentLineHeight);
+    if (!isNaN(parsed)) {
+      currentLH = parsed <= 4 ? String(parsed) : String(Math.round((parsed / 16) * 100) / 100);
+    }
+  }
+
   const dlg = document.createElement('div');
-  dlg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:10px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.25);z-index:10000;width:320px;font-size:14px;color:#333;';
+  dlg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-primary,#fff);border-radius:10px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.25);z-index:10000;width:360px;font-size:14px;color:var(--text-primary,#333);';
+  const inputStyle = 'width:100%;padding:6px;border:1px solid var(--border-color,#ccc);border-radius:4px;margin-top:4px;background:var(--bg-primary,#fff);color:var(--text-primary,#333)';
+  const btnStyle = 'flex:1;padding:6px;border:1px solid var(--border-color,#ccc);border-radius:4px;cursor:pointer;font-size:11px;background:var(--bg-primary,#fff);color:var(--text-primary,#333)';
   dlg.innerHTML = `
     <h3 style="margin:0 0 16px">Paragraph Spacing</h3>
+    <div style="margin-bottom:16px">
+      <label style="font-weight:600;font-size:12px">Line Height:</label>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button class="ps-lh" data-lh="1" style="${btnStyle}">1.0</button>
+        <button class="ps-lh" data-lh="1.15" style="${btnStyle}">1.15</button>
+        <button class="ps-lh" data-lh="1.5" style="${btnStyle}">1.5</button>
+        <button class="ps-lh" data-lh="2" style="${btnStyle}">2.0</button>
+        <input type="number" id="ps-line-height" value="${currentLH}" min="0.5" max="5" step="0.1" style="width:60px;padding:6px;border:1px solid var(--border-color,#ccc);border-radius:4px;text-align:center;background:var(--bg-primary,#fff);color:var(--text-primary,#333)">
+      </div>
+    </div>
     <div style="display:flex;gap:16px;margin-bottom:16px">
       <div style="flex:1">
-        <label style="font-weight:600;font-size:12px">Before (px):</label>
-        <input type="number" id="ps-before" value="${parseInt(block?.style.marginTop) || 0}" min="0" max="100" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;margin-top:4px">
+        <label style="font-weight:600;font-size:12px">Space Before (px):</label>
+        <input type="number" id="ps-before" value="${parseInt(block?.style.marginTop) || 0}" min="0" max="100" style="${inputStyle}">
       </div>
       <div style="flex:1">
-        <label style="font-weight:600;font-size:12px">After (px):</label>
-        <input type="number" id="ps-after" value="${parseInt(block?.style.marginBottom) || 0}" min="0" max="100" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;margin-top:4px">
+        <label style="font-weight:600;font-size:12px">Space After (px):</label>
+        <input type="number" id="ps-after" value="${parseInt(block?.style.marginBottom) || 0}" min="0" max="100" style="${inputStyle}">
       </div>
     </div>
     <div style="margin-bottom:16px">
       <label style="font-weight:600;font-size:12px">Quick Presets:</label>
       <div style="display:flex;gap:6px;margin-top:6px">
-        <button class="ps-preset" data-before="0" data-after="0" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:11px">Compact</button>
-        <button class="ps-preset" data-before="6" data-after="6" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:11px">Normal</button>
-        <button class="ps-preset" data-before="12" data-after="12" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:11px">Open</button>
-        <button class="ps-preset" data-before="24" data-after="24" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:11px">Double</button>
+        <button class="ps-preset" data-before="0" data-after="0" data-lh="1" style="${btnStyle}">Compact</button>
+        <button class="ps-preset" data-before="6" data-after="6" data-lh="1.15" style="${btnStyle}">Normal</button>
+        <button class="ps-preset" data-before="12" data-after="12" data-lh="1.5" style="${btnStyle}">Open</button>
+        <button class="ps-preset" data-before="24" data-after="24" data-lh="2" style="${btnStyle}">Double</button>
       </div>
     </div>
     <div style="text-align:right">
-      <button id="ps-cancel" style="padding:6px 16px;margin-right:8px;border:1px solid #ccc;border-radius:4px;cursor:pointer">Cancel</button>
-      <button id="ps-apply" style="padding:6px 16px;background:#3b82f6;color:#fff;border:none;border-radius:4px;cursor:pointer">Apply</button>
+      <button id="ps-cancel" style="padding:6px 16px;margin-right:8px;border:1px solid var(--border-color,#ccc);border-radius:4px;cursor:pointer;background:var(--bg-primary,#fff);color:var(--text-primary,#333)">Cancel</button>
+      <button id="ps-apply" style="padding:6px 16px;background:var(--brand-color,#3b82f6);color:#fff;border:none;border-radius:4px;cursor:pointer">Apply</button>
     </div>
   `;
   document.body.appendChild(dlg);
 
-  dlg.querySelectorAll('.ps-preset').forEach(btn => {
+  const lhInput = dlg.querySelector('#ps-line-height');
+  dlg.querySelectorAll('.ps-lh').forEach((btn) => {
+    btn.addEventListener('click', () => { lhInput.value = btn.dataset.lh; });
+  });
+
+  dlg.querySelectorAll('.ps-preset').forEach((btn) => {
     btn.addEventListener('click', () => {
       dlg.querySelector('#ps-before').value = btn.dataset.before;
       dlg.querySelector('#ps-after').value = btn.dataset.after;
+      lhInput.value = btn.dataset.lh;
     });
   });
 
@@ -3405,9 +3493,17 @@ function showParagraphSpacingDialog() {
   dlg.querySelector('#ps-apply').addEventListener('click', () => {
     const before = dlg.querySelector('#ps-before').value + 'px';
     const after = dlg.querySelector('#ps-after').value + 'px';
+    const lh = lhInput.value;
     if (block) {
       block.style.marginTop = before;
       block.style.marginBottom = after;
+      block.style.lineHeight = lh;
+    }
+    // Also sync the toolbar line-spacing select
+    const lineSpacingSelect = document.getElementById('doc-line-spacing');
+    if (lineSpacingSelect) {
+      const opt = Array.from(lineSpacingSelect.options).find((o) => o.value === lh);
+      if (opt) lineSpacingSelect.value = lh;
     }
     dlg.remove();
     editorEl?.focus();
@@ -5860,4 +5956,83 @@ function showWritingStatsDialog() {
     updateWordCount();
     dlg.remove();
   });
+}
+
+// ─── Page Break Indicators (A4) ──────────────────────────────
+
+const A4_HEIGHT_PX = 1122; // A4 at 96 DPI = 297mm ~ 1122px
+
+function updatePageBreakIndicators() {
+  if (!editorEl) return;
+  // Remove existing indicators
+  editorEl.querySelectorAll('.doc-page-break-indicator').forEach((el) => el.remove());
+
+  const editorHeight = editorEl.scrollHeight;
+  if (editorHeight <= A4_HEIGHT_PX) return;
+
+  const pageCount = Math.floor(editorHeight / A4_HEIGHT_PX);
+  for (let i = 1; i <= pageCount; i++) {
+    const yPos = i * A4_HEIGHT_PX;
+    const indicator = document.createElement('div');
+    indicator.className = 'doc-page-break-indicator';
+    indicator.contentEditable = 'false';
+    indicator.setAttribute('data-page', String(i));
+    indicator.style.cssText = `
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: ${yPos}px;
+      height: 0;
+      border-top: 2px dashed var(--border-color, #ccc);
+      pointer-events: none;
+      user-select: none;
+      z-index: 5;
+    `;
+    // Label
+    const label = document.createElement('span');
+    label.style.cssText = `
+      position: absolute;
+      right: 8px;
+      top: -10px;
+      font-size: 9px;
+      color: var(--text-tertiary, #999);
+      background: var(--bg-primary, #fff);
+      padding: 0 4px;
+      line-height: 1;
+    `;
+    label.textContent = `Page ${i} / ${i + 1}`;
+    indicator.appendChild(label);
+    editorEl.appendChild(indicator);
+  }
+}
+
+function initPageBreakIndicators() {
+  if (!editorEl) return;
+  // Ensure editor has relative positioning for absolute indicators
+  editorEl.style.position = 'relative';
+
+  // Debounced updater
+  const debouncedUpdate = () => {
+    clearTimeout(pageBreakDebounceTimer);
+    pageBreakDebounceTimer = setTimeout(() => updatePageBreakIndicators(), 500);
+  };
+
+  // Watch for content changes
+  pageBreakObserver = new MutationObserver(debouncedUpdate);
+  pageBreakObserver.observe(editorEl, { childList: true, subtree: true, characterData: true });
+
+  // Also watch for resizes
+  _addHandler(window, 'resize', debouncedUpdate);
+
+  // Initial render
+  updatePageBreakIndicators();
+}
+
+function destroyPageBreakIndicators() {
+  if (pageBreakObserver) {
+    pageBreakObserver.disconnect();
+    pageBreakObserver = null;
+  }
+  clearTimeout(pageBreakDebounceTimer);
+  editorEl?.querySelectorAll('.doc-page-break-indicator').forEach((el) => el.remove());
 }

@@ -12,13 +12,13 @@ import { initToast, toastSuccess, toastError, toastInfo } from './ui/toast.js';
 import { initContextMenus } from './ui/context-menu.js';
 import { openFile, saveFile, quickSave, getCurrentFileName, setFileName, startAutoSave, stopAutoSave, checkAutoSaveRestore, clearAutoSave } from './file/file-manager.js';
 import { initDragDrop } from './file/drag-drop.js';
-import { renderRecentFiles } from './file/recent-files.js';
+import { renderRecentFiles, getRecentEntries } from './file/recent-files.js';
 import { openFolder } from './file/folder-tree.js';
 import { printDocument } from './export/print.js';
 import { exportHTML } from './export/html.js';
 import { exportPDF } from './export/pdf.js';
 import { trackFileOpen, trackFileSave, trackExport, trackThemeToggle, trackToolbarAction, trackFolderOpen, initSessionTracking, measureStartup, measureTabSwitch, initPerfMonitoring } from './analytics.js';
-import { initTabs, onTabChange, getCurrentTab, switchTab, switchNextTab, switchPrevTab, switchToTabN, setTabDirty } from './ui/tabs.js';
+import { initTabs, onTabChange, getCurrentTab, switchTab, switchNextTab, switchPrevTab, switchToTabN, setTabDirty, confirmTabClose, isTabDirty } from './ui/tabs.js';
 import { initDocEditor, getDocContent } from './document/doc-editor.js';
 import { openDocFile, saveDocFile, quickSaveDoc, getDocFileName, setDocFileName } from './document/doc-file.js';
 import { initSheetEditor, getSheetsData } from './sheet/sheet-ui.js';
@@ -34,7 +34,7 @@ import { initCalculator } from './calculator/calculator.js';
 // CAD and Drawing are loaded dynamically to avoid blocking app init
 // import { initCadEditor } from './cad/cad-editor.js';
 // import { initDrawEditor } from './draw/draw-editor.js';
-import { initSnippetLibrary, initZenMode, updateEnhancedStatusBar, initShortcutOverlay, initMarkdownKeyboardShortcuts, initAutocomplete, initFocusMode, initTableEditor, initVersionSnapshots, initExportHtml } from './editor/md-enhance.js';
+import { initSnippetLibrary, initZenMode, updateEnhancedStatusBar, initShortcutOverlay, initMarkdownKeyboardShortcuts, initAutocomplete, initFocusMode, initTableEditor, initVersionSnapshots, initExportHtml, initFloatingToc, updateFloatingToc, initWordGoal, updateWordGoalDisplay, updateReadingTimeEstimate, initMarkdownLint, updateMarkdownLint, getMarkdownStats } from './editor/md-enhance.js';
 import { initDocAiContextMenu, initSheetAi, initSlideAi, initMarkdownAi, initPdfAi, initPhotoAi } from './ai/ai-cowork.js';
 import { initTutorial } from './ui/tutorial.js';
 import { initThemeCustomizer } from './ui/theme-customizer.js';
@@ -169,6 +169,11 @@ export async function initApp() {
     updatePreview(content);
     updateOutline(content);
     updateEnhancedStatusBar(content);
+    updateFloatingToc(content);
+    const stats = getMarkdownStats(content);
+    updateWordGoalDisplay(stats.words);
+    updateReadingTimeEstimate(content);
+    updateMarkdownLint(content);
   });
 
   // 5b. Initialize outline/TOC panel
@@ -191,7 +196,12 @@ export async function initApp() {
   initTableEditor();
   initVersionSnapshots();
   initExportHtml();
+  initFloatingToc();
+  initWordGoal();
+  initMarkdownLint();
   updateEnhancedStatusBar(WELCOME_MD);
+  updateReadingTimeEstimate(WELCOME_MD);
+  updateMarkdownLint(WELCOME_MD);
 
   // 6. Initialize split pane
   const divider = document.getElementById('divider');
@@ -576,23 +586,76 @@ export async function initApp() {
     },
   });
 
-  // 19. Fullscreen toggle
+  // 19. Fullscreen toggle (polished — hides all chrome)
   const fullscreenBtn = document.getElementById('btn-fullscreen');
   const fullscreenIcon = document.getElementById('fullscreen-icon');
   if (fullscreenBtn) {
+    const _enterFullscreen = () => {
+      document.documentElement.requestFullscreen().catch(() => {});
+    };
+    const _exitFullscreen = () => {
+      document.exitFullscreen().catch(() => {});
+    };
+
     fullscreenBtn.addEventListener('click', () => {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
-      } else {
-        document.exitFullscreen();
-      }
+      if (!document.fullscreenElement) _enterFullscreen();
+      else _exitFullscreen();
     });
+
     document.addEventListener('fullscreenchange', () => {
-      if (fullscreenIcon) {
-        fullscreenIcon.textContent = document.fullscreenElement ? '⛶' : '⛶';
+      const isFs = !!document.fullscreenElement;
+      if (fullscreenIcon) fullscreenIcon.textContent = isFs ? '⛶' : '⛶';
+      fullscreenBtn.classList.toggle('active', isFs);
+      document.body.classList.toggle('officelink-fullscreen', isFs);
+
+      // Show / hide floating exit button
+      let exitBtn = document.getElementById('fullscreen-exit-float');
+      if (isFs) {
+        if (!exitBtn) {
+          exitBtn = document.createElement('button');
+          exitBtn.id = 'fullscreen-exit-float';
+          exitBtn.textContent = 'Exit Fullscreen';
+          exitBtn.style.cssText = `
+            position: fixed; top: 8px; right: 8px; z-index: 10001;
+            padding: 6px 14px; border: none; border-radius: 8px;
+            background: rgba(0,0,0,0.55); color: #fff; font-size: 12px;
+            font-weight: 600; cursor: pointer; opacity: 0;
+            transition: opacity 0.3s ease; backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+          `;
+          document.body.appendChild(exitBtn);
+          exitBtn.addEventListener('click', () => _exitFullscreen());
+          // Show on hover near top edge
+          const showOnMouse = (e) => {
+            if (!document.fullscreenElement) return;
+            const btn = document.getElementById('fullscreen-exit-float');
+            if (!btn) return;
+            btn.style.opacity = e.clientY < 48 ? '1' : '0';
+          };
+          document.addEventListener('mousemove', showOnMouse);
+        }
+        exitBtn.style.display = '';
+      } else if (exitBtn) {
+        exitBtn.style.display = 'none';
       }
-      fullscreenBtn.classList.toggle('active', !!document.fullscreenElement);
     });
+
+    // Inject fullscreen CSS once
+    if (!document.getElementById('fullscreen-polish-style')) {
+      const fsStyle = document.createElement('style');
+      fsStyle.id = 'fullscreen-polish-style';
+      fsStyle.textContent = `
+        .officelink-fullscreen #toolbar { display: none !important; }
+        .officelink-fullscreen #tab-bar { display: none !important; }
+        .officelink-fullscreen #sidebar { display: none !important; }
+        .officelink-fullscreen .status-bar,
+        .officelink-fullscreen .status-bar-enhanced { display: none !important; }
+        .officelink-fullscreen .app-container {
+          height: 100vh !important;
+        }
+      `;
+      document.head.appendChild(fsStyle);
+    }
   }
 
   // 20. Analytics — session duration tracking
@@ -735,6 +798,19 @@ export async function initApp() {
   } else {
     history.replaceState({ tab: 'markdown' }, '', window.location.href);
   }
+
+  // 31. Welcome / empty state when no file is open
+  initWelcomeScreen(loadFile);
+
+  // 32. Tab-close confirmation on beforeunload
+  window.addEventListener('beforeunload', (e) => {
+    const tabs = ['markdown', 'document', 'sheet', 'slide'];
+    const hasDirty = tabs.some((t) => isTabDirty(t));
+    if (hasDirty) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
 
   // End startup measurement
   const startupTime = endStartup();
@@ -1875,6 +1951,11 @@ function initStatusBar() {
       statusLeft.textContent = `${t('status.lines')}: ${lines}`;
       statusCenter.textContent = '';
       updateEnhancedStatusBar(content);
+      updateFloatingToc(content);
+      updateReadingTimeEstimate(content);
+      updateMarkdownLint(content);
+      const stats = getMarkdownStats(content);
+      updateWordGoalDisplay(stats.words);
     } else {
       statusLeft.textContent = '';
       statusCenter.textContent = '';
@@ -2158,4 +2239,154 @@ const initEmptyStates = () => {
   // Calculator shows calculator interface
   // CAD shows viewport
   // Draw shows canvas
+};
+
+// ── Welcome Screen (shown when no file is open) ──
+
+/**
+ * Show a welcome screen in the main app area. Includes recent files,
+ * quick-action buttons (New Markdown, Sheet, Slide, Drawing), and
+ * a keyboard shortcuts cheat sheet.
+ * @param {Function} loadFile - callback to load a file result
+ */
+const initWelcomeScreen = (loadFile) => {
+  const container = document.getElementById('app');
+  if (!container) return;
+
+  const welcome = document.createElement('div');
+  welcome.id = 'welcome-screen';
+  welcome.style.cssText = `
+    position: absolute; inset: 0; z-index: 5;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg-primary, #fff);
+    overflow-y: auto; padding: 32px 16px;
+  `;
+
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '');
+  const mod = isMac ? '\u2318' : 'Ctrl';
+
+  // Recent files
+  const recentEntries = getRecentEntries().slice(0, 6);
+  let recentHtml = '';
+  if (recentEntries.length > 0) {
+    const items = recentEntries.map((f) => {
+      const name = escapeHtml(f.name || 'Untitled');
+      const typeIcons = { document: '\uD83D\uDCC4', sheet: '\uD83D\uDCCA', slide: '\uD83C\uDFAC', pdf: '\uD83D\uDCC4', photo: '\uD83D\uDCF7', markdown: '\u270D\uFE0F' };
+      const icon = typeIcons[f.type] || '\uD83D\uDCC1';
+      return `<div class="welcome-recent-item" data-name="${name}" style="
+        display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;
+        cursor:pointer;transition:background 0.15s;font-size:13px;
+        color:var(--text-primary,#222);
+      "><span style="font-size:16px">${icon}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span></div>`;
+    }).join('');
+    recentHtml = `
+      <div style="margin-bottom:28px;width:100%">
+        <div style="font-size:12px;font-weight:700;color:var(--text-tertiary,#999);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Recent Files</div>
+        <div style="display:flex;flex-direction:column;gap:2px">${items}</div>
+      </div>`;
+  }
+
+  // Quick actions
+  const actions = [
+    { label: 'New Markdown', icon: '\u270D\uFE0F', tab: 'markdown' },
+    { label: 'New Sheet', icon: '\uD83D\uDCCA', tab: 'sheet' },
+    { label: 'New Slide', icon: '\uD83C\uDFAC', tab: 'slide' },
+    { label: 'New Drawing', icon: '\uD83C\uDFA8', tab: 'draw' },
+  ];
+  const actionsHtml = actions.map((a) => `
+    <button class="welcome-action-btn" data-tab="${a.tab}" style="
+      display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 20px;
+      border:1px solid var(--border-color,#e0e0e0);border-radius:12px;background:transparent;
+      cursor:pointer;transition:all 0.15s;min-width:100px;
+      color:var(--text-primary,#222);font-size:12px;font-weight:600;
+    "><span style="font-size:28px">${a.icon}</span>${a.label}</button>
+  `).join('');
+
+  // Shortcuts cheat sheet (top 10)
+  const shortcuts = [
+    [`${mod}+O`, 'Open file'],
+    [`${mod}+S`, 'Save file'],
+    [`${mod}+B`, 'Bold'],
+    [`${mod}+I`, 'Italic'],
+    [`${mod}+Z`, 'Undo'],
+    [`${mod}+Shift+Z`, 'Redo'],
+    [`${mod}+F`, 'Find'],
+    [`${mod}+P`, 'Print / PDF'],
+    ['Ctrl+Tab', 'Next tab'],
+    ['F11', 'Fullscreen'],
+  ];
+  const shortcutsHtml = shortcuts.map(([key, desc]) => `
+    <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px">
+      <span style="color:var(--text-secondary,#666)">${desc}</span>
+      <kbd style="background:var(--sidebar-bg,#f5f5f5);border:1px solid var(--border-color,#ddd);
+        border-radius:4px;padding:1px 6px;font-size:11px;font-family:monospace;white-space:nowrap">${key}</kbd>
+    </div>
+  `).join('');
+
+  welcome.innerHTML = `
+    <div style="max-width:520px;width:100%;text-align:center">
+      <div style="font-size:36px;margin-bottom:4px;opacity:0.8">\u2726</div>
+      <h1 style="font-size:24px;font-weight:700;margin:0 0 4px;color:var(--text-primary,#222)">Welcome to OfficeLink SL</h1>
+      <p style="font-size:13px;color:var(--text-secondary,#666);margin:0 0 28px">Your free, browser-based office suite by SeouLink</p>
+      ${recentHtml}
+      <div style="margin-bottom:28px">
+        <div style="font-size:12px;font-weight:700;color:var(--text-tertiary,#999);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Quick Actions</div>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">${actionsHtml}</div>
+      </div>
+      <div style="text-align:left;max-width:320px;margin:0 auto">
+        <div style="font-size:12px;font-weight:700;color:var(--text-tertiary,#999);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Keyboard Shortcuts</div>
+        ${shortcutsHtml}
+      </div>
+    </div>
+  `;
+
+  container.appendChild(welcome);
+
+  // Inject hover styles
+  if (!document.getElementById('welcome-screen-style')) {
+    const ws = document.createElement('style');
+    ws.id = 'welcome-screen-style';
+    ws.textContent = `
+      .welcome-recent-item:hover { background: var(--hover-bg, #f0f0f0); }
+      .welcome-action-btn:hover {
+        background: var(--hover-bg, #f0f0f0) !important;
+        border-color: var(--brand-color, #0071e3) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      }
+    `;
+    document.head.appendChild(ws);
+  }
+
+  // Quick action buttons → switch tab and dismiss welcome
+  welcome.querySelectorAll('.welcome-action-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      if (tab) switchTab(tab);
+      _dismissWelcome();
+    });
+  });
+
+  // Recent file items → try to reopen (placeholder; real reopen needs handle)
+  welcome.querySelectorAll('.welcome-recent-item').forEach((item) => {
+    item.addEventListener('click', () => {
+      _dismissWelcome();
+    });
+  });
+
+  // Dismiss welcome on any tab switch
+  const _dismissWelcome = () => {
+    const el = document.getElementById('welcome-screen');
+    if (el) {
+      el.style.opacity = '0';
+      el.style.transition = 'opacity 0.25s ease';
+      setTimeout(() => el.remove(), 260);
+    }
+  };
+
+  // Auto-dismiss when user switches tab or starts editing
+  onTabChange(() => _dismissWelcome());
+  // Also dismiss if user types in any editor
+  document.getElementById('doc-editor')?.addEventListener('input', () => _dismissWelcome(), { once: true });
+  document.getElementById('editor-container')?.addEventListener('keydown', () => _dismissWelcome(), { once: true });
 };
