@@ -7,6 +7,7 @@ import {
 } from './sheet-engine.js';
 import { getSheetsData, setSheetsData } from './sheet-ui.js';
 import { generateTimestampFilename } from '../export/filename-utils.js';
+import { downloadBlob } from '../utils/download.js';
 
 let _XLSX = null;
 async function getXLSX() {
@@ -76,12 +77,7 @@ export async function saveSheetFile() {
   }
 
   // Fallback download
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = tsName;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, tsName);
   currentName = tsName;
   return { name: tsName };
 }
@@ -124,12 +120,7 @@ export async function saveSheetCSV() {
     return { name: handle.name || tsName };
   }
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = tsName;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, tsName);
   return { name: tsName };
 }
 

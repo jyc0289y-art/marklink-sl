@@ -4,6 +4,7 @@
 
 import { insertAtCursor, wrapSelection, getContent, getEditorView } from './editor.js';
 import { AI_SLASH_COMMANDS, handleAiSlashCommand } from '../ai/ai-cowork.js';
+import { downloadBlob } from '../utils/download.js';
 
 /* ════════════════════════════════════════════════════════════════
    1. SNIPPET LIBRARY
@@ -1176,12 +1177,7 @@ ${previewHtml}
 </html>`;
 
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'document.html';
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, 'document.html');
 }
 
 function markdownToBasicHtml(md) {

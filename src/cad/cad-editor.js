@@ -5,6 +5,7 @@
 // Three.js loaded from CDN via dynamic import with retry logic
 // Uses string concat to prevent Vite from analyzing these imports
 import { escapeHtml as _esc } from '../utils/sanitize.js';
+import { downloadBlob } from '../utils/download.js';
 import * as OCCT from './occt-engine.js';
 import { t } from '../ui/i18n.js';
 let THREE, OrbitControls, TransformControls, STLExporter, OBJExporter, GLTFExporter, STLLoader, OBJLoader, GLTFLoader;
@@ -2159,14 +2160,7 @@ function exportGLTF() {
   );
 }
 
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+// downloadBlob imported from ../utils/download.js
 
 /* ===================== Import ===================== */
 function importFile(file) {

@@ -4,6 +4,7 @@ import { render } from '../preview/renderer.js';
 import { generateTimestampFilename } from './filename-utils.js';
 import { showExportProgress } from './progress.js';
 import { getHtmlPresets, savePresets } from './presets.js';
+import { downloadBlob } from '../utils/download.js';
 
 /* ── Inline CSS for standalone mode ── */
 const INLINE_CSS = `
@@ -154,12 +155,7 @@ export async function exportHTML(markdownText, fileName = 'document') {
 
     // Fallback: download with timestamp name
     const blob = new Blob([standalone], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = defaultName;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, defaultName);
 
     progress.update(100, 'Done!');
     setTimeout(() => progress.close(), 500);

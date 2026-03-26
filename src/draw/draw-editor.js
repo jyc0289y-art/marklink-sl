@@ -1,5 +1,6 @@
 // OfficeLink SL — Drawing / Whiteboard Editor (Canvas 2D)
 import { escapeHtml as _esc } from '../utils/sanitize.js';
+import { downloadBlob } from '../utils/download.js';
 
 /* ==================== State ==================== */
 let canvas, ctx, overlayCanvas, overlayCtx;
@@ -1457,11 +1458,7 @@ function exportCanvas(format) {
   const mimeType = format === 'jpeg' ? 'image/jpeg' : 'image/png';
   const quality = format === 'jpeg' ? 0.92 : undefined;
   expCanvas.toBlob((blob) => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `drawing.${format === 'jpeg' ? 'jpg' : 'png'}`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadBlob(blob, `drawing.${format === 'jpeg' ? 'jpg' : 'png'}`);
   }, mimeType, quality);
 }
 
@@ -1482,11 +1479,7 @@ function exportSVG() {
   svg += '</svg>';
 
   const blob = new Blob([svg], { type: 'image/svg+xml' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'drawing.svg';
-  a.click();
-  URL.revokeObjectURL(a.href);
+  downloadBlob(blob, 'drawing.svg');
 }
 
 function objectToSVG(obj) {
@@ -1568,11 +1561,7 @@ function saveDrawingJSON() {
 
   const json = JSON.stringify(payload, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'drawing.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
+  downloadBlob(blob, 'drawing.json');
 }
 
 function loadDrawingJSON() {

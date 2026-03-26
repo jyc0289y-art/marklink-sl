@@ -1,5 +1,6 @@
 // OfficeLink SL — Toolbar Actions
 import { wrapSelection, insertAtCursor, getContent, setContent } from '../editor/editor.js';
+import { downloadBlob } from '../utils/download.js';
 
 /**
  * Initialize toolbar button actions
@@ -130,12 +131,7 @@ function handleExportMd() {
   if (!content) return;
 
   const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'document.md';
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, 'document.md');
 }
 
 // ─── Import Markdown ───────────────────────────────────

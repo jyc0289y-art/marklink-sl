@@ -6,6 +6,7 @@
 // mammoth (~200KB), jszip (~90KB), docx (~350KB) are loaded on first use
 import { setDocContent, getDocContent, markDocClean } from './doc-editor.js';
 import { generateTimestampFilename } from '../export/filename-utils.js';
+import { downloadBlob } from '../utils/download.js';
 
 let _mammoth = null;
 let _JSZip = null;
@@ -602,12 +603,7 @@ export async function exportDocx(fileName) {
   }
 
   // Fallback download
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = tsName;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, tsName);
   return { name: tsName };
 }
 

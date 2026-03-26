@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import { render } from '../preview/renderer.js';
 import { showExportProgress } from './progress.js';
 import { generateSmartFilename } from './filename-utils.js';
+import { downloadBlob } from '../utils/download.js';
 
 /**
  * Collect exportable content from all open editor tabs.
@@ -128,12 +129,7 @@ export const exportAll = async () => {
     const zipName = `${ts}_OfficeLink_Export.zip`;
 
     // Download
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = zipName;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, zipName);
 
     setTimeout(() => progress.close(), 600);
     _showToast(`Exported ${docs.length} file(s) as ZIP`);

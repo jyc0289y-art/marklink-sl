@@ -2,6 +2,7 @@
 import { generateTimestampFilename } from '../export/filename-utils.js';
 import { addToRecent } from './recent-files.js';
 import { escapeHtml } from '../utils/sanitize.js';
+import { downloadBlob } from '../utils/download.js';
 import { cacheFileForOffline, queueSyncOperation } from '../ui/offline-manager.js';
 
 let currentFileHandle = null;
@@ -300,12 +301,7 @@ const openFileFallback = () =>
 
 const saveFileFallback = (content, filename) => {
   const blob = new Blob([content], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename || currentFileName;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, filename || currentFileName);
   return { name: filename };
 };
 

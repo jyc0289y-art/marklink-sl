@@ -4,6 +4,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { t } from '../ui/i18n.js';
 import { escapeHtml as _esc } from '../utils/sanitize.js';
+import { downloadBlob } from '../utils/download.js';
 
 // Set worker source
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -2600,15 +2601,7 @@ const buildPdfFromCanvases = (canvases) => {
   return result;
 };
 
-// ─── Download Helper ────────────────────────────────────────
-const downloadBlob = (blob, filename) => {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-};
+// downloadBlob imported from ../utils/download.js
 
 // ─── Public API (unchanged) ─────────────────────────────────
 

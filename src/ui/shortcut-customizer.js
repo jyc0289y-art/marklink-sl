@@ -4,6 +4,7 @@
 import { modSymbol, shiftSymbol, altSymbol, formatShortcut } from './shortcuts.js';
 import { toastSuccess, toastError, toastInfo, toastWarning } from './toast.js';
 import { t } from './i18n.js';
+import { downloadBlob } from '../utils/download.js';
 
 const STORAGE_KEY = 'officelink-custom-shortcuts';
 
@@ -395,12 +396,7 @@ export const buildShortcutsSettingsPanel = () => {
   exportBtn.addEventListener('click', () => {
     const json = exportShortcuts();
     const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `officelink-shortcuts-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `officelink-shortcuts-${new Date().toISOString().slice(0, 10)}.json`);
     toastSuccess('Shortcuts exported');
   });
 

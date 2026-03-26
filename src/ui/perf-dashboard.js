@@ -3,6 +3,7 @@
 // Accessible via Ctrl+Shift+P or developer menu
 
 import { perfMetrics, getPerfSummary } from '../analytics.js';
+import { downloadBlob } from '../utils/download.js';
 
 let dashboardOverlay = null;
 let animFrameId = null;
@@ -333,12 +334,7 @@ const buildDashboard = () => {
       eventListeners: countEventListeners(),
     };
     const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `perf-report-${new Date().toISOString().slice(0, 19)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `perf-report-${new Date().toISOString().slice(0, 19)}.json`);
   });
   panel.appendChild(exportBtn);
 

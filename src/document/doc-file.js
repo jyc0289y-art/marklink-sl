@@ -2,6 +2,8 @@
 
 import { getDocContent, setDocContent, markDocClean } from './doc-editor.js';
 import { generateTimestampFilename } from '../export/filename-utils.js';
+import { downloadBlob } from '../utils/download.js';
+import { escapeHtml } from '../utils/sanitize.js';
 
 let currentHandle = null;
 let currentName = 'untitled.html';
@@ -180,12 +182,7 @@ export async function saveDocFile() {
 
   // Fallback
   const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = tsName;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, tsName);
   markDocClean();
   return { name: tsName };
 }
@@ -226,7 +223,7 @@ function wrapFullHTML(bodyContent, title) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHTML(title.replace(/\.html?$/i, ''))}</title>
+  <title>${escapeHtml(title.replace(/\.html?$/i, ''))}</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -248,6 +245,3 @@ ${bodyContent}
 </html>`;
 }
 
-function escapeHTML(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}

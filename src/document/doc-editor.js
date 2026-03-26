@@ -3588,9 +3588,8 @@ function showDocCompare() {
   };
 }
 
-function escapeHtml(str) {
-  return _escapeHtmlShared(str);
-}
+// escapeHtml: use shared import directly
+const escapeHtml = _escapeHtmlShared;
 
 function computeWordDiff(oldText, newText) {
   const oldWords = oldText.split(/(\s+)/);

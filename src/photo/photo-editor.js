@@ -6,6 +6,7 @@
 import { WebGLEngine, DEFAULT_PARAMS, cloneParams } from './webgl-engine.js';
 import { analyzeLocal, analyzeWithOllama, analyzeWithClaude, checkOllamaStatus, getApiKey, setApiKey } from './auto-edit.js';
 import { escapeHtml as _esc } from '../utils/sanitize.js';
+import { downloadBlob } from '../utils/download.js';
 import { t } from '../ui/i18n.js';
 
 let engine = null;
@@ -2154,12 +2155,8 @@ function showBatchModal() {
             const resultCanvas = tempEngine.getCanvas();
             const mimeType = `image/${format}`;
             resultCanvas.toBlob(blob => {
-              const a = document.createElement('a');
-              a.href = URL.createObjectURL(blob);
               const baseName = batchFiles[i].name.replace(/\.[^.]+$/, '');
-              a.download = `${baseName}_edit.${format}`;
-              a.click();
-              URL.revokeObjectURL(a.href);
+              downloadBlob(blob, `${baseName}_edit.${format}`);
               resolve();
             }, mimeType, quality);
           };
@@ -2432,12 +2429,7 @@ function exportImage() {
     // Use toBlob for proper full-resolution export
     canvas.toBlob((blob) => {
       if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.download = `${baseName}_edit.${ext}`;
-      link.href = url;
-      link.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `${baseName}_edit.${ext}`);
       modal.remove();
     }, mimeType, format === 'png' ? undefined : quality);
   });
@@ -3633,12 +3625,7 @@ const _resizeAndDownload = (file, targetW, targetH, lockAspect, format, quality)
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
         canvas.toBlob((blob) => {
           if (blob) {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = file.name.replace(/\.[^.]+$/, '') + `_${w}x${h}.${format.split('/')[1]}`;
-            a.click();
-            URL.revokeObjectURL(url);
+            downloadBlob(blob, file.name.replace(/\.[^.]+$/, '') + `_${w}x${h}.${format.split('/')[1]}`);
           }
           resolve();
         }, format, quality);

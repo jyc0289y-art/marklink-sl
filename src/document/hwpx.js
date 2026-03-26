@@ -4,6 +4,8 @@
 import JSZip from 'jszip';
 import { setDocContent, getDocContent, markDocClean } from './doc-editor.js';
 import { generateTimestampFilename } from '../export/filename-utils.js';
+import { downloadBlob } from '../utils/download.js';
+import { escapeHtml } from '../utils/sanitize.js';
 
 /**
  * Detect binary HWP (OLE compound file) by magic bytes D0 CF 11 E0
@@ -244,12 +246,7 @@ export async function exportHwpx(fileName) {
   }
 
   // Fallback download
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = tsName;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, tsName);
   return { name: tsName };
 }
 
@@ -1018,9 +1015,8 @@ function findChildren(parent, name) {
   return result;
 }
 
-function escapeHTML(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+// escapeHTML: use shared escapeHtml from utils/sanitize.js, aliased for local compat
+const escapeHTML = escapeHtml;
 
 function escapeXML(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

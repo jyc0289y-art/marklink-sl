@@ -10,6 +10,7 @@ import { toastSuccess, toastError, toastInfo } from './toast.js';
 import { broadcastThemeChange, broadcastLangChange } from './tab-sync.js';
 import { getPluginList, enablePlugin, disablePlugin } from '../plugins/plugin-manager.js';
 import { buildShortcutsSettingsPanel } from './shortcut-customizer.js';
+import { downloadBlob } from '../utils/download.js';
 
 const SETTINGS_STORAGE_KEY = 'officelink-settings';
 let settingsOverlay = null;
@@ -412,12 +413,7 @@ const renderStorageTab = (container) => {
       }
     }
     const blob = new Blob([JSON.stringify(allSettings, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `officelink-settings-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `officelink-settings-${new Date().toISOString().slice(0, 10)}.json`);
     toastSuccess('Settings exported');
   });
 

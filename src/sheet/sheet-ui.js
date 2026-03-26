@@ -11,6 +11,8 @@ import {
   sortByColumn,
 } from './sheet-engine.js';
 import { t } from '../ui/i18n.js';
+import { downloadBlob } from '../utils/download.js';
+import { escapeHtml } from '../utils/sanitize.js';
 
 // Wrappers that pass all sheets for cross-sheet reference support
 function setCell(sheet, r, c, rawValue) { _setCell(sheet, r, c, rawValue, sheets); }
@@ -369,9 +371,8 @@ function cellStyle(cell, r, c) {
   return parts.join(';');
 }
 
-function escapeHTML(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+// escapeHTML: use shared escapeHtml from utils/sanitize.js, aliased for local compat
+const escapeHTML = escapeHtml;
 
 /* ==================== Events ==================== */
 
@@ -3640,12 +3641,7 @@ function exportCSV() {
     lines.push(cols.join(','));
   }
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'spreadsheet.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, 'spreadsheet.csv');
 }
 
 function exportXLSX() {
@@ -3716,12 +3712,7 @@ function exportXLSX() {
   };
 
   createMinimalZip(files).then(blob => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'spreadsheet.xlsx';
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, 'spreadsheet.xlsx');
   });
 }
 
@@ -6709,7 +6700,7 @@ function ensureTraceOverlay() {
 function getCellCenter(r, c) {
   const grid = document.querySelector('.sheet-grid');
   if (!grid) return null;
-  const cell = grid.querySelector(`td[data-r="${r}"][data-c="${c}"]`);
+  const cell = grid.querySelector(`td[data-row="${r}"][data-col="${c}"]`);
   if (!cell) return null;
   const gridRect = grid.getBoundingClientRect();
   const cellRect = cell.getBoundingClientRect();
@@ -7231,12 +7222,7 @@ function exportDelimited(fmt, dlg) {
     blob = new Blob([content], { type: `text/${fmt === 'tsv' ? 'tab-separated-values' : 'csv'};charset=utf-8;` });
   }
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `spreadsheet.${fmt}`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, `spreadsheet.${fmt}`);
 }
 
 function exportJSON(fmt, dlg) {
@@ -7277,12 +7263,7 @@ function exportJSON(fmt, dlg) {
   const jsonStr = pretty ? JSON.stringify(output, null, 2) : JSON.stringify(output);
 
   const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'spreadsheet.json';
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, 'spreadsheet.json');
 }
 
 /* ==================== Sparkline Canvas Rendering ==================== */

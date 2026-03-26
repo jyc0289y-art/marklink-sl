@@ -10,6 +10,7 @@ import {
 } from './ollama-client.js';
 import { t } from '../ui/i18n.js';
 import { escapeHtml as _escapeHtml, sanitizeAiResponse } from '../utils/sanitize.js';
+import { downloadBlob } from '../utils/download.js';
 
 let panelEl, chatListEl, chatInputEl, modelSelectEl, statusDotEl;
 let fullChatAreaEl, fullStatusDotEl, fullStatusTextEl, fullModelSelectEl;
@@ -735,15 +736,8 @@ const exportChatAsMarkdown = () => {
 
   const markdown = lines.join('\n');
   const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
   const dateStr = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-  a.download = `chat-export-${dateStr}.md`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, `chat-export-${dateStr}.md`);
   addSystemMessage('Chat exported as Markdown file.');
 };
 
@@ -1725,9 +1719,8 @@ function showSessionsModal() {
   });
 }
 
-function escapeHtml(s) {
-  return _escapeHtml(s);
-}
+// escapeHtml: use shared import directly
+const escapeHtml = _escapeHtml;
 
 // Auto-restore last session on init
 function restoreLastSession() {

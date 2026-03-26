@@ -2,6 +2,8 @@
 
 import { getSlidesData, setSlidesData } from './slide-editor.js';
 import { generateTimestampFilename } from '../export/filename-utils.js';
+import { downloadBlob } from '../utils/download.js';
+import { escapeHtml } from '../utils/sanitize.js';
 
 let currentName = 'untitled-presentation.html';
 
@@ -1306,12 +1308,7 @@ ${slideRelXml}
     }
   }
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = tsName;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, tsName);
   return { name: tsName };
 }
 
@@ -1354,12 +1351,7 @@ export async function saveSlideJSON() {
     return { name: handle.name || tsName };
   }
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = tsName;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, tsName);
   return { name: tsName };
 }
 
@@ -1432,12 +1424,7 @@ export async function saveSlideFile() {
     return { name: currentName };
   }
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = tsName;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, tsName);
   currentName = tsName;
   return { name: tsName };
 }
@@ -1500,9 +1487,8 @@ document.addEventListener('click',()=>{if(idx<slides.length-1){idx++;show(idx)}}
 </html>`;
 }
 
-function escapeHTML(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+// escapeHTML: use shared escapeHtml from utils/sanitize.js, aliased for local compat
+const escapeHTML = escapeHtml;
 
 function escape(s) {
   return encodeURIComponent(s);
