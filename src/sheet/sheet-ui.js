@@ -3885,7 +3885,17 @@ function showChartDialog() {
         <input id="chart-x-label" value="" placeholder="X-Axis" style="width:100%;padding:4px;margin:2px 0 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:11px">
         <label style="font-size:12px;font-weight:600">Y-Axis Label</label>
         <input id="chart-y-label" value="" placeholder="Y-Axis" style="width:100%;padding:4px;margin:2px 0 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:11px">
+        <label style="font-size:12px;font-weight:600;display:block;margin-top:6px">Title Font Size</label>
+        <input id="chart-title-fontsize" type="number" min="8" max="28" value="14" style="width:100%;padding:4px;margin:2px 0 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:11px">
         <label style="font-size:12px"><input type="checkbox" id="chart-legend" checked> Show Legend</label><br>
+        <label style="font-size:12px;font-weight:600;display:block;margin-top:4px">Legend Position</label>
+        <select id="chart-legend-position" style="width:100%;padding:4px;margin:2px 0 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:11px">
+          <option value="bottom">Bottom</option>
+          <option value="top">Top</option>
+          <option value="left">Left</option>
+          <option value="right">Right</option>
+          <option value="none">None</option>
+        </select>
         <label style="font-size:12px"><input type="checkbox" id="chart-first-row-labels" checked> First row as labels</label><br>
         <label style="font-size:12px"><input type="checkbox" id="chart-first-col-labels" checked> First column as labels</label><br>
         <label style="font-size:12px"><input type="checkbox" id="chart-trendline"> Show Trendline</label><br>
@@ -3915,9 +3925,11 @@ function showChartDialog() {
 
   const typeEl = dlg.querySelector('#chart-type');
   const titleEl = dlg.querySelector('#chart-title');
+  const titleFsEl = dlg.querySelector('#chart-title-fontsize');
   const xLabelEl = dlg.querySelector('#chart-x-label');
   const yLabelEl = dlg.querySelector('#chart-y-label');
   const legendEl = dlg.querySelector('#chart-legend');
+  const legendPosEl = dlg.querySelector('#chart-legend-position');
   const firstRowEl = dlg.querySelector('#chart-first-row-labels');
   const firstColEl = dlg.querySelector('#chart-first-col-labels');
   const trendlineEl = dlg.querySelector('#chart-trendline');
@@ -3926,14 +3938,16 @@ function showChartDialog() {
   const canvas = dlg.querySelector('#chart-preview-canvas');
 
   const updatePreview = () => {
-    renderChartToCanvas(canvas, dataRows, typeEl.value, titleEl.value, legendEl.checked, firstRowEl.checked, firstColEl.checked, trendlineEl.checked, xLabelEl.value, yLabelEl.value, gridlinesEl.checked, colorThemeEl.value);
+    renderChartToCanvas(canvas, dataRows, typeEl.value, titleEl.value, legendEl.checked, firstRowEl.checked, firstColEl.checked, trendlineEl.checked, xLabelEl.value, yLabelEl.value, gridlinesEl.checked, colorThemeEl.value, parseInt(titleFsEl.value) || 14, legendPosEl.value);
   };
   updatePreview();
   typeEl.onchange = updatePreview;
   titleEl.oninput = updatePreview;
+  titleFsEl.oninput = updatePreview;
   xLabelEl.oninput = updatePreview;
   yLabelEl.oninput = updatePreview;
   legendEl.onchange = updatePreview;
+  legendPosEl.onchange = updatePreview;
   firstRowEl.onchange = updatePreview;
   firstColEl.onchange = updatePreview;
   trendlineEl.onchange = updatePreview;
@@ -3947,9 +3961,11 @@ function showChartDialog() {
       dataRows: JSON.parse(JSON.stringify(dataRows)),
       type: typeEl.value,
       title: titleEl.value,
+      titleFontSize: parseInt(titleFsEl.value) || 14,
       xLabel: xLabelEl.value,
       yLabel: yLabelEl.value,
       showLegend: legendEl.checked,
+      legendPosition: legendPosEl.value,
       firstRowLabels: firstRowEl.checked,
       firstColLabels: firstColEl.checked,
       trendline: trendlineEl.checked,
@@ -3967,15 +3983,19 @@ function insertChartWidget(config, left = 40, top = 40, width = 480, height = 34
   const chartDiv = document.createElement('div');
   chartDiv.className = 'sheet-chart-container';
   chartDiv.id = chartId;
-  chartDiv.style.cssText = `position:absolute;width:${width}px;height:${height}px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);padding:8px;z-index:100;cursor:move;left:${left}px;top:${top}px;resize:both;overflow:hidden`;
+  chartDiv.style.cssText = `position:absolute;width:${width}px;height:${height}px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);padding:8px;z-index:100;cursor:move;left:${left}px;top:${top}px;overflow:hidden`;
   chartDiv.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
     <span style="font-size:11px;color:var(--text-secondary)">${config.title || 'Chart'}</span>
     <div style="display:flex;gap:4px">
+      <button class="chart-export-btn" style="border:none;background:none;cursor:pointer;font-size:12px;color:var(--text-secondary)" title="Export as PNG">⬇</button>
       <button class="chart-edit-btn" style="border:none;background:none;cursor:pointer;font-size:12px;color:var(--text-secondary)" title="Edit Chart">✎</button>
       <button class="chart-close-btn" style="border:none;background:none;cursor:pointer;font-size:14px;color:var(--text-secondary)" title="Remove">✕</button>
     </div>
   </div>
-  <canvas width="${width - 20}" height="${height - 40}"></canvas>`;
+  <canvas width="${width - 20}" height="${height - 40}"></canvas>
+  <div class="chart-resize-handle chart-resize-se" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:se-resize;z-index:10;background:linear-gradient(135deg,transparent 50%,var(--border-color) 50%)"></div>
+  <div class="chart-resize-handle chart-resize-e" style="position:absolute;right:0;top:20px;bottom:14px;width:6px;cursor:e-resize;z-index:10"></div>
+  <div class="chart-resize-handle chart-resize-s" style="position:absolute;bottom:0;left:14px;right:14px;height:6px;cursor:s-resize;z-index:10"></div>`;
   containerEl.style.position = 'relative';
   containerEl.appendChild(chartDiv);
 
@@ -3983,23 +4003,67 @@ function insertChartWidget(config, left = 40, top = 40, width = 480, height = 34
   chartDiv._chartConfig = config;
 
   const canvasEl = chartDiv.querySelector('canvas');
-  renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines, config.colorTheme);
+  const rerender = () => {
+    renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines, config.colorTheme, config.titleFontSize || 14, config.legendPosition || 'bottom');
+  };
+  rerender();
   makeDraggable(chartDiv);
 
   // Close button
   chartDiv.querySelector('.chart-close-btn').onclick = () => chartDiv.remove();
 
-  // Edit button — re-open chart dialog with current settings
+  // Edit button
   chartDiv.querySelector('.chart-edit-btn').onclick = () => editChart(chartDiv);
 
-  // Resize observer — re-render chart when container is resized
+  // Export as PNG
+  chartDiv.querySelector('.chart-export-btn').addEventListener('click', () => {
+    const exportCanvas = chartDiv.querySelector('canvas');
+    if (!exportCanvas) return;
+    const link = document.createElement('a');
+    link.download = `${(config.title || 'chart').replace(/[^a-zA-Z0-9]/g, '_')}.png`;
+    link.href = exportCanvas.toDataURL('image/png');
+    link.click();
+  });
+
+  // Custom resize handles
+  chartDiv.querySelectorAll('.chart-resize-handle').forEach((handle) => {
+    handle.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startW = chartDiv.offsetWidth;
+      const startH = chartDiv.offsetHeight;
+      const isE = handle.classList.contains('chart-resize-e') || handle.classList.contains('chart-resize-se');
+      const isS = handle.classList.contains('chart-resize-s') || handle.classList.contains('chart-resize-se');
+      const onMove = (ev) => {
+        if (isE) chartDiv.style.width = Math.max(200, startW + ev.clientX - startX) + 'px';
+        if (isS) chartDiv.style.height = Math.max(150, startH + ev.clientY - startY) + 'px';
+        const cw = chartDiv.clientWidth - 20;
+        const ch = chartDiv.clientHeight - 40;
+        if (cw > 0 && ch > 0) {
+          canvasEl.width = cw;
+          canvasEl.height = ch;
+          rerender();
+        }
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+
+  // Resize observer — re-render chart when container is resized (for programmatic resizes)
   const ro = new ResizeObserver(() => {
     const cw = chartDiv.clientWidth - 20;
     const ch = chartDiv.clientHeight - 40;
     if (cw > 0 && ch > 0) {
       canvasEl.width = cw;
       canvasEl.height = ch;
-      renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines, config.colorTheme);
+      rerender();
     }
   });
   ro.observe(chartDiv);
@@ -4035,6 +4099,10 @@ function editChart(chartDiv) {
       <input id="edit-chart-title" value="${config.title}" style="${inputStyle}">
     </div>
     <div style="margin-bottom:8px">
+      <label style="font-size:12px;font-weight:600">Title Font Size</label>
+      <input id="edit-chart-title-fontsize" type="number" min="8" max="28" value="${config.titleFontSize || 14}" style="${inputStyle}">
+    </div>
+    <div style="margin-bottom:8px">
       <label style="font-size:12px;font-weight:600">X-Axis Label</label>
       <input id="edit-chart-x-label" value="${config.xLabel || ''}" placeholder="X-Axis" style="${inputStyle}">
     </div>
@@ -4043,6 +4111,12 @@ function editChart(chartDiv) {
       <input id="edit-chart-y-label" value="${config.yLabel || ''}" placeholder="Y-Axis" style="${inputStyle}">
     </div>
     <label style="font-size:12px"><input type="checkbox" id="edit-chart-legend" ${config.showLegend?'checked':''}> Show Legend</label><br>
+    <div style="margin-bottom:8px;margin-top:4px">
+      <label style="font-size:12px;font-weight:600">Legend Position</label>
+      <select id="edit-chart-legend-position" style="${inputStyle}">
+        ${['bottom','top','left','right','none'].map(p => `<option value="${p}" ${(config.legendPosition||'bottom')===p?'selected':''}>${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('')}
+      </select>
+    </div>
     <label style="font-size:12px"><input type="checkbox" id="edit-chart-trendline" ${config.trendline?'checked':''}> Show Trendline</label><br>
     <label style="font-size:12px"><input type="checkbox" id="edit-chart-gridlines" ${config.showGridlines!==false?'checked':''}> Show Gridlines</label>
     <div style="margin-top:8px">
@@ -4062,16 +4136,18 @@ function editChart(chartDiv) {
   dlg.querySelector('#edit-chart-apply').onclick = () => {
     config.type = dlg.querySelector('#edit-chart-type').value;
     config.title = dlg.querySelector('#edit-chart-title').value;
+    config.titleFontSize = parseInt(dlg.querySelector('#edit-chart-title-fontsize').value) || 14;
     config.xLabel = dlg.querySelector('#edit-chart-x-label').value;
     config.yLabel = dlg.querySelector('#edit-chart-y-label').value;
     config.showLegend = dlg.querySelector('#edit-chart-legend').checked;
+    config.legendPosition = dlg.querySelector('#edit-chart-legend-position').value;
     config.trendline = dlg.querySelector('#edit-chart-trendline').checked;
     config.showGridlines = dlg.querySelector('#edit-chart-gridlines').checked;
     config.colorTheme = dlg.querySelector('#edit-chart-color-theme').value;
     chartDiv._chartConfig = config;
     chartDiv.querySelector('span').textContent = config.title;
     const canvasEl = chartDiv.querySelector('canvas');
-    renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines, config.colorTheme);
+    renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines, config.colorTheme, config.titleFontSize, config.legendPosition);
     dlg.remove();
   };
 }
@@ -4102,13 +4178,17 @@ const CHART_COLOR_THEMES = {
 let currentChartColorTheme = 'default';
 const CHART_COLORS = CHART_COLOR_THEMES.default;
 
-function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRowLabels, firstColLabels, showTrendline, xAxisLabel, yAxisLabel, showGridlines, colorTheme) {
+function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRowLabels, firstColLabels, showTrendline, xAxisLabel, yAxisLabel, showGridlines, colorTheme, titleFontSize, legendPosition) {
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-primary') || '#fff';
   ctx.fillRect(0, 0, W, H);
   const colors = CHART_COLOR_THEMES[colorTheme] || CHART_COLOR_THEMES.default;
+  const tfs = titleFontSize || 14;
+  const legPos = legendPosition || 'bottom';
+  // If legend position is 'none', disable legend display
+  const effectiveLegend = showLegend && legPos !== 'none';
 
   let labels = [];
   let seriesNames = [];
@@ -4135,22 +4215,25 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
 
   // Title
   ctx.fillStyle = textColor;
-  ctx.font = 'bold 14px system-ui, sans-serif';
+  ctx.font = `bold ${tfs}px system-ui, sans-serif`;
   ctx.textAlign = 'center';
-  ctx.fillText(title, W / 2, 18);
+  ctx.fillText(title, W / 2, tfs + 4);
 
   if (type === 'pie' || type === 'doughnut') {
-    renderPieChart(ctx, W, H, series[0] || [], labels, type === 'doughnut', showLegend, textColor, colors);
+    renderPieChart(ctx, W, H, series[0] || [], labels, type === 'doughnut', effectiveLegend, textColor, colors, legPos);
     return;
   }
   if (type === 'radar') {
-    renderRadarChart(ctx, W, H, series, labels, seriesNames, showLegend, textColor, colors);
+    renderRadarChart(ctx, W, H, series, labels, seriesNames, effectiveLegend, textColor, colors, legPos);
     return;
   }
 
   // Axis charts (bar, column, line, area, scatter)
-  const pad = { top: 30, right: 20, bottom: 50, left: 55 };
-  if (showLegend) pad.bottom += 20;
+  const pad = { top: tfs + 14, right: 20, bottom: 50, left: 55 };
+  if (effectiveLegend && legPos === 'bottom') pad.bottom += 20;
+  if (effectiveLegend && legPos === 'top') pad.top += 20;
+  if (effectiveLegend && legPos === 'right') pad.right += 90;
+  if (effectiveLegend && legPos === 'left') pad.left += 90;
   if (xAxisLabel) pad.bottom += 16;
   if (yAxisLabel) pad.left += 16;
   const cW = W - pad.left - pad.right;
@@ -4382,25 +4465,60 @@ function renderChartToCanvas(canvas, dataRows, type, title, showLegend, firstRow
   }
 
   // Legend
-  if (showLegend && series.length > 0) {
-    const legendOffset = xAxisLabel ? 14 : 0;
-    const ly = H - 14 + (legendOffset > 0 ? 0 : 0);
-    let lx = W / 2 - (seriesNames.length * 70) / 2;
+  if (effectiveLegend && series.length > 0) {
     ctx.font = '10px system-ui, sans-serif';
-    for (let s = 0; s < seriesNames.length; s++) {
-      ctx.fillStyle = colors[s % colors.length];
-      ctx.fillRect(lx, ly - 8, 12, 8);
-      ctx.fillStyle = textColor;
-      ctx.textAlign = 'left';
-      ctx.fillText(seriesNames[s], lx + 16, ly);
-      lx += 70;
+    if (legPos === 'bottom') {
+      const ly = H - 14;
+      let lx = W / 2 - (seriesNames.length * 70) / 2;
+      for (let s = 0; s < seriesNames.length; s++) {
+        ctx.fillStyle = colors[s % colors.length];
+        ctx.fillRect(lx, ly - 8, 12, 8);
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'left';
+        ctx.fillText(seriesNames[s], lx + 16, ly);
+        lx += 70;
+      }
+    } else if (legPos === 'top') {
+      const ly = pad.top - 8;
+      let lx = W / 2 - (seriesNames.length * 70) / 2;
+      for (let s = 0; s < seriesNames.length; s++) {
+        ctx.fillStyle = colors[s % colors.length];
+        ctx.fillRect(lx, ly - 8, 12, 8);
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'left';
+        ctx.fillText(seriesNames[s], lx + 16, ly);
+        lx += 70;
+      }
+    } else if (legPos === 'right') {
+      const lx = W - pad.right + 10;
+      for (let s = 0; s < seriesNames.length; s++) {
+        const ly = pad.top + 10 + s * 18;
+        ctx.fillStyle = colors[s % colors.length];
+        ctx.fillRect(lx, ly - 8, 12, 8);
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'left';
+        ctx.fillText(seriesNames[s], lx + 16, ly);
+      }
+    } else if (legPos === 'left') {
+      const lx = 8;
+      for (let s = 0; s < seriesNames.length; s++) {
+        const ly = pad.top + 10 + s * 18;
+        ctx.fillStyle = colors[s % colors.length];
+        ctx.fillRect(lx, ly - 8, 12, 8);
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'left';
+        ctx.fillText(seriesNames[s], lx + 16, ly);
+      }
     }
   }
 }
 
-function renderPieChart(ctx, W, H, data, labels, isDoughnut, showLegend, textColor, colors) {
+function renderPieChart(ctx, W, H, data, labels, isDoughnut, showLegend, textColor, colors, legPos) {
   const total = data.reduce((a, b) => a + b, 0) || 1;
-  const cx = W / 2, cy = H / 2 + 10;
+  const lp = legPos || 'bottom';
+  const legendSpace = showLegend ? 40 : 0;
+  const cx = lp === 'left' ? W / 2 + legendSpace / 2 : lp === 'right' ? W / 2 - legendSpace / 2 : W / 2;
+  const cy = lp === 'top' ? H / 2 + legendSpace / 2 + 10 : lp === 'bottom' ? H / 2 : H / 2 + 10;
   const radius = Math.min(W, H) / 2 - (showLegend ? 55 : 35);
   let angle = -Math.PI / 2;
 
@@ -4463,22 +4581,56 @@ function renderPieChart(ctx, W, H, data, labels, isDoughnut, showLegend, textCol
 
   if (showLegend) {
     ctx.font = '10px system-ui';
-    const legendY = H - 14;
     const colW = Math.max(60, Math.min(80, (W - 20) / Math.max(labels.length, 1)));
-    let lx = W / 2 - (labels.length * colW) / 2;
-    for (let i = 0; i < labels.length; i++) {
-      ctx.fillStyle = colors[i % colors.length];
-      ctx.fillRect(lx, legendY - 8, 10, 8);
-      ctx.fillStyle = textColor;
-      ctx.textAlign = 'left';
-      const lbl = (labels[i] || '').length > 8 ? (labels[i] || '').slice(0, 7) + '..' : (labels[i] || '');
-      ctx.fillText(lbl, lx + 14, legendY);
-      lx += colW;
+    if (lp === 'bottom') {
+      const legendY = H - 14;
+      let lx = W / 2 - (labels.length * colW) / 2;
+      for (let i = 0; i < labels.length; i++) {
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fillRect(lx, legendY - 8, 10, 8);
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'left';
+        const lbl = (labels[i] || '').length > 8 ? (labels[i] || '').slice(0, 7) + '..' : (labels[i] || '');
+        ctx.fillText(lbl, lx + 14, legendY);
+        lx += colW;
+      }
+    } else if (lp === 'top') {
+      const legendY = 32;
+      let lx = W / 2 - (labels.length * colW) / 2;
+      for (let i = 0; i < labels.length; i++) {
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fillRect(lx, legendY - 8, 10, 8);
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'left';
+        const lbl = (labels[i] || '').length > 8 ? (labels[i] || '').slice(0, 7) + '..' : (labels[i] || '');
+        ctx.fillText(lbl, lx + 14, legendY);
+        lx += colW;
+      }
+    } else if (lp === 'right') {
+      for (let i = 0; i < labels.length; i++) {
+        const ly = 40 + i * 16;
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fillRect(W - 80, ly - 8, 10, 8);
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'left';
+        const lbl = (labels[i] || '').length > 8 ? (labels[i] || '').slice(0, 7) + '..' : (labels[i] || '');
+        ctx.fillText(lbl, W - 66, ly);
+      }
+    } else if (lp === 'left') {
+      for (let i = 0; i < labels.length; i++) {
+        const ly = 40 + i * 16;
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fillRect(6, ly - 8, 10, 8);
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'left';
+        const lbl = (labels[i] || '').length > 8 ? (labels[i] || '').slice(0, 7) + '..' : (labels[i] || '');
+        ctx.fillText(lbl, 20, ly);
+      }
     }
   }
 }
 
-function renderRadarChart(ctx, W, H, series, labels, seriesNames, showLegend, textColor, colors) {
+function renderRadarChart(ctx, W, H, series, labels, seriesNames, showLegend, textColor, colors, legPos) {
   const cx = W / 2, cy = H / 2 + 10;
   const radius = Math.min(W, H) / 2 - (showLegend ? 50 : 30);
   const n = labels.length || 1;
@@ -4533,15 +4685,46 @@ function renderRadarChart(ctx, W, H, series, labels, seriesNames, showLegend, te
     ctx.stroke();
   }
   if (showLegend) {
-    let lx = W / 2 - (seriesNames.length * 70) / 2;
+    const lp = legPos || 'bottom';
     ctx.font = '10px system-ui';
-    for (let s = 0; s < seriesNames.length; s++) {
-      ctx.fillStyle = colors[s % colors.length];
-      ctx.fillRect(lx, H - 14 - 8, 12, 8);
-      ctx.fillStyle = textColor;
-      ctx.textAlign = 'left';
-      ctx.fillText(seriesNames[s], lx + 16, H - 14);
-      lx += 70;
+    if (lp === 'bottom') {
+      let lx = W / 2 - (seriesNames.length * 70) / 2;
+      for (let s = 0; s < seriesNames.length; s++) {
+        ctx.fillStyle = colors[s % colors.length];
+        ctx.fillRect(lx, H - 14 - 8, 12, 8);
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'left';
+        ctx.fillText(seriesNames[s], lx + 16, H - 14);
+        lx += 70;
+      }
+    } else if (lp === 'top') {
+      let lx = W / 2 - (seriesNames.length * 70) / 2;
+      for (let s = 0; s < seriesNames.length; s++) {
+        ctx.fillStyle = colors[s % colors.length];
+        ctx.fillRect(lx, 24, 12, 8);
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'left';
+        ctx.fillText(seriesNames[s], lx + 16, 32);
+        lx += 70;
+      }
+    } else if (lp === 'right') {
+      for (let s = 0; s < seriesNames.length; s++) {
+        const ly = 40 + s * 18;
+        ctx.fillStyle = colors[s % colors.length];
+        ctx.fillRect(W - 85, ly - 8, 12, 8);
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'left';
+        ctx.fillText(seriesNames[s], W - 69, ly);
+      }
+    } else if (lp === 'left') {
+      for (let s = 0; s < seriesNames.length; s++) {
+        const ly = 40 + s * 18;
+        ctx.fillStyle = colors[s % colors.length];
+        ctx.fillRect(6, ly - 8, 12, 8);
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'left';
+        ctx.fillText(seriesNames[s], 22, ly);
+      }
     }
   }
 }

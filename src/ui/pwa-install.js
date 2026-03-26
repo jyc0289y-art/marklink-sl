@@ -259,7 +259,7 @@ const showInstallBanner = () => {
   banner.querySelector('.pwa-banner-close').addEventListener('click', () => {
     banner.classList.remove('visible');
     setTimeout(() => banner.remove(), 300);
-    localStorage.setItem(PWA_REMIND_KEY, String(Date.now() + 3 * 24 * 60 * 60 * 1000));
+    localStorage.setItem(PWA_REMIND_KEY, String(Date.now() + 7 * 24 * 60 * 60 * 1000));
   });
 
   // Auto-dismiss after 15 seconds

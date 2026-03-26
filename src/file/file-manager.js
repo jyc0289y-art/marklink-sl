@@ -2,6 +2,7 @@
 import { generateTimestampFilename } from '../export/filename-utils.js';
 import { addToRecent } from './recent-files.js';
 import { escapeHtml } from '../utils/sanitize.js';
+import { cacheFileForOffline, queueSyncOperation } from '../ui/offline-manager.js';
 
 let currentFileHandle = null;
 let currentFileName = 'untitled.md';
@@ -221,6 +222,8 @@ export const saveFile = async (content) => {
       await writable.close();
       await addToRecent(currentFileName, handle, 'markdown');
       await clearAutoSave('markdown');
+      cacheFileForOffline(currentFileName, content, 'markdown').catch(() => {});
+      if (!navigator.onLine) queueSyncOperation({ action: 'save', fileName: currentFileName, content }).catch(() => {});
       return { name: currentFileName };
     } catch (e) {
       if (e.name === 'AbortError') return null;
@@ -231,6 +234,8 @@ export const saveFile = async (content) => {
   // Fallback: download with timestamp name
   const result = saveFileFallback(content, suggestedName);
   await clearAutoSave('markdown');
+  cacheFileForOffline(currentFileName, content, 'markdown').catch(() => {});
+  if (!navigator.onLine) queueSyncOperation({ action: 'save', fileName: currentFileName, content }).catch(() => {});
   return result;
 };
 
@@ -249,6 +254,8 @@ export const quickSave = async (content) => {
     await writable.write(content);
     await writable.close();
     await clearAutoSave('markdown');
+    cacheFileForOffline(currentFileName, content, 'markdown').catch(() => {});
+    if (!navigator.onLine) queueSyncOperation({ action: 'save', fileName: currentFileName, content }).catch(() => {});
     return { name: currentFileName };
   }
   return saveFile(content);
@@ -269,6 +276,7 @@ const openFileModern = async () => {
   const file = await handle.getFile();
   const content = await file.text();
   await addToRecent(currentFileName, handle, 'markdown');
+  cacheFileForOffline(currentFileName, content, 'markdown').catch(() => {});
   return { name: currentFileName, content };
 };
 

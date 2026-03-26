@@ -11,21 +11,36 @@ const STORAGE_KEY = 'officelink-custom-shortcuts';
  * Default shortcut definitions: id -> { keys, label, category }
  * `keys` uses normalized format: mod+shift+key, mod+key, etc.
  */
-const DEFAULT_SHORTCUTS = {
-  save:            { keys: 'mod+s',           label: 'Save',                 category: 'General' },
-  saveAs:          { keys: 'mod+shift+s',     label: 'Save As',              category: 'General' },
-  open:            { keys: 'mod+o',           label: 'Open File',            category: 'General' },
+/**
+ * Default shortcut definitions: id -> { keys, label, category, context }
+ * `keys` uses normalized format: mod+shift+key, mod+key, etc.
+ * `context` limits when the shortcut is active:
+ *   - undefined/null = always active (global)
+ *   - string = active only when that tab is current (e.g. 'sheet', 'markdown')
+ *   - array = active when any of the listed tabs is current
+ */
+export const DEFAULT_SHORTCUTS = {
+  // ─── File ───
+  save:            { keys: 'mod+s',           label: 'Save',                 category: 'File' },
+  saveAs:          { keys: 'mod+shift+s',     label: 'Save As',              category: 'File' },
+  open:            { keys: 'mod+o',           label: 'Open File',            category: 'File' },
+  print:           { keys: 'mod+p',           label: 'Print / Export PDF',   category: 'File' },
+
+  // ─── General ───
   undo:            { keys: 'mod+z',           label: 'Undo',                 category: 'General' },
   redo:            { keys: 'mod+shift+z',     label: 'Redo',                 category: 'General' },
   redoAlt:         { keys: 'mod+y',           label: 'Redo (Alt)',           category: 'General' },
-  print:           { keys: 'mod+p',           label: 'Print / Export PDF',   category: 'General' },
   find:            { keys: 'mod+f',           label: 'Find',                 category: 'General' },
   settings:        { keys: 'mod+,',           label: 'Settings',             category: 'General' },
   showShortcuts:   { keys: 'mod+/',           label: 'Show Shortcuts',       category: 'General' },
   fullscreen:      { keys: 'f11',             label: 'Toggle Fullscreen',    category: 'General' },
-  bold:            { keys: 'mod+b',           label: 'Bold',                 category: 'Formatting' },
-  italic:          { keys: 'mod+i',           label: 'Italic',              category: 'Formatting' },
-  togglePreview:   { keys: 'mod+shift+v',     label: 'Toggle Preview',       category: 'Markdown' },
+
+  // ─── Editor (markdown/document) ───
+  bold:            { keys: 'mod+b',           label: 'Bold',                 category: 'Editor',     context: ['markdown', 'document'] },
+  italic:          { keys: 'mod+i',           label: 'Italic',              category: 'Editor',     context: ['markdown', 'document'] },
+  togglePreview:   { keys: 'mod+shift+v',     label: 'Toggle Preview',       category: 'Editor',     context: 'markdown' },
+
+  // ─── Navigation ───
   nextTab:         { keys: 'ctrl+tab',        label: 'Next Tab',             category: 'Navigation' },
   prevTab:         { keys: 'ctrl+shift+tab',  label: 'Previous Tab',         category: 'Navigation' },
 };
@@ -84,15 +99,58 @@ export const getAllShortcuts = () => {
  * Check if a key combination conflicts with another shortcut
  * @param {string} keys - normalized key string
  * @param {string} excludeId - action to exclude from conflict check
- * @returns {string|null} conflicting action label or null
+ * @returns {{ id: string, label: string } | null} conflicting action or null
  */
 const findConflict = (keys, excludeId) => {
   const all = getAllShortcuts();
   for (const [id, sc] of Object.entries(all)) {
     if (id === excludeId) continue;
-    if (sc.keys === keys) return sc.label;
+    if (sc.keys === keys) return { id, label: sc.label };
   }
   return null;
+};
+
+/**
+ * Show a conflict confirmation dialog and return user's choice
+ * @param {string} conflictLabel - label of the conflicting action
+ * @param {string} keysDisplay - formatted key display string
+ * @returns {Promise<boolean>} true if user wants to override
+ */
+const showConflictDialog = (conflictLabel, keysDisplay) => {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'shortcut-conflict-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center';
+
+    const dialog = document.createElement('div');
+    dialog.style.cssText = 'background:var(--bg-primary,#fff);color:var(--text-primary,#222);border-radius:12px;padding:24px;max-width:400px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.25)';
+
+    dialog.innerHTML = `
+      <h4 style="margin:0 0 12px;font-size:16px;color:var(--warning-color,#f0ad4e)">Shortcut Conflict</h4>
+      <p style="margin:0 0 16px;font-size:14px;line-height:1.5">
+        This shortcut (<kbd style="background:var(--sidebar-bg,#f5f5f5);border:1px solid var(--border-color,#ddd);border-radius:4px;padding:1px 6px;font-family:monospace">${keysDisplay}</kbd>)
+        is already assigned to <strong>"${conflictLabel}"</strong>. Override?
+      </p>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="conflict-cancel" style="padding:8px 16px;border:1px solid var(--border-color,#ddd);border-radius:6px;background:var(--bg-secondary,#f5f5f5);color:var(--text-primary,#222);cursor:pointer;font-size:14px">Cancel</button>
+        <button class="conflict-override" style="padding:8px 16px;border:none;border-radius:6px;background:#f0ad4e;color:#fff;cursor:pointer;font-size:14px;font-weight:600">Override</button>
+      </div>`;
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const cleanup = (result) => {
+      overlay.remove();
+      resolve(result);
+    };
+
+    dialog.querySelector('.conflict-cancel').addEventListener('click', () => cleanup(false));
+    dialog.querySelector('.conflict-override').addEventListener('click', () => cleanup(true));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(false); });
+    document.addEventListener('keydown', function esc(e) {
+      if (e.key === 'Escape') { document.removeEventListener('keydown', esc); cleanup(false); }
+    });
+  });
 };
 
 /**
@@ -208,15 +266,28 @@ export const importShortcuts = (json) => {
 };
 
 /**
- * Check if a keyboard event matches a specific shortcut action
- * Used by the global shortcut handler to support custom bindings
+ * Check if a keyboard event matches a specific shortcut action.
+ * When `activeTab` is provided, context-restricted shortcuts are only
+ * matched if the active tab is in their allowed context list.
  * @param {KeyboardEvent} e
  * @param {string} actionId
+ * @param {string} [activeTab] - current active tab id for context filtering
  * @returns {boolean}
  */
-export const matchesShortcut = (e, actionId) => {
+export const matchesShortcut = (e, actionId, activeTab) => {
   const target = getShortcutKeys(actionId);
   if (!target) return false;
+
+  // Context-aware filtering: skip if shortcut has a context restriction
+  // and the active tab doesn't match
+  if (activeTab) {
+    const def = DEFAULT_SHORTCUTS[actionId];
+    if (def?.context) {
+      const allowed = Array.isArray(def.context) ? def.context : [def.context];
+      if (!allowed.includes(activeTab)) return false;
+    }
+  }
+
   const normalized = normalizeKeyEvent(e);
   return normalized === target;
 };
@@ -369,6 +440,18 @@ export const buildShortcutsSettingsPanel = () => {
 };
 
 /**
+ * Apply a shortcut key binding to a row's UI elements
+ */
+const applyShortcutToRow = (actionId, normalized, kbdEl, keysSpan, row) => {
+  setCustomShortcut(actionId, normalized);
+  kbdEl.textContent = displayKeys(normalized);
+  const isCustom = normalized !== DEFAULT_SHORTCUTS[actionId]?.keys;
+  keysSpan.classList.toggle('shortcut-custom', isCustom);
+  const resetBtn = row.querySelector('.shortcut-reset-btn');
+  if (resetBtn) resetBtn.style.display = isCustom ? '' : 'none';
+};
+
+/**
  * Start capturing a key combination for a shortcut
  */
 const startCapture = (row, actionId, kbdEl, keysSpan) => {
@@ -400,24 +483,37 @@ const startCapture = (row, actionId, kbdEl, keysSpan) => {
       return;
     }
 
-    // Check for conflicts
+    // Check for conflicts — show confirmation dialog if conflict found
     const conflict = findConflict(normalized, actionId);
     if (conflict) {
-      toastWarning(`Conflict: "${conflict}" already uses ${displayKeys(normalized)}`);
-      const current = getShortcutKeys(actionId);
-      kbdEl.textContent = displayKeys(current);
+      const keysDisp = displayKeys(normalized);
+      showConflictDialog(conflict.label, keysDisp).then((override) => {
+        if (!override) {
+          const current = getShortcutKeys(actionId);
+          kbdEl.textContent = displayKeys(current);
+          toastInfo('Shortcut edit cancelled');
+          return;
+        }
+        // Clear the conflicting shortcut and apply
+        setCustomShortcut(conflict.id, '');
+        applyShortcutToRow(actionId, normalized, kbdEl, keysSpan, row);
+        // Update the conflicting row's display if visible
+        const conflictRow = document.querySelector(`.shortcut-row[data-action-id="${conflict.id}"]`);
+        if (conflictRow) {
+          const ckbd = conflictRow.querySelector('.shortcut-kbd');
+          if (ckbd) ckbd.textContent = displayKeys(DEFAULT_SHORTCUTS[conflict.id]?.keys || '');
+          const ckeys = conflictRow.querySelector('.shortcut-keys-display');
+          if (ckeys) ckeys.classList.remove('shortcut-custom');
+          const creset = conflictRow.querySelector('.shortcut-reset-btn');
+          if (creset) creset.style.display = 'none';
+        }
+        toastSuccess(`Shortcut overridden: ${keysDisp}`);
+      });
       return;
     }
 
-    // Apply the new shortcut
-    setCustomShortcut(actionId, normalized);
-    kbdEl.textContent = displayKeys(normalized);
-
-    const isCustom = normalized !== DEFAULT_SHORTCUTS[actionId]?.keys;
-    keysSpan.classList.toggle('shortcut-custom', isCustom);
-    const resetBtn = row.querySelector('.shortcut-reset-btn');
-    if (resetBtn) resetBtn.style.display = isCustom ? '' : 'none';
-
+    // Apply the new shortcut (no conflict)
+    applyShortcutToRow(actionId, normalized, kbdEl, keysSpan, row);
     toastSuccess(`Shortcut updated: ${displayKeys(normalized)}`);
   };
 

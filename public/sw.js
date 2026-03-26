@@ -1,6 +1,6 @@
 // OfficeLink SL — Service Worker (PWA offline + cache strategy)
-const CACHE_NAME = 'officelink-v2';
-const STATIC_CACHE = 'officelink-static-v2';
+const CACHE_NAME = 'officelink-v3';
+const STATIC_CACHE = 'officelink-static-v3';
 
 // Essential resources to pre-cache for offline usage
 const PRECACHE_URLS = [
@@ -37,7 +37,23 @@ self.addEventListener('fetch', (e) => {
 
   const url = new URL(e.request.url);
 
-  // Skip CDN requests (Three.js etc) — let browser handle
+  // Cache-first for static assets (fonts, images, icons)
+  if (/\.(woff2?|ttf|eot|png|jpg|jpeg|gif|svg|ico|webp)$/i.test(url.pathname)) {
+    e.respondWith(
+      caches.match(e.request).then((cached) =>
+        cached || fetch(e.request).then((res) => {
+          if (res.ok) {
+            const clone = res.clone();
+            caches.open(STATIC_CACHE).then((c) => c.put(e.request, clone));
+          }
+          return res;
+        }).catch(() => new Response('', { status: 503 }))
+      )
+    );
+    return;
+  }
+
+  // Cache-first for CDN requests (Three.js, libraries)
   if (url.hostname.includes('cdn.jsdelivr.net') || url.hostname.includes('cdnjs.cloudflare.com')) {
     e.respondWith(
       caches.match(e.request).then((cached) =>
@@ -51,7 +67,25 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Network-first for app resources (HTML, JS, CSS)
+  // Stale-while-revalidate for JS/CSS bundles
+  if (/\.(js|css)$/i.test(url.pathname)) {
+    e.respondWith(
+      caches.match(e.request).then((cached) => {
+        const fetchPromise = fetch(e.request).then((res) => {
+          if (res.ok) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
+          }
+          return res;
+        }).catch(() => cached || new Response('Offline', { status: 503 }));
+
+        return cached || fetchPromise;
+      })
+    );
+    return;
+  }
+
+  // Network-first for HTML and other app resources
   e.respondWith(
     fetch(e.request)
       .then((res) => {

@@ -17,6 +17,20 @@ let previewContainerRef = null;
 const ZOOM_LEVELS = [50, 75, 100, 125, 150];
 let currentZoomIdx = 2; // 100%
 
+// ─── Source Access Callbacks (for task list interactivity) ────
+let _getSource = null;
+let _setSource = null;
+
+/**
+ * Register source access callbacks for task list interactivity.
+ * @param {() => string} getter - returns current markdown source
+ * @param {(text: string) => void} setter - sets markdown source
+ */
+export function setSourceAccessors(getter, setter) {
+  _getSource = getter;
+  _setSource = setter;
+}
+
 /**
  * Initialize preview pane
  */
@@ -34,7 +48,8 @@ export function updatePreview(markdownText) {
     const html = render(markdownText);
     previewElement.innerHTML = html;
 
-    // Post-render: trigger mermaid if loaded
+    // Post-render enhancements
+    postRenderEnhance();
     renderMermaidBlocks();
   }, DEBOUNCE_MS);
 }
@@ -46,8 +61,200 @@ export function updatePreviewImmediate(markdownText) {
   if (!previewElement) return;
   const html = render(markdownText);
   previewElement.innerHTML = html;
+  postRenderEnhance();
   renderMermaidBlocks();
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   POST-RENDER ENHANCEMENTS
+   ═══════════════════════════════════════════════════════════════ */
+
+/**
+ * Apply all post-render DOM enhancements to the preview.
+ */
+function postRenderEnhance() {
+  if (!previewElement) return;
+  enhanceCodeBlocks();
+  enhanceImages();
+  enhanceHeadingAnchors();
+  enhanceTaskLists();
+}
+
+/* ─── 1. Copy Code Button ─────────────────────────────────────── */
+
+const enhanceCodeBlocks = () => {
+  if (!previewElement) return;
+  previewElement.querySelectorAll('pre.code-block-wrapper').forEach((pre) => {
+    if (pre.querySelector('.code-copy-btn')) return; // already enhanced
+    const btn = document.createElement('button');
+    btn.className = 'code-copy-btn';
+    btn.textContent = 'Copy';
+    btn.setAttribute('aria-label', 'Copy code to clipboard');
+    pre.style.position = 'relative';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const code = pre.querySelector('code');
+      const text = code ? code.textContent : pre.textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 1500);
+      }).catch(() => {
+        // Fallback for insecure contexts
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 1500);
+      });
+    });
+    pre.appendChild(btn);
+  });
+};
+
+/* ─── 2. Image Zoom / Lightbox ────────────────────────────────── */
+
+const enhanceImages = () => {
+  if (!previewElement) return;
+  previewElement.querySelectorAll('img').forEach((img) => {
+    if (img.dataset.lightboxBound) return;
+    img.dataset.lightboxBound = '1';
+    img.style.cursor = 'zoom-in';
+    img.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openLightbox(img.src, img.alt);
+    });
+  });
+};
+
+const openLightbox = (src, alt) => {
+  let scale = 1;
+  const MIN_SCALE = 0.25;
+  const MAX_SCALE = 5;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'lightbox-overlay';
+
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = alt || '';
+  img.className = 'lightbox-img';
+
+  const applyTransform = () => {
+    img.style.transform = `scale(${scale})`;
+  };
+
+  // Click overlay to dismiss
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      overlay.remove();
+    }
+  });
+
+  // Scroll wheel zoom
+  overlay.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.15 : 0.15;
+    scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale + delta));
+    applyTransform();
+  }, { passive: false });
+
+  // ESC to close
+  const keyHandler = (e) => {
+    if (e.key === 'Escape') {
+      overlay.remove();
+      document.removeEventListener('keydown', keyHandler);
+    }
+  };
+  document.addEventListener('keydown', keyHandler);
+
+  overlay.appendChild(img);
+  document.body.appendChild(overlay);
+};
+
+/* ─── 3. Heading Anchor Links ─────────────────────────────────── */
+
+const enhanceHeadingAnchors = () => {
+  if (!previewElement) return;
+  previewElement.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((heading) => {
+    if (heading.querySelector('.heading-anchor')) return;
+    const id = heading.id;
+    if (!id) return;
+
+    const anchor = document.createElement('a');
+    anchor.className = 'heading-anchor';
+    anchor.href = `#${id}`;
+    anchor.textContent = '#';
+    anchor.setAttribute('aria-label', 'Copy link to heading');
+    anchor.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const url = `${location.origin}${location.pathname}#${id}`;
+      navigator.clipboard.writeText(url).catch(() => {});
+      // Brief visual feedback
+      anchor.textContent = '\u2713';
+      setTimeout(() => { anchor.textContent = '#'; }, 1200);
+    });
+    heading.style.position = 'relative';
+    heading.insertBefore(anchor, heading.firstChild);
+  });
+};
+
+/* ─── 4. Task List Interactivity ──────────────────────────────── */
+
+const enhanceTaskLists = () => {
+  if (!previewElement) return;
+  const checkboxes = previewElement.querySelectorAll('.task-list-item input[type="checkbox"]');
+  checkboxes.forEach((cb, idx) => {
+    if (cb.dataset.taskBound) return;
+    cb.dataset.taskBound = '1';
+    cb.disabled = false;
+    cb.style.cursor = 'pointer';
+    cb.addEventListener('change', () => {
+      toggleTaskInSource(idx, cb.checked);
+    });
+  });
+};
+
+/**
+ * Toggle a task checkbox in the source markdown.
+ * Finds the Nth task list item (- [ ] or - [x]) and toggles it.
+ */
+const toggleTaskInSource = (taskIndex, checked) => {
+  if (!_getSource || !_setSource) return;
+  const source = _getSource();
+  const taskPattern = /^(\s*[-*+]\s+)\[([ xX])\]/gm;
+  let match;
+  let count = 0;
+  let result = source;
+
+  while ((match = taskPattern.exec(source)) !== null) {
+    if (count === taskIndex) {
+      const newMark = checked ? 'x' : ' ';
+      const before = source.slice(0, match.index + match[1].length + 1);
+      const after = source.slice(match.index + match[1].length + 2);
+      result = before + newMark + after;
+      break;
+    }
+    count++;
+  }
+
+  if (result !== source) {
+    _setSource(result);
+  }
+};
 
 /**
  * Lazily load and render Mermaid diagrams
@@ -70,7 +277,7 @@ async function renderMermaidBlocks() {
     mermaidBlocks.forEach((block) => {
       if (!block.querySelector('svg')) {
         const originalText = block.textContent;
-        block.innerHTML = `<div class="mermaid-error">⚠️ Mermaid render error: ${_esc(e.message)}<br><pre>${_esc(originalText)}</pre></div>`;
+        block.innerHTML = `<div class="mermaid-error">\u26A0\uFE0F Mermaid render error: ${_esc(e.message)}<br><pre>${_esc(originalText)}</pre></div>`;
       }
     });
   }

@@ -1,13 +1,13 @@
 // OfficeLink SL — App Controller
 import { createEditor, onChange, getContent, setContent, wrapSelection } from './editor/editor.js';
-import { initPreview, updatePreview, updatePreviewImmediate, initBidirectionalScrollSync, initPreviewToolbar } from './preview/preview.js';
+import { initPreview, updatePreview, updatePreviewImmediate, initBidirectionalScrollSync, initPreviewToolbar, setSourceAccessors } from './preview/preview.js';
 import { registerAllPlugins } from './preview/plugins.js';
 import { getRenderer } from './preview/renderer.js';
 import { initSplitPane } from './ui/split-pane.js';
 import { initTheme, toggleTheme, isDark, autoTheme, getCurrentTheme } from './ui/theme-toggle.js';
 import { initToolbar } from './ui/toolbar.js';
 import { initSidebar, showSidebar } from './ui/sidebar.js';
-import { initShortcuts, applyToolbarShortcutHints } from './ui/shortcuts.js';
+import { initShortcuts, applyToolbarShortcutHints, showShortcutsHelpPanel } from './ui/shortcuts.js';
 import { initToast, toastSuccess, toastError, toastInfo } from './ui/toast.js';
 import { initContextMenus } from './ui/context-menu.js';
 import { openFile, saveFile, quickSave, getCurrentFileName, setFileName, startAutoSave, stopAutoSave, checkAutoSaveRestore, clearAutoSave } from './file/file-manager.js';
@@ -47,6 +47,7 @@ import { initPluginSystem, notifyFileSave } from './plugins/plugin-manager.js';
 import { initPerfDashboard } from './ui/perf-dashboard.js';
 import { initShortcutCustomizer } from './ui/shortcut-customizer.js';
 import { initEnhancedStatusBar } from './ui/status-bar-enhanced.js';
+import { initOfflineManager } from './ui/offline-manager.js';
 import { escapeHtml, sanitizeAiResponse, sanitizeFileName, sanitizeUrlParam } from './utils/sanitize.js';
 
 // Default welcome content
@@ -162,6 +163,10 @@ export async function initApp() {
 
   // 4. Initialize preview
   initPreview(previewContent);
+  setSourceAccessors(
+    () => getContent(),
+    (text) => { setContent(text); updatePreview(text); },
+  );
   updatePreviewImmediate(WELCOME_MD);
 
   // 5. Connect editor changes to preview + outline + stats bar
@@ -448,7 +453,7 @@ export async function initApp() {
     nextTab: () => switchNextTab(),
     prevTab: () => switchPrevTab(),
     switchToTab: (n) => switchToTabN(n),
-    showShortcuts: () => showKeyboardShortcuts(),
+    showShortcuts: () => showShortcutsHelpPanel(),
     exitZen: () => {
       document.body.classList.remove('zen-mode');
       document.getElementById('btn-zen')?.classList.remove('active');
@@ -721,6 +726,9 @@ export async function initApp() {
 
   // 23. PWA Install Enhanced (custom banner, platform detection, install modal)
   initPwaInstallEnhanced();
+
+  // 23b. Offline/Online indicator + file caching + background sync
+  initOfflineManager();
 
   // 24-b. Feedback button
   document.getElementById('btn-feedback')?.addEventListener('click', () => {
@@ -1600,82 +1608,7 @@ function showVersionHistory() {
   });
 }
 
-/**
- * Keyboard shortcuts help panel (⌘/)
- */
-function showKeyboardShortcuts() {
-  const existing = document.querySelector('.kb-shortcuts-overlay');
-  if (existing) { existing.remove(); return; }
-
-  const m = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '\u2318' : 'Ctrl';
-  const shortcuts = [
-    { section: 'General' },
-    { keys: `${m} /`, desc: 'Show keyboard shortcuts' },
-    { keys: `${m} S`, desc: 'Save file' },
-    { keys: `${m} \u21e7 S`, desc: 'Save As' },
-    { keys: `${m} O`, desc: 'Open file' },
-    { keys: `${m} Z`, desc: 'Undo' },
-    { keys: `${m} \u21e7 Z`, desc: 'Redo' },
-    { keys: `${m} P`, desc: 'Print / Export PDF' },
-    { keys: `${m} F`, desc: 'Find' },
-    { keys: `${m} ,`, desc: 'Settings' },
-    { keys: 'Esc', desc: 'Close modal / Exit zen mode' },
-    { keys: 'F11', desc: 'Toggle fullscreen' },
-
-    { section: 'Navigation' },
-    { keys: 'Ctrl Tab', desc: 'Next tab' },
-    { keys: 'Ctrl \u21e7 Tab', desc: 'Previous tab' },
-    { keys: `${m} \u2325 1\u20139`, desc: 'Switch to tab N' },
-
-    { section: 'Document / Markdown' },
-    { keys: `${m} B`, desc: 'Bold' },
-    { keys: `${m} I`, desc: 'Italic' },
-    { keys: `${m} U`, desc: 'Underline' },
-
-    { section: 'Sheet' },
-    { keys: `${m} C/X/V`, desc: 'Copy / Cut / Paste' },
-    { keys: 'Enter', desc: 'Edit cell / Confirm' },
-    { keys: 'Tab', desc: 'Move to next cell' },
-    { keys: 'F2', desc: 'Edit cell' },
-    { keys: 'Del', desc: 'Clear cell' },
-
-    { section: 'Slide' },
-    { keys: 'F5', desc: 'Start presentation' },
-    { keys: `${m} \u21e7 D`, desc: 'Duplicate slide' },
-    { keys: '\u2190 \u2192', desc: 'Navigate slides' },
-    { keys: 'Esc', desc: 'Exit presentation' },
-  ];
-
-  const overlay = document.createElement('div');
-  overlay.className = 'kb-shortcuts-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center';
-
-  let html = `<div style="background:var(--bg-primary,#fff);color:var(--text-primary,#222);border-radius:16px;padding:28px 32px;max-width:480px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.25)">
-    <h3 style="margin:0 0 16px;font-size:18px">⌨️ Keyboard Shortcuts</h3>`;
-
-  for (const s of shortcuts) {
-    if (s.section) {
-      html += `<div style="font-size:12px;font-weight:700;color:var(--brand-color,#0071e3);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 6px;${s === shortcuts[0] ? 'margin-top:0' : ''}">${s.section}</div>`;
-    } else {
-      html += `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px">
-        <span style="color:var(--text-secondary,#666)">${s.desc}</span>
-        <kbd style="background:var(--sidebar-bg,#f5f5f5);border:1px solid var(--border-color,#ddd);border-radius:4px;padding:1px 8px;font-size:12px;font-family:monospace;white-space:nowrap">${s.keys}</kbd>
-      </div>`;
-    }
-  }
-
-  html += `<button id="kb-close" style="margin-top:16px;width:100%;padding:10px;border:none;border-radius:8px;background:#0071e3;color:#fff;font-size:15px;font-weight:600;cursor:pointer">OK</button></div>`;
-
-  overlay.innerHTML = html;
-  document.body.appendChild(overlay);
-
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay || e.target.id === 'kb-close') overlay.remove();
-  });
-  document.addEventListener('keydown', function escClose(e) {
-    if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escClose); }
-  });
-}
+// Keyboard shortcuts help panel is now in src/ui/shortcuts.js (showShortcutsHelpPanel)
 
 /**
  * Simple proportional scroll sync

@@ -17,14 +17,14 @@ function createRenderer() {
     highlight(str, lang) {
       if (lang && hljs.getLanguage(lang)) {
         try {
-          return `<pre class="hljs"><code>${hljs.highlight(str, { language: lang }).value}</code></pre>`;
+          return `<pre class="hljs code-block-wrapper"><code>${hljs.highlight(str, { language: lang }).value}</code></pre>`;
         } catch (_) { /* ignore */ }
       }
       // Mermaid blocks — don't highlight, pass through
       if (lang === 'mermaid') {
         return `<div class="mermaid">${md.utils.escapeHtml(str)}</div>`;
       }
-      return `<pre class="hljs"><code>${md.utils.escapeHtml(str)}</code></pre>`;
+      return `<pre class="hljs code-block-wrapper"><code>${md.utils.escapeHtml(str)}</code></pre>`;
     },
   });
 
@@ -43,6 +43,22 @@ function createRenderer() {
       return originalHeadingOpen(tokens, idx, options, env, self);
     }
     return self.renderToken(tokens, idx, options);
+  };
+
+  // Wrap tables in scrollable container
+  const originalTableOpen = md.renderer.rules.table_open;
+  md.renderer.rules.table_open = (tokens, idx, options, env, self) => {
+    const inner = originalTableOpen
+      ? originalTableOpen(tokens, idx, options, env, self)
+      : self.renderToken(tokens, idx, options);
+    return `<div class="table-scroll-wrapper">${inner}`;
+  };
+  const originalTableClose = md.renderer.rules.table_close;
+  md.renderer.rules.table_close = (tokens, idx, options, env, self) => {
+    const inner = originalTableClose
+      ? originalTableClose(tokens, idx, options, env, self)
+      : self.renderToken(tokens, idx, options);
+    return `${inner}</div>`;
   };
 
   return md;

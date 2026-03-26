@@ -214,3 +214,152 @@
 .preview-container::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Copy Code Button
+   ═══════════════════════════════════════════════════════════════ */
+
+.markdown-body pre.code-block-wrapper {
+  position: relative;
+}
+
+.markdown-body pre.code-block-wrapper .code-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+  z-index: 1;
+  user-select: none;
+}
+
+.markdown-body pre.code-block-wrapper:hover .code-copy-btn {
+  opacity: 1;
+}
+
+.markdown-body pre.code-block-wrapper .code-copy-btn:hover {
+  background: var(--accent-color, var(--brand-color, #0071e3));
+  color: #fff;
+  border-color: transparent;
+}
+
+.markdown-body pre.code-block-wrapper .code-copy-btn.copied {
+  background: #30d158;
+  color: #fff;
+  border-color: transparent;
+  opacity: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Heading Anchor Links
+   ═══════════════════════════════════════════════════════════════ */
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  position: relative;
+}
+
+.markdown-body .heading-anchor {
+  display: inline-block;
+  margin-right: 0.3em;
+  color: var(--text-tertiary);
+  text-decoration: none;
+  font-weight: 400;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  cursor: pointer;
+}
+
+.markdown-body h1:hover .heading-anchor,
+.markdown-body h2:hover .heading-anchor,
+.markdown-body h3:hover .heading-anchor,
+.markdown-body h4:hover .heading-anchor,
+.markdown-body h5:hover .heading-anchor,
+.markdown-body h6:hover .heading-anchor {
+  opacity: 1;
+}
+
+.markdown-body .heading-anchor:hover {
+  color: var(--link-color);
+  text-decoration: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Image Lightbox
+   ═══════════════════════════════════════════════════════════════ */
+
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+
+.lightbox-img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  transition: transform 0.15s ease;
+  cursor: default;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Table Enhancements — sticky headers + horizontal scroll wrapper
+   ═══════════════════════════════════════════════════════════════ */
+
+.markdown-body .table-scroll-wrapper {
+  overflow-x: auto;
+  margin-bottom: 1em;
+  border: 1px solid var(--table-border);
+  border-radius: 6px;
+}
+
+.markdown-body .table-scroll-wrapper table {
+  margin-bottom: 0;
+  border: none;
+  border-radius: 0;
+}
+
+.markdown-body .table-scroll-wrapper table th,
+.markdown-body .table-scroll-wrapper table td {
+  white-space: nowrap;
+}
+
+.markdown-body .table-scroll-wrapper table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--table-header-bg);
+}
+
+.markdown-body .table-scroll-wrapper table tr:hover td {
+  background: var(--hover-bg);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Task List Interactivity
+   ═══════════════════════════════════════════════════════════════ */
+
+.markdown-body .task-list-item input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--accent-color, var(--brand-color, #0071e3));
+}

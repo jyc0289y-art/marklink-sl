@@ -6,6 +6,119 @@ let errorCount = 0;
 const ERROR_THRESHOLD = 5; // show recovery dialog after N errors in 60s
 let errorTimestamps = [];
 
+// ── Error Classification ──
+
+/**
+ * @typedef {'user'|'system'|'network'} ErrorCategory
+ */
+
+/**
+ * Recovery suggestions keyed by pattern (regex source string → suggestion text).
+ */
+const RECOVERY_SUGGESTIONS = [
+  { pattern: /file.*too.*large|size.*exceed/i, suggestion: 'Try splitting the file or using a smaller format.' },
+  { pattern: /invalid.*file|unsupported.*format|cannot.*open/i, suggestion: 'Check that the file type is supported (Markdown, HTML, PDF, DOCX).' },
+  { pattern: /network|fetch|ERR_INTERNET|net::ERR_/i, suggestion: 'Check your connection.' },
+  { pattern: /timeout|timed?\s*out|abort/i, suggestion: 'The operation took too long. Try again or check your connection.' },
+  { pattern: /quota.*exceed|storage.*full|QuotaExceeded/i, suggestion: 'Clear some cached data in Settings > Storage.' },
+  { pattern: /permission|denied|not allowed/i, suggestion: 'The app lacks permission for this action. Check browser settings.' },
+  { pattern: /syntax.*error|unexpected.*token|JSON.*parse/i, suggestion: 'The file may be corrupted. Try re-exporting it from the source application.' },
+];
+
+/**
+ * Find a recovery suggestion for an error message.
+ * @param {string} message
+ * @returns {string|null}
+ */
+const getRecoverySuggestion = (message) => {
+  const msg = String(message);
+  for (const { pattern, suggestion } of RECOVERY_SUGGESTIONS) {
+    if (pattern.test(msg)) return suggestion;
+  }
+  return null;
+};
+
+/**
+ * Auto-classify an error message into a category.
+ * @param {string} message
+ * @param {Error|null} error
+ * @returns {ErrorCategory}
+ */
+const classifyError = (message, error = null) => {
+  const msg = String(message).toLowerCase();
+
+  // Network errors
+  if (
+    error instanceof TypeError && /fetch|network/i.test(msg) ||
+    /network|fetch|net::err_|http\s*[45]\d\d|timeout|abort|cdn|cors/i.test(msg)
+  ) {
+    return 'network';
+  }
+
+  // User-correctable errors
+  if (
+    /file.*too.*large|unsupported.*format|invalid.*file|cannot.*open|quota.*exceed|storage.*full|permission|denied/i.test(msg)
+  ) {
+    return 'user';
+  }
+
+  // Everything else is a system error
+  return 'system';
+};
+
+/**
+ * Report an error through the categorized error system.
+ *
+ * @param {'user'|'system'|'network'} category - Error category
+ * @param {string} message - Human-readable message
+ * @param {object} [details] - Additional details
+ * @param {Error} [details.error] - Original Error object
+ * @param {function} [details.retry] - Retry callback for network errors
+ * @param {string} [details.context] - Where the error occurred
+ */
+export const reportError = (category, message, details = {}) => {
+  const suggestion = getRecoverySuggestion(message);
+  const truncatedMsg = truncate(String(message), 100);
+
+  switch (category) {
+    case 'user': {
+      const text = suggestion ? `${truncatedMsg} — ${suggestion}` : truncatedMsg;
+      showToast(text, 'warning');
+      break;
+    }
+
+    case 'network': {
+      console.error('[OfficeLink Network Error]', message, details.error?.stack || '');
+      trackError();
+
+      const actions = [];
+      if (typeof details.retry === 'function') {
+        actions.push({ label: 'Retry', onClick: details.retry });
+      }
+
+      const text = suggestion ? `${truncatedMsg} — ${suggestion}` : truncatedMsg;
+      showToast(text, 'error', null, { persistent: true, actions });
+      break;
+    }
+
+    case 'system':
+    default: {
+      console.error('[OfficeLink System Error]', message, details.error?.stack || '', details.context || '');
+      trackError();
+
+      if (isCriticalError(message)) {
+        showRecoveryDialog(message);
+      } else {
+        const text = suggestion ? `${truncatedMsg} — ${suggestion}` : `Error: ${truncatedMsg}`;
+        toastError(text);
+      }
+      break;
+    }
+  }
+};
+
+// ── Initialization ──
+
 /**
  * Initialize global error handlers
  */
@@ -16,32 +129,24 @@ export const initErrorBoundary = () => {
   window.onerror = (message, source, lineno, colno, error) => {
     const errorInfo = `${message} at ${source}:${lineno}:${colno}`;
     console.error('[OfficeLink Error]', errorInfo, error?.stack || '');
-    trackError();
 
-    if (isCriticalError(message)) {
-      showRecoveryDialog(message);
-    } else {
-      toastError(`Error: ${truncate(String(message), 80)}`, 5000);
-    }
+    const category = classifyError(message, error);
+    reportError(category, String(message), { error, context: `${source}:${lineno}:${colno}` });
 
     return true; // prevent default browser error handling
   };
 
-  // Unhandled promise rejections
-  window.onunhandledrejection = (event) => {
+  // Unhandled promise rejections (covers requirement #4)
+  window.addEventListener('unhandledrejection', (event) => {
     const reason = event.reason;
     const message = reason?.message || String(reason);
     console.error('[OfficeLink Unhandled Rejection]', message, reason?.stack || '');
-    trackError();
 
-    if (isCriticalError(message)) {
-      showRecoveryDialog(message);
-    } else {
-      toastError(`Error: ${truncate(message, 80)}`, 5000);
-    }
+    const category = classifyError(message, reason instanceof Error ? reason : null);
+    reportError(category, message, { error: reason instanceof Error ? reason : null });
 
     event.preventDefault(); // prevent default console error
-  };
+  });
 };
 
 /**
@@ -181,7 +286,10 @@ export const loadCdnWithRetry = (url, retries = 2, timeout = 10000) => {
             setTimeout(tryLoad, 1000 * attempts); // exponential-ish backoff
           } else {
             console.error(`[CDN Failed] ${url} after ${attempts} attempts`);
-            toastWarning('Some features unavailable offline', 6000);
+            reportError('network', `CDN unavailable: ${url}`, {
+              error: err,
+              retry: () => loadCdnWithRetry(url, retries, timeout),
+            });
             reject(err);
           }
         });
@@ -213,7 +321,10 @@ export const importWithRetry = async (moduleUrl, retries = 2, timeout = 10000) =
     } catch (err) {
       if (attempts > retries) {
         console.error(`[Import Failed] ${moduleUrl} after ${attempts} attempts`);
-        toastWarning('Some features unavailable offline', 6000);
+        reportError('network', `Module load failed: ${moduleUrl}`, {
+          error: err,
+          retry: () => importWithRetry(moduleUrl, retries, timeout),
+        });
         throw err;
       }
       console.warn(`[Import Retry] Attempt ${attempts}/${retries + 1} for ${moduleUrl}`);
@@ -247,7 +358,7 @@ export const safeSetItem = (key, value) => {
         trackLsKey(key);
         return true;
       } catch (e2) {
-        toastWarning('Storage full. Some data may not be saved.', 6000);
+        reportError('user', 'Storage quota exceeded', { error: e2 });
         console.error('[Storage] Still full after eviction:', e2);
         return false;
       }

@@ -1,6 +1,8 @@
 // OfficeLink SL — PDF Export (direct download via html2pdf.js)
 import { render } from '../preview/renderer.js';
 import { generateTimestampFilename } from './filename-utils.js';
+import { showExportProgress } from './progress.js';
+import { getPdfPresets, savePresets, PAPER_SIZES, MARGIN_PRESETS } from './presets.js';
 
 // Theme color palettes
 const THEMES = {
@@ -27,27 +29,31 @@ const THEMES = {
 };
 
 /**
- * Show PDF export dialog with theme selection and filename
+ * Show PDF export dialog with theme selection, presets, and filename
  * @param {string} markdownText - Markdown content
  * @param {string} originalFileName - Original loaded filename
  */
 export function exportPDF(markdownText, originalFileName = 'document') {
   const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
   const defaultFilename = generateTimestampFilename(originalFileName, 'pdf');
+  const presets = getPdfPresets();
 
   showExportDialog({
     defaultFilename,
-    currentTheme,
-    onExport: (filename, theme) => {
-      generatePDF(markdownText, filename, theme);
+    currentTheme: presets.theme || currentTheme,
+    presets,
+    onExport: (filename, theme, opts) => {
+      // Save last-used settings
+      savePresets({ pdf: { ...opts, theme } });
+      generatePDF(markdownText, filename, theme, opts);
     },
   });
 }
 
 /**
- * Show export settings dialog
+ * Show export settings dialog with presets
  */
-function showExportDialog({ defaultFilename, currentTheme, onExport }) {
+function showExportDialog({ defaultFilename, currentTheme, presets, onExport }) {
   // Remove existing dialog
   document.querySelector('.pdf-export-dialog-overlay')?.remove();
 
@@ -59,55 +65,92 @@ function showExportDialog({ defaultFilename, currentTheme, onExport }) {
     align-items: center; justify-content: center;
   `;
 
+  const _selectStyle = `
+    width: 100%; padding: 7px 10px; border-radius: 8px;
+    border: 1px solid var(--border-color); background: var(--bg-secondary, var(--bg-primary));
+    color: var(--text-primary); font-size: 13px; outline: none; box-sizing: border-box;
+  `;
+  const _labelStyle = `display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;`;
+
   const dialog = document.createElement('div');
   dialog.className = 'pdf-export-dialog';
   dialog.style.cssText = `
     background: var(--bg-primary); border-radius: 14px;
-    padding: 28px 32px; width: 420px; max-width: 90vw;
+    padding: 28px 32px; width: 480px; max-width: 92vw;
+    max-height: 90vh; overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
     border: 1px solid var(--border-color);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   `;
 
+  const paperOpts = Object.entries(PAPER_SIZES).map(([k, v]) =>
+    `<option value="${k}" ${k === presets.paperSize ? 'selected' : ''}>${v.label}</option>`
+  ).join('');
+
+  const marginOpts = Object.keys(MARGIN_PRESETS).map((k) =>
+    `<option value="${k}" ${k === presets.margins ? 'selected' : ''}>${k}</option>`
+  ).join('');
+
   dialog.innerHTML = `
-    <h3 style="margin: 0 0 20px; font-size: 17px; font-weight: 700; color: var(--text-primary);">
-      📄 Export as PDF
+    <h3 style="margin: 0 0 18px; font-size: 17px; font-weight: 700; color: var(--text-primary);">
+      Export as PDF
     </h3>
 
-    <div style="margin-bottom: 16px;">
-      <label style="display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">
-        File Name
-      </label>
+    <div style="margin-bottom: 14px;">
+      <label style="${_labelStyle}">File Name</label>
       <input type="text" id="pdf-filename" value="${defaultFilename}"
         style="width: 100%; padding: 8px 12px; border-radius: 8px;
         border: 1px solid var(--border-color); background: var(--bg-secondary, var(--bg-primary));
-        color: var(--text-primary); font-size: 14px; outline: none;
-        box-sizing: border-box;"
+        color: var(--text-primary); font-size: 14px; outline: none; box-sizing: border-box;"
       />
     </div>
 
-    <div style="margin-bottom: 20px;">
-      <label style="display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
-        PDF Theme
-      </label>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+      <div>
+        <label style="${_labelStyle}">Paper Size</label>
+        <select id="pdf-paper-size" style="${_selectStyle}">${paperOpts}</select>
+      </div>
+      <div>
+        <label style="${_labelStyle}">Orientation</label>
+        <select id="pdf-orientation" style="${_selectStyle}">
+          <option value="portrait" ${presets.orientation === 'portrait' ? 'selected' : ''}>Portrait</option>
+          <option value="landscape" ${presets.orientation === 'landscape' ? 'selected' : ''}>Landscape</option>
+        </select>
+      </div>
+      <div>
+        <label style="${_labelStyle}">Margins</label>
+        <select id="pdf-margins" style="${_selectStyle}">${marginOpts}</select>
+      </div>
+      <div style="display: flex; flex-direction: column; justify-content: flex-end; gap: 6px;">
+        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); cursor: pointer;">
+          <input type="checkbox" id="pdf-headers" ${presets.includeHeaders ? 'checked' : ''} style="accent-color: var(--brand-color);">
+          Include headers
+        </label>
+        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); cursor: pointer;">
+          <input type="checkbox" id="pdf-footers" ${presets.includeFooters ? 'checked' : ''} style="accent-color: var(--brand-color);">
+          Include footers
+        </label>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 18px;">
+      <label style="${_labelStyle}">PDF Theme</label>
       <div style="display: flex; gap: 10px;">
         <button id="pdf-theme-light" class="theme-option" data-theme="light" style="
-          flex: 1; padding: 14px 12px; border-radius: 10px; cursor: pointer;
+          flex: 1; padding: 12px 10px; border-radius: 10px; cursor: pointer;
           border: 2px solid ${currentTheme === 'light' ? 'var(--brand-color)' : 'var(--border-color)'};
           background: #ffffff; text-align: center; transition: border-color 0.15s;
         ">
-          <div style="font-size: 24px; margin-bottom: 4px;">☀️</div>
-          <div style="font-size: 13px; font-weight: 600; color: #1d1d1f;">Light</div>
-          <div style="font-size: 11px; color: #6e6e73; margin-top: 2px;">White background</div>
+          <div style="font-size: 20px; margin-bottom: 2px;">Light</div>
+          <div style="font-size: 11px; color: #6e6e73;">White background</div>
         </button>
         <button id="pdf-theme-dark" class="theme-option" data-theme="dark" style="
-          flex: 1; padding: 14px 12px; border-radius: 10px; cursor: pointer;
+          flex: 1; padding: 12px 10px; border-radius: 10px; cursor: pointer;
           border: 2px solid ${currentTheme === 'dark' ? 'var(--brand-color)' : 'var(--border-color)'};
           background: #1c1c1e; text-align: center; transition: border-color 0.15s;
         ">
-          <div style="font-size: 24px; margin-bottom: 4px;">🌙</div>
-          <div style="font-size: 13px; font-weight: 600; color: #f5f5f7;">Dark</div>
-          <div style="font-size: 11px; color: #a1a1a6; margin-top: 2px;">Dark background</div>
+          <div style="font-size: 20px; margin-bottom: 2px; color: #f5f5f7;">Dark</div>
+          <div style="font-size: 11px; color: #a1a1a6;">Dark background</div>
         </button>
       </div>
     </div>
@@ -134,11 +177,11 @@ function showExportDialog({ defaultFilename, currentTheme, onExport }) {
   const lightBtn = dialog.querySelector('#pdf-theme-light');
   const darkBtn = dialog.querySelector('#pdf-theme-dark');
 
-  function selectTheme(theme) {
+  const selectTheme = (theme) => {
     selectedTheme = theme;
     lightBtn.style.borderColor = theme === 'light' ? 'var(--brand-color)' : 'var(--border-color)';
     darkBtn.style.borderColor = theme === 'dark' ? 'var(--brand-color)' : 'var(--border-color)';
-  }
+  };
 
   lightBtn.addEventListener('click', () => selectTheme('light'));
   darkBtn.addEventListener('click', () => selectTheme('dark'));
@@ -151,8 +194,15 @@ function showExportDialog({ defaultFilename, currentTheme, onExport }) {
   // Export
   dialog.querySelector('#pdf-export-btn').addEventListener('click', () => {
     const filename = dialog.querySelector('#pdf-filename').value.trim() || defaultFilename;
+    const opts = {
+      paperSize: dialog.querySelector('#pdf-paper-size').value,
+      orientation: dialog.querySelector('#pdf-orientation').value,
+      margins: dialog.querySelector('#pdf-margins').value,
+      includeHeaders: dialog.querySelector('#pdf-headers').checked,
+      includeFooters: dialog.querySelector('#pdf-footers').checked,
+    };
     close();
-    onExport(filename, selectedTheme);
+    onExport(filename, selectedTheme, opts);
   });
 
   // Focus filename input and select basename
@@ -172,20 +222,39 @@ function showExportDialog({ defaultFilename, currentTheme, onExport }) {
 }
 
 /**
- * Generate PDF with specified theme
+ * Generate PDF with specified theme and preset options
  */
-async function generatePDF(markdownText, filename, theme = 'light') {
+async function generatePDF(markdownText, filename, theme = 'light', opts = {}) {
+  const {
+    paperSize = 'A4',
+    orientation = 'portrait',
+    margins = 'Normal',
+    includeHeaders = true,
+    includeFooters = true,
+  } = opts;
+
+  const progress = showExportProgress('Rendering PDF...');
+  progress.update(10, 'Rendering content...');
+
   const html = render(markdownText);
   const colors = THEMES[theme];
+  const paper = PAPER_SIZES[paperSize] || PAPER_SIZES.A4;
+  const marginValues = MARGIN_PRESETS[margins] || MARGIN_PRESETS.Normal;
+
+  const containerWidth = orientation === 'landscape' ? `${paper.height}mm` : `${paper.width}mm`;
 
   const container = document.createElement('div');
   container.style.cssText = `
-    position: absolute; left: -9999px; top: 0; width: 210mm;
+    position: absolute; left: -9999px; top: 0; width: ${containerWidth};
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 14px; line-height: 1.7;
     color: ${colors.text}; background: ${colors.bg};
-    padding: 20mm 15mm;
+    padding: ${marginValues.top}mm ${marginValues.right}mm ${marginValues.bottom}mm ${marginValues.left}mm;
   `;
+
+  const headerHTML = includeHeaders ? `<div style="text-align:center;font-size:10px;color:${colors.textSecondary};padding-bottom:12px;border-bottom:1px solid ${colors.border};margin-bottom:16px;">${filename.replace(/\.pdf$/i, '')}</div>` : '';
+  const footerHTML = includeFooters ? `<div style="text-align:center;font-size:10px;color:${colors.textSecondary};padding-top:12px;border-top:1px solid ${colors.border};margin-top:16px;">Generated by OfficeLink SL</div>` : '';
+
   container.innerHTML = `
     <style>
       .pdf-body { color: ${colors.text}; }
@@ -237,21 +306,30 @@ async function generatePDF(markdownText, filename, theme = 'light') {
       .pdf-body .task-list-item { list-style: none; margin-left: -1.5em; }
       .pdf-body del { color: ${colors.textSecondary}; }
     </style>
+    ${headerHTML}
     <div class="pdf-body">${html}</div>
+    ${footerHTML}
   `;
   document.body.appendChild(container);
 
+  progress.update(30, 'Preparing layout...');
   await new Promise(resolve => setTimeout(resolve, 500));
 
   try {
+    progress.update(50, 'Loading PDF engine...');
     const html2pdf = (await import('html2pdf.js')).default;
 
     // Ensure .pdf extension
     if (!filename.endsWith('.pdf')) filename += '.pdf';
 
+    // Map margins to mm array [top, left, bottom, right]
+    const marginArr = [marginValues.top, marginValues.left, marginValues.bottom, marginValues.right];
+
+    progress.update(60, 'Generating PDF pages...');
+
     await html2pdf()
       .set({
-        margin: [10, 10, 10, 10],
+        margin: marginArr,
         filename,
         image: { type: 'jpeg', quality: 0.95 },
         html2canvas: {
@@ -262,15 +340,19 @@ async function generatePDF(markdownText, filename, theme = 'light') {
         },
         jsPDF: {
           unit: 'mm',
-          format: 'a4',
-          orientation: 'portrait',
+          format: [paper.width, paper.height],
+          orientation,
         },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
       })
       .from(container.querySelector('.pdf-body'))
       .save();
+
+    progress.update(100, 'Done!');
+    setTimeout(() => progress.close(), 500);
   } catch (e) {
     console.error('PDF export error:', e);
+    progress.close();
     const { printDocument } = await import('./print.js');
     printDocument(markdownText, filename);
   } finally {

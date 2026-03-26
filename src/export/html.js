@@ -2,22 +2,11 @@
 
 import { render } from '../preview/renderer.js';
 import { generateTimestampFilename } from './filename-utils.js';
+import { showExportProgress } from './progress.js';
+import { getHtmlPresets, savePresets } from './presets.js';
 
-/**
- * Export rendered markdown as standalone HTML file
- * @param {string} markdownText - Markdown content
- * @param {string} fileName - Base file name
- */
-export async function exportHTML(markdownText, fileName = 'document') {
-  const html = render(markdownText);
-  const standalone = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${fileName}</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-  <style>
+/* ── Inline CSS for standalone mode ── */
+const INLINE_CSS = `
     :root {
       --bg: #ffffff;
       --text: #1d1d1f;
@@ -87,8 +76,41 @@ export async function exportHTML(markdownText, fileName = 'document') {
     @media print {
       body { padding: 0; }
       pre { page-break-inside: avoid; }
-    }
-  </style>
+    }`;
+
+/**
+ * Export rendered markdown as standalone HTML file.
+ * Respects saved HTML presets (standalone vs linked CSS, metadata inclusion).
+ * @param {string} markdownText - Markdown content
+ * @param {string} fileName - Base file name
+ */
+export async function exportHTML(markdownText, fileName = 'document') {
+  const presets = getHtmlPresets();
+  const progress = showExportProgress('Exporting HTML...');
+
+  try {
+    progress.update(20, 'Rendering markdown...');
+    const html = render(markdownText);
+
+    progress.update(50, 'Building HTML file...');
+
+    const metaTags = presets.includeMetadata ? `
+  <meta name="author" content="OfficeLink SL">
+  <meta name="generator" content="OfficeLink SL by SeouLink">
+  <meta name="date" content="${new Date().toISOString().split('T')[0]}">` : '';
+
+    const cssBlock = presets.standalone
+      ? `<style>${INLINE_CSS}\n  </style>`
+      : `<link rel="stylesheet" href="officelink-export.css">`;
+
+    const standalone = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">${metaTags}
+  <title>${fileName}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  ${cssBlock}
 </head>
 <body>
   ${html}
@@ -99,33 +121,50 @@ export async function exportHTML(markdownText, fileName = 'document') {
 </body>
 </html>`;
 
-  const defaultName = generateTimestampFilename(fileName, 'html');
+    progress.update(70, 'Saving file...');
 
-  // If File System Access API available, let user choose save location
-  if ('showSaveFilePicker' in window) {
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: defaultName,
-        types: [{
-          description: 'HTML Files',
-          accept: { 'text/html': ['.html'] },
-        }],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(standalone);
-      await writable.close();
-      return;
-    } catch (e) {
-      if (e.name === 'AbortError') return; // User cancelled
+    // Save last-used settings
+    savePresets({ html: presets });
+
+    const defaultName = generateTimestampFilename(fileName, 'html');
+
+    // If File System Access API available, let user choose save location
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: defaultName,
+          types: [{
+            description: 'HTML Files',
+            accept: { 'text/html': ['.html'] },
+          }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(standalone);
+        await writable.close();
+        progress.update(100, 'Done!');
+        setTimeout(() => progress.close(), 500);
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') {
+          progress.close();
+          return;
+        }
+      }
     }
-  }
 
-  // Fallback: download with timestamp name
-  const blob = new Blob([standalone], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = defaultName;
-  a.click();
-  URL.revokeObjectURL(url);
+    // Fallback: download with timestamp name
+    const blob = new Blob([standalone], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = defaultName;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    progress.update(100, 'Done!');
+    setTimeout(() => progress.close(), 500);
+  } catch (err) {
+    console.error('HTML export error:', err);
+    progress.close();
+  }
 }
