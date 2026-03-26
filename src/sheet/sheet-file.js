@@ -3,6 +3,7 @@
 // XLSX (~1MB) loaded dynamically to reduce initial bundle
 import {
   createSheetData, setCell, colToLetter, getDisplayValue, recalcAll,
+  setCellFormat, mergeCells, getRawValue, getCell, cellKey,
 } from './sheet-engine.js';
 import { getSheetsData, setSheetsData } from './sheet-ui.js';
 import { generateTimestampFilename } from '../export/filename-utils.js';
@@ -141,6 +142,36 @@ export function setSheetFileName(name) {
 }
 
 /**
+ * Extract hex color from SheetJS color object.
+ * Handles { rgb: "RRGGBB" }, { theme: N, tint: T }, { indexed: N } patterns.
+ */
+function extractColor(colorObj) {
+  if (!colorObj) return null;
+  if (colorObj.rgb) {
+    // SheetJS may give AARRGGBB (8 chars) or RRGGBB (6 chars)
+    const rgb = colorObj.rgb;
+    if (rgb.length === 8) return '#' + rgb.substring(2);
+    if (rgb.length === 6) return '#' + rgb;
+    return '#' + rgb;
+  }
+  // Indexed colors: SheetJS uses a known palette
+  if (colorObj.indexed != null && colorObj.indexed >= 0) {
+    const palette = [
+      '000000','FFFFFF','FF0000','00FF00','0000FF','FFFF00','FF00FF','00FFFF',
+      '000000','FFFFFF','FF0000','00FF00','0000FF','FFFF00','FF00FF','00FFFF',
+      '800000','008000','000080','808000','800080','008080','C0C0C0','808080',
+      '9999FF','993366','FFFFCC','CCFFFF','660066','FF8080','0066CC','CCCCFF',
+      '000080','FF00FF','FFFF00','00FFFF','800080','800000','008080','0000FF',
+      '00CCFF','CCFFFF','CCFFCC','FFFF99','99CCFF','FF99CC','CC99FF','FFCC99',
+      '3366FF','33CCCC','99CC00','FFCC00','FF9900','FF6600','666699','969696',
+      '003366','339966','003300','333300','993300','993366','333399','333333',
+    ];
+    if (colorObj.indexed < palette.length) return '#' + palette[colorObj.indexed];
+  }
+  return null;
+}
+
+/**
  * Import file data into sheets
  */
 async function importFile(file) {
@@ -170,7 +201,12 @@ async function importFile(file) {
   try {
     const XLSX = await getXLSX();
     const data = await file.arrayBuffer();
-    const wb = XLSX.read(data);
+    const wb = XLSX.read(data, {
+      cellStyles: true,
+      cellFormula: true,
+      cellDates: true,
+      cellNF: true,
+    });
     const newSheets = [];
 
     for (const wsName of wb.SheetNames) {
@@ -180,15 +216,124 @@ async function importFile(file) {
       const cols = Math.max(range.e.c + 1, 26);
       const sheetData = createSheetData(rows, cols);
 
+      // 7. Sheet name
+      sheetData.name = wsName;
+
+      // Import cell values, formulas, types, and styles
       for (let r = range.s.r; r <= range.e.r; r++) {
         for (let c = range.s.c; c <= range.e.c; c++) {
           const addr = XLSX.utils.encode_cell({ r, c });
           const cell = ws[addr];
-          if (cell) {
-            setCell(sheetData, r, c, cell.v != null ? String(cell.v) : '');
+          if (!cell) continue;
+
+          // 1. Formulas — if cell has a formula, set as =formula
+          if (cell.f) {
+            setCell(sheetData, r, c, '=' + cell.f);
+          } else {
+            // 2. Cell types — handle based on cell.t
+            const cellType = cell.t;
+            if (cellType === 'n') {
+              // Number: use raw numeric value
+              setCell(sheetData, r, c, cell.v != null ? String(cell.v) : '');
+            } else if (cellType === 's') {
+              // String: use formatted text or raw value
+              setCell(sheetData, r, c, cell.v != null ? String(cell.v) : (cell.w || ''));
+            } else if (cellType === 'b') {
+              // Boolean
+              setCell(sheetData, r, c, cell.v ? 'TRUE' : 'FALSE');
+            } else if (cellType === 'd') {
+              // Date: format as ISO date string
+              if (cell.v instanceof Date) {
+                setCell(sheetData, r, c, cell.v.toISOString().split('T')[0]);
+              } else {
+                setCell(sheetData, r, c, cell.v != null ? String(cell.v) : '');
+              }
+            } else if (cellType === 'e') {
+              // Error
+              setCell(sheetData, r, c, cell.w || '#ERROR!');
+            } else {
+              // Fallback
+              setCell(sheetData, r, c, cell.v != null ? String(cell.v) : '');
+            }
+          }
+
+          // 3. Styles — read from cell.s object
+          const style = cell.s;
+          if (style) {
+            // Font properties
+            if (style.font) {
+              if (style.font.bold) setCellFormat(sheetData, r, c, 'bold', true);
+              if (style.font.italic) setCellFormat(sheetData, r, c, 'italic', true);
+              if (style.font.sz) setCellFormat(sheetData, r, c, 'fontSize', style.font.sz);
+              if (style.font.name) setCellFormat(sheetData, r, c, 'fontFamily', style.font.name);
+              if (style.font.color) {
+                const fc = extractColor(style.font.color);
+                if (fc) setCellFormat(sheetData, r, c, 'color', fc);
+              }
+              if (style.font.underline) setCellFormat(sheetData, r, c, 'underline', true);
+              if (style.font.strike) setCellFormat(sheetData, r, c, 'strikethrough', true);
+            }
+            // Fill/background color
+            if (style.fill && style.fill.fgColor) {
+              const bg = extractColor(style.fill.fgColor);
+              if (bg) setCellFormat(sheetData, r, c, 'bg', bg);
+            }
+            // Alignment
+            if (style.alignment) {
+              if (style.alignment.horizontal) {
+                setCellFormat(sheetData, r, c, 'align', style.alignment.horizontal);
+              }
+              if (style.alignment.vertical) {
+                setCellFormat(sheetData, r, c, 'valign', style.alignment.vertical);
+              }
+              if (style.alignment.wrapText) {
+                setCellFormat(sheetData, r, c, 'wrap', true);
+              }
+            }
+            // Number format
+            if (style.numFmt) {
+              setCellFormat(sheetData, r, c, 'numFormat', style.numFmt);
+            }
+          }
+
+          // Number format from cell.z (SheetJS stores format string here)
+          if (cell.z && !cell.s?.numFmt) {
+            setCellFormat(sheetData, r, c, 'numFormat', cell.z);
           }
         }
       }
+
+      // 4. Merged cells
+      for (const m of (ws['!merges'] || [])) {
+        mergeCells(sheetData, m.s.r, m.s.c, m.e.r, m.e.c);
+      }
+
+      // 5. Column widths
+      if (ws['!cols']) {
+        sheetData.colWidths = {};
+        ws['!cols'].forEach((col, idx) => {
+          if (col && col.wpx) {
+            sheetData.colWidths[idx] = col.wpx;
+          } else if (col && col.wch) {
+            // Approximate: 1 character width ~ 8px
+            sheetData.colWidths[idx] = Math.round(col.wch * 8);
+          }
+        });
+      }
+
+      // 6. Row heights
+      if (ws['!rows']) {
+        sheetData.rowHeights = {};
+        ws['!rows'].forEach((row, idx) => {
+          if (row && row.hpx) {
+            sheetData.rowHeights[idx] = row.hpx;
+          } else if (row && row.hpt) {
+            // Points to pixels: 1pt ~ 1.333px
+            sheetData.rowHeights[idx] = Math.round(row.hpt * 1.333);
+          }
+        });
+      }
+
       recalcAll(sheetData);
       newSheets.push(sheetData);
     }
@@ -268,7 +413,7 @@ function parseDelimited(text, delimiter = ',') {
 }
 
 /**
- * Export sheets to XLSX workbook
+ * Export sheets to XLSX workbook with formulas, styles, merges, and column widths
  */
 async function exportToWorkbook() {
   const XLSX = await getXLSX();
@@ -276,7 +421,7 @@ async function exportToWorkbook() {
   const sheetsData = getSheetsData();
 
   sheetsData.forEach((sheet, idx) => {
-    const aoa = [];
+    // First pass: build AOA for structure, then overlay cell details
     let maxR = 0, maxC = 0;
     for (const key of Object.keys(sheet.cells)) {
       const [r, c] = key.split(',').map(Number);
@@ -284,6 +429,7 @@ async function exportToWorkbook() {
       maxC = Math.max(maxC, c);
     }
 
+    const aoa = [];
     for (let r = 0; r <= maxR; r++) {
       const row = [];
       for (let c = 0; c <= maxC; c++) {
@@ -295,7 +441,96 @@ async function exportToWorkbook() {
     }
 
     const ws = XLSX.utils.aoa_to_sheet(aoa.length ? aoa : [['']]);
-    XLSX.utils.book_append_sheet(wb, ws, `Sheet${idx + 1}`);
+
+    // Second pass: overlay formulas and styles onto ws cells
+    for (const key of Object.keys(sheet.cells)) {
+      const [r, c] = key.split(',').map(Number);
+      const cellData = sheet.cells[key];
+      if (!cellData) continue;
+      const addr = XLSX.utils.encode_cell({ r, c });
+      if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+
+      // Formulas: if raw starts with '=', write as formula
+      const raw = cellData.raw || '';
+      if (raw.startsWith('=')) {
+        ws[addr].f = raw.substring(1);
+        // Keep the computed value
+        const val = cellData.value;
+        if (typeof val === 'number') {
+          ws[addr].t = 'n';
+          ws[addr].v = val;
+        } else if (val != null) {
+          ws[addr].t = 's';
+          ws[addr].v = String(val);
+        }
+      }
+
+      // Styles: build cell.s object from format
+      const fmt = cellData.format;
+      if (fmt && Object.keys(fmt).length > 0) {
+        const style = {};
+        // Font
+        const font = {};
+        if (fmt.bold) font.bold = true;
+        if (fmt.italic) font.italic = true;
+        if (fmt.underline) font.underline = true;
+        if (fmt.strikethrough) font.strike = true;
+        if (fmt.fontSize) font.sz = fmt.fontSize;
+        if (fmt.fontFamily) font.name = fmt.fontFamily;
+        if (fmt.color) font.color = { rgb: fmt.color.replace('#', '') };
+        if (Object.keys(font).length > 0) style.font = font;
+        // Fill
+        if (fmt.bg) {
+          style.fill = {
+            patternType: 'solid',
+            fgColor: { rgb: fmt.bg.replace('#', '') },
+          };
+        }
+        // Alignment
+        const alignment = {};
+        if (fmt.align) alignment.horizontal = fmt.align;
+        if (fmt.valign) alignment.vertical = fmt.valign;
+        if (fmt.wrap) alignment.wrapText = true;
+        if (Object.keys(alignment).length > 0) style.alignment = alignment;
+        // Number format
+        if (fmt.numFormat) style.numFmt = fmt.numFormat;
+
+        if (Object.keys(style).length > 0) ws[addr].s = style;
+      }
+    }
+
+    // Merged cells
+    if (sheet.merges && sheet.merges.length > 0) {
+      ws['!merges'] = sheet.merges.map((m) => ({
+        s: { r: m.r1, c: m.c1 },
+        e: { r: m.r2, c: m.c2 },
+      }));
+    }
+
+    // Column widths
+    if (sheet.colWidths) {
+      const cols = [];
+      for (const [idx, wpx] of Object.entries(sheet.colWidths)) {
+        const i = Number(idx);
+        while (cols.length <= i) cols.push({});
+        cols[i] = { wpx };
+      }
+      if (cols.length > 0) ws['!cols'] = cols;
+    }
+
+    // Row heights
+    if (sheet.rowHeights) {
+      const rows = [];
+      for (const [idx, hpx] of Object.entries(sheet.rowHeights)) {
+        const i = Number(idx);
+        while (rows.length <= i) rows.push({});
+        rows[i] = { hpx };
+      }
+      if (rows.length > 0) ws['!rows'] = rows;
+    }
+
+    const sheetName = sheet.name || `Sheet${idx + 1}`;
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
   });
 
   return wb;

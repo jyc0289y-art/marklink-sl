@@ -6,10 +6,37 @@ import { setDocContent, getDocContent, markDocClean } from './doc-editor.js';
 import { generateTimestampFilename } from '../export/filename-utils.js';
 
 /**
- * Import a .hwpx file → Document editor
+ * Detect binary HWP (OLE compound file) by magic bytes D0 CF 11 E0
+ */
+async function isBinaryHwp(file) {
+  try {
+    const header = await file.slice(0, 4).arrayBuffer();
+    const bytes = new Uint8Array(header);
+    return bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Import a .hwpx or .hwp file → Document editor
  */
 export async function importHwpx(file) {
-  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  // Check for binary HWP format first
+  if (await isBinaryHwp(file)) {
+    throw new Error(
+      'Binary HWP files (.hwp) are not supported. Please save as HWPX format in Hancom Office (File → Save As → HWPX).'
+    );
+  }
+
+  let zip;
+  try {
+    zip = await JSZip.loadAsync(await file.arrayBuffer());
+  } catch {
+    throw new Error(
+      'Invalid file format. Expected a HWPX file (ZIP archive). If this is a binary .hwp file, please save as HWPX format in Hancom Office (File → Save As → HWPX).'
+    );
+  }
 
   // Read sections
   const sections = [];
@@ -26,10 +53,38 @@ export async function importHwpx(file) {
     throw new Error('No sections found in HWPX file');
   }
 
+  // Collect binary data (images) from the ZIP
+  const binDataMap = {};
+  const binFolder = zip.folder('bindata') || zip.folder('BinData');
+  if (binFolder) {
+    const binFiles = [];
+    zip.forEach((path, entry) => {
+      if (/^(bindata|BinData)\//i.test(path) && !entry.dir) {
+        binFiles.push({ path, entry });
+      }
+    });
+    for (const { path, entry } of binFiles) {
+      try {
+        const data = await entry.async('base64');
+        const name = path.split('/').pop();
+        const ext = (name.split('.').pop() || 'png').toLowerCase();
+        const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
+          : ext === 'gif' ? 'image/gif'
+          : ext === 'bmp' ? 'image/bmp'
+          : ext === 'svg' ? 'image/svg+xml'
+          : 'image/png';
+        binDataMap[name] = `data:${mime};base64,${data}`;
+        // Also store without extension and with common ID patterns
+        const nameNoExt = name.replace(/\.[^.]+$/, '');
+        binDataMap[nameNoExt] = binDataMap[name];
+      } catch { /* skip unreadable binary */ }
+    }
+  }
+
   // Parse OWPML XML → HTML
   let html = '';
   for (const xml of sections) {
-    html += parseOwpmlToHTML(xml);
+    html += parseOwpmlToHTML(xml, binDataMap);
   }
 
   setDocContent(html || '<p>(Empty document)</p>');
@@ -109,61 +164,492 @@ export async function exportHwpx(fileName) {
   return { name: tsName };
 }
 
+// ──────────────────────────────────────────────
+// OWPML → HTML Parser (comprehensive)
+// ──────────────────────────────────────────────
+
 /**
  * Parse OWPML section XML → HTML
+ * Handles: text formatting, paragraph properties, tables, lists, images, links
  */
-function parseOwpmlToHTML(xml) {
+function parseOwpmlToHTML(xml, binDataMap = {}) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xml, 'text/xml');
   let html = '';
 
-  // Find all paragraphs: <hp:p> or <p> (namespace may vary)
-  const paragraphs = doc.querySelectorAll('p');
-  for (const p of paragraphs) {
-    const runs = p.querySelectorAll('run, r');
-    if (runs.length === 0) {
-      // Try direct text
-      const texts = p.querySelectorAll('t');
-      if (texts.length > 0) {
-        let text = '';
-        for (const t of texts) text += t.textContent;
-        html += `<p>${escapeHTML(text)}</p>\n`;
-      } else if (p.textContent.trim()) {
-        html += `<p>${escapeHTML(p.textContent)}</p>\n`;
-      }
-      continue;
-    }
+  // Get the root section element — could be hp:sec or sec
+  const root = doc.documentElement;
 
-    let paraHTML = '';
-    let isBold = false;
-    for (const run of runs) {
-      const charPr = run.querySelector('charPr, rPr');
-      if (charPr) {
-        isBold = charPr.getAttribute('bold') === '1' || charPr.getAttribute('b') === '1';
-      }
-      const texts = run.querySelectorAll('t');
-      for (const t of texts) {
-        let text = escapeHTML(t.textContent);
-        if (isBold) text = `<strong>${text}</strong>`;
-        paraHTML += text;
-      }
-    }
+  // Process all top-level children (paragraphs, tables, etc.)
+  html += processChildren(root, binDataMap);
 
-    // Check paragraph style for headings
-    const pPr = p.querySelector('paraPr, pPr');
-    const styleId = pPr?.getAttribute('styleIDRef') || pPr?.getAttribute('style') || '';
-    if (styleId.includes('제목') || styleId.includes('Heading') || styleId.includes('heading')) {
-      if (styleId.includes('1')) html += `<h1>${paraHTML}</h1>\n`;
-      else if (styleId.includes('2')) html += `<h2>${paraHTML}</h2>\n`;
-      else if (styleId.includes('3')) html += `<h3>${paraHTML}</h3>\n`;
-      else html += `<h2>${paraHTML}</h2>\n`;
-    } else {
-      html += `<p>${paraHTML || '&nbsp;'}</p>\n`;
+  return html;
+}
+
+/**
+ * Process child nodes of a container element, returning HTML.
+ * Handles <p>, <tbl>, and other OWPML elements.
+ */
+function processChildren(container, binDataMap) {
+  let html = '';
+  // Track consecutive list items for grouping into <ul>/<ol>
+  let listBuffer = [];
+  let listType = null; // 'ul' or 'ol'
+
+  for (const node of container.childNodes) {
+    if (node.nodeType !== 1) continue; // Element nodes only
+    const tag = localName(node);
+
+    if (tag === 'p') {
+      const listInfo = getListInfo(node);
+      if (listInfo) {
+        // This paragraph is a list item
+        if (listType && listType !== listInfo.type) {
+          // Different list type — flush previous
+          html += flushListBuffer(listBuffer, listType);
+          listBuffer = [];
+        }
+        listType = listInfo.type;
+        listBuffer.push(node);
+      } else {
+        // Not a list item — flush any pending list
+        if (listBuffer.length > 0) {
+          html += flushListBuffer(listBuffer, listType);
+          listBuffer = [];
+          listType = null;
+        }
+        html += parseParagraph(node, binDataMap);
+      }
+    } else if (tag === 'tbl') {
+      // Flush list buffer before table
+      if (listBuffer.length > 0) {
+        html += flushListBuffer(listBuffer, listType);
+        listBuffer = [];
+        listType = null;
+      }
+      html += parseTable(node, binDataMap);
+    } else if (tag === 'sec' || tag === 'subDoc') {
+      // Nested section
+      if (listBuffer.length > 0) {
+        html += flushListBuffer(listBuffer, listType);
+        listBuffer = [];
+        listType = null;
+      }
+      html += processChildren(node, binDataMap);
     }
+  }
+
+  // Flush remaining list
+  if (listBuffer.length > 0) {
+    html += flushListBuffer(listBuffer, listType);
   }
 
   return html;
 }
+
+/**
+ * Flush accumulated list items into <ul> or <ol>
+ */
+function flushListBuffer(items, type, binDataMap = {}) {
+  const tag = type === 'ol' ? 'ol' : 'ul';
+  let html = `<${tag}>\n`;
+  for (const p of items) {
+    const content = parseRunsContent(p, binDataMap);
+    html += `<li>${content || '&nbsp;'}</li>\n`;
+  }
+  html += `</${tag}>\n`;
+  return html;
+}
+
+/**
+ * Detect if a paragraph is a list item based on styleIDRef or numbering properties
+ */
+function getListInfo(pNode) {
+  const paraPr = findChild(pNode, 'paraPr') || findChild(pNode, 'pPr');
+  if (!paraPr) return null;
+
+  const styleId = paraPr.getAttribute('styleIDRef') || paraPr.getAttribute('style') || '';
+  const styleLower = styleId.toLowerCase();
+
+  // Korean list style names
+  if (styleLower.includes('글머리') || styleLower.includes('bullet') || styleLower.includes('목록')) {
+    return { type: 'ul' };
+  }
+  if (styleLower.includes('개요') || styleLower.includes('번호') || styleLower.includes('number') || styleLower.includes('ordered')) {
+    return { type: 'ol' };
+  }
+
+  // Check for numbering/bullet properties
+  const numbering = findChild(paraPr, 'numbering') || findChild(paraPr, 'numPr');
+  if (numbering) {
+    const numType = numbering.getAttribute('type') || numbering.getAttribute('numType') || '';
+    if (numType.toLowerCase().includes('bullet')) return { type: 'ul' };
+    return { type: 'ol' };
+  }
+
+  return null;
+}
+
+/**
+ * Parse a single paragraph element → HTML
+ */
+function parseParagraph(pNode, binDataMap) {
+  const paraPr = findChild(pNode, 'paraPr') || findChild(pNode, 'pPr');
+  const styleId = paraPr?.getAttribute('styleIDRef') || paraPr?.getAttribute('style') || '';
+
+  // Determine heading level
+  const headingLevel = getHeadingLevel(styleId);
+
+  // Collect paragraph styles
+  const paraStyles = [];
+  if (paraPr) {
+    // Alignment
+    const align = paraPr.getAttribute('align') || paraPr.getAttribute('textAlign') || '';
+    if (align) {
+      const alignMap = {
+        'CENTER': 'center', 'center': 'center',
+        'RIGHT': 'right', 'right': 'right',
+        'JUSTIFY': 'justify', 'justify': 'justify',
+        'DISTRIBUTE': 'justify', 'distribute': 'justify',
+      };
+      if (alignMap[align]) paraStyles.push(`text-align:${alignMap[align]}`);
+    }
+
+    // Indentation / margins
+    const indent = paraPr.getAttribute('indent') || paraPr.getAttribute('indentLevel') || '';
+    const marginLeft = paraPr.getAttribute('marginLeft') || paraPr.getAttribute('leftMargin') || '';
+    if (indent && parseInt(indent, 10) > 0) {
+      paraStyles.push(`margin-left:${parseInt(indent, 10) * 20}px`);
+    } else if (marginLeft && parseInt(marginLeft, 10) > 0) {
+      // HWPX uses HWP units (1/7200 inch), convert to px (~96dpi)
+      const px = Math.round(parseInt(marginLeft, 10) / 75);
+      if (px > 0) paraStyles.push(`margin-left:${px}px`);
+    }
+
+    // Line spacing
+    const lineSpacing = findChild(paraPr, 'lineSpacing') || findChild(paraPr, 'lnSpc');
+    if (lineSpacing) {
+      const val = lineSpacing.getAttribute('value') || lineSpacing.getAttribute('val') || '';
+      if (val) {
+        const pct = parseInt(val, 10);
+        if (pct > 0) paraStyles.push(`line-height:${(pct / 100).toFixed(2)}`);
+      }
+    }
+    // Also check direct attribute
+    const lsVal = paraPr.getAttribute('lineSpacing') || paraPr.getAttribute('lineHeight') || '';
+    if (lsVal && parseInt(lsVal, 10) > 0) {
+      const pct = parseInt(lsVal, 10);
+      paraStyles.push(`line-height:${(pct / 100).toFixed(2)}`);
+    }
+  }
+
+  const styleAttr = paraStyles.length > 0 ? ` style="${paraStyles.join(';')}"` : '';
+
+  // Get run content
+  const content = parseRunsContent(pNode, binDataMap);
+
+  if (headingLevel) {
+    return `<h${headingLevel}${styleAttr}>${content || '&nbsp;'}</h${headingLevel}>\n`;
+  }
+  return `<p${styleAttr}>${content || '&nbsp;'}</p>\n`;
+}
+
+/**
+ * Determine heading level from styleId string
+ */
+function getHeadingLevel(styleId) {
+  if (!styleId) return 0;
+  const s = styleId.toLowerCase();
+  if (s.includes('제목') || s.includes('heading') || s.includes('title')) {
+    // Extract number
+    const match = styleId.match(/(\d)/);
+    if (match) {
+      const level = parseInt(match[1], 10);
+      return level >= 1 && level <= 6 ? level : 2;
+    }
+    // "제목" without number = h1, "부제목" = h2
+    if (s.includes('부제') || s.includes('sub')) return 2;
+    return 1;
+  }
+  return 0;
+}
+
+/**
+ * Parse all runs inside a paragraph and return inner HTML string
+ */
+function parseRunsContent(pNode, binDataMap) {
+  let content = '';
+
+  for (const child of pNode.childNodes) {
+    if (child.nodeType !== 1) continue;
+    const tag = localName(child);
+
+    if (tag === 'run' || tag === 'r') {
+      content += parseRun(child, binDataMap);
+    } else if (tag === 't') {
+      // Direct text element
+      content += escapeHTML(child.textContent);
+    } else if (tag === 'tbl') {
+      // Inline table (rare, but handle)
+      content += parseTable(child, binDataMap);
+    } else if (tag === 'img' || tag === 'drawingObject' || tag === 'pic' || tag === 'drawing') {
+      content += parseImage(child, binDataMap);
+    }
+  }
+
+  return content;
+}
+
+/**
+ * Parse a single run element → HTML string
+ */
+function parseRun(runNode, binDataMap) {
+  const charPr = findChild(runNode, 'charPr') || findChild(runNode, 'rPr');
+
+  // Collect formatting
+  const isBold = charPr && (charPr.getAttribute('bold') === '1' || charPr.getAttribute('b') === '1');
+  const isItalic = charPr && (charPr.getAttribute('italic') === '1' || charPr.getAttribute('i') === '1');
+  const isUnderline = charPr && (
+    charPr.getAttribute('underline') === '1' ||
+    charPr.hasAttribute('underline') && charPr.getAttribute('underline') !== '0' && charPr.getAttribute('underline') !== 'NONE' ||
+    charPr.getAttribute('u') === '1'
+  );
+  const isStrike = charPr && (
+    charPr.getAttribute('strikeout') === '1' ||
+    charPr.getAttribute('strike') === '1' ||
+    charPr.getAttribute('s') === '1'
+  );
+
+  // Inline styles
+  const inlineStyles = [];
+  if (charPr) {
+    // Font size (HWPX uses 1/100pt units typically, or direct pt)
+    const fontSz = charPr.getAttribute('fontSz') || charPr.getAttribute('size') || charPr.getAttribute('sz') || '';
+    if (fontSz) {
+      const sz = parseInt(fontSz, 10);
+      if (sz > 0) {
+        // HWPX font size in 1/100 of a point, or direct pt if small enough
+        const pt = sz >= 100 ? sz / 100 : sz;
+        inlineStyles.push(`font-size:${pt}pt`);
+      }
+    }
+
+    // Color — HWPX may use BGR or RGB format
+    const color = charPr.getAttribute('color') || charPr.getAttribute('textColor') || '';
+    if (color && color !== '0' && color !== '000000') {
+      const hex = normalizeHwpxColor(color);
+      if (hex) inlineStyles.push(`color:#${hex}`);
+    }
+
+    // Font family
+    const fontRef = charPr.getAttribute('fontRef') || charPr.getAttribute('face') || '';
+    if (fontRef) {
+      inlineStyles.push(`font-family:'${fontRef}'`);
+    }
+  }
+
+  const styleAttr = inlineStyles.length > 0 ? ` style="${inlineStyles.join(';')}"` : '';
+
+  let html = '';
+
+  // Process children of the run
+  for (const child of runNode.childNodes) {
+    if (child.nodeType !== 1) continue;
+    const tag = localName(child);
+
+    if (tag === 't') {
+      html += escapeHTML(child.textContent);
+    } else if (tag === 'img' || tag === 'drawingObject' || tag === 'pic' || tag === 'drawing') {
+      html += parseImage(child, binDataMap);
+    } else if (tag === 'markpenBegin' || tag === 'markpenEnd' ||
+               tag === 'charPr' || tag === 'rPr' || tag === 'secPr') {
+      // Skip metadata elements
+    } else if (tag === 'tbl') {
+      html += parseTable(child, binDataMap);
+    } else if (tag === 'fieldBegin') {
+      // Hyperlink field
+      const command = child.getAttribute('command') || child.getAttribute('fieldName') || '';
+      if (command.toLowerCase().includes('hyperlink')) {
+        // Extract URL from command — format: HYPERLINK "url"
+        const urlMatch = command.match(/["']([^"']+)["']/);
+        if (urlMatch) {
+          html += `<a href="${escapeHTML(urlMatch[1])}">`;
+        }
+      }
+    } else if (tag === 'fieldEnd') {
+      // Close hyperlink if open
+      html += '</a>';
+    }
+  }
+
+  // Wrap with formatting tags (inside out: style span → strike → underline → italic → bold)
+  if (styleAttr) html = `<span${styleAttr}>${html}</span>`;
+  if (isStrike) html = `<s>${html}</s>`;
+  if (isUnderline) html = `<u>${html}</u>`;
+  if (isItalic) html = `<em>${html}</em>`;
+  if (isBold) html = `<strong>${html}</strong>`;
+
+  return html;
+}
+
+/**
+ * Normalize HWPX color value to 6-digit hex RGB.
+ * HWPX sometimes uses BGR format (e.g., "FF0000" could mean blue).
+ * We detect likely BGR and swap to RGB.
+ */
+function normalizeHwpxColor(raw) {
+  if (!raw) return null;
+  // Strip '#' prefix if present
+  let hex = raw.replace(/^#/, '').replace(/^0x/i, '');
+
+  // Pad to 6 digits
+  if (hex.length < 6) hex = hex.padStart(6, '0');
+  if (hex.length > 6) hex = hex.slice(0, 6);
+
+  // Validate hex
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
+
+  // HWPX uses BGR in some versions — we'll keep as-is since we can't
+  // reliably distinguish BGR from RGB without context. Most modern HWPX
+  // files use standard RGB. If the color looks wrong, it might be BGR,
+  // but flipping all colors would break RGB files.
+  return hex;
+}
+
+/**
+ * Parse a table element → HTML <table>
+ */
+function parseTable(tblNode, binDataMap) {
+  let html = '<table style="border-collapse:collapse;width:100%">\n';
+
+  // Find rows: <hp:tr> or <tr>
+  const rows = findChildren(tblNode, 'tr');
+  for (const tr of rows) {
+    html += '<tr>';
+    const cells = findChildren(tr, 'tc');
+    for (const tc of cells) {
+      // Cell properties
+      const tcPr = findChild(tc, 'tcPr') || findChild(tc, 'cellPr');
+      const cellStyles = ['border:1px solid #999', 'padding:4px 8px', 'vertical-align:top'];
+
+      let colSpan = '';
+      let rowSpan = '';
+
+      if (tcPr) {
+        // Column span
+        const cs = tcPr.getAttribute('colSpan') || tcPr.getAttribute('gridSpan') || '';
+        if (cs && parseInt(cs, 10) > 1) colSpan = ` colspan="${parseInt(cs, 10)}"`;
+
+        // Row span
+        const rs = tcPr.getAttribute('rowSpan') || '';
+        if (rs && parseInt(rs, 10) > 1) rowSpan = ` rowspan="${parseInt(rs, 10)}"`;
+
+        // Cell width
+        const width = tcPr.getAttribute('width') || tcPr.getAttribute('cellWidth') || '';
+        if (width && parseInt(width, 10) > 0) {
+          // HWPX widths in HWP units, convert to approximate %/px
+          const px = Math.round(parseInt(width, 10) / 75);
+          if (px > 0) cellStyles.push(`width:${px}px`);
+        }
+
+        // Background color
+        const bgColor = tcPr.getAttribute('bgColor') || tcPr.getAttribute('fillColor') || '';
+        if (bgColor && bgColor !== '0') {
+          const hex = normalizeHwpxColor(bgColor);
+          if (hex) cellStyles.push(`background-color:#${hex}`);
+        }
+
+        // Border details (simplified)
+        const borderFill = findChild(tcPr, 'cellBorderFill') || findChild(tcPr, 'borderFill');
+        if (borderFill) {
+          // Could parse individual border sides, but keep it simple
+          const fillColor = borderFill.getAttribute('bgColor') || '';
+          if (fillColor && fillColor !== 'none') {
+            const hex = normalizeHwpxColor(fillColor);
+            if (hex) cellStyles.push(`background-color:#${hex}`);
+          }
+        }
+      }
+
+      const styleStr = cellStyles.join(';');
+      html += `<td${colSpan}${rowSpan} style="${styleStr}">`;
+
+      // Parse cell content (paragraphs, nested tables)
+      html += processChildren(tc, binDataMap);
+
+      html += '</td>';
+    }
+    html += '</tr>\n';
+  }
+
+  html += '</table>\n';
+  return html;
+}
+
+/**
+ * Parse an image element → HTML <img>
+ */
+function parseImage(imgNode, binDataMap) {
+  // Try to find the binary data reference
+  const binItem = findChild(imgNode, 'binItem') || findChild(imgNode, 'img') || imgNode;
+
+  // Look for the image reference ID
+  const binItemRef = binItem.getAttribute('binaryItemIDRef') ||
+    binItem.getAttribute('binItemIDRef') ||
+    binItem.getAttribute('itemID') ||
+    binItem.getAttribute('src') ||
+    imgNode.getAttribute('binaryItemIDRef') ||
+    imgNode.getAttribute('binItemIDRef') ||
+    imgNode.getAttribute('href') || '';
+
+  // Try to find matching binary data
+  let dataUrl = null;
+  if (binItemRef) {
+    // Try exact match first, then partial matches
+    dataUrl = binDataMap[binItemRef] ||
+      binDataMap[binItemRef.replace(/^ID_/, '')] ||
+      Object.values(binDataMap).find((_, i) => {
+        const key = Object.keys(binDataMap)[i];
+        return key.includes(binItemRef) || binItemRef.includes(key);
+      }) || null;
+  }
+
+  // Also check nested elements for image references
+  if (!dataUrl) {
+    for (const child of imgNode.querySelectorAll('*')) {
+      const ref = child.getAttribute('binaryItemIDRef') ||
+        child.getAttribute('binItemIDRef') ||
+        child.getAttribute('href') || '';
+      if (ref && binDataMap[ref]) {
+        dataUrl = binDataMap[ref];
+        break;
+      }
+      if (ref && binDataMap[ref.replace(/^ID_/, '')]) {
+        dataUrl = binDataMap[ref.replace(/^ID_/, '')];
+        break;
+      }
+    }
+  }
+
+  if (dataUrl) {
+    // Try to get dimensions
+    const width = imgNode.getAttribute('width') || imgNode.getAttribute('cx') || '';
+    const height = imgNode.getAttribute('height') || imgNode.getAttribute('cy') || '';
+    let style = 'max-width:100%';
+    if (width && parseInt(width, 10) > 0) {
+      const wpx = Math.round(parseInt(width, 10) / 75);
+      if (wpx > 0 && wpx < 2000) style += `;width:${wpx}px`;
+    }
+    return `<img src="${dataUrl}" style="${style}" alt="image">`;
+  }
+
+  // Fallback: placeholder
+  return '<span style="display:inline-block;padding:8px;background:#f0f0f0;border:1px dashed #ccc;color:#999">[Image]</span>';
+}
+
+// ──────────────────────────────────────────────
+// HTML → OWPML (export — largely unchanged)
+// ──────────────────────────────────────────────
 
 /**
  * Convert HTML content → OWPML section XML
@@ -195,6 +681,8 @@ function htmlToOwpml(html) {
       for (const li of node.querySelectorAll('li')) {
         owpml += wrapParagraph(li.textContent);
       }
+    } else if (tag === 'table') {
+      owpml += htmlTableToOwpml(node);
     } else {
       // Check for inline formatting
       const runs = extractRuns(node);
@@ -204,6 +692,23 @@ function htmlToOwpml(html) {
 
   owpml += '</hp:sec>';
   return owpml;
+}
+
+function htmlTableToOwpml(tableNode) {
+  let xml = '  <hp:tbl>\n';
+  const rows = tableNode.querySelectorAll('tr');
+  for (const tr of rows) {
+    xml += '    <hp:tr>\n';
+    const cells = tr.querySelectorAll('td, th');
+    for (const td of cells) {
+      xml += '      <hp:tc>\n';
+      xml += `        <hp:p><hp:run><hp:t>${escapeXML(td.textContent)}</hp:t></hp:run></hp:p>\n`;
+      xml += '      </hp:tc>\n';
+    }
+    xml += '    </hp:tr>\n';
+  }
+  xml += '  </hp:tbl>\n';
+  return xml;
 }
 
 function wrapParagraph(text, styleId) {
@@ -219,9 +724,14 @@ function wrapParagraph(text, styleId) {
 function wrapParagraphWithRuns(runs) {
   let xml = '  <hp:p>\n    <hp:paraPr/>\n';
   for (const run of runs) {
-    const boldAttr = run.bold ? ' bold="1"' : '';
+    const attrs = [];
+    if (run.bold) attrs.push('bold="1"');
+    if (run.italic) attrs.push('italic="1"');
+    if (run.underline) attrs.push('underline="1"');
+    if (run.strike) attrs.push('strikeout="1"');
+    const attrStr = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
     xml += `    <hp:run>
-      <hp:charPr${boldAttr}/>
+      <hp:charPr${attrStr}/>
       <hp:t>${escapeXML(run.text)}</hp:t>
     </hp:run>\n`;
   }
@@ -233,14 +743,45 @@ function extractRuns(el) {
   const runs = [];
   for (const child of el.childNodes) {
     if (child.nodeType === Node.TEXT_NODE) {
-      if (child.textContent) runs.push({ text: child.textContent, bold: false });
+      if (child.textContent) runs.push({ text: child.textContent, bold: false, italic: false, underline: false, strike: false });
     } else if (child.nodeType === Node.ELEMENT_NODE) {
       const tag = child.tagName.toLowerCase();
-      const isBold = tag === 'strong' || tag === 'b';
-      runs.push({ text: child.textContent, bold: isBold });
+      runs.push({
+        text: child.textContent,
+        bold: tag === 'strong' || tag === 'b',
+        italic: tag === 'em' || tag === 'i',
+        underline: tag === 'u',
+        strike: tag === 's' || tag === 'del',
+      });
     }
   }
-  return runs.length ? runs : [{ text: el.textContent || '', bold: false }];
+  return runs.length ? runs : [{ text: el.textContent || '', bold: false, italic: false, underline: false, strike: false }];
+}
+
+// ──────────────────────────────────────────────
+// Utility helpers
+// ──────────────────────────────────────────────
+
+/** Get local name of an element (strip namespace prefix) */
+function localName(el) {
+  return el.localName || el.nodeName.replace(/^[^:]+:/, '');
+}
+
+/** Find first child element with given local name */
+function findChild(parent, name) {
+  for (const child of parent.childNodes) {
+    if (child.nodeType === 1 && localName(child) === name) return child;
+  }
+  return null;
+}
+
+/** Find all child elements with given local name */
+function findChildren(parent, name) {
+  const result = [];
+  for (const child of parent.childNodes) {
+    if (child.nodeType === 1 && localName(child) === name) result.push(child);
+  }
+  return result;
 }
 
 function escapeHTML(s) {
