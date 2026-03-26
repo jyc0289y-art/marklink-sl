@@ -818,3 +818,38 @@
   box-shadow: none;
   background: transparent;
 }
+
+/* ─── Loading Progress ────────────────────────────────────── */
+.pdf-loading-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: var(--pane-header-bg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* ─── Reading Modes ───────────────────────────────────────── */
+.pdf-container.pdf-mode-dark {
+  background: #1a1a1a;
+}
+
+.pdf-container.pdf-mode-dark .pdf-page-wrapper canvas {
+  filter: invert(0.88) hue-rotate(180deg);
+}
+
+.pdf-container.pdf-mode-dark .pdf-text-layer span::selection {
+  background: rgba(100, 180, 255, 0.5);
+}
+
+.pdf-container.pdf-mode-sepia {
+  background: #f4ecd8;
+}
+
+.pdf-container.pdf-mode-sepia .pdf-page-wrapper canvas {
+  filter: sepia(0.35) brightness(0.95);
+}
+
+.pdf-container.pdf-mode-sepia .pdf-page-wrapper {
+  box-shadow: 0 2px 8px rgba(120, 90, 40, 0.2);
+}

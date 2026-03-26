@@ -2409,7 +2409,7 @@ function printDocument() {
   printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
     <title>Print — OfficeLink SL</title>
     <style>
-      @page { size: ${ps.w} ${ps.h}; margin: ${currentMargins.top}mm ${currentMargins.right}mm ${currentMargins.bottom}mm ${currentMargins.left}mm; }
+      @page { size: ${ps.w}mm ${ps.h}mm; margin: ${currentMargins.top}mm ${currentMargins.right}mm ${currentMargins.bottom}mm ${currentMargins.left}mm; }
       body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; line-height: ${editorEl.style.lineHeight || '1.6'}; color: #222; margin: 0; padding: 0; }
       ${header ? `.print-header { text-align: center; font-size: 11px; color: #888; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 16px; }` : ''}
       ${footer ? `.print-footer { text-align: center; font-size: 11px; color: #888; border-top: 1px solid #ddd; padding-top: 4px; margin-top: 16px; position: fixed; bottom: 0; left: 0; right: 0; }` : ''}

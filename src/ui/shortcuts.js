@@ -76,6 +76,11 @@ export const initShortcuts = (actions) => {
       return;
     }
 
+    // ─── New File ───
+    if (matchesShortcut(e, 'newFile', activeTab)) {
+      e.preventDefault(); actions.newFile?.(); return;
+    }
+
     // ─── Open ───
     if (matchesShortcut(e, 'open', activeTab)) {
       e.preventDefault(); actions.open?.(); return;

@@ -1,5 +1,6 @@
 // OfficeLink SL — markdown-it Renderer Setup
 import MarkdownIt from 'markdown-it';
+import taskListPlugin from 'markdown-it-task-lists';
 import hljs from 'highlight.js';
 
 // Import highlight.js CSS (light theme — will switch via CSS class)
@@ -28,8 +29,12 @@ function createRenderer() {
     },
   });
 
-  // Enable tables (built-in)
+  // Enable built-in features
   md.enable('table');
+  md.enable('strikethrough');
+
+  // Task list checkboxes (- [ ] / - [x])
+  md.use(taskListPlugin, { enabled: true, label: true });
 
   // Add heading anchors for TOC navigation
   const originalHeadingOpen = md.renderer.rules.heading_open;

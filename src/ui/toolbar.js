@@ -1,6 +1,20 @@
 // OfficeLink SL — Toolbar Actions
-import { wrapSelection, insertAtCursor, getContent, setContent } from '../editor/editor.js';
+import { wrapSelection, insertAtCursor, getContent, setContent, getEditorView } from '../editor/editor.js';
 import { downloadBlob } from '../utils/download.js';
+
+/**
+ * Insert text at cursor, prepending a newline only if the cursor
+ * is not already at the beginning of a line.
+ */
+function insertBlock(text) {
+  const view = getEditorView();
+  if (!view) { insertAtCursor(text); return; }
+  const { head } = view.state.selection.main;
+  const line = view.state.doc.lineAt(head);
+  const atLineStart = head === line.from;
+  const prefix = atLineStart ? '' : '\n';
+  insertAtCursor(prefix + text);
+}
 
 /**
  * Initialize toolbar button actions
@@ -8,16 +22,17 @@ import { downloadBlob } from '../utils/download.js';
 export function initToolbar() {
   bind('btn-bold', () => wrapSelection('**'));
   bind('btn-italic', () => wrapSelection('*'));
-  bind('btn-heading', () => insertAtCursor('\n## '));
-  bind('btn-code', () => insertAtCursor('\n```\n\n```\n'));
-  bind('btn-list', () => insertAtCursor('\n- '));
+  bind('btn-strikethrough', () => wrapSelection('~~'));
+  bind('btn-heading', () => insertBlock('## '));
+  bind('btn-code', () => insertBlock('```\n\n```\n'));
+  bind('btn-list', () => insertBlock('- '));
   bind('btn-link', () => wrapSelection('[', '](url)'));
-  bind('btn-table', () => insertAtCursor('\n| Header | Header |\n|--------|--------|\n| Cell   | Cell   |\n'));
+  bind('btn-table', () => insertBlock('| Header | Header |\n|--------|--------|\n| Cell   | Cell   |\n'));
 
   // ─── New toolbar buttons ───────────────────────────────
-  bind('btn-task', () => insertAtCursor('\n- [ ] '));
-  bind('btn-blockquote', () => insertAtCursor('\n> '));
-  bind('btn-hr', () => insertAtCursor('\n---\n'));
+  bind('btn-task', () => insertBlock('- [ ] '));
+  bind('btn-blockquote', () => insertBlock('> '));
+  bind('btn-hr', () => insertBlock('---\n'));
   bind('btn-image', handleImageInsert);
   bind('btn-emoji', handleEmojiPicker);
   bind('btn-md-export', handleExportMd);

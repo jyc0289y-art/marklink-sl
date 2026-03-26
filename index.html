@@ -197,6 +197,7 @@
       <div class="md-toolbar">
         <button id="btn-bold" class="toolbar-btn" data-tip="tip.bold" title="Bold (⌘B)"><span class="icon"><b>B</b></span></button>
         <button id="btn-italic" class="toolbar-btn" data-tip="tip.italic" title="Italic (⌘I)"><span class="icon"><i>I</i></span></button>
+        <button id="btn-strikethrough" class="toolbar-btn" data-tip="tip.strikethrough" title="Strikethrough"><span class="icon"><s>S</s></span></button>
         <button id="btn-heading" class="toolbar-btn" data-tip="tip.heading" title="Heading"><span class="icon">H</span></button>
         <button id="btn-code" class="toolbar-btn" data-tip="tip.code" title="Code Block"><span class="icon">&lt;/&gt;</span></button>
         <button id="btn-list" class="toolbar-btn" data-tip="tip.list" title="List"><span class="icon">☰</span></button>
@@ -815,6 +816,13 @@
         <button class="toolbar-btn" id="pdf-fit-page" title="Fit to Page">Fit P</button>
         <button class="toolbar-btn" id="pdf-actual-size" title="Actual Size (100%)">1:1</button>
         <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" id="pdf-print" title="Print PDF">🖨 Print</button>
+        <select id="pdf-reading-mode" title="Reading Mode" style="font-size:11px;padding:2px 4px;border:1px solid var(--border-color);border-radius:4px;background:var(--editor-bg,#fff);color:var(--text-primary)">
+          <option value="normal">Normal</option>
+          <option value="dark">Dark Mode</option>
+          <option value="sepia">Sepia</option>
+        </select>
+        <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="pdf-convert-md" data-i18n-title="pdf.convertMd" title="Convert Markdown to PDF">MD → PDF</button>
         <button class="toolbar-btn" id="pdf-convert-doc" data-i18n-title="pdf.convertDoc" title="Convert Document to PDF">Doc → PDF</button>
         <div class="toolbar-divider"></div>
@@ -881,6 +889,11 @@
         <button class="toolbar-btn" id="pdf-search-prev" title="Previous Match">◀</button>
         <button class="toolbar-btn" id="pdf-search-next" title="Next Match">▶</button>
         <span class="pdf-search-info" id="pdf-search-info"></span>
+      </div>
+      <!-- Loading Progress -->
+      <div id="pdf-loading-progress" class="pdf-loading-progress" style="display:none">
+        <div class="pdf-ocr-progress-bar"><div class="pdf-ocr-progress-fill" id="pdf-loading-fill"></div></div>
+        <span id="pdf-loading-text" class="pdf-ocr-progress-text">Loading PDF…</span>
       </div>
       <!-- OCR Progress -->
       <div id="pdf-ocr-progress" class="pdf-ocr-progress" style="display:none">

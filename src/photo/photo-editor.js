@@ -333,34 +333,27 @@ function compositeLayersToCanvas() {
     ctx.globalCompositeOperation = blendModeToCanvasComposite(layer.blendMode);
 
     if (layer.type === 'adjustment') {
-      // Apply adjustment to current composite
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = w;
-      tempCanvas.height = h;
-      const tctx = tempCanvas.getContext('2d');
-      tctx.drawImage(resultCanvas, 0, 0);
-      applyAdjustmentToCanvas(tempCanvas, layer.adjustmentType, layer.adjustmentParams);
+      // Save the current composite as the base
+      const baseCanvas = document.createElement('canvas');
+      baseCanvas.width = w;
+      baseCanvas.height = h;
+      baseCanvas.getContext('2d').drawImage(resultCanvas, 0, 0);
+
+      // Create adjusted version from the base
+      const adjustedCanvas = document.createElement('canvas');
+      adjustedCanvas.width = w;
+      adjustedCanvas.height = h;
+      adjustedCanvas.getContext('2d').drawImage(baseCanvas, 0, 0);
+      applyAdjustmentToCanvas(adjustedCanvas, layer.adjustmentType, layer.adjustmentParams);
+
+      // Blend: draw base at full opacity, then overlay adjusted at layer opacity
       ctx.clearRect(0, 0, w, h);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
-      // Draw original at (1 - opacity), adjusted at opacity
-      ctx.drawImage(resultCanvas, 0, 0); // This is the base
-      // Now blend the adjusted version on top
+      ctx.drawImage(baseCanvas, 0, 0);
       ctx.globalAlpha = layer.opacity / 100;
       ctx.globalCompositeOperation = blendModeToCanvasComposite(layer.blendMode);
-      // We need to draw only the difference. Simpler: clear and blend.
-      // Actually for adjustments, just re-draw: clear, draw adjusted at full, blend with base
-      ctx.clearRect(0, 0, w, h);
-      const baseOpacity = 1 - (layer.opacity / 100);
-      // Draw base
-      ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = 'source-over';
-      // For proper blending: draw original, then overlay adjusted
-      // Simple approach: lerp between original and adjusted
-      const origData = resultCanvas.getContext('2d').getImageData(0, 0, w, h);
-      // Wait, resultCanvas ctx is what we're drawing on. Let me use a different approach.
-      // Actually, let's just replace: draw the adjusted version
-      ctx.drawImage(tempCanvas, 0, 0);
+      ctx.drawImage(adjustedCanvas, 0, 0);
     } else if (layer.canvas) {
       ctx.drawImage(layer.canvas, 0, 0);
     }

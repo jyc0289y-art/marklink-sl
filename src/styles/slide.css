@@ -988,3 +988,21 @@
   color: #333;
   border-color: #ccc;
 }
+
+/* ===== Print Styles ===== */
+@media print {
+  .slide-toolbar,
+  .slide-panel,
+  .slide-notes,
+  .slide-status-bar,
+  .slide-filmstrip {
+    display: none !important;
+  }
+  .slide-canvas {
+    width: 100% !important;
+    height: auto !important;
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+    page-break-after: always;
+  }
+}

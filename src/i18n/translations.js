@@ -92,6 +92,10 @@ export const TRANSLATIONS = {
     en: 'Unsaved changes', ko: '저장하지 않은 변경사항', ja: '未保存の変更', zh: '未保存的更改',
     es: 'Cambios sin guardar', fr: 'Modifications non enregistrées', de: 'Ungespeicherte Änderungen',
   },
+  'tip.settings': {
+    en: 'Settings', ko: '설정', ja: '設定', zh: '设置',
+    es: 'Configuración', fr: 'Paramètres', de: 'Einstellungen',
+  },
 
   // ===== SIDEBAR =====
   'sidebar.files': {

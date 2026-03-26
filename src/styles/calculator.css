@@ -1464,3 +1464,19 @@
     min-height: 44px;
   }
 }
+
+/* ===== Print Styles ===== */
+@media print {
+  .calc-toolbar,
+  .calc-mode-tabs,
+  .calc-btn-grid,
+  .calc-graph-panel {
+    display: none !important;
+  }
+  .calc-display,
+  .calc-history {
+    color: #000 !important;
+    background: #fff !important;
+    border: 1px solid #ccc !important;
+  }
+}

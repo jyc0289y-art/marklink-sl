@@ -7,6 +7,9 @@ import { escapeHtml } from '../utils/sanitize.js';
 
 let currentName = 'untitled-presentation.html';
 
+// Alias escapeHtml for local compat — must be at top since used throughout the file
+const escapeHTML = escapeHtml;
+
 const THEMES = {
   default: 'background:#fff;color:#333',
   dark: 'background:#1a1a2e;color:#eee',
@@ -853,6 +856,7 @@ function htmlToOoxmlShapes(htmlStr, slideIndex) {
   const images = [];
   let shapeId = 2;  // id=1 is reserved for grpSpPr
   let rIdCounter = 2; // rId1 = slideLayout
+  let currentY = MARGIN_T; // Track vertical position for stacking shapes
 
   /**
    * Build <a:r> run XML from text + format options
@@ -917,19 +921,17 @@ function htmlToOoxmlShapes(htmlStr, slideIndex) {
     let xml = '<a:bodyPr wrap="square" rtlCol="0"/><a:lstStyle/>';
     for (const para of paragraphs) {
       xml += '<a:p>';
-      if (para.bullet) {
-        xml += '<a:pPr><a:buChar char="\u2022"/></a:pPr>';
-      } else if (para.numbered) {
-        xml += '<a:pPr><a:buAutoNum type="arabicPeriod"/></a:pPr>';
-      }
-      if (para.align) {
-        const algnMap = { center: 'ctr', right: 'r', left: 'l', justify: 'just' };
-        const algn = algnMap[para.align];
-        if (algn) {
-          const hasParaPr = para.bullet || para.numbered;
-          if (!hasParaPr) xml = xml.slice(0, -4) + `<a:pPr algn="${algn}"/><a:p>`.slice(4); // insert pPr
-          // Actually let's just rebuild — simpler:
-        }
+      // Build <a:pPr> with bullet/numbering and alignment combined
+      const algnMap = { center: 'ctr', right: 'r', left: 'l', justify: 'just' };
+      const algn = para.align ? algnMap[para.align] : null;
+      const hasPPr = para.bullet || para.numbered || algn;
+      if (hasPPr) {
+        let pPrAttrs = '';
+        if (algn) pPrAttrs += ` algn="${algn}"`;
+        let pPrChildren = '';
+        if (para.bullet) pPrChildren += '<a:buChar char="\u2022"/>';
+        else if (para.numbered) pPrChildren += '<a:buAutoNum type="arabicPeriod"/>';
+        xml += `<a:pPr${pPrAttrs}>${pPrChildren}</a:pPr>`;
       }
       if (para.runs && para.runs.length > 0) {
         for (const r of para.runs) {
@@ -1010,7 +1012,7 @@ function htmlToOoxmlShapes(htmlStr, slideIndex) {
 
       let tableXml = `<p:graphicFrame>
   <p:nvGraphicFramePr><p:cNvPr id="${id}" name="Table ${id}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>
-  <p:xfrm><a:off x="${MARGIN_L}" y="${MARGIN_T}"/><a:ext cx="${BODY_W}" cy="${tableH}"/></p:xfrm>
+  <p:xfrm><a:off x="${MARGIN_L}" y="${currentY}"/><a:ext cx="${BODY_W}" cy="${tableH}"/></p:xfrm>
   <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table">
     <a:tbl><a:tblPr firstRow="1" bandRow="1"><a:tblStyle val="{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}"/></a:tblPr>
       <a:tblGrid>${Array(numCols).fill(`<a:gridCol w="${colW}"/>`).join('')}</a:tblGrid>`;
@@ -1028,6 +1030,7 @@ function htmlToOoxmlShapes(htmlStr, slideIndex) {
 
       tableXml += '</a:tbl></a:graphicData></a:graphic></p:graphicFrame>';
       shapes.push(tableXml);
+      currentY += tableH + 91440; // 0.1in gap
       return;
     }
 
@@ -1045,7 +1048,9 @@ function htmlToOoxmlShapes(htmlStr, slideIndex) {
       });
       if (paragraphs.length > 0) {
         const bodyXml = buildTextBody(paragraphs, 1800);
-        shapes.push(makeTextShape('List', MARGIN_L, MARGIN_T, BODY_W, BODY_H, bodyXml));
+        const estHeight = Math.min(paragraphs.length * 274638, BODY_H); // ~0.3in per list item
+        shapes.push(makeTextShape('List', MARGIN_L, currentY, BODY_W, estHeight, bodyXml));
+        currentY += estHeight + 91440; // 0.1in gap
       }
       return;
     }
@@ -1072,9 +1077,13 @@ function htmlToOoxmlShapes(htmlStr, slideIndex) {
       const nestedLists = el.querySelectorAll('ul, ol');
       nestedLists.forEach((list) => processBlock(list));
 
-      const paragraphs = [{ runs }];
+      const align = style['text-align'] || null;
+      const paragraphs = [{ runs, align }];
       const bodyXml = buildTextBody(paragraphs, fontSize);
-      shapes.push(makeTextShape(tag.toUpperCase(), MARGIN_L, MARGIN_T, BODY_W, BODY_H, bodyXml));
+      // Estimate height based on font size (heading vs body)
+      const estHeight = tag === 'h1' ? 685800 : tag === 'h2' ? 548640 : tag === 'h3' ? 457200 : 365760;
+      shapes.push(makeTextShape(tag.toUpperCase(), MARGIN_L, currentY, BODY_W, estHeight, bodyXml));
+      currentY += estHeight + 45720; // ~0.05in gap
       return;
     }
   }
@@ -1486,9 +1495,6 @@ document.addEventListener('click',()=>{if(idx<slides.length-1){idx++;show(idx)}}
 </body>
 </html>`;
 }
-
-// escapeHTML: use shared escapeHtml from utils/sanitize.js, aliased for local compat
-const escapeHTML = escapeHtml;
 
 function escape(s) {
   return encodeURIComponent(s);

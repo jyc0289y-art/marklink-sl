@@ -396,3 +396,22 @@
   background: #f0f0f2;
   border-color: #e0e0e0;
 }
+
+/* ===== Print Styles ===== */
+@media print {
+  .draw-toolbar,
+  .draw-properties-panel,
+  .draw-status-bar,
+  .draw-ruler-h,
+  .draw-ruler-v {
+    display: none !important;
+  }
+  .draw-canvas-container {
+    width: 100% !important;
+    height: auto !important;
+  }
+  .draw-canvas-container canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+}

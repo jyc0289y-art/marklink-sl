@@ -24,15 +24,14 @@ describe('Balanced parenthesis parsing', () => {
     expect(getCell(sheet, 3, 0).value).toBe(80); // 60 + 20
   });
 
-  it('handles deeply nested function calls: =ROUND(SUM(A1:A2),0) — currently unsupported, returns NaN', () => {
+  it('handles deeply nested function calls: =ROUND(SUM(A1:A2),0)', () => {
     const sheet = createSheetData();
     setCell(sheet, 0, 0, '3.14');
     setCell(sheet, 1, 0, '2.86');
     setCell(sheet, 2, 0, '=ROUND(SUM(A1:A2),0)');
-    // Nested function calls (function as argument) are not yet supported by parseTopLevelCall
-    // ROUND sees "SUM(A1:A2)" as its first arg string, which evalSimpleExpr can't resolve
+    // Nested function calls now work: evalSimpleExpr delegates to evalFormula
     const val = getCell(sheet, 2, 0).value;
-    expect(val).toBeDefined(); // Should not crash
+    expect(val).toBe(6);
   });
 
   it('handles unbalanced open paren gracefully', () => {

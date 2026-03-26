@@ -1011,3 +1011,21 @@
     min-height: 44px;
   }
 }
+
+/* ===== Print Styles ===== */
+@media print {
+  .photo-toolbar,
+  .photo-sidebar,
+  .photo-status-bar,
+  .photo-layer-panel {
+    display: none !important;
+  }
+  .photo-canvas-container {
+    width: 100% !important;
+    height: auto !important;
+  }
+  .photo-canvas-container canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+}

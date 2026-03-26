@@ -602,9 +602,12 @@ function evalFunctionCall(sheet, fn, argsStr) {
       }
       case 'IF': {
         const args = splitArgs(argsStr);
-        if (args.length < 3) return '#ERROR';
+        if (args.length < 2) return '#ERROR';
         const cond = evalSimpleExpr(sheet, args[0]);
-        return cond ? evalSimpleExpr(sheet, args[1]) : evalSimpleExpr(sheet, args[2]);
+        if (cond && cond !== 0 && cond !== false && cond !== 'FALSE') {
+          return evalSimpleExpr(sheet, args[1]);
+        }
+        return args.length >= 3 ? evalSimpleExpr(sheet, args[2]) : false;
       }
       case 'SUMIF': {
         const args = splitArgs(argsStr);
@@ -1269,6 +1272,10 @@ function evalFunctionCall(sheet, fn, argsStr) {
         const v = evalSimpleExpr(sheet, argsStr);
         return typeof v === 'string' && isNaN(Number(v));
       }
+      case 'ISERROR': {
+        const v = evalSimpleExpr(sheet, argsStr);
+        return typeof v === 'string' && v.startsWith('#');
+      }
 
       // ─── Additional Statistics ───
       case 'PERCENTILE': {
@@ -1495,10 +1502,18 @@ function resolveRangeAsTable(sheet, rangeStr) {
 }
 
 /**
- * Evaluate simple arithmetic expression with cell references
+ * Evaluate simple arithmetic expression with cell references.
+ * Also delegates to evalFormula when nested function calls are detected,
+ * enabling constructs like IF(A1>0, SUM(B1:B3), 0) to work correctly.
  * Supports cross-sheet refs: Sheet2!A1, 'My Sheet'!A1
  */
 function evalSimpleExpr(sheet, expr) {
+  // If the expression contains a function call pattern, delegate to evalFormula
+  // so nested calls like SUM(...), IF(...), etc. are handled properly
+  if (/^[A-Z]+\(/.test(expr.trim())) {
+    return evalFormula(sheet, expr.trim());
+  }
+
   // Replace cross-sheet cell references first (Sheet2!A1 or 'Sheet Name'!A1)
   let resolved = expr.replace(/(?:'([^']+)'|SHEET(\d+))!([A-Z]+\d+)/gi, (match, quotedName, numName, cellRef) => {
     const { sheet: targetSheet, ref } = resolveSheetRef(sheet, match);
@@ -1517,6 +1532,15 @@ function evalSimpleExpr(sheet, expr) {
     const num = Number(val);
     return isNaN(num) ? `"${val}"` : num;
   });
+
+  // Handle string literals — strip surrounding quotes and return
+  if (/^"[^"]*"$/.test(resolved.trim())) {
+    return resolved.trim().slice(1, -1);
+  }
+
+  // Handle TRUE/FALSE boolean literals
+  if (resolved.trim() === 'TRUE') return true;
+  if (resolved.trim() === 'FALSE') return false;
 
   // Safe eval of arithmetic (only numbers and operators)
   if (/^[\d\s+\-*/().,"<>=!&|]+$/.test(resolved)) {

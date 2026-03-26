@@ -46,6 +46,27 @@ export function createEditor(container, initialContent = '', isDark = false) {
     parent: container,
   });
 
+  // Image paste from clipboard — insert as inline base64 markdown image
+  editorView.dom.addEventListener('paste', (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result;
+          const name = file.name || 'pasted-image';
+          insertAtCursor(`![${name}](${dataUrl})`);
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+    }
+  });
+
   return editorView;
 }
 

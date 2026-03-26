@@ -88,25 +88,35 @@ export async function saveSheetFile() {
 export async function saveSheetCSV() {
   const sheets = getSheetsData();
   const sheet = sheets[0]; // CSV = single sheet
-  let csv = '';
+
+  // Find the last row with data to avoid trailing empty rows
+  let lastDataRow = 0;
   for (let r = 0; r < sheet.rows; r++) {
-    const row = [];
-    let hasData = false;
     for (let c = 0; c < sheet.cols; c++) {
       const val = getDisplayValue(sheet, r, c);
-      if (val) hasData = true;
-      // Escape CSV
-      if (String(val).includes(',') || String(val).includes('"') || String(val).includes('\n')) {
-        row.push(`"${String(val).replace(/"/g, '""')}"`);
-      } else {
-        row.push(val);
-      }
+      if (val) { lastDataRow = r; break; }
     }
-    if (!hasData && r > 0) continue; // skip trailing empty rows
-    csv += row.join(',') + '\n';
   }
 
-  const blob = new Blob([csv], { type: 'text/csv' });
+  let csv = '';
+  for (let r = 0; r <= lastDataRow; r++) {
+    const row = [];
+    for (let c = 0; c < sheet.cols; c++) {
+      const val = getDisplayValue(sheet, r, c);
+      // Escape CSV per RFC 4180
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        row.push(`"${str.replace(/"/g, '""')}"`);
+      } else {
+        row.push(str);
+      }
+    }
+    csv += row.join(',') + '\r\n';
+  }
+
+  // UTF-8 BOM for proper Unicode handling in Excel and other editors
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8' });
   const tsName = generateTimestampFilename(currentName, 'csv');
 
   if (window.showSaveFilePicker) {
@@ -170,7 +180,9 @@ async function importFile(file) {
 
   // CSV/TSV: use our own robust parser for proper quoted field handling
   if (ext === 'csv' || ext === 'tsv') {
-    const text = await file.text();
+    let text = await file.text();
+    // Strip UTF-8 BOM if present
+    if (text.charCodeAt(0) === 0xFEFF) text = text.substring(1);
     const delimiter = ext === 'tsv' ? '\t' : ',';
     const parsed = parseDelimited(text, delimiter);
     const rows = Math.max(parsed.length, 50);

@@ -93,7 +93,7 @@ export function initSlideEditor() {
 function bindEvents() {
   // Save content on input
   canvasEl.addEventListener('input', () => {
-    slides[activeSlideIdx].content = canvasEl.innerHTML;
+    slides[activeSlideIdx].content = getCleanCanvasContent();
     updateThumb(activeSlideIdx);
   });
 
@@ -178,7 +178,7 @@ function bindEvents() {
     btn.addEventListener('click', () => {
       document.execCommand(btn.dataset.cmd, false, null);
       canvasEl.focus();
-      slides[activeSlideIdx].content = canvasEl.innerHTML;
+      slides[activeSlideIdx].content = getCleanCanvasContent();
     });
   });
 
@@ -186,7 +186,7 @@ function bindEvents() {
   document.getElementById('slide-text-color')?.addEventListener('input', (e) => {
     document.execCommand('foreColor', false, e.target.value);
     canvasEl.focus();
-    slides[activeSlideIdx].content = canvasEl.innerHTML;
+    slides[activeSlideIdx].content = getCleanCanvasContent();
   });
 
   // Present
@@ -203,7 +203,7 @@ function bindEvents() {
       reader.onload = (e) => {
         canvasEl.focus();
         document.execCommand('insertImage', false, e.target.result);
-        slides[activeSlideIdx].content = canvasEl.innerHTML;
+        slides[activeSlideIdx].content = getCleanCanvasContent();
         updateThumb(activeSlideIdx);
       };
       reader.readAsDataURL(input.files[0]);
@@ -259,7 +259,7 @@ function bindEvents() {
     html += '</tbody></table>';
     canvasEl.focus();
     document.execCommand('insertHTML', false, html);
-    slides[activeSlideIdx].content = canvasEl.innerHTML;
+    slides[activeSlideIdx].content = getCleanCanvasContent();
     updateThumb(activeSlideIdx);
   });
 
@@ -439,8 +439,23 @@ function addSlideFromTemplate(templateKey) {
   loadSlide(activeSlideIdx);
 }
 
+/**
+ * Get clean slide content from canvas, stripping editor-only artifacts
+ * (grid overlay, resize handles, rotate handles, selection classes).
+ */
+function getCleanCanvasContent() {
+  const clone = canvasEl.cloneNode(true);
+  // Remove editor overlays and handles
+  clone.querySelectorAll('.slide-grid-overlay, .slide-grid-overlay-dots, .slide-resize-handle, .slide-rotate-handle').forEach(el => el.remove());
+  // Remove editor selection classes
+  clone.querySelectorAll('.slide-obj-selected, .slide-obj-multi-selected').forEach(el => {
+    el.classList.remove('slide-obj-selected', 'slide-obj-multi-selected');
+  });
+  return clone.innerHTML;
+}
+
 function saveCurrentSlide() {
-  slides[activeSlideIdx].content = canvasEl.innerHTML;
+  slides[activeSlideIdx].content = getCleanCanvasContent();
   if (notesEl) {
     slides[activeSlideIdx].notes = notesEl.tagName === 'TEXTAREA' ? (notesEl.value || '') : (notesEl.innerHTML || '');
   }
@@ -562,7 +577,7 @@ function showShapeMenu() {
     item.addEventListener('click', () => {
       canvasEl.focus();
       document.execCommand('insertHTML', false, s.html);
-      slides[activeSlideIdx].content = canvasEl.innerHTML;
+      slides[activeSlideIdx].content = getCleanCanvasContent();
       updateThumb(activeSlideIdx);
       menu.remove();
     });
@@ -1087,7 +1102,7 @@ function showAnimationPanel() {
         const blockEl = el.closest('h1, h2, h3, p, ul, ol, div, li, table, span, img') || el;
         blockEl.dataset.animId = animId;
         targetSelector = `[data-anim-id="${animId}"]`;
-        slides[activeSlideIdx].content = canvasEl.innerHTML;
+        slides[activeSlideIdx].content = getCleanCanvasContent();
       }
     }
 
@@ -1100,7 +1115,7 @@ function showAnimationPanel() {
           const animId = 'anim-' + Date.now();
           block.dataset.animId = animId;
           targetSelector = `[data-anim-id="${animId}"]`;
-          slides[activeSlideIdx].content = canvasEl.innerHTML;
+          slides[activeSlideIdx].content = getCleanCanvasContent();
           break;
         }
       }
@@ -1425,7 +1440,7 @@ function moveLayer(direction) {
     if (prev) canvasEl.insertBefore(target, prev);
   }
 
-  slides[activeSlideIdx].content = canvasEl.innerHTML;
+  slides[activeSlideIdx].content = getCleanCanvasContent();
   updateThumb(activeSlideIdx);
 }
 
@@ -1481,7 +1496,7 @@ function showAlignMenu() {
                 const [prop, val] = s.split(':').map(x => x.trim());
                 if (prop && val) target.style[prop.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = val;
               });
-              slides[activeSlideIdx].content = canvasEl.innerHTML;
+              slides[activeSlideIdx].content = getCleanCanvasContent();
               updateThumb(activeSlideIdx);
             }
           }
@@ -1524,7 +1539,7 @@ function insertVideoInSlide(url) {
 
   canvasEl.focus();
   document.execCommand('insertHTML', false, html);
-  slides[activeSlideIdx].content = canvasEl.innerHTML;
+  slides[activeSlideIdx].content = getCleanCanvasContent();
   updateThumb(activeSlideIdx);
 }
 
@@ -1949,7 +1964,7 @@ function insertSVGShape(shape) {
   const html = `<div style="display:inline-block;margin:8px;cursor:move" contenteditable="false">${svg}</div>`;
   canvasEl.focus();
   document.execCommand('insertHTML', false, html);
-  slides[activeSlideIdx].content = canvasEl.innerHTML;
+  slides[activeSlideIdx].content = getCleanCanvasContent();
   updateThumb(activeSlideIdx);
 }
 
@@ -2542,7 +2557,7 @@ function initObjectSelection() {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       setTimeout(() => { slideIsDragging = false; }, 50);
-      slides[activeSlideIdx].content = canvasEl.innerHTML;
+      slides[activeSlideIdx].content = getCleanCanvasContent();
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
@@ -2644,7 +2659,7 @@ function startResize(el, pos, e) {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
     setTimeout(() => { slideIsResizing = false; }, 50);
-    slides[activeSlideIdx].content = canvasEl.innerHTML;
+    slides[activeSlideIdx].content = getCleanCanvasContent();
     updateThumb(activeSlideIdx);
   };
   document.addEventListener('mousemove', onMove);
@@ -2669,7 +2684,7 @@ function startRotate(el, e) {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
     setTimeout(() => { slideIsRotating = false; }, 50);
-    slides[activeSlideIdx].content = canvasEl.innerHTML;
+    slides[activeSlideIdx].content = getCleanCanvasContent();
     updateThumb(activeSlideIdx);
   };
   document.addEventListener('mousemove', onMove);
@@ -2713,7 +2728,7 @@ function groupSelectedObjects() {
   group.classList.add('slide-obj-selected');
   addResizeHandles(group);
 
-  slides[activeSlideIdx].content = canvasEl.innerHTML;
+  slides[activeSlideIdx].content = getCleanCanvasContent();
   updateThumb(activeSlideIdx);
 }
 
@@ -2731,7 +2746,7 @@ function ungroupSelectedObjects() {
     obj.remove();
   });
   clearObjectSelection();
-  slides[activeSlideIdx].content = canvasEl.innerHTML;
+  slides[activeSlideIdx].content = getCleanCanvasContent();
   updateThumb(activeSlideIdx);
 }
 
@@ -2770,7 +2785,7 @@ function initTextFormatBar() {
     btn.addEventListener('click', () => {
       document.execCommand(btn.dataset.cmd, false, null);
       canvasEl.focus();
-      slides[activeSlideIdx].content = canvasEl.innerHTML;
+      slides[activeSlideIdx].content = getCleanCanvasContent();
     });
   });
 
@@ -2779,7 +2794,7 @@ function initTextFormatBar() {
     if (!e.target.value) return;
     applyStyleToSelection('fontFamily', e.target.value);
     canvasEl.focus();
-    slides[activeSlideIdx].content = canvasEl.innerHTML;
+    slides[activeSlideIdx].content = getCleanCanvasContent();
   });
 
   // Font size
@@ -2787,42 +2802,42 @@ function initTextFormatBar() {
     if (!e.target.value) return;
     applyStyleToSelection('fontSize', e.target.value);
     canvasEl.focus();
-    slides[activeSlideIdx].content = canvasEl.innerHTML;
+    slides[activeSlideIdx].content = getCleanCanvasContent();
   });
 
   // Line height
   document.getElementById('slide-line-height')?.addEventListener('change', (e) => {
     applyBlockStyle('lineHeight', e.target.value);
     canvasEl.focus();
-    slides[activeSlideIdx].content = canvasEl.innerHTML;
+    slides[activeSlideIdx].content = getCleanCanvasContent();
   });
 
   // Letter spacing
   document.getElementById('slide-letter-spacing')?.addEventListener('change', (e) => {
     applyStyleToSelection('letterSpacing', e.target.value + 'px');
     canvasEl.focus();
-    slides[activeSlideIdx].content = canvasEl.innerHTML;
+    slides[activeSlideIdx].content = getCleanCanvasContent();
   });
 
   // Text color
   document.getElementById('slide-fmt-text-color')?.addEventListener('input', (e) => {
     document.execCommand('foreColor', false, e.target.value);
     canvasEl.focus();
-    slides[activeSlideIdx].content = canvasEl.innerHTML;
+    slides[activeSlideIdx].content = getCleanCanvasContent();
   });
 
   // Highlight color
   document.getElementById('slide-fmt-bg-color')?.addEventListener('input', (e) => {
     document.execCommand('hiliteColor', false, e.target.value);
     canvasEl.focus();
-    slides[activeSlideIdx].content = canvasEl.innerHTML;
+    slides[activeSlideIdx].content = getCleanCanvasContent();
   });
 
   // Clear formatting
   document.getElementById('slide-fmt-clear')?.addEventListener('click', () => {
     document.execCommand('removeFormat', false, null);
     canvasEl.focus();
-    slides[activeSlideIdx].content = canvasEl.innerHTML;
+    slides[activeSlideIdx].content = getCleanCanvasContent();
   });
 }
 
@@ -2997,7 +3012,7 @@ function showShapeLibrary() {
       const html = `<div style="display:inline-block;margin:8px;cursor:move" contenteditable="false">${svgHtml}</div>`;
       canvasEl.focus();
       document.execCommand('insertHTML', false, html);
-      slides[activeSlideIdx].content = canvasEl.innerHTML;
+      slides[activeSlideIdx].content = getCleanCanvasContent();
       updateThumb(activeSlideIdx);
       panel.remove();
     });
@@ -3121,7 +3136,7 @@ export function initSlideEditorEnhanced() {
         e.preventDefault();
         slideSelectedObjects.forEach((obj) => obj.remove());
         slideSelectedObjects = [];
-        slides[activeSlideIdx].content = canvasEl.innerHTML;
+        slides[activeSlideIdx].content = getCleanCanvasContent();
         updateThumb(activeSlideIdx);
       }
     }
@@ -3441,7 +3456,7 @@ function showTimelineAddAnimation(slide) {
         const blockEl = el.closest('h1, h2, h3, p, ul, ol, div, li, table, span, img') || el;
         blockEl.dataset.animId = animId;
         targetSelector = `[data-anim-id="${animId}"]`;
-        slides[activeSlideIdx].content = canvasEl.innerHTML;
+        slides[activeSlideIdx].content = getCleanCanvasContent();
       }
     }
 
@@ -3453,7 +3468,7 @@ function showTimelineAddAnimation(slide) {
           const animId = 'anim-' + Date.now();
           block.dataset.animId = animId;
           targetSelector = `[data-anim-id="${animId}"]`;
-          slides[activeSlideIdx].content = canvasEl.innerHTML;
+          slides[activeSlideIdx].content = getCleanCanvasContent();
           break;
         }
       }
@@ -4658,7 +4673,7 @@ function initEnhancedDragging() {
       document.removeEventListener('mouseup', onUp);
       clearSmartGuides();
       setTimeout(() => { slideIsDragging = false; }, 50);
-      slides[activeSlideIdx].content = canvasEl.innerHTML;
+      slides[activeSlideIdx].content = getCleanCanvasContent();
     };
 
     document.addEventListener('mousemove', onMove);

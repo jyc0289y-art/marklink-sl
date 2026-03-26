@@ -571,3 +571,31 @@
 .pivot-collapse-btn:hover {
   color: var(--text-primary);
 }
+
+/* ===== Print Styles ===== */
+@media print {
+  .sheet-toolbar,
+  .sheet-formula-bar,
+  .sheet-tabs,
+  .sheet-status-bar,
+  .sheet-find-bar,
+  .sheet-chart-panel,
+  .sheet-slicer-panel {
+    display: none !important;
+  }
+  .sheet-grid {
+    border: 1px solid #999 !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  .sheet-cell {
+    border: 1px solid #ccc !important;
+    color: #000 !important;
+    background: #fff !important;
+  }
+  .sheet-header-cell {
+    background: #eee !important;
+    color: #000 !important;
+    font-weight: bold;
+  }
+}

@@ -1217,3 +1217,23 @@
   pointer-events: none;
   z-index: -1;
 }
+
+/* ===== Print Styles ===== */
+@media print {
+  .cad-toolbar,
+  .cad-sidebar,
+  .cad-status-bar,
+  .cad-feature-tree,
+  .cad-radial-menu,
+  .cad-view-cube {
+    display: none !important;
+  }
+  .cad-viewport {
+    width: 100% !important;
+    height: auto !important;
+  }
+  .cad-viewport canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+}

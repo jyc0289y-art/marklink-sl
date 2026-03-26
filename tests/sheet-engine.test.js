@@ -154,6 +154,41 @@ describe('Formula evaluation', () => {
     setCell(sheet, 1, 0, '=IF(A1>5,10,20)');
     expect(getCell(sheet, 1, 0).value).toBe(20);
   });
+
+  it('evaluates IF with 2 args (no false_value): =IF(A1>5,10)', () => {
+    const sheet = createSheetData();
+    setCell(sheet, 0, 0, '3'); // A1 = 3
+    setCell(sheet, 1, 0, '=IF(A1>5,10)');
+    expect(getCell(sheet, 1, 0).value).toBe(false);
+  });
+
+  it('evaluates nested IF: =IF(A1>10,IF(A1>20,3,2),1)', () => {
+    const sheet = createSheetData();
+    setCell(sheet, 0, 0, '15'); // A1 = 15
+    setCell(sheet, 1, 0, '=IF(A1>10,IF(A1>20,3,2),1)');
+    expect(getCell(sheet, 1, 0).value).toBe(2);
+  });
+
+  it('evaluates IF with nested SUM: =IF(A1>0,SUM(A1:A2),0)', () => {
+    const sheet = createSheetData();
+    setCell(sheet, 0, 0, '5');  // A1 = 5
+    setCell(sheet, 1, 0, '10'); // A2 = 10
+    setCell(sheet, 2, 0, '=IF(A1>0,SUM(A1:A2),0)');
+    expect(getCell(sheet, 2, 0).value).toBe(15);
+  });
+
+  it('evaluates ISERROR correctly', () => {
+    const sheet = createSheetData();
+    setCell(sheet, 0, 0, '5');
+    setCell(sheet, 1, 0, '=ISERROR(A1)');
+    expect(getCell(sheet, 1, 0).value).toBe(false);
+  });
+
+  it('evaluates IFERROR with error: =IFERROR(1/0, 0)', () => {
+    const sheet = createSheetData();
+    setCell(sheet, 0, 0, '=IFERROR(VALUE("abc"), 0)');
+    expect(getCell(sheet, 0, 0).value).toBe(0);
+  });
 });
 
 // ─── 3. Circular reference detection ───

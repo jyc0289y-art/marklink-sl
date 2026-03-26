@@ -110,6 +110,46 @@ function bindEvents() {
   document.getElementById('pdf-fit')?.addEventListener('click', () => fitWidth());
   document.getElementById('pdf-fit-page')?.addEventListener('click', () => fitPage());
   document.getElementById('pdf-actual-size')?.addEventListener('click', () => setZoom(1.0));
+  document.getElementById('pdf-print')?.addEventListener('click', () => printPdf());
+
+  // Reading mode toggle
+  document.getElementById('pdf-reading-mode')?.addEventListener('change', (e) => {
+    applyReadingMode(e.target.value);
+  });
+
+  // Ctrl+scroll zoom (desktop)
+  containerEl?.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setZoom(scale + delta);
+  }, { passive: false });
+
+  // Pinch-to-zoom (mobile/trackpad)
+  let _pinchInitialDist = 0;
+  let _pinchInitialScale = 1;
+  containerEl?.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      _pinchInitialDist = Math.hypot(
+        e.touches[1].clientX - e.touches[0].clientX,
+        e.touches[1].clientY - e.touches[0].clientY
+      );
+      _pinchInitialScale = scale;
+    }
+  }, { passive: true });
+  containerEl?.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dist = Math.hypot(
+        e.touches[1].clientX - e.touches[0].clientX,
+        e.touches[1].clientY - e.touches[0].clientY
+      );
+      if (_pinchInitialDist > 0) {
+        const newScale = _pinchInitialScale * (dist / _pinchInitialDist);
+        setZoom(newScale);
+      }
+    }
+  }, { passive: false });
 
   // Scroll-based current page tracking
   containerEl?.addEventListener('scroll', debounce(() => {
@@ -374,7 +414,34 @@ async function openPdf() {
 }
 
 async function loadPdfData(data) {
-  pdfDoc = await pdfjsLib.getDocument({ data }).promise;
+  // Show loading progress for large files
+  const progressEl = document.getElementById('pdf-loading-progress');
+  const fillEl = document.getElementById('pdf-loading-fill');
+  const textEl = document.getElementById('pdf-loading-text');
+  if (progressEl) progressEl.style.display = 'flex';
+  if (textEl) textEl.textContent = 'Loading PDF…';
+  if (fillEl) fillEl.style.width = '10%';
+
+  const loadingTask = pdfjsLib.getDocument({ data });
+  loadingTask.onProgress = (progress) => {
+    if (progress.total > 0 && fillEl) {
+      const pct = Math.min(90, Math.round((progress.loaded / progress.total) * 90));
+      fillEl.style.width = pct + '%';
+    }
+  };
+
+  try {
+    pdfDoc = await loadingTask.promise;
+  } catch (err) {
+    if (progressEl) progressEl.style.display = 'none';
+    console.error('Failed to load PDF:', err);
+    alert('Failed to load PDF: ' + (err.message || err));
+    return;
+  }
+
+  if (fillEl) fillEl.style.width = '95%';
+  if (textEl) textEl.textContent = 'Rendering pages…';
+
   currentPage = 1;
   scale = 1.0;
 
@@ -387,6 +454,12 @@ async function loadPdfData(data) {
   await renderAllPages();
   await renderThumbnails();
   await loadPdfBookmarks();
+
+  if (fillEl) fillEl.style.width = '100%';
+  if (textEl) textEl.textContent = `Loaded ${pdfDoc.numPages} pages`;
+  setTimeout(() => {
+    if (progressEl) progressEl.style.display = 'none';
+  }, 1500);
 }
 
 // ─── Render ─────────────────────────────────────────────────
@@ -773,6 +846,67 @@ async function fitPage() {
   scale = Math.min(scaleW, scaleH);
   updatePageInfo();
   await renderAllPages();
+}
+
+// ─── Print ──────────────────────────────────────────────────
+async function printPdf() {
+  if (!pdfDoc) { alert('Open a PDF first.'); return; }
+
+  // Render all pages at 150dpi for print quality
+  const printScale = 1.5;
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) { alert('Pop-up blocked. Please allow pop-ups to print.'); return; }
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html><head><title>Print - ${_esc(currentName)}</title>
+    <style>
+      * { margin: 0; padding: 0; }
+      body { background: #fff; }
+      canvas { display: block; page-break-after: always; width: 100%; height: auto; }
+      canvas:last-child { page-break-after: avoid; }
+      @media print {
+        canvas { page-break-after: always; }
+        canvas:last-child { page-break-after: avoid; }
+      }
+    </style></head><body>
+  `);
+
+  for (let i = 0; i < pageOrder.length; i++) {
+    const id = pageOrder[i];
+    const pageNum = pageIdToNum(id);
+    if (!pageNum) continue;
+
+    const page = await pdfDoc.getPage(pageNum);
+    const rotation = pageRotations[pageNum] || 0;
+    const viewport = page.getViewport({ scale: printScale, rotation });
+    const canvas = printWindow.document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    printWindow.document.body.appendChild(canvas);
+  }
+
+  printWindow.document.write('</body></html>');
+  printWindow.document.close();
+
+  // Wait for images to settle, then trigger print
+  setTimeout(() => {
+    printWindow.focus();
+    printWindow.print();
+  }, 500);
+}
+
+// ─── Reading Mode ───────────────────────────────────────────
+function applyReadingMode(mode) {
+  if (!containerEl) return;
+  containerEl.classList.remove('pdf-mode-dark', 'pdf-mode-sepia');
+  if (mode === 'dark') {
+    containerEl.classList.add('pdf-mode-dark');
+  } else if (mode === 'sepia') {
+    containerEl.classList.add('pdf-mode-sepia');
+  }
 }
 
 // ─── Page Rotation ──────────────────────────────────────────

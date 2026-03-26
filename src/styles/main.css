@@ -1529,7 +1529,7 @@ html.rtl .lang-picker-grid {
     height: 16px;
   }
   /* Hide md-specific toolbar buttons from main toolbar on mobile */
-  #btn-bold, #btn-italic, #btn-heading, #btn-code, #btn-list, #btn-link, #btn-table,
+  #btn-bold, #btn-italic, #btn-strikethrough, #btn-heading, #btn-code, #btn-list, #btn-link, #btn-table,
   #btn-undo, #btn-redo {
     display: none !important;
   }

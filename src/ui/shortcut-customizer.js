@@ -22,6 +22,7 @@ const STORAGE_KEY = 'officelink-custom-shortcuts';
  */
 export const DEFAULT_SHORTCUTS = {
   // ─── File ───
+  newFile:         { keys: 'mod+n',           label: 'New File',             category: 'File' },
   save:            { keys: 'mod+s',           label: 'Save',                 category: 'File' },
   saveAs:          { keys: 'mod+shift+s',     label: 'Save As',              category: 'File' },
   open:            { keys: 'mod+o',           label: 'Open File',            category: 'File' },

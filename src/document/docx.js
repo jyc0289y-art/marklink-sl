@@ -98,6 +98,49 @@ async function extractDocxWithJSZip(arrayBuffer) {
   // Parse relationships file for hyperlinks and images
   const relsMap = await _parseRels(zip, parser);
 
+  // Parse numbering definitions to distinguish ordered vs unordered lists
+  const numTypeMap = {}; // numId → 'ol' | 'ul'
+  try {
+    const numXml = zip.file('word/numbering.xml');
+    if (numXml) {
+      const numText = await numXml.async('text');
+      const numDoc = parser.parseFromString(numText, 'application/xml');
+      // Build abstractNumId → format map
+      const abstractFormats = {};
+      const walkNum = (parent, localNameTarget) => {
+        const results = [];
+        const w = (node) => {
+          if (node.nodeType === 1) {
+            if (node.localName === localNameTarget) results.push(node);
+            for (const c of node.children) w(c);
+          }
+        };
+        w(parent);
+        return results;
+      };
+      // Parse abstractNum elements to detect bullet vs decimal
+      for (const absNum of walkNum(numDoc, 'abstractNum')) {
+        const absId = absNum.getAttribute('w:abstractNumId') || absNum.getAttribute('abstractNumId') || '';
+        const lvls = walkNum(absNum, 'lvl');
+        if (lvls.length > 0) {
+          const fmt = lvls[0];
+          const numFmt = walkNum(fmt, 'numFmt')[0];
+          const fmtVal = (numFmt?.getAttribute('w:val') || numFmt?.getAttribute('val') || '').toLowerCase();
+          abstractFormats[absId] = fmtVal === 'bullet' ? 'ul' : 'ol';
+        }
+      }
+      // Map numId → abstractNumId → type
+      for (const num of walkNum(numDoc, 'num')) {
+        const numId = num.getAttribute('w:numId') || num.getAttribute('numId') || '';
+        const absRef = walkNum(num, 'abstractNumId')[0];
+        const absId = absRef?.getAttribute('w:val') || absRef?.getAttribute('val') || '';
+        if (numId && absId && abstractFormats[absId]) {
+          numTypeMap[numId] = abstractFormats[absId];
+        }
+      }
+    }
+  } catch { /* numbering.xml is optional */ }
+
   // Namespace-agnostic query helpers
   const queryAll = (parent, localName) => {
     const results = [];
@@ -409,9 +452,9 @@ async function extractDocxWithJSZip(arrayBuffer) {
             const mergeVal = getAttr(vMerge, 'val');
             // val="restart" means start of merge; no val or val="" means continuation
             if (!mergeVal || mergeVal === 'continue') {
-              // This cell is a continuation — skip rendering (rowspan handled at restart)
-              // For simplicity, we output an empty cell since proper rowspan requires lookahead
-              tableHtml += `<td${cellAttrs} style="display:none"></td>`;
+              // This cell is a continuation of a vertical merge — skip it entirely.
+              // The restart cell above should have rowspan (handled via post-processing or
+              // a lookahead pass). Emitting nothing avoids broken table layout from hidden cells.
               continue;
             }
           }
@@ -464,19 +507,21 @@ async function extractDocxWithJSZip(arrayBuffer) {
     if (pPr) {
       const pStyle = queryFirst(pPr, 'pStyle');
       const styleVal = getAttr(pStyle, 'val');
-      if (/^Heading1|heading 1/i.test(styleVal)) tag = 'h1';
-      else if (/^Heading2|heading 2/i.test(styleVal)) tag = 'h2';
-      else if (/^Heading3|heading 3/i.test(styleVal)) tag = 'h3';
-      else if (/^Heading4|heading 4/i.test(styleVal)) tag = 'h4';
-      else if (/^Heading5|heading 5/i.test(styleVal)) tag = 'h5';
-      else if (/^Heading6|heading 6/i.test(styleVal)) tag = 'h6';
+      if (/^heading\s*1$/i.test(styleVal) || /^title$/i.test(styleVal)) tag = 'h1';
+      else if (/^heading\s*2$/i.test(styleVal) || /^subtitle$/i.test(styleVal)) tag = 'h2';
+      else if (/^heading\s*3$/i.test(styleVal)) tag = 'h3';
+      else if (/^heading\s*4$/i.test(styleVal)) tag = 'h4';
+      else if (/^heading\s*5$/i.test(styleVal)) tag = 'h5';
+      else if (/^heading\s*6$/i.test(styleVal)) tag = 'h6';
 
       // Check for list
       const numPr = queryFirst(pPr, 'numPr');
       if (numPr) {
         const numId = queryFirst(numPr, 'numId');
         const idVal = getAttr(numId, 'val');
-        listType = parseInt(idVal || '0') > 0 ? 'li' : null;
+        if (parseInt(idVal || '0') > 0) {
+          listType = numTypeMap[idVal] || 'ul'; // Use parsed numbering type, default to ul
+        }
       }
     }
 
@@ -487,15 +532,21 @@ async function extractDocxWithJSZip(arrayBuffer) {
     // Extract paragraph content (runs, hyperlinks, drawings)
     const paraContent = await processParaContent(p);
 
-    if (listType === 'li') {
-      html += `<li${styleAttr}>${paraContent}</li>\n`;
+    if (listType) {
+      html += `<li data-list-type="${listType}"${styleAttr}>${paraContent}</li>\n`;
     } else {
       html += `<${tag}${styleAttr}>${paraContent}</${tag}>\n`;
     }
   }
 
-  // Wrap consecutive <li> elements in <ul>
-  html = html.replace(/((?:<li[^>]*>.*?<\/li>\n?)+)/g, '<ul>\n$1</ul>\n');
+  // Wrap consecutive <li> elements in appropriate list tags (ol or ul)
+  // Group by data-list-type attribute
+  html = html.replace(/((?:<li data-list-type="(ol|ul)"[^>]*>.*?<\/li>\n?)+)/g, (match, _group, type) => {
+    // Use the type from the first li in the group
+    const firstType = type || 'ul';
+    const cleaned = match.replace(/ data-list-type="(?:ol|ul)"/g, '');
+    return `<${firstType}>\n${cleaned}</${firstType}>\n`;
+  });
 
   return html || '<p>(Empty document)</p>';
 }

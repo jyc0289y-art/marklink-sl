@@ -324,7 +324,10 @@ export async function initApp() {
           trackFileOpen(result.name);
         }
       } catch (e) {
-        if (e.name !== 'AbortError') console.error('Open file error:', e);
+        if (e.name !== 'AbortError') {
+          console.error('Open file error:', e);
+          toastError(`Failed to open file: ${e.message || 'Unknown error'}`);
+        }
       }
     });
   }
@@ -350,7 +353,10 @@ export async function initApp() {
           trackFileSave(result.name);
         }
       } catch (e) {
-        console.error('Save file error:', e);
+        if (e.name !== 'AbortError') {
+          console.error('Save file error:', e);
+          toastError(`Failed to save file: ${e.message || 'Unknown error'}`);
+        }
       }
     });
   }
@@ -391,6 +397,28 @@ export async function initApp() {
 
   // 14b. Keyboard shortcuts (unified system)
   initShortcuts({
+    newFile: () => {
+      const tab = getCurrentTab();
+      if (tab === 'markdown') {
+        setContent('');
+        updatePreviewImmediate('');
+        updateFileName('untitled.md');
+        setTabDirty('markdown', false);
+        toastInfo('New file');
+      } else if (tab === 'document') {
+        // Trigger new document by reloading editor with empty content
+        const docEl = document.getElementById('doc-editor');
+        if (docEl) {
+          docEl.innerHTML = '';
+          setDocFileName('untitled.docx').catch(() => {});
+          updateFileName('untitled.docx');
+          setTabDirty('document', false);
+          toastInfo('New document');
+        }
+      } else {
+        toastInfo('New file: switch to Markdown or Document tab');
+      }
+    },
     open: async () => {
       try {
         const tab = getCurrentTab();
@@ -689,7 +717,7 @@ export async function initApp() {
 
     document.addEventListener('fullscreenchange', () => {
       const isFs = !!document.fullscreenElement;
-      if (fullscreenIcon) fullscreenIcon.textContent = isFs ? '⛶' : '⛶';
+      if (fullscreenIcon) fullscreenIcon.textContent = isFs ? '⛋' : '⛶';
       fullscreenBtn.classList.toggle('active', isFs);
       document.body.classList.toggle('officelink-fullscreen', isFs);
 
@@ -906,7 +934,7 @@ export async function initApp() {
 
   // 32. Tab-close confirmation on beforeunload
   window.addEventListener('beforeunload', (e) => {
-    const tabs = ['markdown', 'document', 'sheet', 'slide'];
+    const tabs = ['markdown', 'document', 'sheet', 'slide', 'pdf', 'photo', 'cad', 'draw', 'calculator'];
     const hasDirty = tabs.some((t) => isTabDirty(t));
     if (hasDirty) {
       e.preventDefault();
