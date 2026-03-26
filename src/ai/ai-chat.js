@@ -9,6 +9,7 @@ import {
   measureLatency, getServerVersion, getModelInfo, streamChat
 } from './ollama-client.js';
 import { t } from '../ui/i18n.js';
+import { escapeHtml as _escapeHtml, sanitizeAiResponse } from '../utils/sanitize.js';
 
 let panelEl, chatListEl, chatInputEl, modelSelectEl, statusDotEl;
 let fullChatAreaEl, fullStatusDotEl, fullStatusTextEl, fullModelSelectEl;
@@ -183,7 +184,7 @@ function initUrlSettings() {
             showCorsHelp();
           });
         } else {
-          resultEl.innerHTML = `<span style="color:#f44336">${result.message}</span>`;
+          resultEl.innerHTML = `<span style="color:#f44336">${_escapeHtml(result.message || 'Connection failed')}</span>`;
         }
       }
     });
@@ -783,7 +784,7 @@ async function sendMessage() {
     // Save session after AI response
     saveSession();
   } catch (e) {
-    streamDiv.innerHTML = `<span class="ai-error">Error: ${e.message}</span>`;
+    streamDiv.innerHTML = `<span class="ai-error">Error: ${_escapeHtml(e.message)}</span>`;
     streamDiv.classList.remove('streaming');
   } finally {
     isSending = false;
@@ -1482,7 +1483,7 @@ function showSessionsModal() {
 }
 
 function escapeHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return _escapeHtml(s);
 }
 
 // Auto-restore last session on init

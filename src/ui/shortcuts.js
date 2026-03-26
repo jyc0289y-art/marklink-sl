@@ -1,7 +1,9 @@
 // OfficeLink SL — Global Keyboard Shortcuts
+// Supports custom shortcut bindings via shortcut-customizer
 
 import { switchTab, getCurrentTab } from './tabs.js';
 import { showToast, toastInfo } from './toast.js';
+import { matchesShortcut } from './shortcut-customizer.js';
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
@@ -28,7 +30,13 @@ export const initShortcuts = (actions) => {
       }
     }
 
-    // ─── F11 or Cmd+Enter: Fullscreen toggle ───
+    // ─── Custom shortcut matching (takes priority for remapped keys) ───
+
+    if (matchesShortcut(e, 'fullscreen')) {
+      e.preventDefault(); actions.fullscreen?.(); return;
+    }
+
+    // ─── F11 or Cmd+Enter: Fullscreen toggle (fallback) ───
     if (key === 'f11' || (mod && key === 'enter' && !shift && !alt)) {
       e.preventDefault();
       actions.fullscreen?.();
@@ -36,13 +44,15 @@ export const initShortcuts = (actions) => {
     }
 
     // ─── Ctrl+Tab / Ctrl+Shift+Tab: Next/Prev tab ───
+    if (matchesShortcut(e, 'nextTab')) {
+      e.preventDefault(); actions.nextTab?.(); return;
+    }
+    if (matchesShortcut(e, 'prevTab')) {
+      e.preventDefault(); actions.prevTab?.(); return;
+    }
     if (e.ctrlKey && key === 'tab') {
       e.preventDefault();
-      if (shift) {
-        actions.prevTab?.();
-      } else {
-        actions.nextTab?.();
-      }
+      if (shift) { actions.prevTab?.(); } else { actions.nextTab?.(); }
       return;
     }
 
@@ -53,100 +63,70 @@ export const initShortcuts = (actions) => {
       return;
     }
 
-    // ─── Mod+O: Open file ───
-    if (mod && key === 'o' && !shift && !alt) {
-      e.preventDefault();
-      actions.open?.();
-      return;
+    // ─── Open ───
+    if (matchesShortcut(e, 'open')) {
+      e.preventDefault(); actions.open?.(); return;
     }
 
-    // ─── Mod+S: Save / Mod+Shift+S: Save As ───
-    if (mod && key === 's') {
-      e.preventDefault();
-      if (shift) {
-        actions.saveAs?.();
-      } else {
-        actions.save?.();
-      }
-      return;
+    // ─── Save / Save As ───
+    if (matchesShortcut(e, 'saveAs')) {
+      e.preventDefault(); actions.saveAs?.(); return;
+    }
+    if (matchesShortcut(e, 'save')) {
+      e.preventDefault(); actions.save?.(); return;
     }
 
-    // ─── Mod+Z: Undo / Mod+Shift+Z: Redo ───
-    if (mod && key === 'z') {
-      // Don't prevent default for contenteditable/input — let browser handle natively
+    // ─── Undo / Redo ───
+    if (matchesShortcut(e, 'redo') || matchesShortcut(e, 'redoAlt')) {
       const active = document.activeElement;
       const isNativeEditable = active?.isContentEditable ||
         active?.tagName === 'INPUT' || active?.tagName === 'TEXTAREA';
-      if (!isNativeEditable) {
-        e.preventDefault();
-      }
-      if (shift) {
-        actions.redo?.();
-      } else {
-        actions.undo?.();
-      }
-      return;
-    }
-
-    // ─── Mod+Y: Redo (Windows convention) ───
-    if (mod && key === 'y' && !shift && !alt) {
-      const active = document.activeElement;
-      const isNativeEditable = active?.isContentEditable ||
-        active?.tagName === 'INPUT' || active?.tagName === 'TEXTAREA';
-      if (!isNativeEditable) {
-        e.preventDefault();
-      }
+      if (!isNativeEditable) e.preventDefault();
       actions.redo?.();
       return;
     }
-
-    // ─── Mod+P: Print/Export PDF ───
-    if (mod && key === 'p' && !shift && !alt) {
-      e.preventDefault();
-      actions.print?.();
+    if (matchesShortcut(e, 'undo')) {
+      const active = document.activeElement;
+      const isNativeEditable = active?.isContentEditable ||
+        active?.tagName === 'INPUT' || active?.tagName === 'TEXTAREA';
+      if (!isNativeEditable) e.preventDefault();
+      actions.undo?.();
       return;
     }
 
-    // ─── Mod+F: Find in current editor ───
-    if (mod && key === 'f' && !shift && !alt) {
-      e.preventDefault();
-      actions.find?.();
-      return;
+    // ─── Print ───
+    if (matchesShortcut(e, 'print')) {
+      e.preventDefault(); actions.print?.(); return;
     }
 
-    // ─── Mod+,: Settings/Preferences ───
-    if (mod && key === ',') {
-      e.preventDefault();
-      actions.settings?.();
-      return;
+    // ─── Find ───
+    if (matchesShortcut(e, 'find')) {
+      e.preventDefault(); actions.find?.(); return;
     }
 
-    // ─── Mod+B: Bold ───
-    if (mod && key === 'b' && !shift && !alt) {
-      e.preventDefault();
-      actions.bold?.();
-      return;
+    // ─── Settings ───
+    if (matchesShortcut(e, 'settings')) {
+      e.preventDefault(); actions.settings?.(); return;
     }
 
-    // ─── Mod+I: Italic ───
-    if (mod && key === 'i' && !shift && !alt) {
-      e.preventDefault();
-      actions.italic?.();
-      return;
+    // ─── Bold ───
+    if (matchesShortcut(e, 'bold')) {
+      e.preventDefault(); actions.bold?.(); return;
     }
 
-    // ─── Mod+/: Show keyboard shortcuts help ───
-    if (mod && key === '/') {
-      e.preventDefault();
-      actions.showShortcuts?.();
-      return;
+    // ─── Italic ───
+    if (matchesShortcut(e, 'italic')) {
+      e.preventDefault(); actions.italic?.(); return;
     }
 
-    // ─── Mod+Shift+V: Toggle preview-only mode ───
-    if (mod && shift && key === 'v') {
-      e.preventDefault();
-      actions.togglePreviewOnly?.();
-      return;
+    // ─── Show Shortcuts ───
+    if (matchesShortcut(e, 'showShortcuts')) {
+      e.preventDefault(); actions.showShortcuts?.(); return;
+    }
+
+    // ─── Toggle Preview Only ───
+    if (matchesShortcut(e, 'togglePreview')) {
+      e.preventDefault(); actions.togglePreviewOnly?.(); return;
     }
   });
 };

@@ -600,3 +600,325 @@
 .settings-modal {
   font-family: var(--custom-font-family, inherit);
 }
+
+/* ═══════════════════════════════════════════════════════
+   Keyboard Shortcut Customizer
+   ═══════════════════════════════════════════════════════ */
+
+.shortcut-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.shortcut-row:hover {
+  background: var(--hover-bg);
+}
+
+.shortcut-row.shortcut-capture-active {
+  background: var(--brand-color-light);
+  outline: 2px solid var(--brand-color);
+}
+
+.shortcut-action-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.shortcut-keys-display {
+  min-width: 100px;
+  text-align: center;
+}
+
+.shortcut-keys-display.shortcut-custom {
+  position: relative;
+}
+
+.shortcut-keys-display.shortcut-custom::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -6px;
+  width: 6px;
+  height: 6px;
+  background: var(--brand-color);
+  border-radius: 50%;
+}
+
+.shortcut-kbd {
+  display: inline-block;
+  padding: 3px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.shortcut-kbd.shortcut-capturing {
+  background: var(--brand-color);
+  color: #fff;
+  border-color: var(--brand-color);
+  animation: shortcut-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes shortcut-pulse {
+  from { opacity: 1; }
+  to { opacity: 0.6; }
+}
+
+.shortcut-row-actions {
+  display: flex;
+  gap: 4px;
+  min-width: 90px;
+  justify-content: flex-end;
+}
+
+.shortcut-edit-btn,
+.shortcut-reset-btn {
+  font-size: 11px !important;
+  padding: 3px 8px !important;
+}
+
+.shortcut-bottom-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+/* ═══════════════════════════════════════════════════════
+   UI Transition Animations
+   ═══════════════════════════════════════════════════════ */
+
+/* Theme toggle: smooth color transition on all themed elements */
+html,
+body,
+.toolbar,
+.tab-bar,
+.tab-item,
+.sidebar,
+.status-bar,
+.settings-overlay,
+.settings-modal,
+.pane-header,
+.md-toolbar,
+.doc-toolbar,
+#doc-editor,
+.sheet-container,
+.slide-editor,
+.pdf-viewer-container,
+.calculator-container,
+.ai-chat-panel,
+.md-stats-bar,
+.toolbar-btn,
+.doc-status-bar {
+  transition: background-color 0.3s ease,
+              color 0.3s ease,
+              border-color 0.3s ease;
+}
+
+/* Tab switching: fade animation for app views */
+.app-view {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.app-view.active {
+  opacity: 1;
+}
+
+/* Modal open animation (generic) */
+.modal-animate-in {
+  animation: modal-fade-scale-in 0.2s ease forwards;
+}
+
+.modal-animate-out {
+  animation: modal-fade-scale-out 0.2s ease forwards;
+}
+
+@keyframes modal-fade-scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes modal-fade-scale-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.95); }
+}
+
+/* Sidebar slide animation */
+.sidebar {
+  transform: translateX(-100%);
+  transition: transform 0.25s ease, width 0.2s ease;
+}
+
+.sidebar:not(.hidden) {
+  transform: translateX(0);
+}
+
+/* Toolbar tooltip fade-in with upward motion */
+.toolbar-btn[title]::after {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.toolbar-btn {
+  position: relative;
+}
+
+.toolbar-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: var(--tooltip-bg, #222);
+  color: var(--tooltip-text, #fff);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 9999;
+}
+
+.toolbar-btn:hover .toolbar-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Drop zone pulse animation on drag enter */
+.drop-overlay:not(.hidden) {
+  animation: drop-overlay-fade-in 0.2s ease;
+}
+
+@keyframes drop-overlay-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.drop-overlay.drag-active .drop-message {
+  animation: drop-zone-appear 0.3s ease,
+             drop-zone-pulse-enhanced 1s ease-in-out 0.3s infinite alternate;
+}
+
+@keyframes drop-zone-pulse-enhanced {
+  from {
+    border-color: var(--brand-color);
+    box-shadow: 0 0 0 0 rgba(41, 151, 255, 0.3);
+    transform: scale(1);
+  }
+  to {
+    border-color: rgba(41, 151, 255, 0.8);
+    box-shadow: 0 0 30px 8px rgba(41, 151, 255, 0.2);
+    transform: scale(1.02);
+  }
+}
+
+/* ── Status Bar Enhancement ── */
+.status-bar {
+  cursor: default;
+}
+
+.status-bar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.15s;
+  font-size: inherit;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.status-bar-item:hover {
+  background: var(--hover-bg);
+}
+
+.status-bar-filename {
+  font-weight: 600;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-bar-separator {
+  width: 1px;
+  height: 12px;
+  background: var(--border-color);
+  margin: 0 4px;
+  opacity: 0.5;
+}
+
+/* Status bar context menu (right-click quick toggles) */
+.status-bar-context-menu {
+  position: fixed;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  padding: 4px 0;
+  min-width: 180px;
+  z-index: 9999;
+  animation: modal-fade-scale-in 0.15s ease;
+}
+
+.status-bar-context-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+
+.status-bar-context-item:hover {
+  background: var(--hover-bg);
+}
+
+.status-bar-context-check {
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .app-view,
+  .sidebar,
+  .shortcut-kbd,
+  .toolbar-tooltip,
+  .status-bar-item,
+  .drop-overlay,
+  .modal-animate-in,
+  .modal-animate-out,
+  html, body, .toolbar, .tab-bar, .tab-item,
+  .status-bar, .settings-overlay, .settings-modal {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

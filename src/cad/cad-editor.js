@@ -3,6 +3,7 @@
 
 // Three.js loaded from CDN via dynamic import with retry logic
 // Uses string concat to prevent Vite from analyzing these imports
+import { escapeHtml as _esc } from '../utils/sanitize.js';
 let THREE, OrbitControls, TransformControls, STLExporter, OBJExporter, GLTFExporter, STLLoader, OBJLoader, GLTFLoader;
 
 const CDN = 'https://cdn.jsdelivr.net/npm/three@0.162.0';
@@ -1023,7 +1024,7 @@ function updateSceneTree() {
     item.className = 'cad-tree-item' + (obj === selectedObject ? ' selected' : '');
     item.innerHTML = `
       <span class="tree-icon">${getObjectIcon(obj.userData.type)}</span>
-      <span class="tree-name" title="${obj.name}">${obj.name}</span>
+      <span class="tree-name" title="${_esc(obj.name)}">${_esc(obj.name)}</span>
       <span class="tree-vis">${obj.visible ? '👁' : '🚫'}</span>
     `;
 

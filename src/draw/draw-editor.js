@@ -1,4 +1,5 @@
 // OfficeLink SL — Drawing / Whiteboard Editor (Canvas 2D)
+import { escapeHtml as _esc } from '../utils/sanitize.js';
 
 /* ==================== State ==================== */
 let canvas, ctx, overlayCanvas, overlayCtx;
@@ -238,7 +239,7 @@ function renderLayerList() {
   list.innerHTML = layers.map((l, i) => `
     <div class="draw-layer-item${i === activeLayerIdx ? ' active' : ''}" data-idx="${i}">
       <button class="draw-layer-vis" data-idx="${i}" title="Toggle visibility">${l.visible ? '👁' : '⊘'}</button>
-      <span class="draw-layer-name">${l.name}</span>
+      <span class="draw-layer-name">${_esc(l.name)}</span>
       <span class="draw-layer-count">(${l.objects.length})</span>
     </div>
   `).reverse().join('');

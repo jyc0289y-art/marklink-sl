@@ -5,6 +5,7 @@
 
 import { WebGLEngine, DEFAULT_PARAMS, cloneParams } from './webgl-engine.js';
 import { analyzeLocal, analyzeWithOllama, analyzeWithClaude, checkOllamaStatus, getApiKey, setApiKey } from './auto-edit.js';
+import { escapeHtml as _esc } from '../utils/sanitize.js';
 
 let engine = null;
 let currentParams = cloneParams(DEFAULT_PARAMS);
@@ -1874,7 +1875,7 @@ async function generateGif(modal) {
     };
     preview.appendChild(dlBtn);
   } catch (e) {
-    preview.innerHTML = `<p style="color:#e74c3c">Error: ${e.message}</p>`;
+    preview.innerHTML = `<p style="color:#e74c3c">Error: ${_esc(e.message)}</p>`;
   }
 }
 
@@ -2078,7 +2079,7 @@ function showBatchModal() {
         batchFiles.push(f);
         const item = document.createElement('div');
         item.className = 'batch-file-item';
-        item.innerHTML = `<span>${f.name}</span><span>${(f.size / 1024).toFixed(0)} KB</span>`;
+        item.innerHTML = `<span>${_esc(f.name)}</span><span>${(f.size / 1024).toFixed(0)} KB</span>`;
         list.appendChild(item);
       });
       input.remove();
@@ -3562,7 +3563,7 @@ function showBatchResizeDialog() {
         brFiles.push(f);
         const item = document.createElement('div');
         item.style.cssText = 'display:flex;justify-content:space-between;padding:4px 8px;font-size:12px;border-bottom:1px solid var(--border-color,#eee);';
-        item.innerHTML = `<span>${f.name}</span><span>${(f.size / 1024).toFixed(0)} KB</span>`;
+        item.innerHTML = `<span>${_esc(f.name)}</span><span>${(f.size / 1024).toFixed(0)} KB</span>`;
         list.appendChild(item);
       });
       modal.querySelector('#br-count').textContent = `${brFiles.length} images`;

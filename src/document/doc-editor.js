@@ -1,6 +1,7 @@
 // OfficeLink SL — Document Editor (WYSIWYG)
 
 import { t } from '../ui/i18n.js';
+import { escapeHtml as _escapeHtmlShared } from '../utils/sanitize.js';
 
 let editorEl = null;
 let dirty = false;
@@ -3488,7 +3489,7 @@ function showDocCompare() {
 }
 
 function escapeHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return _escapeHtmlShared(str);
 }
 
 function computeWordDiff(oldText, newText) {

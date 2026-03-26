@@ -45,6 +45,9 @@ import { initErrorBoundary, safeSetItem } from './ui/error-boundary.js';
 import { initTemplates, showTemplatePicker } from './ui/templates.js';
 import { initPluginSystem, notifyFileSave } from './plugins/plugin-manager.js';
 import { initPerfDashboard } from './ui/perf-dashboard.js';
+import { initShortcutCustomizer } from './ui/shortcut-customizer.js';
+import { initEnhancedStatusBar } from './ui/status-bar-enhanced.js';
+import { escapeHtml, sanitizeAiResponse, sanitizeFileName, sanitizeUrlParam } from './utils/sanitize.js';
 
 // Default welcome content
 const WELCOME_MD = `# Welcome to OfficeLink SL ✦
@@ -326,6 +329,9 @@ export async function initApp() {
   // 14. Toast notifications (init early — used by shortcuts + auto-save)
   initToast();
 
+  // 14a. Shortcut customizer — load custom bindings before shortcuts init
+  initShortcutCustomizer();
+
   // 14b. Keyboard shortcuts (unified system)
   initShortcuts({
     open: async () => {
@@ -516,12 +522,13 @@ export async function initApp() {
 
   // Handle browser back/forward for tab routing
   window.addEventListener('popstate', (e) => {
-    if (e.state && e.state.tab) {
+    const VALID_TABS_POP = ['markdown', 'document', 'sheet', 'slide', 'pdf', 'photo', 'cad', 'draw', 'calculator', 'ai'];
+    if (e.state && e.state.tab && VALID_TABS_POP.includes(e.state.tab)) {
       switchTab(e.state.tab);
     } else {
-      const params = new URLSearchParams(window.location.search);
-      const tab = params.get('tab') || 'markdown';
-      switchTab(tab);
+      const p = new URLSearchParams(window.location.search);
+      const t = p.get('tab');
+      switchTab(VALID_TABS_POP.includes(t) ? t : 'markdown');
     }
   });
 
@@ -691,8 +698,8 @@ export async function initApp() {
   // 27. Zoom controls
   initZoomControls();
 
-  // 29. Status bar
-  initStatusBar();
+  // 29. Enhanced Status Bar (file name, editor info, right-click toggles)
+  initEnhancedStatusBar();
 
   // 28. Undo/Redo toolbar buttons (with toast feedback)
   document.getElementById('btn-undo')?.addEventListener('click', () => {
@@ -708,7 +715,9 @@ export async function initApp() {
 
   // 24. URL query: auto-switch tab (for PWA shortcuts & deep links)
   const params = new URLSearchParams(window.location.search);
-  const tabParam = params.get('tab');
+  const VALID_TABS = ['markdown', 'document', 'sheet', 'slide', 'pdf', 'photo', 'cad', 'draw', 'calculator', 'ai'];
+  const rawTabParam = params.get('tab');
+  const tabParam = VALID_TABS.includes(rawTabParam) ? rawTabParam : null;
   if (tabParam) {
     switchTab(tabParam);
     if (params.get('fullscreen') === '1') {
@@ -1265,7 +1274,7 @@ function initAutoSave() {
         setTimeout(() => {
           try {
             const docEditor = document.getElementById('doc-editor');
-            if (docEditor && state.document) docEditor.innerHTML = state.document;
+            if (docEditor && state.document) docEditor.innerHTML = sanitizeAiResponse(state.document);
           } catch {}
         }, 500);
       }
@@ -1442,9 +1451,9 @@ function showVersionHistory() {
     const sizeKB = (new Blob([v.content]).size / 1024).toFixed(1);
 
     item.innerHTML = `
-      <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${typeIcon} ${v.fileName}${i === 0 ? ' <span style="font-size:10px;color:var(--brand-color,#0071e3);font-weight:700">CURRENT</span>' : ''}</div>
-      <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${timeStr}</div>
-      <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${v.label} • ${sizeKB} KB</div>
+      <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${typeIcon} ${escapeHtml(v.fileName)}${i === 0 ? ' <span style="font-size:10px;color:var(--brand-color,#0071e3);font-weight:700">CURRENT</span>' : ''}</div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${escapeHtml(timeStr)}</div>
+      <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${escapeHtml(v.label)} • ${sizeKB} KB</div>
     `;
 
     item.addEventListener('click', () => {
@@ -1455,7 +1464,7 @@ function showVersionHistory() {
         previewPane.textContent = v.content;
       } else {
         previewPane.style.cssText = previewBaseStyle + 'padding:24px';
-        previewPane.innerHTML = v.content;
+        previewPane.innerHTML = sanitizeAiResponse(v.content);
       }
 
       // Add restore button
@@ -1470,10 +1479,10 @@ function showVersionHistory() {
           setContent(v.content);
         } else if (v.tab === 'document') {
           const docEditor = document.getElementById('doc-editor');
-          if (docEditor) docEditor.innerHTML = v.content;
+          if (docEditor) docEditor.innerHTML = sanitizeAiResponse(v.content);
         } else if (v.tab === 'slide') {
           const canvas = document.getElementById('slide-canvas');
-          if (canvas) canvas.innerHTML = v.content;
+          if (canvas) canvas.innerHTML = sanitizeAiResponse(v.content);
         }
         overlay.remove();
       });
@@ -1687,8 +1696,8 @@ function showTemplateLibrary() {
     const items = templates[tab] || [];
     grid.innerHTML = items.map((t, i) => `
       <button class="tpl-card" data-idx="${i}" style="padding:20px;border:1px solid var(--border-color);border-radius:12px;background:var(--hover-bg);cursor:pointer;text-align:center;transition:all 0.2s">
-        <span style="font-size:36px;display:block;margin-bottom:8px">${t.icon}</span>
-        <span style="font-size:14px;font-weight:600;color:var(--text-primary)">${t.name}</span>
+        <span style="font-size:36px;display:block;margin-bottom:8px">${escapeHtml(t.icon)}</span>
+        <span style="font-size:14px;font-weight:600;color:var(--text-primary)">${escapeHtml(t.name)}</span>
       </button>
     `).join('');
 
@@ -1729,7 +1738,7 @@ function applyTemplate(type, template) {
     if (docTab) docTab.click();
     const editor = document.getElementById('doc-editor');
     if (editor) {
-      editor.innerHTML = template.content;
+      editor.innerHTML = sanitizeAiResponse(template.content);
     }
   } else if (type === 'sheet') {
     // Switch to sheet tab and fill data
@@ -2047,7 +2056,7 @@ const showTabLoading = (tabName, text = 'Loading...') => {
   view.style.position = 'relative';
   const overlay = document.createElement('div');
   overlay.className = 'tab-loading-overlay';
-  overlay.innerHTML = `<div class="tab-loading-spinner"></div><div class="tab-loading-text">${text}</div>`;
+  overlay.innerHTML = `<div class="tab-loading-spinner"></div><div class="tab-loading-text">${escapeHtml(text)}</div>`;
   view.appendChild(overlay);
 };
 

@@ -1,5 +1,6 @@
 // OfficeLink SL — Global Error Boundary & Recovery
 import { showToast, toastError, toastWarning, initToast } from './toast.js';
+import { escapeHtml as _escapeHtmlUtil } from '../utils/sanitize.js';
 
 let errorCount = 0;
 const ERROR_THRESHOLD = 5; // show recovery dialog after N errors in 60s
@@ -146,11 +147,7 @@ const truncate = (str, max) => {
 /**
  * Escape HTML to prevent XSS in error messages
  */
-const escapeHtml = (str) => {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-};
+const escapeHtml = (str) => _escapeHtmlUtil(str);
 
 // ── CDN Load with Retry ──
 

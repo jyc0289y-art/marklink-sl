@@ -3,6 +3,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { t } from '../ui/i18n.js';
+import { escapeHtml as _esc } from '../utils/sanitize.js';
 
 // Set worker source
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -1907,8 +1908,8 @@ const renderMergeFileList = () => {
 
     item.innerHTML = `
       <span class="merge-drag-handle">☰</span>
-      <span class="merge-file-name">${file.name}</span>
-      <input type="text" class="merge-page-range" placeholder="All" data-idx="${idx}" value="${file.pageRange || ''}" title="e.g. 1-3, 5" />
+      <span class="merge-file-name">${_esc(file.name)}</span>
+      <input type="text" class="merge-page-range" placeholder="All" data-idx="${idx}" value="${_esc(file.pageRange || '')}" title="e.g. 1-3, 5" />
       <span class="merge-page-info">(${file.pageCount}p)</span>
       <button class="merge-file-remove" data-idx="${idx}">&times;</button>
     `;

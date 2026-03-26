@@ -9,6 +9,7 @@ import { getOllamaUrl, setOllamaUrl } from '../ai/ollama-client.js';
 import { toastSuccess, toastError, toastInfo } from './toast.js';
 import { broadcastThemeChange, broadcastLangChange } from './tab-sync.js';
 import { getPluginList, enablePlugin, disablePlugin } from '../plugins/plugin-manager.js';
+import { buildShortcutsSettingsPanel } from './shortcut-customizer.js';
 
 const SETTINGS_STORAGE_KEY = 'officelink-settings';
 let settingsOverlay = null;
@@ -99,6 +100,7 @@ export const showSettings = () => {
     { id: 'general', label: 'General', icon: '&#9881;' },
     { id: 'appearance', label: 'Appearance', icon: '&#127912;' },
     { id: 'editor', label: 'Editor', icon: '&#9998;' },
+    { id: 'shortcuts', label: 'Shortcuts', icon: '&#9000;' },
     { id: 'plugins', label: 'Plugins', icon: '&#128268;' },
     { id: 'ai', label: 'AI', icon: '&#129302;' },
     { id: 'storage', label: 'Storage', icon: '&#128190;' },
@@ -121,6 +123,7 @@ export const showSettings = () => {
       case 'general': renderGeneralTab(contentArea, settings); break;
       case 'appearance': renderAppearanceTab(contentArea); break;
       case 'editor': renderEditorTab(contentArea, settings); break;
+      case 'shortcuts': renderShortcutsTab(contentArea); break;
       case 'plugins': renderPluginsTab(contentArea); break;
       case 'ai': renderAiTab(contentArea, settings); break;
       case 'storage': renderStorageTab(contentArea); break;
@@ -515,6 +518,11 @@ const renderPluginsTab = (container) => {
 
     container.appendChild(pluginRow);
   });
+};
+
+const renderShortcutsTab = (container) => {
+  const panel = buildShortcutsSettingsPanel();
+  container.appendChild(panel);
 };
 
 // ── Helpers ──

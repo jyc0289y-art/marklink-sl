@@ -3,6 +3,12 @@
 // Uses Ollama local LLM via ollama-client.js
 
 import { chat, streamChat, checkOllamaStatus, listModels } from './ollama-client.js';
+import { escapeHtml as _escapeHtmlBase, sanitizeAiResponse } from '../utils/sanitize.js';
+
+/** Sanitize AI-generated HTML for insertion into slide/doc DOM */
+function sanitizeAiHtml(html) {
+  return sanitizeAiResponse(html);
+}
 
 // ─── State ───────────────────────────────────────────────
 let ollamaOk = false;
@@ -284,7 +290,7 @@ function showAiPanel(title, bodyHtml, onSubmit) {
 }
 
 function escapeHtml(s) {
-  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+  return _escapeHtmlBase(s || '').replace(/\n/g, '<br>');
 }
 
 
@@ -717,11 +723,12 @@ function showSlideAiPanel() {
         `Create slide content about: ${desc}`
       );
       if (result) {
-        resultEl.innerHTML = `<div class="ai-slide-preview">${result}</div>
+        const safeResult = sanitizeAiHtml(result);
+        resultEl.innerHTML = `<div class="ai-slide-preview">${safeResult}</div>
           <button class="ai-cowork-btn small insert-slide">Insert into Slide</button>`;
         resultEl.querySelector('.insert-slide')?.addEventListener('click', () => {
           const canvas = document.getElementById('slide-canvas');
-          if (canvas) { canvas.innerHTML = result; canvas.dispatchEvent(new Event('input')); }
+          if (canvas) { canvas.innerHTML = safeResult; canvas.dispatchEvent(new Event('input')); }
           removeOverlay();
           showToast('Content inserted into slide');
         });
@@ -748,7 +755,7 @@ function showSlideAiPanel() {
           const notesEl = document.getElementById('slide-notes');
           if (notesEl) {
             if (notesEl.tagName === 'TEXTAREA') notesEl.value = result;
-            else notesEl.innerHTML = result.replace(/\n/g, '<br>');
+            else notesEl.innerHTML = escapeHtml(result);
             notesEl.dispatchEvent(new Event('input'));
           }
           removeOverlay();
@@ -815,7 +822,7 @@ function applySlideOutline(outlineText) {
     const title = lines[0]?.replace(/^[\-\*#]+\s*/, '').trim() || `Slide ${i + 1}`;
     const bullets = lines.slice(1).map((l) => l.replace(/^[\-\*•]\s*/, '').trim()).filter((l) => l);
 
-    const html = `<h2>${title}</h2><ul>${bullets.map((b) => `<li>${b}</li>`).join('')}</ul>`;
+    const html = `<h2>${_escapeHtmlBase(title)}</h2><ul>${bullets.map((b) => `<li>${_escapeHtmlBase(b)}</li>`).join('')}</ul>`;
     setTimeout(() => {
       canvas.innerHTML = html;
       canvas.dispatchEvent(new Event('input'));
