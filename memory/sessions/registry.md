@@ -27,4 +27,26 @@
 | P11.23wc | Calculator 3D/Complex (에이전트 서브세션) | 2026-03-22 | P11.12wc | 종료 |
 | P11.24wc | AI Connection UX Fix (에이전트 서브세션) | 2026-03-22 | P11.12wc | 종료 |
 | P11.25wc | AI Co-work Deep Integration (에이전트 서브세션) | 2026-03-22 | P11.24wc | 진행중 |
-| P11.26wc | OfficeLink SL Phase 13 | 2026-03-22 | P11.12wc | 진행중 |
+| P11.26wc | OfficeLink SL 자율개발병렬모드 메가세션 (7사이클, 20커밋) | 2026-03-26 | P11.12wc | 종료 |
+| P11.27wc | OfficeLink SL Phase 14 (Tutorial/PWA/CAD) | 2026-03-23 | P11.26wc | 진행중 |
+| P9.3wc | Doc Editor Bugfix & Enhancement | 2026-03-24 | 없음 | 진행중 |
+| P11.28wc | Light Mode & Mobile Responsive Fix | 2026-03-24 | P11.27wc | 진행중 |
+| P11.29wc | PDF/Slide Enhancement (Viewer & Editor) | 2026-03-24 | P11.28wc | 진행중 |
+| P11.30wc | Sheet Editor Bug Fixes + Features | 2026-03-24 | P11.29wc | 진행중 |
+| P9.4wc | File Import/Export Improvements (All Editors) | 2026-03-25 | 없음 | 진행중 |
+| P11.31wc | i18n Missing Keys Fix | 2026-03-25 | P11.30wc | 진행중 |
+| P11.31wc | Unified Keyboard Shortcuts & UX | 2026-03-25 | P11.30wc | 진행중 |
+| P11.32wc | Visual QA & Light Mode Fix (CAD viewport) | 2026-03-25 | P11.30wc | 종료 |
+| P9.5wc | Sheet Engine Unit Tests (vitest) | 2026-03-25 | 없음 | 진행중 |
+| P9.6wc | Bundle Optimization & Loading Performance | 2026-03-25 | 없음 | 진행중 |
+| P11.33wc | Print Preview & Drag-Drop Enhancement | 2026-03-25 | P11.30wc | 진행중 |
+| P11.34wc | Recent Files & Performance Monitoring | 2026-03-25 | P11.30wc | 진행중 |
+| P11.35wc | Sheet Chart Enhancement & Template System | 2026-03-25 | P11.30wc | 진행중 |
+| P11.36wc | Theme Customizer & Settings Panel & Tab Sync | 2026-03-26 | P11.35wc | 진행중 |
+| P9.7wc | Code Quality, Tests & JSDoc | 2026-03-26 | 없음 | 진행중 |
+| P11.37wc | Live Preview & Presentation Enhancement | 2026-03-26 | P11.36wc | 진행중 |
+| P11.38wc | Plugin System & Perf Dashboard & Undo/Redo | 2026-03-26 | P11.37wc | 진행중 |
+| P11.39wc | Keyboard Shortcuts Customizer & UI Animations & Status Bar | 2026-03-26 | P11.38wc | 진행중 |
+| P11.40wc | Security Audit & XSS Hardening | 2026-03-26 | P11.39wc | 진행중 |
+| P11.41wc | CAD Editor Onshape UX Overhaul | 2026-03-26 | P11.40wc | 진행중 |
+| P11.42wc | CAD Sketch Mode + Extrude/Revolve Workflow | 2026-03-26 | P11.41wc | 진행중 |
