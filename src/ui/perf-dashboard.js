@@ -387,11 +387,29 @@ export const showPerfDashboard = () => {
 };
 
 /**
- * Close the performance dashboard
+ * Close the performance dashboard and stop background tracking
  */
 export const closeDashboard = () => {
   dashboardOverlay?.remove();
   dashboardOverlay = null;
+
+  // Stop memory tracking interval
+  if (memoryInterval) {
+    clearInterval(memoryInterval);
+    memoryInterval = null;
+  }
+
+  // Stop FPS tracking
+  if (animFrameId) {
+    cancelAnimationFrame(animFrameId);
+    animFrameId = null;
+  }
+
+  // Stop FPS interval
+  if (fpsInterval) {
+    clearInterval(fpsInterval);
+    fpsInterval = null;
+  }
 };
 
 /**
@@ -399,8 +417,9 @@ export const closeDashboard = () => {
  * Starts background tracking and registers Ctrl+Shift+P shortcut
  */
 export const initPerfDashboard = () => {
-  // Start memory tracking
-  memoryInterval = setInterval(trackMemory, 1000);
+  // Start memory tracking (clear previous if called multiple times)
+  if (memoryInterval) clearInterval(memoryInterval);
+  memoryInterval = setInterval(() => trackMemory(), 1000);
   trackMemory(); // initial
 
   // Start FPS tracking

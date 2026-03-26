@@ -66,12 +66,16 @@ export function initDocEditor() {
   editorEl = document.getElementById('doc-editor');
   if (!editorEl) return;
 
-  // Track dirty state + word count + outline
+  // Track dirty state + word count + outline (debounced for performance)
+  let wordCountTimer;
+  const debouncedWordCount = () => { clearTimeout(wordCountTimer); wordCountTimer = setTimeout(() => updateWordCount(), 300); };
+  let outlineTimer;
+  const debouncedOutline = () => { clearTimeout(outlineTimer); outlineTimer = setTimeout(() => { updateDocOutline(); updateDocOutlineNav(); }, 500); };
   editorEl.addEventListener('input', () => {
     dirty = true;
-    updateWordCount();
-    if (outlineVisible) updateDocOutline();
-    if (outlineNavVisible) updateDocOutlineNav();
+    debouncedWordCount();
+    if (outlineVisible) debouncedOutline();
+    else if (outlineNavVisible) debouncedOutline();
   });
 
   // Image resize handles

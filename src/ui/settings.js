@@ -90,7 +90,7 @@ export const showSettings = () => {
     <h2 class="settings-title">Settings</h2>
     <button class="settings-close-btn" aria-label="Close settings">&#10005;</button>
   `;
-  header.querySelector('.settings-close-btn').addEventListener('click', () => closeSettings());
+  header.querySelector('.settings-close-btn')?.addEventListener('click', () => closeSettings());
   modal.appendChild(header);
 
   // ── Tab Navigation ──

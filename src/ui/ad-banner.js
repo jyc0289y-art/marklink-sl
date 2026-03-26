@@ -10,6 +10,19 @@ const AD_WIDTH = 120; // Ad banner width (px)
 let leftBanner = null;
 let rightBanner = null;
 let adsActive = false;
+let resizeThrottleTimer = null;
+
+/** Throttled version of updateBannerVisibility */
+const throttledUpdateBannerVisibility = () => {
+  if (resizeThrottleTimer) return;
+  resizeThrottleTimer = setTimeout(() => {
+    resizeThrottleTimer = null;
+    updateBannerVisibility();
+  }, 200);
+};
+
+/** Stable reference for resize listener (add/remove must use same ref) */
+const onResizeThrottled = () => throttledUpdateBannerVisibility();
 
 /** Self-promo banners (rotate randomly) — replace with ad network later */
 const PROMO_BANNERS = [
@@ -52,7 +65,7 @@ export function initAdBanners() {
   updateBannerVisibility();
 
   // Re-check on resize (content might get covered)
-  window.addEventListener('resize', updateBannerVisibility);
+  window.addEventListener('resize', onResizeThrottled);
 }
 
 function isMobile() {
@@ -72,6 +85,11 @@ function dismissAds() {
   if (leftBanner) leftBanner.style.display = 'none';
   if (rightBanner) rightBanner.style.display = 'none';
   adsActive = false;
+  window.removeEventListener('resize', onResizeThrottled);
+  if (resizeThrottleTimer) {
+    clearTimeout(resizeThrottleTimer);
+    resizeThrottleTimer = null;
+  }
 }
 
 function createBanners() {

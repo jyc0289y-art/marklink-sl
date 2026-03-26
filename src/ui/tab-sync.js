@@ -12,11 +12,26 @@ let onLangChangeCallback = null;
 let onFileNotifyCallback = null;
 let onConflictCallback = null;
 let editingFiles = new Map(); // filename → { tabId, timestamp }
+let tabSyncInitialized = false;
+
+/** Stable reference for beforeunload cleanup */
+const onBeforeUnload = () => {
+  unregisterPresence();
+  broadcast({ type: 'tab-close', tabId: TAB_ID });
+  channel?.close();
+};
+
+/** Stable reference for storage fallback */
+const onStorageFallback = (e) => handleStorageFallback(e);
 
 /**
  * Initialize cross-tab sync
  */
 export const initTabSync = (callbacks = {}) => {
+  // Guard against duplicate initialization
+  if (tabSyncInitialized) return;
+  tabSyncInitialized = true;
+
   onThemeChangeCallback = callbacks.onThemeChange || null;
   onLangChangeCallback = callbacks.onLangChange || null;
   onFileNotifyCallback = callbacks.onFileNotify || null;
@@ -27,19 +42,15 @@ export const initTabSync = (callbacks = {}) => {
     channel.onmessage = handleMessage;
   } catch {
     // Fallback: use localStorage events
-    window.addEventListener('storage', handleStorageFallback);
+    window.addEventListener('storage', onStorageFallback);
   }
 
   // Tab presence — heartbeat
   registerPresence();
-  presenceInterval = setInterval(registerPresence, 3000);
+  presenceInterval = setInterval(() => registerPresence(), 3000);
 
   // Cleanup on unload
-  window.addEventListener('beforeunload', () => {
-    unregisterPresence();
-    broadcast({ type: 'tab-close', tabId: TAB_ID });
-    channel?.close();
-  });
+  window.addEventListener('beforeunload', onBeforeUnload);
 
   // Announce arrival
   broadcast({ type: 'tab-open', tabId: TAB_ID });

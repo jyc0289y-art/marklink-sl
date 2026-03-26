@@ -128,10 +128,10 @@ const showRecoveryDialog = (errorMsg) => {
 
   document.body.appendChild(overlay);
 
-  overlay.querySelector('#error-reload-btn').addEventListener('click', () => {
+  overlay.querySelector('#error-reload-btn')?.addEventListener('click', () => {
     window.location.reload();
   });
-  overlay.querySelector('#error-dismiss-btn').addEventListener('click', () => {
+  overlay.querySelector('#error-dismiss-btn')?.addEventListener('click', () => {
     overlay.remove();
   });
 };

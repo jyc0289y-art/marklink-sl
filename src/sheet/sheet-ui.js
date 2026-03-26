@@ -37,6 +37,11 @@ let editingCol = -1;
 // Clipboard
 let clipboard = null; // { data: [[{raw, format}]], r1, c1, r2, c2 }
 
+// Hidden rows/cols and grouping (declared early to avoid TDZ in renderGrid)
+let hiddenRows = new Set();
+let hiddenCols = new Set();
+let rowGroups = []; // [{r1, r2, collapsed}]
+
 // Freeze
 let freezeRows = 0;
 let freezeCols = 0;
@@ -3806,9 +3811,6 @@ function applyRowHeight(rowIdx, height) {
 
 /* ==================== Hide/Show Rows & Columns ==================== */
 
-let hiddenRows = new Set();
-let hiddenCols = new Set();
-
 function hideSelectedRows() {
   const { r1, r2 } = getSelectionRange();
   for (let r = r1; r <= r2; r++) hiddenRows.add(r);
@@ -5681,8 +5683,6 @@ function togglePivotRowCollapse(rowVal) {
 }
 
 /* ==================== Data Grouping ==================== */
-
-let rowGroups = []; // [{r1, r2, collapsed}]
 
 function toggleGroupRows() {
   const { r1, r2 } = getSelectionRange();

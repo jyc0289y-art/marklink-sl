@@ -64,7 +64,17 @@ let comparePdfA = null; // {doc, name}
 let comparePdfB = null; // {doc, name}
 let compareCurrentPage = 1;
 
+// Track bound document-level listeners for cleanup
+let _boundKeydown = null;
+let _boundDocClick = null;
+let _boundDocMousemove = null;
+let _boundDocMouseup = null;
+let _initTimeout = null;
+
 export function initPdfViewer() {
+  // Reset all state when (re-)initialising
+  resetPdfState();
+
   pagesEl = document.getElementById('pdf-pages');
   emptyEl = document.getElementById('pdf-empty');
   pageNumEl = document.getElementById('pdf-page-num');
@@ -73,9 +83,10 @@ export function initPdfViewer() {
   containerEl = document.getElementById('pdf-container');
   thumbListEl = document.getElementById('pdf-thumb-list');
   if (!pagesEl) return;
+  if (!containerEl) return;
 
   bindEvents();
-  setTimeout(() => {
+  _initTimeout = setTimeout(() => {
     initSignatureModal();
     initStampDropdown();
     initRedactionApply();
@@ -86,9 +97,9 @@ export function initPdfViewer() {
 }
 
 function bindEvents() {
-  document.getElementById('pdf-open')?.addEventListener('click', openPdf);
-  document.getElementById('pdf-prev')?.addEventListener('click', prevPage);
-  document.getElementById('pdf-next')?.addEventListener('click', nextPage);
+  document.getElementById('pdf-open')?.addEventListener('click', () => openPdf());
+  document.getElementById('pdf-prev')?.addEventListener('click', () => prevPage());
+  document.getElementById('pdf-next')?.addEventListener('click', () => nextPage());
   document.getElementById('pdf-zoom-in')?.addEventListener('click', () => setZoom(scale + 0.25));
   document.getElementById('pdf-zoom-out')?.addEventListener('click', () => setZoom(scale - 0.25));
   document.getElementById('pdf-fit')?.addEventListener('click', () => fitWidth());
@@ -136,11 +147,11 @@ function bindEvents() {
   });
 
   // Page management
-  document.getElementById('pdf-rotate')?.addEventListener('click', rotatePage);
-  document.getElementById('pdf-deskew')?.addEventListener('click', deskewPage);
-  document.getElementById('pdf-delete-page')?.addEventListener('click', deleteCurrentPage);
-  document.getElementById('pdf-insert-blank')?.addEventListener('click', insertBlankPage);
-  document.getElementById('pdf-extract')?.addEventListener('click', extractCurrentPage);
+  document.getElementById('pdf-rotate')?.addEventListener('click', () => rotatePage());
+  document.getElementById('pdf-deskew')?.addEventListener('click', () => deskewPage());
+  document.getElementById('pdf-delete-page')?.addEventListener('click', () => deleteCurrentPage());
+  document.getElementById('pdf-insert-blank')?.addEventListener('click', () => insertBlankPage());
+  document.getElementById('pdf-extract')?.addEventListener('click', () => extractCurrentPage());
 
   // Annotation tools — toggle active
   document.querySelectorAll('.pdf-annot-btn').forEach(btn => {
@@ -162,7 +173,7 @@ function bindEvents() {
     });
   });
 
-  document.getElementById('pdf-clear-annot')?.addEventListener('click', clearAnnotationsOnPage);
+  document.getElementById('pdf-clear-annot')?.addEventListener('click', () => clearAnnotationsOnPage());
 
   // OCR
   document.getElementById('pdf-ocr')?.addEventListener('click', () => runOcr());
@@ -185,11 +196,13 @@ function bindEvents() {
       e.shiftKey ? searchPrev() : searchNext();
     }
   });
-  document.getElementById('pdf-search-prev')?.addEventListener('click', searchPrev);
-  document.getElementById('pdf-search-next')?.addEventListener('click', searchNext);
+  document.getElementById('pdf-search-prev')?.addEventListener('click', () => searchPrev());
+  document.getElementById('pdf-search-next')?.addEventListener('click', () => searchNext());
 
   // Keyboard navigation (arrows + PageUp/Down + Home/End)
-  document.addEventListener('keydown', (e) => {
+  // Remove previous listener if any (prevents duplicates on re-init)
+  if (_boundKeydown) document.removeEventListener('keydown', _boundKeydown);
+  _boundKeydown = (e) => {
     const pdfView = document.getElementById('view-pdf');
     if (!pdfView?.classList.contains('active') || !pdfDoc) return;
     // Skip if user is typing in an input/textarea
@@ -213,7 +226,8 @@ function bindEvents() {
       scrollToPageIdx(currentPage - 1);
       updatePageInfo();
     }
-  });
+  };
+  document.addEventListener('keydown', _boundKeydown);
 }
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -231,7 +245,8 @@ function pageIdToNum(id) {
   return parseInt(id.substring(1), 10);
 }
 
-function resetPageState() {
+function resetPdfState() {
+  // Page-level state
   pageRotations = {};
   pageAnnotations = {};
   deletedPages = new Set();
@@ -240,6 +255,8 @@ function resetPageState() {
   textContentCache = {};
   searchMatches = [];
   searchIdx = -1;
+
+  // Annotation / tool state
   activeAnnotTool = null;
   freehandState = {};
   redactionRects = {};
@@ -250,7 +267,20 @@ function resetPageState() {
   activeStamp = null;
   placingSignature = false;
   signatureImage = null;
+
+  // Bookmark state
   pdfBookmarks = [];
+  bookmarksPanelVisible = false;
+
+  // Merge / Compare state
+  mergeFiles = [];
+  comparePdfA = null;
+  comparePdfB = null;
+  compareCurrentPage = 1;
+
+  // Blank page counter
+  blankCounter = 0;
+
   document.querySelectorAll('.pdf-annot-btn').forEach(b => b.classList.remove('active'));
 }
 
@@ -312,7 +342,7 @@ async function loadPdfData(data) {
   currentPage = 1;
   scale = 1.0;
 
-  resetPageState();
+  resetPdfState();
   loadAnnotationsFromStorage(); // Restore persisted annotations for this file
   buildPageOrder();
 
@@ -1474,7 +1504,7 @@ function makeDraggable(el, container) {
 
 // ─── Redaction ──────────────────────────────────────────────
 function initRedactionApply() {
-  document.getElementById('pdf-redact-apply')?.addEventListener('click', applyRedactions);
+  document.getElementById('pdf-redact-apply')?.addEventListener('click', () => applyRedactions());
 }
 
 function handleRedactionDraw(wrapper, pageNum, startX, startY, endX, endY) {
@@ -1537,7 +1567,10 @@ function initStampDropdown() {
     dropdown.style.display = dropdown.style.display === 'none' ? '' : 'none';
   });
 
-  document.addEventListener('click', () => { dropdown.style.display = 'none'; });
+  // Store for cleanup
+  if (_boundDocClick) document.removeEventListener('click', _boundDocClick);
+  _boundDocClick = () => { dropdown.style.display = 'none'; };
+  document.addEventListener('click', _boundDocClick);
   dropdown.addEventListener('click', (e) => { e.stopPropagation(); });
 
   const stampColors = {
@@ -2482,4 +2515,59 @@ export { openPdf };
 
 export function getPdfFileName() {
   return currentName || 'untitled.pdf';
+}
+
+/**
+ * Clean up all PDF viewer state and document-level event listeners.
+ * Call this when switching away from the PDF tab to prevent leaks.
+ */
+export function destroyPdfViewer() {
+  // Clear pending timeouts
+  if (_initTimeout) {
+    clearTimeout(_initTimeout);
+    _initTimeout = null;
+  }
+
+  // Remove document-level event listeners
+  if (_boundKeydown) {
+    document.removeEventListener('keydown', _boundKeydown);
+    _boundKeydown = null;
+  }
+  if (_boundDocClick) {
+    document.removeEventListener('click', _boundDocClick);
+    _boundDocClick = null;
+  }
+  if (_boundDocMousemove) {
+    document.removeEventListener('mousemove', _boundDocMousemove);
+    _boundDocMousemove = null;
+  }
+  if (_boundDocMouseup) {
+    document.removeEventListener('mouseup', _boundDocMouseup);
+    _boundDocMouseup = null;
+  }
+
+  // Reset all state
+  resetPdfState();
+
+  // Release PDF document reference
+  if (pdfDoc) {
+    pdfDoc.destroy();
+    pdfDoc = null;
+  }
+  currentPage = 1;
+  scale = 1.0;
+  currentName = '';
+
+  // Clear rendered content
+  if (pagesEl) pagesEl.innerHTML = '';
+  if (thumbListEl) thumbListEl.innerHTML = '';
+
+  // Null out DOM references
+  pagesEl = null;
+  emptyEl = null;
+  pageNumEl = null;
+  pageCountEl = null;
+  zoomInfoEl = null;
+  containerEl = null;
+  thumbListEl = null;
 }

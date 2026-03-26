@@ -17,8 +17,11 @@ let occtLoadError = null;
 
 /* ===================== IndexedDB WASM Cache ===================== */
 
-const openIDB = () =>
-  new Promise((resolve, reject) => {
+let _cachedIDB = null; // Cache db instance to avoid repeated IndexedDB open requests
+
+const openIDB = () => {
+  if (_cachedIDB) return Promise.resolve(_cachedIDB);
+  return new Promise((resolve, reject) => {
     const req = indexedDB.open(IDB_DB_NAME, IDB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -26,9 +29,15 @@ const openIDB = () =>
         db.createObjectStore(IDB_STORE);
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      _cachedIDB = req.result;
+      // Clear cache if db is closed unexpectedly
+      _cachedIDB.onclose = () => { _cachedIDB = null; };
+      resolve(_cachedIDB);
+    };
     req.onerror = () => reject(req.error);
   });
+};
 
 const getCachedWasm = async () => {
   try {
@@ -101,10 +110,10 @@ const fetchWithProgress = async (url, onProgress) => {
 export const loadOCCT = async (onProgress = () => {}) => {
   if (occtReady) return true;
   if (occtLoading) {
-    // Wait for existing load
+    // Wait for existing load — clear interval when occtReady or loading finishes
     return new Promise((resolve) => {
       const check = setInterval(() => {
-        if (!occtLoading) {
+        if (occtReady || !occtLoading) {
           clearInterval(check);
           resolve(occtReady);
         }

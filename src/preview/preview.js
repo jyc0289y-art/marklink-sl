@@ -94,34 +94,46 @@ export function initBidirectionalScrollSync(editorContainer, previewContainer) {
   editorScrollerRef = editorScroller;
   previewContainerRef = previewContainer;
 
-  // Editor scroll -> preview scroll
-  editorScroller.addEventListener('scroll', () => {
-    if (!scrollSyncEnabled || scrollSyncing) return;
-    scrollSyncing = true;
-    const editorMax = editorScroller.scrollHeight - editorScroller.clientHeight;
-    const ratio = editorMax > 0 ? editorScroller.scrollTop / editorMax : 0;
+  // Editor scroll -> preview scroll (RAF-throttled)
+  let editorScrollRAF;
+  const throttledEditorScroll = () => {
+    if (editorScrollRAF) return;
+    editorScrollRAF = requestAnimationFrame(() => {
+      if (!scrollSyncEnabled || scrollSyncing) { editorScrollRAF = null; return; }
+      scrollSyncing = true;
+      const editorMax = editorScroller.scrollHeight - editorScroller.clientHeight;
+      const ratio = editorMax > 0 ? editorScroller.scrollTop / editorMax : 0;
 
-    // Try line-number mapping first
-    const mappedTop = mapEditorToPreviewByLines(editorScroller, previewContainer, ratio);
-    if (mappedTop !== null) {
-      previewContainer.scrollTop = mappedTop;
-    } else {
+      // Try line-number mapping first
+      const mappedTop = mapEditorToPreviewByLines(editorScroller, previewContainer, ratio);
+      if (mappedTop !== null) {
+        previewContainer.scrollTop = mappedTop;
+      } else {
+        const previewMax = previewContainer.scrollHeight - previewContainer.clientHeight;
+        previewContainer.scrollTop = ratio * previewMax;
+      }
+      requestAnimationFrame(() => { scrollSyncing = false; });
+      editorScrollRAF = null;
+    });
+  };
+  editorScroller.addEventListener('scroll', () => throttledEditorScroll());
+
+  // Preview scroll -> editor scroll (RAF-throttled)
+  let previewScrollRAF;
+  const throttledPreviewScroll = () => {
+    if (previewScrollRAF) return;
+    previewScrollRAF = requestAnimationFrame(() => {
+      if (!scrollSyncEnabled || scrollSyncing) { previewScrollRAF = null; return; }
+      scrollSyncing = true;
       const previewMax = previewContainer.scrollHeight - previewContainer.clientHeight;
-      previewContainer.scrollTop = ratio * previewMax;
-    }
-    requestAnimationFrame(() => { scrollSyncing = false; });
-  });
-
-  // Preview scroll -> editor scroll
-  previewContainer.addEventListener('scroll', () => {
-    if (!scrollSyncEnabled || scrollSyncing) return;
-    scrollSyncing = true;
-    const previewMax = previewContainer.scrollHeight - previewContainer.clientHeight;
-    const ratio = previewMax > 0 ? previewContainer.scrollTop / previewMax : 0;
-    const editorMax = editorScroller.scrollHeight - editorScroller.clientHeight;
-    editorScroller.scrollTop = ratio * editorMax;
-    requestAnimationFrame(() => { scrollSyncing = false; });
-  });
+      const ratio = previewMax > 0 ? previewContainer.scrollTop / previewMax : 0;
+      const editorMax = editorScroller.scrollHeight - editorScroller.clientHeight;
+      editorScroller.scrollTop = ratio * editorMax;
+      requestAnimationFrame(() => { scrollSyncing = false; });
+      previewScrollRAF = null;
+    });
+  };
+  previewContainer.addEventListener('scroll', () => throttledPreviewScroll());
 }
 
 /**

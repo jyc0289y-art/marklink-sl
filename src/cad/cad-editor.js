@@ -30,15 +30,37 @@ const _i = async (p, retries = 2, timeout = 10000) => {
 };
 
 async function loadThreeJS() {
-  THREE = await _i('/build/three.module.js');
-  ({ OrbitControls } = await _i('/examples/jsm/controls/OrbitControls.js'));
-  ({ TransformControls } = await _i('/examples/jsm/controls/TransformControls.js'));
-  ({ STLExporter } = await _i('/examples/jsm/exporters/STLExporter.js'));
-  ({ OBJExporter } = await _i('/examples/jsm/exporters/OBJExporter.js'));
-  ({ GLTFExporter } = await _i('/examples/jsm/exporters/GLTFExporter.js'));
-  ({ STLLoader } = await _i('/examples/jsm/loaders/STLLoader.js'));
-  ({ OBJLoader } = await _i('/examples/jsm/loaders/OBJLoader.js'));
-  ({ GLTFLoader } = await _i('/examples/jsm/loaders/GLTFLoader.js'));
+  try {
+    THREE = await _i('/build/three.module.js');
+    ({ OrbitControls } = await _i('/examples/jsm/controls/OrbitControls.js'));
+    ({ TransformControls } = await _i('/examples/jsm/controls/TransformControls.js'));
+    ({ STLExporter } = await _i('/examples/jsm/exporters/STLExporter.js'));
+    ({ OBJExporter } = await _i('/examples/jsm/exporters/OBJExporter.js'));
+    ({ GLTFExporter } = await _i('/examples/jsm/exporters/GLTFExporter.js'));
+    ({ STLLoader } = await _i('/examples/jsm/loaders/STLLoader.js'));
+    ({ OBJLoader } = await _i('/examples/jsm/loaders/OBJLoader.js'));
+    ({ GLTFLoader } = await _i('/examples/jsm/loaders/GLTFLoader.js'));
+  } catch (err) {
+    // Show user-facing error when CDN is permanently down (retries exhausted)
+    const container = document.getElementById('view-cad');
+    if (container) {
+      const viewport = container.querySelector('.cad-viewport');
+      const target = viewport || container;
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'cad-cdn-error';
+      errorDiv.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg-primary,#1a1a2e);z-index:100;';
+      errorDiv.innerHTML = `<div style="text-align:center;padding:2rem;color:var(--text-secondary,#aaa);">
+        <div style="font-size:2rem;margin-bottom:1rem;">&#9888;</div>
+        <div style="font-size:1.1rem;font-weight:600;margin-bottom:0.5rem;color:var(--text-primary,#fff);">3D Engine Unavailable</div>
+        <div>Failed to load Three.js from CDN after multiple retries.</div>
+        <div style="margin-top:0.5rem;font-size:0.85rem;opacity:0.7;">${_esc(err.message)}</div>
+        <div style="margin-top:1rem;font-size:0.85rem;">Check your internet connection and reload the page.</div>
+      </div>`;
+      target.style.position = 'relative';
+      target.appendChild(errorDiv);
+    }
+    throw err;
+  }
 }
 
 /* ===================== State ===================== */
@@ -56,6 +78,10 @@ let isInitialized = false;
 let objectCounter = 0;
 let lights = {};
 let viewportEl, canvasEl;
+let animFrameId = null;
+let themeObserver = null;
+let resizeObserver = null;
+let keydownHandler = null;
 
 /* ===================== OCCT B-Rep State ===================== */
 let occtEnabled = false; // true when OCCT WASM loaded
@@ -96,13 +122,108 @@ export async function initCadEditor() {
   updateSceneTree();
   updateFeatureTree();
 
-  // Observe theme changes and update 3D scene colors
+  // Observe theme changes and update 3D scene colors synchronously
   updateCadThemeColors();
-  const themeObserver = new MutationObserver(() => updateCadThemeColors());
+  themeObserver = new MutationObserver(() => {
+    updateCadThemeColors();
+    // Render immediately to prevent color flash on theme change
+    if (renderer && scene && camera) renderer.render(scene, camera);
+  });
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
   // Start loading OCCT B-Rep engine (non-blocking)
   initOCCTEngine();
+}
+
+/* ===================== Cleanup / Destroy ===================== */
+/**
+ * Destroy the CAD editor — removes all event listeners, disposes Three.js
+ * resources, clears animation frame, and resets state. Call on tab close/switch.
+ */
+export function destroyCadEditor() {
+  if (!isInitialized) return;
+
+  // 1. Cancel animation frame
+  if (animFrameId != null) {
+    cancelAnimationFrame(animFrameId);
+    animFrameId = null;
+  }
+
+  // 2. Disconnect observers
+  if (themeObserver) { themeObserver.disconnect(); themeObserver = null; }
+  if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
+
+  // 3. Remove document-level keyboard listener
+  if (keydownHandler) {
+    document.removeEventListener('keydown', keydownHandler);
+    keydownHandler = null;
+  }
+
+  // 4. Dispose transform controls
+  if (transformControls) {
+    transformControls.detach();
+    transformControls.dispose();
+    if (scene) scene.remove(transformControls);
+    transformControls = null;
+  }
+
+  // 5. Dispose orbit controls
+  if (orbitControls) { orbitControls.dispose(); orbitControls = null; }
+
+  // 6. Dispose all scene objects (geometry + materials)
+  sceneObjects.forEach((obj) => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      if (Array.isArray(obj.material)) {
+        obj.material.forEach((m) => m.dispose());
+      } else {
+        obj.material.dispose();
+      }
+    }
+  });
+  sceneObjects = [];
+
+  // 7. Dispose grid, axes, and remaining scene children
+  if (scene) {
+    scene.traverse((child) => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach((m) => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    });
+    scene.clear();
+    scene = null;
+  }
+
+  // 8. Dispose renderer and remove canvas
+  if (renderer) {
+    renderer.dispose();
+    if (renderer.domElement && renderer.domElement.parentNode) {
+      renderer.domElement.parentNode.removeChild(renderer.domElement);
+    }
+    renderer = null;
+  }
+
+  // 9. Clear OCCT shape references
+  occtShapes.clear();
+  occtEnabled = false;
+
+  // 10. Reset remaining state
+  selectedObject = null;
+  gridHelper = null;
+  axesHelper = null;
+  camera = null;
+  lights = {};
+  undoStack = [];
+  redoStack = [];
+  objectCounter = 0;
+  viewportEl = null;
+  canvasEl = null;
+  isInitialized = false;
 }
 
 /* ===================== Scene Setup ===================== */
@@ -253,7 +374,7 @@ function setupTransformControls() {
 
 /* ===================== Animation Loop ===================== */
 function animate() {
-  requestAnimationFrame(animate);
+  animFrameId = requestAnimationFrame(animate);
   orbitControls.update();
   renderer.render(scene, camera);
   renderViewCube();
@@ -262,7 +383,7 @@ function animate() {
 
 /* ===================== Resize Handling ===================== */
 function handleResize() {
-  const ro = new ResizeObserver(() => {
+  resizeObserver = new ResizeObserver(() => {
     if (!viewportEl) return;
     const rect = viewportEl.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
@@ -270,7 +391,7 @@ function handleResize() {
     camera.updateProjectionMatrix();
     renderer.setSize(rect.width, rect.height);
   });
-  ro.observe(viewportEl);
+  resizeObserver.observe(viewportEl);
 }
 
 /* ===================== Primitive Creation ===================== */
@@ -2489,7 +2610,7 @@ function bindViewportEvents(container) {
 }
 
 function bindKeyboardShortcuts() {
-  document.addEventListener('keydown', (e) => {
+  keydownHandler = (e) => {
     // Only respond when CAD tab is active
     const cadView = document.getElementById('view-cad');
     if (!cadView || cadView.style.display === 'none' || !cadView.offsetParent) return;
@@ -2563,7 +2684,8 @@ function bindKeyboardShortcuts() {
     if (viewKeys[key]) { setCameraView(viewKeys[key]); return; }
     // 0 = perspective (legacy compat)
     if (key === '0') { setCameraView('perspective'); return; }
-  });
+  };
+  document.addEventListener('keydown', keydownHandler);
 }
 
 function bindImportExport(container) {

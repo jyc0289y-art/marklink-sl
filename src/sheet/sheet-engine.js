@@ -53,13 +53,13 @@ export function setCell(sheet, r, c, rawValue, allSheets) {
     sheet.cells[key] = { raw: '', value: '', format: {} };
   }
   sheet.cells[key].raw = String(rawValue);
-  let val = evaluate(sheet, String(rawValue), allSheets);
+  let val = evaluate(sheet, String(rawValue), allSheets, key);
   // For non-array formulas, extract first value from array results
   if (typeof val === 'string' && val.startsWith('__ARRAY__')) {
     try {
       const arr = JSON.parse(val.substring(9));
       val = arr[0]?.[0] ?? val;
-    } catch { /* keep as-is */ }
+    } catch (e) { console.warn('[sheet-engine] Failed to parse __ARRAY__ in setCell:', e.message, 'raw substring:', val.substring(0, 80)); }
   }
   sheet.cells[key].value = val;
 }
@@ -74,7 +74,7 @@ export function setCellArrayFormula(sheet, r, c, rawValue, allSheets) {
   const formulaStr = String(rawValue);
   sheet.cells[key].raw = formulaStr;
   sheet.cells[key].format.isArrayFormula = true;
-  sheet.cells[key].value = evaluate(sheet, formulaStr, allSheets);
+  sheet.cells[key].value = evaluate(sheet, formulaStr, allSheets, key);
 
   // Handle array spill results
   const val = sheet.cells[key].value;
@@ -98,7 +98,7 @@ export function setCellArrayFormula(sheet, r, c, rawValue, allSheets) {
           sheet.cells[spillKey].raw = `{=${formulaStr.substring(1)}}`;
         }
       }
-    } catch { /* ignore parse errors */ }
+    } catch (e) { console.warn('[sheet-engine] Failed to parse __ARRAY__ in setCellArrayFormula:', e.message, 'raw substring:', val.substring(0, 80)); }
   }
 
   // Handle TRANSPOSE array result
@@ -261,7 +261,7 @@ export function recalcAll(sheet, allSheets) {
   for (let pass = 0; pass < 2; pass++) {
     for (const [key, cell] of Object.entries(sheet.cells)) {
       if (cell.raw.startsWith('=')) {
-        cell.value = evaluate(sheet, cell.raw, allSheets);
+        cell.value = evaluate(sheet, cell.raw, allSheets, key);
       }
     }
   }

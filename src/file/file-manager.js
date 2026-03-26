@@ -1,6 +1,7 @@
 // OfficeLink SL — File Manager (File System Access API + fallback + auto-save)
 import { generateTimestampFilename } from '../export/filename-utils.js';
 import { addToRecent } from './recent-files.js';
+import { escapeHtml } from '../utils/sanitize.js';
 
 let currentFileHandle = null;
 let currentFileName = 'untitled.md';
@@ -146,7 +147,7 @@ export const checkAutoSaveRestore = async (key, onRestore) => {
       <div class="autosave-restore-content">
         <h3>Unsaved changes found</h3>
         <p>Auto-saved content from <strong>${timeStr}</strong></p>
-        ${saved.fileName ? `<p class="autosave-filename">${saved.fileName}</p>` : ''}
+        ${saved.fileName ? `<p class="autosave-filename">${escapeHtml(saved.fileName)}</p>` : ''}
         <div class="autosave-restore-actions">
           <button class="btn-restore">Restore</button>
           <button class="btn-discard">Discard</button>
@@ -154,14 +155,14 @@ export const checkAutoSaveRestore = async (key, onRestore) => {
       </div>
     `;
 
-    dialog.querySelector('.btn-restore').addEventListener('click', async () => {
+    dialog.querySelector('.btn-restore')?.addEventListener('click', async () => {
       onRestore(saved.content, saved.fileName);
       await clearAutoSave(key);
       dialog.remove();
       resolve(true);
     });
 
-    dialog.querySelector('.btn-discard').addEventListener('click', async () => {
+    dialog.querySelector('.btn-discard')?.addEventListener('click', async () => {
       await clearAutoSave(key);
       dialog.remove();
       resolve(false);

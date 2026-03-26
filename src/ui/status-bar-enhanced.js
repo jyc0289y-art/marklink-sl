@@ -304,8 +304,9 @@ export const initEnhancedStatusBar = () => {
   // Initial update
   updateEnhancedStatusBar();
 
-  // Update every 2 seconds
-  updateTimer = setInterval(updateEnhancedStatusBar, 2000);
+  // Update every 2 seconds (clear any previous interval to avoid leaks)
+  if (updateTimer) clearInterval(updateTimer);
+  updateTimer = setInterval(() => updateEnhancedStatusBar(), 2000);
 
   // Update on tab change
   onTabChange(() => {
