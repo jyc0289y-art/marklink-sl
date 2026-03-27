@@ -69,6 +69,16 @@ hljs.registerLanguage('diff', diff);
 import 'highlight.js/styles/github.css';
 
 /**
+ * Generate a slug-based heading ID from heading text.
+ * Exported for testing and reuse in outline extraction.
+ * @param {string} text - The heading text content
+ * @returns {string} Slug-based ID prefixed with 'heading-'
+ */
+export function generateHeadingId(text) {
+  return 'heading-' + text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+}
+
+/**
  * Create and configure markdown-it instance
  */
 function createRenderer() {
@@ -114,7 +124,7 @@ function createRenderer() {
     const token = tokens[idx];
     const contentToken = tokens[idx + 1];
     const text = contentToken?.children?.reduce((acc, t) => acc + (t.content || ''), '') || '';
-    let baseId = 'heading-' + text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+    let baseId = generateHeadingId(text);
     // Disambiguate duplicate headings
     if (env._headingIdCounts[baseId] === undefined) {
       env._headingIdCounts[baseId] = 0;
@@ -157,7 +167,7 @@ function createRenderer() {
         const level = parseInt(tokens[i].tag.slice(1));
         const contentToken = tokens[i + 1];
         const text = contentToken?.children?.reduce((acc, t) => acc + (t.content || ''), '') || '';
-        let baseId = 'heading-' + text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+        let baseId = generateHeadingId(text);
         if (tocIdCounts[baseId] === undefined) {
           tocIdCounts[baseId] = 0;
         } else {

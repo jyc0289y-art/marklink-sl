@@ -12,7 +12,7 @@ import {
 
 /* ---------- Color Temperature Helper ---------- */
 function colorTempToRGBAbsolute(tempK) {
-  const temp = tempK / 100;
+  const temp = Math.max(1, tempK) / 100;
   let r, g, b;
   if (temp <= 66) {
     r = 255;
@@ -31,7 +31,7 @@ function colorTempToRGBAbsolute(tempK) {
 }
 
 export function colorTempToRGB(tempK) {
-  const temp = tempK / 100;
+  const temp = Math.max(1, tempK) / 100;
   let r, g, b;
   if (temp <= 66) {
     r = 255;
@@ -91,6 +91,75 @@ export function cloneParams(p) {
   return JSON.parse(JSON.stringify(p));
 }
 
+/* ---------- Pure Functions (exported for testing) ---------- */
+
+export function hasToneCurveChanges(tc) {
+  const isDefault = (pts) =>
+    pts.length === 2 && pts[0].x === 0 && pts[0].y === 0 && pts[1].x === 255 && pts[1].y === 255;
+  return !isDefault(tc.rgb) || !isDefault(tc.red) || !isDefault(tc.green) || !isDefault(tc.blue);
+}
+
+export function interpolateCurve(points) {
+  const lut = new Uint8Array(256);
+  if (points.length < 2) { for (let i = 0; i < 256; i++) lut[i] = i; return lut; }
+  const sorted = [...points].sort((a, b) => a.x - b.x);
+  const n = sorted.length;
+  const xs = sorted.map(p => p.x);
+  const ys = sorted.map(p => p.y);
+  const dxs = [], dys = [], ms = [];
+  for (let i = 0; i < n - 1; i++) {
+    dxs.push(xs[i + 1] - xs[i]);
+    dys.push(ys[i + 1] - ys[i]);
+    ms.push(dys[i] / Math.max(dxs[i], 0.001));
+  }
+  const c1s = [ms[0]];
+  for (let i = 0; i < dxs.length - 1; i++) {
+    if (ms[i] * ms[i + 1] <= 0) { c1s.push(0); }
+    else {
+      const common = dxs[i] + dxs[i + 1];
+      c1s.push(3 * common / ((common + dxs[i + 1]) / ms[i] + (common + dxs[i]) / ms[i + 1]));
+    }
+  }
+  c1s.push(ms[ms.length - 1]);
+  const c2s = [], c3s = [];
+  for (let i = 0; i < c1s.length - 1; i++) {
+    const invDx = 1 / Math.max(dxs[i], 0.001);
+    const common = c1s[i] + c1s[i + 1] - 2 * ms[i];
+    c2s.push((ms[i] - c1s[i] - common) * invDx);
+    c3s.push(common * invDx * invDx);
+  }
+  for (let x = 0; x < 256; x++) {
+    if (x <= xs[0]) { lut[x] = Math.round(Math.max(0, Math.min(255, ys[0]))); }
+    else if (x >= xs[n - 1]) { lut[x] = Math.round(Math.max(0, Math.min(255, ys[n - 1]))); }
+    else {
+      let seg = n - 2;
+      for (let i = 0; i < n - 1; i++) { if (x < xs[i + 1]) { seg = i; break; } }
+      const diff = x - xs[seg];
+      const val = ys[seg] + c1s[seg] * diff + c2s[seg] * diff * diff + c3s[seg] * diff * diff * diff;
+      lut[x] = Math.round(Math.max(0, Math.min(255, val)));
+    }
+  }
+  return lut;
+}
+
+export function buildCurveLUT(tc) {
+  const data = new Uint8Array(256 * 4);
+  const masterLUT = interpolateCurve(tc.rgb);
+  const redLUT = interpolateCurve(tc.red);
+  const greenLUT = interpolateCurve(tc.green);
+  const blueLUT = interpolateCurve(tc.blue);
+  // Apply master curve first, then per-channel curves.
+  // Pack as R=red, G=green, B=blue, A=255 so shader reads .rgb directly.
+  for (let i = 0; i < 256; i++) {
+    const m = masterLUT[i];          // master-mapped value
+    data[i * 4 + 0] = redLUT[m];     // red channel: master then red curve
+    data[i * 4 + 1] = greenLUT[m];   // green channel: master then green curve
+    data[i * 4 + 2] = blueLUT[m];    // blue channel: master then blue curve
+    data[i * 4 + 3] = 255;
+  }
+  return data;
+}
+
 /* ---------- WebGL Engine ---------- */
 export class WebGLEngine {
   constructor(canvas) {
@@ -147,6 +216,12 @@ export class WebGLEngine {
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
       throw new Error('Program link error: ' + gl.getProgramInfoLog(program));
     }
+    // Detach and delete shaders after linking — they are no longer needed
+    // and keeping them attached leaks GPU memory
+    gl.detachShader(program, vert);
+    gl.detachShader(program, frag);
+    gl.deleteShader(vert);
+    gl.deleteShader(frag);
     const uniforms = {};
     for (const name of uniformNames) {
       uniforms[name] = gl.getUniformLocation(program, name);
@@ -415,7 +490,7 @@ export class WebGLEngine {
     }
 
     // Pass 8: Vignette
-    if (params.vignette.amount > 0) {
+    if (params.vignette.amount !== 0) {
       const vigProg = this.programs.vignette;
       renderPass(vigProg, () => {
         gl.uniform1f(vigProg.uniforms['uAmount'], params.vignette.amount / 100);
@@ -456,24 +531,12 @@ export class WebGLEngine {
   getCanvas() { return this.canvas; }
 
   _hasToneCurveChanges(tc) {
-    const isDefault = (pts) =>
-      pts.length === 2 && pts[0].x === 0 && pts[0].y === 0 && pts[1].x === 255 && pts[1].y === 255;
-    return !isDefault(tc.rgb) || !isDefault(tc.red) || !isDefault(tc.green) || !isDefault(tc.blue);
+    return hasToneCurveChanges(tc);
   }
 
   _updateCurveLUT(tc) {
     const gl = this.gl;
-    const data = new Uint8Array(256 * 4);
-    const masterLUT = this._interpolateCurve(tc.rgb);
-    const redLUT = this._interpolateCurve(tc.red);
-    const greenLUT = this._interpolateCurve(tc.green);
-    const blueLUT = this._interpolateCurve(tc.blue);
-    for (let i = 0; i < 256; i++) {
-      data[i * 4 + 0] = masterLUT[i];
-      data[i * 4 + 1] = redLUT[i];
-      data[i * 4 + 2] = greenLUT[i];
-      data[i * 4 + 3] = blueLUT[i];
-    }
+    const data = buildCurveLUT(tc);
     if (!this.curveLUTTexture) this.curveLUTTexture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.curveLUTTexture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
@@ -483,48 +546,7 @@ export class WebGLEngine {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   }
 
-  _interpolateCurve(points) {
-    const lut = new Uint8Array(256);
-    if (points.length < 2) { for (let i = 0; i < 256; i++) lut[i] = i; return lut; }
-    const sorted = [...points].sort((a, b) => a.x - b.x);
-    const n = sorted.length;
-    const xs = sorted.map(p => p.x);
-    const ys = sorted.map(p => p.y);
-    const dxs = [], dys = [], ms = [];
-    for (let i = 0; i < n - 1; i++) {
-      dxs.push(xs[i + 1] - xs[i]);
-      dys.push(ys[i + 1] - ys[i]);
-      ms.push(dys[i] / Math.max(dxs[i], 0.001));
-    }
-    const c1s = [ms[0]];
-    for (let i = 0; i < dxs.length - 1; i++) {
-      if (ms[i] * ms[i + 1] <= 0) { c1s.push(0); }
-      else {
-        const common = dxs[i] + dxs[i + 1];
-        c1s.push(3 * common / ((common + dxs[i + 1]) / ms[i] + (common + dxs[i]) / ms[i + 1]));
-      }
-    }
-    c1s.push(ms[ms.length - 1]);
-    const c2s = [], c3s = [];
-    for (let i = 0; i < c1s.length - 1; i++) {
-      const invDx = 1 / Math.max(dxs[i], 0.001);
-      const common = c1s[i] + c1s[i + 1] - 2 * ms[i];
-      c2s.push((ms[i] - c1s[i] - common) * invDx);
-      c3s.push(common * invDx * invDx);
-    }
-    for (let x = 0; x < 256; x++) {
-      if (x <= xs[0]) { lut[x] = Math.round(Math.max(0, Math.min(255, ys[0]))); }
-      else if (x >= xs[n - 1]) { lut[x] = Math.round(Math.max(0, Math.min(255, ys[n - 1]))); }
-      else {
-        let seg = n - 2;
-        for (let i = 0; i < n - 1; i++) { if (x < xs[i + 1]) { seg = i; break; } }
-        const diff = x - xs[seg];
-        const val = ys[seg] + c1s[seg] * diff + c2s[seg] * diff * diff + c3s[seg] * diff * diff * diff;
-        lut[x] = Math.round(Math.max(0, Math.min(255, val)));
-      }
-    }
-    return lut;
-  }
+  _interpolateCurve(points) { return interpolateCurve(points); }
 
   destroy() {
     const gl = this.gl;
@@ -533,8 +555,14 @@ export class WebGLEngine {
     this.sourceTexture = null;
     if (this.curveLUTTexture) gl.deleteTexture(this.curveLUTTexture);
     this.curveLUTTexture = null;
+    // Delete vertex buffers to prevent GPU memory leak
+    if (this.quadBuffer) gl.deleteBuffer(this.quadBuffer);
+    this.quadBuffer = null;
+    if (this.texCoordBuffer) gl.deleteBuffer(this.texCoordBuffer);
+    this.texCoordBuffer = null;
     for (const prog of Object.values(this.programs)) {
       gl.deleteProgram(prog.program);
     }
+    this.programs = {};
   }
 }

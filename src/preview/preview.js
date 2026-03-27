@@ -1,7 +1,7 @@
 // OfficeLink SL — Preview Pane Controller
 import { render } from './renderer.js';
 import { escapeHtml as _esc } from '../utils/sanitize.js';
-import { t } from '../ui/i18n.js';
+import { t as i18nT } from '../ui/i18n.js';
 
 let previewElement = null;
 let updateTimer = null;
@@ -12,6 +12,7 @@ let scrollSyncEnabled = true;
 let scrollSyncing = false;
 let editorScrollerRef = null;
 let previewContainerRef = null;
+let _scrollCleanup = null; // holds cleanup function for scroll listeners
 
 // ─── Zoom State ──────────────────────────────────────────────
 const ZOOM_LEVELS = [50, 75, 100, 125, 150];
@@ -36,6 +37,24 @@ export function setSourceAccessors(getter, setter) {
  */
 export function initPreview(element) {
   previewElement = element;
+}
+
+/**
+ * Destroy preview pane: cancel pending timers and remove scroll listeners.
+ * Call before re-initializing or when the editor is torn down to prevent leaks.
+ */
+export function destroyPreview() {
+  if (updateTimer) {
+    clearTimeout(updateTimer);
+    updateTimer = null;
+  }
+  if (_scrollCleanup) {
+    _scrollCleanup();
+    _scrollCleanup = null;
+  }
+  previewElement = null;
+  editorScrollerRef = null;
+  previewContainerRef = null;
 }
 
 /**
@@ -301,6 +320,12 @@ async function renderMermaidBlocks() {
 export function initBidirectionalScrollSync(editorContainer, previewContainer) {
   if (!editorContainer || !previewContainer) return;
 
+  // Clean up any previous scroll sync listeners to prevent leaks
+  if (_scrollCleanup) {
+    _scrollCleanup();
+    _scrollCleanup = null;
+  }
+
   const editorScroller = editorContainer.querySelector('.cm-scroller');
   if (!editorScroller) return;
 
@@ -317,7 +342,7 @@ export function initBidirectionalScrollSync(editorContainer, previewContainer) {
 
   // Editor scroll -> preview scroll (RAF-throttled)
   let editorScrollRAF;
-  const throttledEditorScroll = () => {
+  const editorScrollHandler = () => {
     if (editorScrollRAF) return;
     editorScrollRAF = requestAnimationFrame(() => {
       editorScrollRAF = null;
@@ -336,11 +361,11 @@ export function initBidirectionalScrollSync(editorContainer, previewContainer) {
       }
     });
   };
-  editorScroller.addEventListener('scroll', () => throttledEditorScroll());
+  editorScroller.addEventListener('scroll', editorScrollHandler);
 
   // Preview scroll -> editor scroll (RAF-throttled)
   let previewScrollRAF;
-  const throttledPreviewScroll = () => {
+  const previewScrollHandler = () => {
     if (previewScrollRAF) return;
     previewScrollRAF = requestAnimationFrame(() => {
       previewScrollRAF = null;
@@ -352,7 +377,16 @@ export function initBidirectionalScrollSync(editorContainer, previewContainer) {
       editorScroller.scrollTop = ratio * editorMax;
     });
   };
-  previewContainer.addEventListener('scroll', () => throttledPreviewScroll());
+  previewContainer.addEventListener('scroll', previewScrollHandler);
+
+  // Store cleanup function so listeners can be removed on destroy/re-init
+  _scrollCleanup = () => {
+    editorScroller.removeEventListener('scroll', editorScrollHandler);
+    previewContainer.removeEventListener('scroll', previewScrollHandler);
+    if (scrollSyncTimer) clearTimeout(scrollSyncTimer);
+    if (editorScrollRAF) cancelAnimationFrame(editorScrollRAF);
+    if (previewScrollRAF) cancelAnimationFrame(previewScrollRAF);
+  };
 }
 
 /**
@@ -462,14 +496,14 @@ export function initPreviewToolbar(previewPane) {
   // Scroll sync toggle
   const syncBtn = document.createElement('button');
   syncBtn.className = 'preview-sync-btn';
-  syncBtn.title = t('preview.syncToggle');
-  syncBtn.textContent = t('preview.sync');
+  syncBtn.title = i18nT('preview.syncToggle');
+  syncBtn.textContent = i18nT('preview.sync');
   syncBtn.style.cssText = 'padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--accent-color);color:#fff;cursor:pointer;font-size:11px;font-weight:600';
   syncBtn.addEventListener('click', () => {
     const enabled = toggleScrollSync();
     syncBtn.style.background = enabled ? 'var(--accent-color)' : 'var(--bg-primary)';
     syncBtn.style.color = enabled ? '#fff' : 'var(--text-secondary)';
-    syncBtn.title = enabled ? t('preview.syncOn') : t('preview.syncOff');
+    syncBtn.title = enabled ? i18nT('preview.syncOn') : i18nT('preview.syncOff');
   });
   toolbar.appendChild(syncBtn);
 
@@ -481,7 +515,7 @@ export function initPreviewToolbar(previewPane) {
   // Zoom out
   const zoomOutBtn = document.createElement('button');
   zoomOutBtn.textContent = '-';
-  zoomOutBtn.title = t('preview.zoomOut');
+  zoomOutBtn.title = i18nT('preview.zoomOut');
   zoomOutBtn.style.cssText = 'width:22px;height:22px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);cursor:pointer;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center';
   toolbar.appendChild(zoomOutBtn);
 
@@ -495,7 +529,7 @@ export function initPreviewToolbar(previewPane) {
   // Zoom in
   const zoomInBtn = document.createElement('button');
   zoomInBtn.textContent = '+';
-  zoomInBtn.title = t('preview.zoomIn');
+  zoomInBtn.title = i18nT('preview.zoomIn');
   zoomInBtn.style.cssText = 'width:22px;height:22px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);cursor:pointer;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center';
   toolbar.appendChild(zoomInBtn);
 
@@ -510,8 +544,8 @@ export function initPreviewToolbar(previewPane) {
 
   // Presentation mode button
   const presBtn = document.createElement('button');
-  presBtn.textContent = t('preview.present');
-  presBtn.title = t('preview.presentTip');
+  presBtn.textContent = i18nT('preview.present');
+  presBtn.title = i18nT('preview.presentTip');
   presBtn.style.cssText = 'padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);cursor:pointer;font-size:11px;font-weight:600;margin-left:4px';
   presBtn.addEventListener('click', () => {
     startMarkdownPresentation();
@@ -561,7 +595,7 @@ export function startMarkdownPresentation() {
   // ESC hint
   const hint = document.createElement('div');
   hint.style.cssText = 'position:fixed;bottom:24px;left:32px;font-size:12px;color:rgba(255,255,255,0.3);font-family:sans-serif';
-  hint.textContent = t('preview.escHint');
+  hint.textContent = i18nT('preview.escHint');
   overlay.appendChild(hint);
 
   const showSlide = (idx) => {
@@ -577,7 +611,7 @@ export function startMarkdownPresentation() {
     slideEl.querySelectorAll('pre').forEach((p) => { p.style.cssText = 'background:rgba(0,0,0,0.3);padding:16px 20px;border-radius:8px;overflow-x:auto;font-size:18px'; });
     slideEl.querySelectorAll('img').forEach((img) => { img.style.cssText = 'max-width:100%;height:auto;border-radius:8px'; });
     slideEl.querySelectorAll('blockquote').forEach((bq) => { bq.style.cssText = 'border-left:4px solid #3b82f6;padding:12px 20px;margin:16px 0;background:rgba(59,130,246,0.08);border-radius:0 8px 8px 0;font-style:italic'; });
-    slideEl.querySelectorAll('table').forEach((t) => { t.style.cssText = 'border-collapse:collapse;width:100%;margin:16px 0'; });
+    slideEl.querySelectorAll('table').forEach((tbl) => { tbl.style.cssText = 'border-collapse:collapse;width:100%;margin:16px 0'; });
     slideEl.querySelectorAll('th, td').forEach((cell) => { cell.style.cssText = 'border:1px solid rgba(255,255,255,0.15);padding:8px 12px;text-align:left'; });
     slideEl.querySelectorAll('th').forEach((th) => { th.style.background = 'rgba(255,255,255,0.06)'; });
 
@@ -635,7 +669,7 @@ export function startMarkdownPresentation() {
  * @param {string} html - rendered HTML
  * @returns {string[]} array of slide HTML fragments
  */
-function splitIntoSlides(html) {
+export function splitIntoSlides(html) {
   const container = document.createElement('div');
   container.innerHTML = html;
 

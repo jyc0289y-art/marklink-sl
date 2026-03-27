@@ -3,6 +3,7 @@ import MarkdownIt from 'markdown-it';
 import taskListPlugin from 'markdown-it-task-lists';
 import footnotePlugin from 'markdown-it-footnote';
 import { full as emojiPlugin } from 'markdown-it-emoji';
+import { generateHeadingId } from '../src/preview/renderer.js';
 
 // ─── Helper: minimal renderer replicating renderer.js logic ───
 // We replicate the core logic to test it without browser/hljs dependencies
@@ -574,5 +575,170 @@ describe('Edge Cases', () => {
   it('handles multiple spaces in heading (collapsed to single dash in ID)', () => {
     const result = md.render('# Hello    World');
     expect(result).toContain('id="heading-hello-world"');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Exported generateHeadingId Tests
+// ═══════════════════════════════════════════════════════════
+
+describe('generateHeadingId (exported)', () => {
+  it('creates slug-based ID from plain text', () => {
+    expect(generateHeadingId('Hello World')).toBe('heading-hello-world');
+  });
+
+  it('strips special characters', () => {
+    expect(generateHeadingId('C++ & Java!')).toBe('heading-c-java');
+  });
+
+  it('collapses multiple spaces and dashes', () => {
+    expect(generateHeadingId('Hello    World')).toBe('heading-hello-world');
+    expect(generateHeadingId('a - - b')).toBe('heading-a-b');
+  });
+
+  it('handles empty string', () => {
+    expect(generateHeadingId('')).toBe('heading-');
+  });
+
+  it('handles only special characters', () => {
+    expect(generateHeadingId('!!!')).toBe('heading-');
+  });
+
+  it('preserves hyphens in text', () => {
+    expect(generateHeadingId('step-by-step guide')).toBe('heading-step-by-step-guide');
+  });
+
+  it('lowercases all text', () => {
+    expect(generateHeadingId('UPPER Case Mixed')).toBe('heading-upper-case-mixed');
+  });
+
+  it('handles underscores (part of \\w)', () => {
+    expect(generateHeadingId('my_variable_name')).toBe('heading-my_variable_name');
+  });
+
+  it('handles numbers', () => {
+    expect(generateHeadingId('Step 1: Setup')).toBe('heading-step-1-setup');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Presentation Slide Splitting Tests (pure logic)
+// ═══════════════════════════════════════════════════════════
+
+describe('Slide Splitting Logic', () => {
+  // Replicate the splitIntoSlides logic as a pure function for testing
+  // (The actual function in preview.js uses document.createElement which needs DOM)
+  function splitIntoSlidesFromHtml(htmlParts) {
+    // Simulates the logic: split by HR or H1/H2 boundaries
+    const slides = [];
+    let current = [];
+    const flush = () => {
+      const content = current.join('');
+      if (content.trim()) slides.push(content);
+      current = [];
+    };
+    for (const part of htmlParts) {
+      if (part.tag === 'HR') {
+        flush();
+        continue;
+      }
+      if ((part.tag === 'H1' || part.tag === 'H2') && current.length > 0) {
+        flush();
+      }
+      current.push(part.html);
+    }
+    flush();
+    return slides;
+  }
+
+  it('splits on HR boundaries', () => {
+    const parts = [
+      { tag: 'P', html: '<p>Slide 1</p>' },
+      { tag: 'HR', html: '<hr>' },
+      { tag: 'P', html: '<p>Slide 2</p>' },
+    ];
+    const slides = splitIntoSlidesFromHtml(parts);
+    expect(slides).toHaveLength(2);
+    expect(slides[0]).toContain('Slide 1');
+    expect(slides[1]).toContain('Slide 2');
+  });
+
+  it('splits on H1 boundaries (not first element)', () => {
+    const parts = [
+      { tag: 'H1', html: '<h1>Title 1</h1>' },
+      { tag: 'P', html: '<p>Content 1</p>' },
+      { tag: 'H1', html: '<h1>Title 2</h1>' },
+      { tag: 'P', html: '<p>Content 2</p>' },
+    ];
+    const slides = splitIntoSlidesFromHtml(parts);
+    expect(slides).toHaveLength(2);
+    expect(slides[0]).toContain('Title 1');
+    expect(slides[1]).toContain('Title 2');
+  });
+
+  it('splits on H2 boundaries (not first element)', () => {
+    const parts = [
+      { tag: 'H2', html: '<h2>Section 1</h2>' },
+      { tag: 'P', html: '<p>Text</p>' },
+      { tag: 'H2', html: '<h2>Section 2</h2>' },
+    ];
+    const slides = splitIntoSlidesFromHtml(parts);
+    expect(slides).toHaveLength(2);
+  });
+
+  it('returns single slide for content without separators', () => {
+    const parts = [
+      { tag: 'P', html: '<p>Just one slide</p>' },
+      { tag: 'P', html: '<p>More text</p>' },
+    ];
+    const slides = splitIntoSlidesFromHtml(parts);
+    expect(slides).toHaveLength(1);
+  });
+
+  it('returns empty array for empty input', () => {
+    const slides = splitIntoSlidesFromHtml([]);
+    expect(slides).toHaveLength(0);
+  });
+
+  it('skips empty slides from consecutive HRs', () => {
+    const parts = [
+      { tag: 'P', html: '<p>Content</p>' },
+      { tag: 'HR', html: '<hr>' },
+      { tag: 'HR', html: '<hr>' },
+      { tag: 'P', html: '<p>More</p>' },
+    ];
+    const slides = splitIntoSlidesFromHtml(parts);
+    expect(slides).toHaveLength(2);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Task Toggle Edge Cases
+// ═══════════════════════════════════════════════════════════
+
+describe('Task List Source Toggle - Edge Cases', () => {
+  it('handles uppercase X in checked tasks', () => {
+    const source = '- [X] Task with uppercase X';
+    const result = toggleTaskInSource(source, 0, false);
+    expect(result).toBe('- [ ] Task with uppercase X');
+  });
+
+  it('handles task at end of document (no trailing newline)', () => {
+    const source = '- [ ] Last task';
+    const result = toggleTaskInSource(source, 0, true);
+    expect(result).toBe('- [x] Last task');
+  });
+
+  it('does not modify non-task list items', () => {
+    const source = '- Regular item\n- [ ] Task item';
+    const result = toggleTaskInSource(source, 0, true);
+    expect(result).toBe('- Regular item\n- [x] Task item');
+  });
+
+  it('handles multiple checkbox states in sequence', () => {
+    const source = '- [x] Done\n- [ ] Todo\n- [X] Also done';
+    // Toggle the third task (index 2) to unchecked
+    const result = toggleTaskInSource(source, 2, false);
+    expect(result).toBe('- [x] Done\n- [ ] Todo\n- [ ] Also done');
   });
 });
