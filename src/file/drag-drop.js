@@ -28,6 +28,9 @@ const FILE_ICONS = {
   pptx: { icon: '📽️', label: 'Presentation' },
 };
 
+/** Maximum file size for drag-and-drop (100 MB) */
+const MAX_DROP_FILE_SIZE = 100 * 1024 * 1024;
+
 let dragCounter = 0;
 
 /**
@@ -161,6 +164,12 @@ const _getExtFromType = (mimeType) => {
 /* ==================== File Processing ==================== */
 
 const _processFile = async (file, onFileLoad) => {
+  // Guard: reject oversized files
+  if (file.size > MAX_DROP_FILE_SIZE) {
+    alert(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum supported size is ${MAX_DROP_FILE_SIZE / 1024 / 1024} MB.`);
+    return;
+  }
+
   const name = file.name.toLowerCase();
 
   // DOCX -> switch to document tab and import via mammoth
@@ -256,6 +265,49 @@ const _processFile = async (file, onFileLoad) => {
       reader.readAsDataURL(file);
     } catch (err) {
       console.error('Image drag-drop import error:', err);
+    }
+    return;
+  }
+
+  // XLSX / XLS / CSV / TSV / ODS -> switch to sheet tab and import
+  if (name.match(/\.(xlsx|xls|csv|tsv|ods)$/)) {
+    try {
+      const { switchTab } = await import('../ui/tabs.js');
+      switchTab('sheet');
+      const { openSheetFromFile } = await import('../sheet/sheet-file.js');
+      if (openSheetFromFile) {
+        await openSheetFromFile(file);
+      } else {
+        // Fallback: trigger file input-based import
+        const { openSheetFile } = await import('../sheet/sheet-file.js');
+        await openSheetFile(file);
+      }
+      const fileNameEl = document.getElementById('file-name');
+      if (fileNameEl) fileNameEl.textContent = file.name;
+    } catch (err) {
+      console.error('Sheet drag-drop import error:', err);
+      alert('Spreadsheet import error: ' + err.message);
+    }
+    return;
+  }
+
+  // PPTX / PPT / ODP -> switch to slide tab and import
+  if (name.match(/\.(pptx|ppt|odp)$/)) {
+    try {
+      const { switchTab } = await import('../ui/tabs.js');
+      switchTab('slide');
+      const { openSlideFromFile } = await import('../slide/slide-file.js');
+      if (openSlideFromFile) {
+        await openSlideFromFile(file);
+      } else {
+        const { openSlideFile } = await import('../slide/slide-file.js');
+        await openSlideFile(file);
+      }
+      const fileNameEl = document.getElementById('file-name');
+      if (fileNameEl) fileNameEl.textContent = file.name;
+    } catch (err) {
+      console.error('Slide drag-drop import error:', err);
+      alert('Presentation import error: ' + err.message);
     }
     return;
   }

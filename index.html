@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
-  <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+  <!-- dns-prefetch for GTM removed: GA4 loads only after user consent -->
   <!-- Preload KaTeX font CSS (swap variant) for math rendering without FOIT -->
   <link rel="preload" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex-swap.min.css" as="style" />
   <script type="application/ld+json">
@@ -77,16 +77,17 @@
   <link rel="stylesheet" href="/src/styles/settings.css" />
   <link rel="stylesheet" href="/src/styles/mobile.css" />
 
-  <!-- Tesseract.js OCR — deferred to not block initial render -->
-  <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <!-- Tesseract.js OCR — loaded on-demand when OCR is first used (see pdf-viewer.js) -->
+  <!-- Removed: was loading ~2MB on every page load even when OCR not needed -->
 
-  <!-- Google Analytics 4 -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+  <!-- Google Analytics 4 — loaded dynamically via src/analytics.js after user consent -->
+  <!-- GA4 ID is placeholder (G-XXXXXXXXXX). Replace in analytics.js when real ID is obtained. -->
   <script>
+    // Minimal gtag stub — real GA4 loads only after consent via analytics.js
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-XXXXXXXXXX');
+    // Default: deny analytics until user opts in
+    gtag('consent', 'default', { analytics_storage: 'denied' });
   </script>
 </head>
 <body>

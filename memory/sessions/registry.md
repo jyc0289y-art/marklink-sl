@@ -86,3 +86,6 @@
 | P9.36wc | Sheet Chart & CF & Validation & Sort Audit | 2026-03-27 | 없음 | 진행중 |
 | P9.37wc | Slide Editor Interaction Quality Audit | 2026-03-27 | 없음 | 진행중 |
 | P9.38wc | Comprehensive Smoke Test & Quality Gate | 2026-03-27 | 없음 | 종료 |
+| P9.39wc | Settings & Preferences System Audit | 2026-03-27 | 없음 | 진행중 |
+| P9.40wc | Analytics, Privacy & Third-Party Audit | 2026-03-27 | 없음 | 진행중 |
+| P9.41wc | File Manager Audit & Bugfix | 2026-03-27 | 없음 | 진행중 |

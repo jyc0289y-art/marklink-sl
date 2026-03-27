@@ -10,9 +10,9 @@ import { initSidebar, showSidebar } from './ui/sidebar.js';
 import { initShortcuts, applyToolbarShortcutHints, showShortcutsHelpPanel } from './ui/shortcuts.js';
 import { initToast, toastSuccess, toastError, toastInfo } from './ui/toast.js';
 import { initContextMenus } from './ui/context-menu.js';
-import { openFile, saveFile, quickSave, getCurrentFileName, setFileName, startAutoSave, checkAutoSaveRestore } from './file/file-manager.js';
+import { openFile, saveFile, quickSave, getCurrentFileName, setFileName, startAutoSave, stopAutoSave, checkAutoSaveRestore } from './file/file-manager.js';
 import { initDragDrop } from './file/drag-drop.js';
-import { renderRecentFiles, getRecentEntries } from './file/recent-files.js';
+import { renderRecentFiles, getRecentEntries, reopenFile } from './file/recent-files.js';
 import { openFolder } from './file/folder-tree.js';
 import { printDocument } from './export/print.js';
 import { exportHTML } from './export/html.js';
@@ -301,13 +301,99 @@ export async function initApp() {
     updateFileName(name);
     setContent(content);
     updatePreviewImmediate(content);
-    renderRecentFiles(document.getElementById('recent-files'), (result) => {
-      if (result && result.content) {
-        loadFile(result);
-      } else if (result && result.name) {
+    renderRecentFiles(document.getElementById('recent-files'), handleRecentFileClick);
+  }
+
+  /**
+   * Handle recent file click — route to the correct editor based on file type.
+   * For markdown/text, loads directly. For binary formats, switches tab and
+   * re-imports via the file handle.
+   */
+  async function handleRecentFileClick(result) {
+    if (!result || !result.name) return;
+    const lower = result.name.toLowerCase();
+
+    // Binary file types: switch to correct tab and re-import via handle
+    if (lower.match(/\.(docx|hwpx)$/)) {
+      if (!result.handle) { toastInfo(`Cannot reopen "${result.name}" — file handle expired`); return; }
+      try {
+        switchTab('document');
+        const file = await result.handle.getFile();
+        if (lower.endsWith('.docx')) {
+          const { importDocx } = await import('./document/docx.js');
+          await importDocx(file);
+        } else {
+          const { importHwpx } = await import('./document/hwpx.js');
+          await importHwpx(file);
+        }
+        const dfMod = await loadDocFile();
+        dfMod.setDocFileName(result.name);
+        updateFileName(result.name);
+      } catch (e) { toastError(`Failed to open "${result.name}": ${e.message}`); }
+      return;
+    }
+    if (lower.match(/\.(xlsx|xls|csv|tsv|ods)$/)) {
+      if (!result.handle) { toastInfo(`Cannot reopen "${result.name}" — file handle expired`); return; }
+      try {
+        switchTab('sheet');
+        const file = await result.handle.getFile();
+        const sfMod = await loadSheetFile();
+        await sfMod.openSheetFromFile(file);
+        updateFileName(result.name);
+      } catch (e) { toastError(`Failed to open "${result.name}": ${e.message}`); }
+      return;
+    }
+    if (lower.match(/\.(pptx|ppt|odp)$/)) {
+      if (!result.handle) { toastInfo(`Cannot reopen "${result.name}" — file handle expired`); return; }
+      try {
+        switchTab('slide');
+        const file = await result.handle.getFile();
+        const slMod = await loadSlideFile();
+        await slMod.openSlideFromFile(file);
+        updateFileName(result.name);
+      } catch (e) { toastError(`Failed to open "${result.name}": ${e.message}`); }
+      return;
+    }
+    if (lower.endsWith('.pdf')) {
+      if (!result.handle) { toastInfo(`Cannot reopen "${result.name}" — file handle expired`); return; }
+      try {
+        switchTab('pdf');
+        const file = await result.handle.getFile();
+        const pdfMod = await loadPdfViewer();
+        if (pdfMod.loadPdfFromFile) await pdfMod.loadPdfFromFile(file);
+        updateFileName(result.name);
+      } catch (e) { toastError(`Failed to open "${result.name}": ${e.message}`); }
+      return;
+    }
+    if (lower.match(/\.(png|jpe?g|gif|webp|bmp|svg|tiff?)$/)) {
+      if (!result.handle) { toastInfo(`Cannot reopen "${result.name}" — file handle expired`); return; }
+      try {
+        switchTab('photo');
+        const file = await result.handle.getFile();
+        const reader = new FileReader();
+        reader.onload = () => {
+          document.dispatchEvent(new CustomEvent('photo-file-drop', { detail: { dataUrl: reader.result, name: result.name } }));
+        };
+        reader.readAsDataURL(file);
+        updateFileName(result.name);
+      } catch (e) { toastError(`Failed to open "${result.name}": ${e.message}`); }
+      return;
+    }
+
+    // Markdown / text: load content directly
+    if (result.content) {
+      loadFile(result);
+    } else if (result.handle) {
+      try {
+        const file = await result.handle.getFile();
+        const content = await file.text();
+        loadFile({ name: result.name, content });
+      } catch (e) {
         toastInfo(`Cannot reopen "${result.name}" — file handle expired`);
       }
-    });
+    } else {
+      toastInfo(`Cannot reopen "${result.name}" — file handle expired`);
+    }
   }
 
   // Open file button — dispatches by active tab
@@ -635,6 +721,13 @@ export async function initApp() {
     else if (tab === 'ai') updateFileName('AI Assistant');
     else updateFileName(getCurrentFileName());
 
+    // Auto-save: stop timer when leaving markdown, restart when returning
+    if (tab === 'markdown') {
+      startAutoSave(() => getContent(), 'markdown');
+    } else if (prevTab === 'markdown') {
+      stopAutoSave();
+    }
+
     // Resize Draw canvas when switching to Draw tab
     if (tab === 'draw') {
       import('./draw/draw-editor.js').then(m => { if (m.resizeCanvas) setTimeout(() => m.resizeCanvas(), 50); }).catch(() => {});
@@ -908,13 +1001,7 @@ export async function initApp() {
   });
 
   // 25d. Render recent files in sidebar at startup
-  renderRecentFiles(document.getElementById('recent-files'), (result) => {
-    if (result && result.content) {
-      loadFile(result);
-    } else if (result && result.name) {
-      toastInfo(`Cannot reopen "${result.name}" — file handle expired`);
-    }
-  });
+  renderRecentFiles(document.getElementById('recent-files'), handleRecentFileClick);
 
   // 30. Version history
   initVersionHistory();
@@ -2076,10 +2163,38 @@ const initWelcomeScreen = (loadFile) => {
     });
   });
 
-  // Recent file items → try to reopen (placeholder; real reopen needs handle)
+  // Recent file items → try to reopen via stored handle
   welcome.querySelectorAll('.welcome-recent-item').forEach((item) => {
-    item.addEventListener('click', () => {
+    item.addEventListener('click', async () => {
+      const name = item.dataset.name;
       _dismissWelcome();
+      if (!name) return;
+      try {
+        const result = await reopenFile(name);
+        if (result && result.content) {
+          // Determine correct tab from file extension
+          const lower = name.toLowerCase();
+          if (lower.match(/\.(docx|hwpx|html|htm)$/)) {
+            switchTab('document');
+          } else if (lower.match(/\.(xlsx|xls|csv|tsv|ods)$/)) {
+            switchTab('sheet');
+          } else if (lower.match(/\.(pptx|ppt|odp)$/)) {
+            switchTab('slide');
+          } else if (lower.endsWith('.pdf')) {
+            switchTab('pdf');
+          } else if (lower.match(/\.(png|jpe?g|gif|webp|bmp|svg|tiff?)$/)) {
+            switchTab('photo');
+          } else {
+            // Default: markdown
+            loadFile(result);
+          }
+        } else {
+          toastInfo(`Cannot reopen "${name}" — file handle expired`);
+        }
+      } catch (e) {
+        console.warn('Failed to reopen recent file:', e);
+        toastError(`Failed to open "${name}"`);
+      }
     });
   });
 

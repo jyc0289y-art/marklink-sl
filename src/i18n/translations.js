@@ -2516,6 +2516,28 @@ export const TRANSLATIONS = {
     de: 'Eine leistungsstarke browserbasierte Office-Suite von SeouLink (SL Corporation).',
   },
 
+  // ===== THEME CUSTOMIZER =====
+  'theme.accentColor': {
+    en: 'Accent Color', ko: '강조 색상', ja: 'アクセントカラー', zh: '强调色',
+    es: 'Color de acento', fr: "Couleur d'accent", de: 'Akzentfarbe',
+  },
+  'theme.fontFamily': {
+    en: 'Font Family', ko: '글꼴', ja: 'フォント', zh: '字体',
+    es: 'Familia de fuentes', fr: 'Police de caractères', de: 'Schriftfamilie',
+  },
+  'theme.fontSize': {
+    en: 'Font Size', ko: '글자 크기', ja: 'フォントサイズ', zh: '字号',
+    es: 'Tamaño de fuente', fr: 'Taille de police', de: 'Schriftgröße',
+  },
+  'theme.editorBg': {
+    en: 'Editor Background', ko: '편집기 배경', ja: 'エディタ背景', zh: '编辑器背景',
+    es: 'Fondo del editor', fr: "Fond de l'éditeur", de: 'Editor-Hintergrund',
+  },
+  'theme.customCss': {
+    en: 'Custom CSS (Advanced)', ko: '사용자 정의 CSS (고급)', ja: 'カスタムCSS（上級）', zh: '自定义CSS（高级）',
+    es: 'CSS personalizado (avanzado)', fr: 'CSS personnalisé (avancé)', de: 'Benutzerdefiniertes CSS (Erweitert)',
+  },
+
   // ===== SHORTCUT CUSTOMIZER =====
   'shortcuts.edit': {
     en: 'Edit', ko: '편집', ja: '編集', zh: '编辑',

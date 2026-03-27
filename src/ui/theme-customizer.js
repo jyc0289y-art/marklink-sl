@@ -219,7 +219,7 @@ export const buildThemeCustomizerPanel = () => {
   panel.className = 'theme-customizer-panel';
 
   // ── Accent Color ──
-  const accentSection = createSection('Accent Color');
+  const accentSection = createSection(t('theme.accentColor'));
   const accentRow = document.createElement('div');
   accentRow.className = 'settings-row';
 
@@ -256,7 +256,7 @@ export const buildThemeCustomizerPanel = () => {
   panel.appendChild(accentSection);
 
   // ── Font Family ──
-  const fontSection = createSection('Font Family');
+  const fontSection = createSection(t('theme.fontFamily'));
   const fontSelect = document.createElement('select');
   fontSelect.className = 'settings-select';
   [
@@ -276,7 +276,7 @@ export const buildThemeCustomizerPanel = () => {
   panel.appendChild(fontSection);
 
   // ── Font Size ──
-  const sizeSection = createSection('Font Size');
+  const sizeSection = createSection(t('theme.fontSize'));
   const sizeRow = document.createElement('div');
   sizeRow.className = 'settings-row size-buttons';
   ['small', 'medium', 'large', 'extra-large'].forEach((size) => {
@@ -294,7 +294,7 @@ export const buildThemeCustomizerPanel = () => {
   panel.appendChild(sizeSection);
 
   // ── Editor Background ──
-  const bgSection = createSection('Editor Background');
+  const bgSection = createSection(t('theme.editorBg'));
   const bgRow = document.createElement('div');
   bgRow.className = 'settings-row bg-options';
   [
@@ -316,7 +316,7 @@ export const buildThemeCustomizerPanel = () => {
   panel.appendChild(bgSection);
 
   // ── Custom CSS ──
-  const cssSection = createSection('Custom CSS (Advanced)');
+  const cssSection = createSection(t('theme.customCss'));
   const cssTextarea = document.createElement('textarea');
   cssTextarea.className = 'custom-css-textarea';
   cssTextarea.placeholder = '/* Add custom CSS rules here */\n.toolbar { opacity: 0.9; }';

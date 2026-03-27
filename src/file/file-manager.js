@@ -8,6 +8,9 @@ import { cacheFileForOffline, queueSyncOperation } from '../ui/offline-manager.j
 let currentFileHandle = null;
 let currentFileName = 'untitled.md';
 
+/** Maximum file size for text-based files (50 MB) */
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
 // ---- Auto-save to IndexedDB ----
 
 const AUTOSAVE_DB = 'officelink-autosave';
@@ -275,6 +278,9 @@ const openFileModern = async () => {
   currentFileHandle = handle;
   currentFileName = handle.name;
   const file = await handle.getFile();
+  if (file.size > MAX_FILE_SIZE) {
+    throw new Error(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum supported size is ${MAX_FILE_SIZE / 1024 / 1024} MB.`);
+  }
   const content = await file.text();
   await addToRecent(currentFileName, handle, 'markdown');
   cacheFileForOffline(currentFileName, content, 'markdown').catch(() => {});
@@ -290,12 +296,22 @@ const openFileFallback = () =>
     input.accept = '.md,.markdown,.txt';
     input.onchange = async (e) => {
       const file = e.target.files[0];
-      if (!file) return;
+      if (!file) { resolve(null); return; }
       currentFileName = file.name;
       const content = await file.text();
       await addToRecent(currentFileName, null, 'markdown');
       resolve({ name: currentFileName, content });
     };
+    // Handle cancel: when focus returns to the window without a file selected
+    const onFocus = () => {
+      setTimeout(() => {
+        if (!input.files || input.files.length === 0) {
+          resolve(null);
+        }
+        window.removeEventListener('focus', onFocus);
+      }, 300);
+    };
+    window.addEventListener('focus', onFocus);
     input.click();
   });
 

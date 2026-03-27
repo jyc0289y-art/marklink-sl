@@ -103,21 +103,11 @@ async function detectLanguageByIP() {
   if (localStorage.getItem(LANG_ASKED_KEY)) return;
 
   try {
-    // Try browser language first (instant, no network)
+    // Use browser language (instant, no network, no IP leak)
+    // Previously used ipapi.co for IP-based detection — removed for privacy
+    // (sent user IP to third party without consent)
     const browserLang = navigator.language?.substring(0, 2) || 'en';
     let detectedLang = LANGUAGES[browserLang] ? browserLang : null;
-
-    // Try IP-based detection
-    if (!detectedLang) {
-      try {
-        const res = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(3000) });
-        if (res.ok) {
-          const data = await res.json();
-          const countryCode = data.country_code;
-          detectedLang = COUNTRY_LANG_MAP[countryCode] || null;
-        }
-      } catch { /* IP detection failed, use browser lang */ }
-    }
 
     // If detected language is English or unknown, skip
     if (!detectedLang || detectedLang === 'en') {

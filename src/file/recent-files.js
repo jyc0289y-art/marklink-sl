@@ -191,8 +191,14 @@ export const reopenFile = async (name) => {
       const req = await handle.requestPermission({ mode: 'read' });
       if (req !== 'granted') return null;
     }
-    const file = await handle.getFile();
-    const content = await file.text();
+    // Only read text content for text-based files; binary files are
+    // re-imported by the caller using the handle directly.
+    const fileType = detectFileType(name);
+    let content = null;
+    if (fileType === 'markdown' || fileType === 'other') {
+      const file = await handle.getFile();
+      content = await file.text();
+    }
     // Update last opened
     await addToRecent(name, handle);
     return { name, content, handle };

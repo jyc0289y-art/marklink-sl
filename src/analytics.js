@@ -1,21 +1,75 @@
-// OfficeLink SL — GA4 Event Tracking + Performance Monitoring
+// OfficeLink SL — Analytics + Performance Monitoring
+// Privacy-first: no tracking without user consent, no PII in events
 
 const isDev = () => location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 
+// ---- Consent Management ----
+
+const CONSENT_KEY = 'officelink-analytics-consent';
+
+/** Check if user has given analytics consent */
+export const hasAnalyticsConsent = () => localStorage.getItem(CONSENT_KEY) === 'granted';
+
+/** Set analytics consent (called from settings or consent banner) */
+export const setAnalyticsConsent = (granted) => {
+  localStorage.setItem(CONSENT_KEY, granted ? 'granted' : 'denied');
+  if (granted) {
+    loadGA4();
+  } else {
+    // Revoke: update gtag consent state
+    if (typeof gtag === 'function') {
+      gtag('consent', 'update', { analytics_storage: 'denied' });
+    }
+  }
+};
+
+/** Load GA4 script dynamically (only after consent) */
+const loadGA4 = () => {
+  // GA4 Measurement ID — replace G-XXXXXXXXXX with real ID when available
+  const GA4_ID = 'G-XXXXXXXXXX';
+  if (GA4_ID === 'G-XXXXXXXXXX') return; // Placeholder — skip loading
+
+  if (document.querySelector(`script[src*="googletagmanager"]`)) return; // Already loaded
+
+  const script = document.createElement('script');
+  script.async = true;
+  script.src = `https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`;
+  document.head.appendChild(script);
+
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = function () { window.dataLayer.push(arguments); };
+  window.gtag('js', new Date());
+  window.gtag('consent', 'default', { analytics_storage: 'granted' });
+  window.gtag('config', GA4_ID, { send_page_view: true });
+};
+
+// ---- Event Tracking (consent-gated) ----
+
 const send = (eventName, params = {}) => {
+  if (!hasAnalyticsConsent()) return;
   if (typeof gtag === 'function') {
     gtag('event', eventName, params);
   }
 };
 
-/** File opened */
-export const trackFileOpen = (fileName) => {
-  send('file_open', { file_name: fileName });
+/**
+ * Sanitize file name for analytics — strip to extension only.
+ * Never send actual file names (may contain PII / document titles).
+ */
+const getFileExtension = (fileName) => {
+  if (!fileName) return 'unknown';
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  return ext || 'unknown';
 };
 
-/** File saved */
+/** File opened (sends extension only, not the file name) */
+export const trackFileOpen = (fileName) => {
+  send('file_open', { file_type: getFileExtension(fileName) });
+};
+
+/** File saved (sends extension only, not the file name) */
 export const trackFileSave = (fileName) => {
-  send('file_save', { file_name: fileName });
+  send('file_save', { file_type: getFileExtension(fileName) });
 };
 
 /** Export action */
@@ -47,12 +101,13 @@ export const initSessionTracking = () => {
   });
 };
 
-// ---- Performance Monitoring ----
+// ---- Performance Monitoring (local-only, no consent needed) ----
 
 const perfLog = (label, value, unit = 'ms') => {
   if (isDev()) {
     console.log(`[Perf] ${label}: ${typeof value === 'number' ? value.toFixed(1) : value}${unit}`);
   }
+  // Only send perf data to GA4 if consent is given
   send('performance', { metric: label, value, unit });
 };
 
@@ -196,15 +251,18 @@ export const initPerfMonitoring = () => {
   if (isDev()) {
     window.__officelink_perf = perfMetrics;
   }
+
+  // If user already consented, load GA4 now
+  if (hasAnalyticsConsent()) {
+    loadGA4();
+  }
 };
 
 /**
- * Get a summary of all performance metrics
+ * Get a summary of all performance metrics (local only, no PII)
  * @returns {Object}
  */
 export const getPerfSummary = () => ({
   ...perfMetrics,
   timestamp: Date.now(),
-  url: location.href,
-  userAgent: navigator.userAgent,
 });

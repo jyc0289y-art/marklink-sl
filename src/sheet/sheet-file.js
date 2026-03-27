@@ -162,6 +162,19 @@ export function setSheetFileName(name) {
 }
 
 /**
+ * Open a spreadsheet from a File object (e.g., from drag-and-drop).
+ * Skips the file picker dialog and imports directly.
+ * @param {File} file
+ * @returns {Promise<{name: string}>}
+ */
+export async function openSheetFromFile(file) {
+  if (!file) return null;
+  await importFile(file);
+  currentName = file.name;
+  return { name: file.name };
+}
+
+/**
  * Extract hex color from SheetJS color object.
  * Handles { rgb: "RRGGBB" }, { theme: N, tint: T }, { indexed: N } patterns.
  */

@@ -1687,6 +1687,28 @@ export function getSlideFileName() {
 }
 
 /**
+ * Open a slide presentation from a File object (e.g., from drag-and-drop).
+ * Skips the file picker dialog and imports directly.
+ * @param {File} file
+ * @returns {Promise<{name: string}|null>}
+ */
+export async function openSlideFromFile(file) {
+  if (!file) return null;
+  if (file.size === 0) {
+    alert('The file is empty (0 bytes).');
+    return null;
+  }
+  if (/\.pptx$/i.test(file.name)) {
+    await importPptx(file);
+  } else {
+    const text = await file.text();
+    importSlideContent(file.name, text);
+  }
+  currentName = file.name;
+  return { name: file.name };
+}
+
+/**
  * Build standalone HTML presentation (navigable with arrow keys)
  */
 function buildPresHTML() {

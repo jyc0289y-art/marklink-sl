@@ -601,6 +601,20 @@
   font-family: var(--custom-font-family, inherit);
 }
 
+/* ── Font size customization ── */
+body {
+  font-size: var(--custom-font-size, 15px);
+}
+
+[contenteditable],
+textarea,
+.cm-editor .cm-content,
+.doc-editor-content,
+.markdown-source,
+.sheet-cell {
+  font-size: var(--custom-font-size, inherit);
+}
+
 /* ═══════════════════════════════════════════════════════
    Keyboard Shortcut Customizer
    ═══════════════════════════════════════════════════════ */

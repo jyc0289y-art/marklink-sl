@@ -2062,8 +2062,22 @@ function bindPageWrapperEvents(wrapper, pageNum) {
 // ─── OCR (Tesseract.js) ─────────────────────────────────────
 const runOcr = async () => {
   if (!pdfDoc) { alert('Open a PDF first.'); return; }
+  // Lazy-load Tesseract.js on first OCR use (saves ~2MB on initial page load)
+  if (!window.Tesseract) {
+    try {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('Failed to load Tesseract.js'));
+        document.head.appendChild(script);
+      });
+    } catch {
+      alert('Failed to load Tesseract.js OCR library. Check your internet connection.');
+      return;
+    }
+  }
   const Tesseract = window.Tesseract;
-  if (!Tesseract) { alert('Tesseract.js not loaded. Check your internet connection.'); return; }
 
   const lang = document.getElementById('pdf-ocr-lang')?.value || 'eng';
   const progressEl = document.getElementById('pdf-ocr-progress');

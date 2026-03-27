@@ -7,11 +7,12 @@ import { buildThemeCustomizerPanel, getThemeSettings, importThemeSettings, reset
 import { getLang, setLang, showLanguagePicker, t } from './i18n.js';
 import { getOllamaUrl, setOllamaUrl } from '../ai/ollama-client.js';
 import { toastSuccess, toastError, toastInfo } from './toast.js';
-import { broadcastThemeChange, broadcastLangChange } from './tab-sync.js';
+import { broadcastThemeChange } from './tab-sync.js';
 import { getPluginList, enablePlugin, disablePlugin } from '../plugins/plugin-manager.js';
 import { buildShortcutsSettingsPanel } from './shortcut-customizer.js';
 import { downloadBlob } from '../utils/download.js';
 import { activateFocusTrap } from '../utils/focus-trap.js';
+import { hasAnalyticsConsent, setAnalyticsConsent } from '../analytics.js';
 
 const SETTINGS_STORAGE_KEY = 'officelink-settings';
 let settingsOverlay = null;
@@ -152,14 +153,15 @@ export const showSettings = () => {
     if (e.target === settingsOverlay) closeSettings();
   });
 
-  // Close on Escape
+  // Close on Escape — handler is cleaned up in closeSettings()
   const escHandler = (e) => {
     if (e.key === 'Escape') {
       closeSettings();
-      document.removeEventListener('keydown', escHandler);
     }
   };
   document.addEventListener('keydown', escHandler);
+  // Store handler reference for cleanup
+  settingsOverlay._escHandler = escHandler;
 
   document.body.appendChild(settingsOverlay);
   renderTabContent('general');
@@ -173,6 +175,10 @@ export const showSettings = () => {
  */
 export const closeSettings = () => {
   if (deactivateSettingsTrap) { deactivateSettingsTrap(); deactivateSettingsTrap = null; }
+  // Remove Escape keydown handler to prevent leak
+  if (settingsOverlay?._escHandler) {
+    document.removeEventListener('keydown', settingsOverlay._escHandler);
+  }
   settingsOverlay?.remove();
   settingsOverlay = null;
 };
@@ -216,8 +222,14 @@ const renderGeneralTab = (container, settings) => {
     btn.addEventListener('click', () => {
       if (mode === 'auto') {
         autoTheme();
-      } else if (getCurrentTheme() !== mode) {
-        toggleTheme();
+      } else {
+        // Explicitly set theme — this exits auto mode and forces the chosen theme.
+        // toggleTheme() alone doesn't guarantee the right result if auto detected
+        // the same theme as the user's explicit choice.
+        localStorage.setItem('marklink-theme', mode);
+        if (getCurrentTheme() !== mode) {
+          toggleTheme();
+        }
       }
       broadcastThemeChange(mode);
       themeRow.querySelectorAll('.theme-mode-btn').forEach((b) => b.classList.remove('active'));
@@ -227,6 +239,30 @@ const renderGeneralTab = (container, settings) => {
   });
   themeSection.appendChild(themeRow);
   container.appendChild(themeSection);
+
+  // Privacy & Analytics
+  const privacySection = createSection('Privacy & Analytics');
+  const privacyDesc = document.createElement('p');
+  privacyDesc.style.cssText = 'font-size:12px;opacity:0.7;margin:0 0 10px;line-height:1.5;';
+  privacyDesc.textContent = 'OfficeLink SL runs entirely in your browser. All files stay on your device. Analytics (Google Analytics 4) is optional and only tracks anonymous usage patterns — never file names or document content.';
+  privacySection.appendChild(privacyDesc);
+
+  const analyticsRow = document.createElement('div');
+  analyticsRow.className = 'settings-row settings-row-between';
+  const analyticsLabel = document.createElement('span');
+  analyticsLabel.textContent = 'Allow anonymous analytics';
+  const analyticsToggle = document.createElement('input');
+  analyticsToggle.type = 'checkbox';
+  analyticsToggle.checked = hasAnalyticsConsent();
+  analyticsToggle.style.cssText = 'width:18px;height:18px;cursor:pointer;';
+  analyticsToggle.addEventListener('change', () => {
+    setAnalyticsConsent(analyticsToggle.checked);
+    toastInfo(analyticsToggle.checked ? 'Analytics enabled' : 'Analytics disabled');
+  });
+  analyticsRow.appendChild(analyticsLabel);
+  analyticsRow.appendChild(analyticsToggle);
+  privacySection.appendChild(analyticsRow);
+  container.appendChild(privacySection);
 };
 
 const renderAppearanceTab = (container) => {
@@ -563,5 +599,10 @@ export const initSettings = () => {
     document.querySelectorAll('[contenteditable], textarea').forEach((el) => {
       el.spellcheck = false;
     });
+  }
+
+  // Line numbers
+  if (!settings.lineNumbers) {
+    document.querySelector('.cm-editor')?.classList.add('hide-line-numbers');
   }
 };
