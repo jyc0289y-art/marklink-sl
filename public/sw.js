@@ -1,5 +1,5 @@
 // OfficeLink SL — Service Worker (PWA offline + cache strategy)
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 5;
 const CACHE_NAME = `officelink-v${CACHE_VERSION}`;
 const STATIC_CACHE = `officelink-static-v${CACHE_VERSION}`;
 

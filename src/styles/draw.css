@@ -399,9 +399,9 @@
 
 /* ===== Print Styles ===== */
 @media print {
-  .draw-toolbar,
-  .draw-properties-panel,
-  .draw-status-bar,
+  .draw-toolbar-left,
+  .draw-panel-right,
+  .draw-bottom-bar,
   .draw-ruler-h,
   .draw-ruler-v {
     display: none !important;

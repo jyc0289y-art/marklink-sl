@@ -618,7 +618,7 @@ html, body {
 .recent-clear-btn:hover {
   background: var(--hover-bg);
   opacity: 1;
-  color: var(--accent, #4a9eff);
+  color: var(--accent-color, #0071e3);
 }
 
 .recent-file-item {
@@ -630,7 +630,7 @@ html, body {
 }
 
 .recent-file-item.pinned {
-  border-left: 2px solid var(--accent, #4a9eff);
+  border-left: 2px solid var(--accent-color, #0071e3);
   padding-left: 10px !important;
 }
 
@@ -748,7 +748,7 @@ html, body {
 .autosave-filename {
   font-family: monospace;
   font-size: 12px !important;
-  color: var(--accent, #4a9eff) !important;
+  color: var(--accent-color, #0071e3) !important;
 }
 
 .autosave-restore-actions {
@@ -768,9 +768,9 @@ html, body {
 }
 
 .btn-restore {
-  background: var(--accent, #4a9eff);
+  background: var(--accent-color, #0071e3);
   color: #fff;
-  border-color: var(--accent, #4a9eff) !important;
+  border-color: var(--accent-color, #0071e3) !important;
 }
 
 .btn-restore:hover {
@@ -1227,6 +1227,15 @@ html, body {
   .tab-skeleton,
   .calculator-container,
   .cad-container,
+  .tutorial-overlay,
+  .tutorial-first-visit,
+  .help-center-modal,
+  .ai-cowork-toast,
+  .ai-cowork-loading,
+  .ai-cowork-diff,
+  .ai-ctx-menu,
+  .ai-cowork-panel-overlay,
+  .ai-cowork-fab,
   footer {
     display: none !important;
   }

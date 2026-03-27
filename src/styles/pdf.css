@@ -336,7 +336,7 @@
 
 .pdf-form-field input[type="text"]:focus,
 .pdf-form-field textarea:focus {
-  border-color: #1565c0;
+  border-color: var(--brand-color, #0071e3);
   background: rgba(227, 242, 253, 0.9);
 }
 
@@ -349,7 +349,7 @@
 }
 
 .pdf-form-field select {
-  border: 2px solid #42a5f5;
+  border: 2px solid var(--brand-color, #0071e3);
   background: rgba(227, 242, 253, 0.7);
   padding: 2px 4px;
   font-size: 12px;
@@ -884,5 +884,26 @@
   }
   .pdf-modal {
     width: 95vw;
+  }
+}
+
+/* ===== Print Styles ===== */
+@media print {
+  .pdf-toolbar,
+  .pdf-sidebar,
+  .pdf-thumbnail-panel,
+  .pdf-bookmark-sidebar,
+  .pdf-annotation-toolbar,
+  .pdf-search-bar {
+    display: none !important;
+  }
+  .pdf-container {
+    overflow: visible !important;
+    height: auto !important;
+  }
+  .pdf-page-wrapper {
+    box-shadow: none !important;
+    margin: 0 !important;
+    page-break-after: always;
   }
 }

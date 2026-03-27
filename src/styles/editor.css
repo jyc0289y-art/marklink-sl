@@ -592,10 +592,7 @@ body .status-bar {
   animation: fadeIn 0.2s ease;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
+/* fadeIn keyframes defined in main.css */
 
 .shortcut-modal {
   background: var(--bg-primary, #fff);

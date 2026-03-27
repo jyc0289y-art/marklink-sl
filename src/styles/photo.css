@@ -262,8 +262,8 @@
 .crop-handle {
   position: absolute;
   width: 12px; height: 12px;
-  background: #fff;
-  border: 1px solid #333;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--text-primary, #333);
   border-radius: 2px;
 }
 .crop-handle.nw { top: -6px; left: -6px; cursor: nw-resize; }

@@ -92,7 +92,7 @@ import { initShortcutCustomizer } from './ui/shortcut-customizer.js';
 import { initEnhancedStatusBar } from './ui/status-bar-enhanced.js';
 import { initOfflineManager } from './ui/offline-manager.js';
 import { initMobile } from './ui/mobile.js';
-import { escapeHtml, sanitizeAiResponse } from './utils/sanitize.js';
+import { escapeHtml, sanitizeAiResponse, sanitizeImportedHtml } from './utils/sanitize.js';
 // Collab modules — lazy-loaded (not needed at startup)
 let _collabLoaded = false;
 let _commentsMod = null, _versionsMod = null, _shareMod = null;
@@ -493,8 +493,7 @@ export async function initApp() {
     });
   }
 
-  // 14. Toast notifications (init early — used by shortcuts + auto-save)
-  initToast();
+  // 14. Toast notifications — already initialized by initErrorBoundary() above
 
   // 14a. Shortcut customizer — load custom bindings before shortcuts init
   initShortcutCustomizer();
@@ -640,10 +639,8 @@ export async function initApp() {
   // 14d. Shortcut hints on toolbar buttons
   applyToolbarShortcutHints();
 
-  // 15. Render recent files
-  renderRecentFiles(document.getElementById('recent-files'), (name) => {
-    // Recent file click handler — no-op placeholder for now
-  });
+  // 15. Render recent files (initial render — will re-render at step 25d with full handler)
+  renderRecentFiles(document.getElementById('recent-files'), handleRecentFileClick);
 
   // 16. Scroll sync (bidirectional) + preview toolbar
   const previewContainerEl = document.getElementById('preview-container');
@@ -854,18 +851,22 @@ export async function initApp() {
           `;
           document.body.appendChild(exitBtn);
           exitBtn.addEventListener('click', () => _exitFullscreen());
-          // Show on hover near top edge
-          const showOnMouse = (e) => {
+          // Show on hover near top edge — store handler for cleanup
+          exitBtn._showOnMouse = (e) => {
             if (!document.fullscreenElement) return;
             const btn = document.getElementById('fullscreen-exit-float');
             if (!btn) return;
             btn.style.opacity = e.clientY < 48 ? '1' : '0';
           };
-          document.addEventListener('mousemove', showOnMouse);
+          document.addEventListener('mousemove', exitBtn._showOnMouse);
         }
         exitBtn.style.display = '';
       } else if (exitBtn) {
         exitBtn.style.display = 'none';
+        // Remove mousemove listener when exiting fullscreen
+        if (exitBtn._showOnMouse) {
+          document.removeEventListener('mousemove', exitBtn._showOnMouse);
+        }
       }
     });
 
@@ -1105,11 +1106,23 @@ function showExportMenu(anchorBtn) {
     min-width: 160px;
   `;
 
+  // Get content based on current tab to export the right editor's content
+  const getExportContent = async () => {
+    const tab = getCurrentTab();
+    if (tab === 'document') return await getDocContent();
+    return getContent(); // markdown/default
+  };
+  const getExportFileName = async () => {
+    const tab = getCurrentTab();
+    if (tab === 'document') return await getDocFileName();
+    return getCurrentFileName();
+  };
+
   const items = [
-    { label: '🖨️ Print', action: () => { trackExport('print'); printDocument(getContent(), getCurrentFileName()); toastSuccess('Print sent'); } },
-    { label: '📄 Export as PDF', action: () => { trackExport('pdf'); exportPDF(getContent(), getCurrentFileName()); toastSuccess('PDF exported'); } },
-    { label: '🌐 Export as HTML', action: () => { trackExport('html'); exportHTML(getContent(), getCurrentFileName()); toastSuccess('HTML exported'); } },
-    { label: '📋 Copy as Rich Text', action: () => { trackExport('richtext'); copyAsRichText(getContent()); toastSuccess('Copied as rich text'); } },
+    { label: '🖨️ Print', action: async () => { trackExport('print'); printDocument(await getExportContent(), await getExportFileName()); toastSuccess('Print sent'); } },
+    { label: '📄 Export as PDF', action: async () => { trackExport('pdf'); exportPDF(await getExportContent(), await getExportFileName()); toastSuccess('PDF exported'); } },
+    { label: '🌐 Export as HTML', action: async () => { trackExport('html'); exportHTML(await getExportContent(), await getExportFileName()); toastSuccess('HTML exported'); } },
+    { label: '📋 Copy as Rich Text', action: async () => { trackExport('richtext'); copyAsRichText(await getExportContent()); toastSuccess('Copied as rich text'); } },
     { label: '🔗 Share as Link', action: async () => { const { share } = await loadCollab(); share.shareAsLink(); } },
   ];
 
@@ -1501,7 +1514,7 @@ function initAutoSave() {
         setTimeout(() => {
           try {
             const docEditor = document.getElementById('doc-editor');
-            if (docEditor && state.document) docEditor.innerHTML = sanitizeAiResponse(state.document);
+            if (docEditor && state.document) docEditor.innerHTML = sanitizeImportedHtml(state.document);
           } catch {}
         }, 500);
       }
@@ -1548,10 +1561,13 @@ function initAutoSave() {
   // Listen for CM6 editor changes
   onChange(() => { setTabDirty('markdown', true); });
 
-  // Save periodically (every 30 seconds)
+  // Save periodically (every 30 seconds) — only for markdown/document tabs
   if (_appAutoSaveInterval) clearInterval(_appAutoSaveInterval);
   _appAutoSaveInterval = setInterval(() => {
     try {
+      const tab = getCurrentTab();
+      // Only auto-save markdown and document — other editors have their own persistence
+      if (tab !== 'markdown' && tab !== 'document') return;
       showAutoSaveIndicator('saving');
       const state = {
         markdown: getContent(),
@@ -1594,11 +1610,11 @@ function initVersionHistory() {
 
 function saveVersionSnapshot(type = 'auto') {
   try {
-    const tab = getCurrentTab?.() || 'editor';
+    const tab = getCurrentTab?.() || 'markdown';
     let content = '';
     let label = '';
 
-    if (tab === 'editor') {
+    if (tab === 'markdown') {
       content = getContent();
       label = 'Markdown';
     } else if (tab === 'document') {
@@ -1646,7 +1662,7 @@ function showVersionHistory() {
   if (existing) { existing.remove(); return; }
 
   const versions = JSON.parse(localStorage.getItem(VERSION_KEY) || '[]');
-  const tab = getCurrentTab?.() || 'editor';
+  const tab = getCurrentTab?.() || 'markdown';
   const filtered = versions.filter(v => v.tab === tab);
 
   const overlay = document.createElement('div');
@@ -1688,12 +1704,12 @@ function showVersionHistory() {
     item.addEventListener('click', () => {
       // Show this version in preview
       previewPane.innerHTML = '';
-      if (v.tab === 'editor') {
+      if (v.tab === 'markdown') {
         previewPane.style.cssText = previewBaseStyle + 'white-space:pre-wrap;font-family:monospace;font-size:13px;padding:24px';
         previewPane.textContent = v.content;
       } else {
         previewPane.style.cssText = previewBaseStyle + 'padding:24px';
-        previewPane.innerHTML = sanitizeAiResponse(v.content);
+        previewPane.innerHTML = sanitizeImportedHtml(v.content);
       }
 
       // Add restore button
@@ -1704,14 +1720,14 @@ function showVersionHistory() {
       `;
       restoreBar.querySelector('.vh-restore').addEventListener('click', () => {
         if (!confirm(t('version.restoreConfirm'))) return;
-        if (v.tab === 'editor' && typeof setContent === 'function') {
+        if (v.tab === 'markdown' && typeof setContent === 'function') {
           setContent(v.content);
         } else if (v.tab === 'document') {
           const docEditor = document.getElementById('doc-editor');
-          if (docEditor) docEditor.innerHTML = sanitizeAiResponse(v.content);
+          if (docEditor) docEditor.innerHTML = sanitizeImportedHtml(v.content);
         } else if (v.tab === 'slide') {
           const canvas = document.getElementById('slide-canvas');
-          if (canvas) canvas.innerHTML = sanitizeAiResponse(v.content);
+          if (canvas) canvas.innerHTML = sanitizeImportedHtml(v.content);
         }
         overlay.remove();
       });
@@ -2094,14 +2110,17 @@ const initWelcomeScreen = (loadFile) => {
   let recentHtml = '';
   if (recentEntries.length > 0) {
     const items = recentEntries.map((f) => {
-      const name = escapeHtml(f.name || 'Untitled');
+      const rawName = f.name || 'Untitled';
+      const displayName = escapeHtml(rawName);
       const typeIcons = { document: '\uD83D\uDCC4', sheet: '\uD83D\uDCCA', slide: '\uD83C\uDFAC', pdf: '\uD83D\uDCC4', photo: '\uD83D\uDCF7', markdown: '\u270D\uFE0F' };
       const icon = typeIcons[f.type] || '\uD83D\uDCC1';
-      return `<div class="welcome-recent-item" data-name="${name}" style="
+      // data-name uses raw name (with only quotes escaped) so dataset.name returns the real filename
+      const attrName = rawName.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      return `<div class="welcome-recent-item" data-name="${attrName}" style="
         display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;
         cursor:pointer;transition:background 0.15s;font-size:13px;
         color:var(--text-primary,#222);
-      "><span style="font-size:16px">${icon}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span></div>`;
+      "><span style="font-size:16px">${icon}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${displayName}</span></div>`;
     }).join('');
     recentHtml = `
       <div style="margin-bottom:28px;width:100%">
@@ -2198,24 +2217,10 @@ const initWelcomeScreen = (loadFile) => {
       _dismissWelcome();
       if (!name) return;
       try {
+        // Use handleRecentFileClick for consistent file routing
         const result = await reopenFile(name);
-        if (result && result.content) {
-          // Determine correct tab from file extension
-          const lower = name.toLowerCase();
-          if (lower.match(/\.(docx|hwpx|html|htm)$/)) {
-            switchTab('document');
-          } else if (lower.match(/\.(xlsx|xls|csv|tsv|ods)$/)) {
-            switchTab('sheet');
-          } else if (lower.match(/\.(pptx|ppt|odp)$/)) {
-            switchTab('slide');
-          } else if (lower.endsWith('.pdf')) {
-            switchTab('pdf');
-          } else if (lower.match(/\.(png|jpe?g|gif|webp|bmp|svg|tiff?)$/)) {
-            switchTab('photo');
-          } else {
-            // Default: markdown
-            loadFile(result);
-          }
+        if (result) {
+          await handleRecentFileClick(result);
         } else {
           toastInfo(`Cannot reopen "${name}" — file handle expired`);
         }

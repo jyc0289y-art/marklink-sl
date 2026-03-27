@@ -1,6 +1,6 @@
 // OfficeLink SL — Tab Navigation
 
-let currentTab = 'document';
+let currentTab = 'markdown';
 const listeners = [];
 const _dirtyTabs = new Set();
 
