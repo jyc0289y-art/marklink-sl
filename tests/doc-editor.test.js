@@ -10,7 +10,7 @@ function cleanMsOfficeHtml(html) {
     .replace(/style="[^"]*mso[^"]*"/gi, '')
     .replace(/<o:p>.*?<\/o:p>/gi, '')
     .replace(/<!--.*?-->/gs, '')
-    .replace(/<\/?span[^>]*>/gi, '')
+    .replace(/<span(?:\s+(?!style\b)[a-z-]+=["'][^"']*["'])*\s*>(.*?)<\/span>/gi, '$1')   // Strip spans without style attr
     .replace(/<\/?font[^>]*>/gi, '');
 }
 
@@ -50,9 +50,12 @@ describe('cleanMsOfficeHtml', () => {
     expect(cleanMsOfficeHtml(input)).toBe('<p>OK</p>');
   });
 
-  it('strips <span> and <font> wrapper tags', () => {
-    const input = '<span style="color:red"><font face="Arial">Hello</font></span>';
+  it('strips empty <span> and <font> wrapper tags but preserves styled spans', () => {
+    const input = '<span>Hello</span>';
     expect(cleanMsOfficeHtml(input)).toBe('Hello');
+    // Styled spans are preserved (only empty spans are stripped)
+    const styledInput = '<span style="color:red"><font face="Arial">Hello</font></span>';
+    expect(cleanMsOfficeHtml(styledInput)).toBe('<span style="color:red">Hello</span>');
   });
 
   it('handles combined Office garbage', () => {
@@ -205,5 +208,142 @@ describe('applyAutoCorrect', () => {
   it('handles capitalized spelling corrections', () => {
     expect(applyAutoCorrect('Recieve')).toBe('Receive');
     expect(applyAutoCorrect('Seperate')).toBe('Separate');
+  });
+});
+
+// ─── 4. Table Helpers ───
+
+/**
+ * Replicate buildTable from doc-editor.js for testing
+ */
+function buildTable(rows, cols) {
+  const cellStyle = 'border:1px solid var(--border-color);padding:8px 12px';
+  let html = '<table style="width:100%;border-collapse:collapse;margin:8px 0"><thead><tr>';
+  for (let c = 0; c < cols; c++) html += `<th style="${cellStyle};font-weight:600;background:rgba(0,0,0,0.05)">Header ${c + 1}</th>`;
+  html += '</tr></thead><tbody>';
+  for (let r = 0; r < rows - 1; r++) {
+    html += '<tr>';
+    for (let c = 0; c < cols; c++) html += `<td style="${cellStyle}">&nbsp;</td>`;
+    html += '</tr>';
+  }
+  html += '</tbody></table><p>&nbsp;</p>';
+  return html;
+}
+
+/**
+ * Pure-function version of getTableColCount for testing (parses HTML string)
+ */
+function getTableColCountFromHtml(html) {
+  // Parse colspan values from each <tr> row
+  const rowMatches = html.match(/<tr[^>]*>.*?<\/tr>/gs) || [];
+  let maxCols = 0;
+  rowMatches.forEach(rowHtml => {
+    let cols = 0;
+    const cellMatches = rowHtml.match(/<(?:td|th)(?:\s[^>]*)?\s*>/gi) || [];
+    cellMatches.forEach(cellTag => {
+      const colspanMatch = cellTag.match(/colspan="(\d+)"/i);
+      cols += colspanMatch ? parseInt(colspanMatch[1], 10) : 1;
+    });
+    if (cols > maxCols) maxCols = cols;
+  });
+  return maxCols;
+}
+
+describe('buildTable', () => {
+  it('creates table with correct structure', () => {
+    const html = buildTable(3, 2);
+    expect(html).toContain('<table');
+    expect(html).toContain('<thead>');
+    expect(html).toContain('<tbody>');
+    expect(html).toContain('Header 1');
+    expect(html).toContain('Header 2');
+    expect(html).toContain('border-collapse:collapse');
+  });
+
+  it('creates correct number of header cells', () => {
+    const html = buildTable(3, 4);
+    const headerMatches = html.match(/<th /g);
+    expect(headerMatches).toHaveLength(4);
+  });
+
+  it('creates correct number of body rows', () => {
+    const html = buildTable(5, 3);
+    // 5 rows total, 1 header, 4 body
+    const bodyRowMatches = html.match(/<td/g);
+    expect(bodyRowMatches).toHaveLength(12); // 4 rows * 3 cols
+  });
+
+  it('single row table has only header', () => {
+    const html = buildTable(1, 3);
+    expect(html).toContain('<thead>');
+    expect(html).not.toContain('<td');
+  });
+
+  it('ends with a paragraph for continued typing', () => {
+    const html = buildTable(2, 2);
+    expect(html).toContain('<p>&nbsp;</p>');
+  });
+});
+
+describe('getTableColCount', () => {
+  it('counts simple columns', () => {
+    expect(getTableColCountFromHtml('<table><tr><td>A</td><td>B</td><td>C</td></tr></table>')).toBe(3);
+  });
+
+  it('accounts for colspan', () => {
+    expect(getTableColCountFromHtml('<table><tr><td colspan="2">A</td><td>B</td></tr><tr><td>X</td><td>Y</td><td>Z</td></tr></table>')).toBe(3);
+  });
+
+  it('handles mixed colspan rows', () => {
+    expect(getTableColCountFromHtml('<table><tr><td colspan="3">Merged</td></tr><tr><td>A</td><td>B</td><td>C</td></tr></table>')).toBe(3);
+  });
+});
+
+// ─── 5. Tab-separated paste table builder ───
+
+function buildPastedTable(text) {
+  const cellStyle = 'border:1px solid var(--border-color);padding:8px 12px';
+  const headerStyle = cellStyle + ';font-weight:600;background:rgba(0,0,0,0.05)';
+  const rows = text.split('\n').filter((r) => r.trim().length > 0);
+  let headerHtml = '';
+  let bodyHtml = '';
+  rows.forEach((row, i) => {
+    const cells = row.split('\t');
+    if (i === 0) {
+      headerHtml = `<tr>${cells.map((c) => `<th style="${headerStyle}">${c.replace(/</g, '&lt;')}</th>`).join('')}</tr>`;
+    } else {
+      bodyHtml += `<tr>${cells.map((c) => `<td style="${cellStyle}">${c.replace(/</g, '&lt;')}</td>`).join('')}</tr>`;
+    }
+  });
+  return `<table style="width:100%;border-collapse:collapse;margin:8px 0"><thead>${headerHtml}</thead><tbody>${bodyHtml}</tbody></table><p>&nbsp;</p>`;
+}
+
+describe('buildPastedTable', () => {
+  it('creates table from tab-separated data', () => {
+    const html = buildPastedTable('Name\tAge\nAlice\t30\nBob\t25');
+    expect(html).toContain('<th');
+    expect(html).toContain('Name');
+    expect(html).toContain('Age');
+    expect(html).toContain('Alice');
+    expect(html).toContain('30');
+  });
+
+  it('applies styles to cells', () => {
+    const html = buildPastedTable('A\tB\n1\t2');
+    expect(html).toContain('border:1px solid');
+    expect(html).toContain('padding:8px 12px');
+    expect(html).toContain('font-weight:600');
+  });
+
+  it('escapes HTML in cell content', () => {
+    const html = buildPastedTable('A\t<script>\n1\t2');
+    expect(html).toContain('&lt;script>');
+    expect(html).not.toContain('<script>');
+  });
+
+  it('uses thead and tbody', () => {
+    const html = buildPastedTable('H1\tH2\nD1\tD2');
+    expect(html).toContain('<thead>');
+    expect(html).toContain('<tbody>');
   });
 });

@@ -144,13 +144,20 @@ const formatDateStr = (d, fmt) => {
   const m = d.getMonth() + 1;
   const day = d.getDate();
   const pad = (n) => String(n).padStart(2, '0');
-  return fmt
-    .replace(/yyyy/gi, y)
-    .replace(/yy/gi, String(y).slice(-2))
-    .replace(/mm/, pad(m))
-    .replace(/m/, m)
-    .replace(/dd/gi, pad(day))
-    .replace(/d/, day);
+  // Use placeholder tokens to avoid greedy re-matching
+  // Process longest patterns first to prevent partial matches
+  let result = fmt;
+  result = result.replace(/yyyy/gi, String(y));
+  result = result.replace(/yy/gi, String(y).slice(-2));
+  // Replace dd before d to avoid partial match, use temp tokens
+  result = result.replace(/dd/gi, '\x01');
+  result = result.replace(/d/gi, String(day));
+  result = result.replace(/\x01/g, pad(day));
+  // Replace mm before m — must avoid matching month in already-substituted text
+  result = result.replace(/mm/g, '\x02');
+  result = result.replace(/m/g, String(m));
+  result = result.replace(/\x02/g, pad(m));
+  return result;
 };
 
 /** Format a fractional day value to a time string */

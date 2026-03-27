@@ -574,28 +574,84 @@
 
 /* ===== Print Styles ===== */
 @media print {
+  /* Hide all chrome: toolbars, formula bar, tabs, status bar, find bar, panels */
   .sheet-toolbar,
-  .sheet-formula-bar,
   .sheet-tabs,
   .sheet-status-bar,
-  .sheet-find-bar,
+  #sheet-find-bar,
   .sheet-chart-panel,
-  .sheet-slicer-panel {
+  .sheet-slicer-panel,
+  .slicer-widget,
+  .fill-handle,
+  .sheet-ac-dropdown,
+  .sheet-tab-context-menu,
+  .cell-comment-indicator,
+  .cell-note-indicator,
+  .sheet-filter-btn,
+  .sheet-dv-btn,
+  .sheet-group-toggle {
     display: none !important;
   }
+
+  /* Grid: expand fully, remove scroll containment */
+  .sheet-container {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
   .sheet-grid {
-    border: 1px solid #999 !important;
     overflow: visible !important;
     max-height: none !important;
   }
-  .sheet-cell {
+
+  /* Data cells: black text on white, visible borders */
+  .sheet-grid td {
     border: 1px solid #ccc !important;
     color: #000 !important;
     background: #fff !important;
+    overflow: visible !important;
+    white-space: pre-wrap !important;
+    text-overflow: clip !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
-  .sheet-header-cell {
-    background: #eee !important;
+
+  /* Preserve cell background colors when set explicitly via inline style */
+  .sheet-grid td[style*="background"] {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Header cells */
+  .sheet-grid th.sheet-col-header,
+  .sheet-grid th.sheet-row-header,
+  .sheet-grid th.sheet-corner {
+    background: #f0f0f2 !important;
     color: #000 !important;
-    font-weight: bold;
+    font-weight: 700;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Repeat column header row on each page */
+  .sheet-grid thead {
+    display: table-header-group;
+  }
+
+  /* Remove selection outline in print */
+  .sheet-grid td.selected,
+  .sheet-grid td.in-range,
+  .sheet-grid td.copy-highlight,
+  .sheet-grid td.ref-highlight,
+  .sheet-grid td.fill-preview {
+    outline: none !important;
+    animation: none !important;
+  }
+
+  /* Remove frozen pane visual indicators */
+  .sheet-frozen-row:last-of-type td,
+  .sheet-frozen-row:last-of-type th,
+  .sheet-frozen-col {
+    border-color: #ccc !important;
   }
 }

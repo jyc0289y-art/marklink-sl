@@ -4,7 +4,8 @@
 
 import { insertAtCursor, wrapSelection, getContent, getEditorView } from './editor.js';
 import { AI_SLASH_COMMANDS, handleAiSlashCommand } from '../ai/ai-cowork.js';
-import { downloadBlob } from '../utils/download.js';
+import { exportHTML } from '../export/html.js';
+
 
 /* ════════════════════════════════════════════════════════════════
    1. SNIPPET LIBRARY
@@ -334,8 +335,9 @@ export function getMarkdownStats(text) {
   const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim()).length || (text.trim() ? 1 : 0);
 
   // Reading time (~200 WPM English, ~500 CPM CJK)
-  const readingMinutes = Math.max(1, Math.ceil((latinWords / 200) + (cjkChars / 500)));
-  const readingTime = readingMinutes <= 1 ? '< 1 min' : `~${readingMinutes} min`;
+  const rawMinutes = (latinWords / 200) + (cjkChars / 500);
+  const readingMinutes = Math.max(1, Math.ceil(rawMinutes));
+  const readingTime = rawMinutes < 1 ? '< 1 min' : `~${readingMinutes} min`;
 
   // Flesch Reading Ease (English approximation)
   let fleschScore = 0;
@@ -1139,62 +1141,12 @@ function showSimpleDiff(oldText, newText, versionName) {
 
 export function initExportHtml() {
   const btn = document.getElementById('btn-export-html');
-  if (btn) btn.addEventListener('click', () => exportToHtml());
-}
-
-function exportToHtml() {
-  const content = getContent();
-  if (!content.trim()) { alert('Document is empty'); return; }
-
-  // Get the rendered preview HTML
-  const previewEl = document.getElementById('preview-pane') || document.getElementById('preview');
-  const previewHtml = previewEl ? previewEl.innerHTML : markdownToBasicHtml(content);
-
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Exported Document</title>
-<style>
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.7; color: #333; }
-  h1, h2, h3, h4, h5, h6 { margin-top: 1.5em; margin-bottom: 0.5em; }
-  code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
-  pre { background: #f4f4f4; padding: 16px; border-radius: 8px; overflow-x: auto; }
-  pre code { background: none; padding: 0; }
-  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
-  th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
-  th { background: #f8f8f8; font-weight: 600; }
-  blockquote { border-left: 4px solid #0071e3; margin: 16px 0; padding: 8px 16px; color: #555; background: #f9f9f9; }
-  img { max-width: 100%; height: auto; }
-  a { color: #0071e3; }
-  .task-list-item { list-style: none; }
-  .task-list-item input { margin-right: 6px; }
-  hr { border: none; border-top: 1px solid #ddd; margin: 24px 0; }
-</style>
-</head>
-<body>
-${previewHtml}
-<footer style="margin-top:48px;padding-top:16px;border-top:1px solid #eee;font-size:12px;color:#999;">
-  Exported from OfficeLink SL &mdash; ${new Date().toLocaleString()}
-</footer>
-</body>
-</html>`;
-
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  downloadBlob(blob, 'document.html');
-}
-
-function markdownToBasicHtml(md) {
-  // Basic fallback converter if preview pane not available
-  return md
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`(.+?)`/g, '<code>$1</code>')
-    .replace(/\n/g, '<br>');
+  if (btn) btn.addEventListener('click', () => {
+    const content = getContent();
+    if (!content.trim()) { alert('Document is empty'); return; }
+    // Use the proper HTML exporter with CSS, dark/light mode, presets, and File System API
+    exportHTML(content, 'document');
+  });
 }
 
 /* ════════════════════════════════════════════════════════════════

@@ -257,58 +257,60 @@ async function generatePDF(markdownText, filename, theme = 'light', opts = {}) {
 
   container.innerHTML = `
     <style>
-      .pdf-body { color: ${colors.text}; }
-      .pdf-body h1, .pdf-body h2, .pdf-body h3, .pdf-body h4, .pdf-body h5, .pdf-body h6 {
+      .pdf-wrapper { color: ${colors.text}; }
+      .pdf-wrapper h1, .pdf-wrapper h2, .pdf-wrapper h3, .pdf-wrapper h4, .pdf-wrapper h5, .pdf-wrapper h6 {
         margin-top: 1.2em; margin-bottom: 0.5em; font-weight: 700; color: ${colors.text};
       }
-      .pdf-body h1 { font-size: 1.8em; border-bottom: 1px solid ${colors.border}; padding-bottom: 0.3em; }
-      .pdf-body h2 { font-size: 1.4em; border-bottom: 1px solid ${colors.border}; padding-bottom: 0.3em; }
-      .pdf-body h3 { font-size: 1.2em; }
-      .pdf-body p { margin-bottom: 0.8em; color: ${colors.text}; }
-      .pdf-body a { color: ${colors.link}; text-decoration: none; }
-      .pdf-body ul, .pdf-body ol { margin-bottom: 0.8em; padding-left: 2em; color: ${colors.text}; }
-      .pdf-body li { margin-bottom: 0.2em; }
-      .pdf-body strong { color: ${colors.text}; }
-      .pdf-body em { color: ${colors.text}; }
-      .pdf-body code {
+      .pdf-wrapper h1 { font-size: 1.8em; border-bottom: 1px solid ${colors.border}; padding-bottom: 0.3em; }
+      .pdf-wrapper h2 { font-size: 1.4em; border-bottom: 1px solid ${colors.border}; padding-bottom: 0.3em; }
+      .pdf-wrapper h3 { font-size: 1.2em; }
+      .pdf-wrapper p { margin-bottom: 0.8em; color: ${colors.text}; }
+      .pdf-wrapper a { color: ${colors.link}; text-decoration: none; }
+      .pdf-wrapper ul, .pdf-wrapper ol { margin-bottom: 0.8em; padding-left: 2em; color: ${colors.text}; }
+      .pdf-wrapper li { margin-bottom: 0.2em; }
+      .pdf-wrapper strong { color: ${colors.text}; }
+      .pdf-wrapper em { color: ${colors.text}; }
+      .pdf-wrapper code {
         padding: 0.1em 0.3em; font-size: 0.85em;
         background: ${colors.codeBg}; border-radius: 3px;
         font-family: 'SF Mono', 'Menlo', monospace;
         color: ${colors.codeText};
       }
-      .pdf-body pre {
+      .pdf-wrapper pre {
         margin-bottom: 0.8em; padding: 12px; overflow-x: auto;
         background: ${colors.codeBg}; border-radius: 6px;
         border: 1px solid ${colors.border};
         page-break-inside: avoid;
       }
-      .pdf-body pre code {
+      .pdf-wrapper pre code {
         padding: 0; background: transparent;
         font-size: 0.85em; color: ${colors.text};
       }
-      .pdf-body blockquote {
+      .pdf-wrapper blockquote {
         margin: 0 0 0.8em 0; padding: 0.5em 1em;
         border-left: 4px solid ${colors.border}; color: ${colors.textSecondary};
         background: ${colors.codeBg};
       }
-      .pdf-body table { width: 100%; margin-bottom: 0.8em; border-collapse: collapse; }
-      .pdf-body th, .pdf-body td {
+      .pdf-wrapper table { width: 100%; margin-bottom: 0.8em; border-collapse: collapse; }
+      .pdf-wrapper th, .pdf-wrapper td {
         padding: 6px 10px; border: 1px solid ${colors.border};
         text-align: left; color: ${colors.text};
       }
-      .pdf-body th { font-weight: 600; background: ${colors.headerBg}; }
-      .pdf-body tr:nth-child(even) td { background: ${theme === 'dark' ? '#252528' : '#fafafa'}; }
-      .pdf-body hr { height: 1px; margin: 1.5em 0; background: ${colors.border}; border: none; }
-      .pdf-body img { max-width: 100%; }
-      .pdf-body .mermaid svg { max-width: 100%; }
-      .pdf-body .katex-display { margin: 0.8em 0; }
-      .pdf-body .katex { color: ${colors.text}; }
-      .pdf-body .task-list-item { list-style: none; margin-left: -1.5em; }
-      .pdf-body del { color: ${colors.textSecondary}; }
+      .pdf-wrapper th { font-weight: 600; background: ${colors.headerBg}; }
+      .pdf-wrapper tr:nth-child(even) td { background: ${theme === 'dark' ? '#252528' : '#fafafa'}; }
+      .pdf-wrapper hr { height: 1px; margin: 1.5em 0; background: ${colors.border}; border: none; }
+      .pdf-wrapper img { max-width: 100%; }
+      .pdf-wrapper .mermaid svg { max-width: 100%; }
+      .pdf-wrapper .katex-display { margin: 0.8em 0; }
+      .pdf-wrapper .katex { color: ${colors.text}; }
+      .pdf-wrapper .task-list-item { list-style: none; margin-left: -1.5em; }
+      .pdf-wrapper del { color: ${colors.textSecondary}; }
     </style>
-    ${headerHTML}
-    <div class="pdf-body">${html}</div>
-    ${footerHTML}
+    <div class="pdf-wrapper">
+      ${headerHTML}
+      ${html}
+      ${footerHTML}
+    </div>
   `;
   document.body.appendChild(container);
 
@@ -345,7 +347,7 @@ async function generatePDF(markdownText, filename, theme = 'light', opts = {}) {
         },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
       })
-      .from(container.querySelector('.pdf-body'))
+      .from(container.querySelector('.pdf-wrapper'))
       .save();
 
     progress.update(100, 'Done!');

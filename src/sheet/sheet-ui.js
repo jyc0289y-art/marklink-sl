@@ -354,6 +354,7 @@ function cellStyle(cell, r, c) {
     if (textDeco.length) parts.push(`text-decoration:${textDeco.join(' ')}`);
     if (f.textRotation) parts.push(`writing-mode:vertical-rl;transform:rotate(${f.textRotation}deg)`);
     if (f.align) parts.push(`text-align:${f.align}`);
+    else if (typeof cell.value === 'number') parts.push('text-align:right');
     if (f.valign) parts.push(`vertical-align:${f.valign}`);
     if (f.bg) parts.push(`background:${f.bg}`);
     else if (bandedRowsEnabled) parts.push(`background:${r % 2 === 0 ? bandedColor1 : bandedColor2}`);
@@ -371,6 +372,10 @@ function cellStyle(cell, r, c) {
     if (f.borderBottom) parts.push(`border-bottom:${f.borderBottom}`);
     if (f.borderLeft) parts.push(`border-left:${f.borderLeft}`);
     if (f.borderRight) parts.push(`border-right:${f.borderRight}`);
+  } else if (cell && typeof cell.value === 'number') {
+    // Auto right-align numbers even without explicit format
+    parts.push('text-align:right');
+    if (bandedRowsEnabled && r !== undefined) parts.push(`background:${r % 2 === 0 ? bandedColor1 : bandedColor2}`);
   } else if (bandedRowsEnabled && r !== undefined) {
     parts.push(`background:${r % 2 === 0 ? bandedColor1 : bandedColor2}`);
   }
@@ -3507,40 +3512,302 @@ function textToColumns() {
 /* ==================== Print Sheet ==================== */
 
 function printSheet() {
+  showPrintPreviewDialog();
+}
+
+/**
+ * Build inline style string for a cell suitable for print output.
+ * Mirrors cellStyle() but outputs only print-relevant CSS (no display:none for merged).
+ */
+function printCellStyle(cell) {
+  const parts = [];
+  if (!cell) return '';
+  const f = cell.format;
+  if (f) {
+    if (f.bold) parts.push('font-weight:700');
+    if (f.italic) parts.push('font-style:italic');
+    const textDeco = [];
+    if (f.underline) textDeco.push('underline');
+    if (f.strikethrough) textDeco.push('line-through');
+    if (textDeco.length) parts.push(`text-decoration:${textDeco.join(' ')}`);
+    if (f.align) parts.push(`text-align:${f.align}`);
+    else if (typeof cell.value === 'number') parts.push('text-align:right');
+    if (f.valign) parts.push(`vertical-align:${f.valign}`);
+    if (f.bg && f.bg !== '#ffffff' && f.bg !== '#fff') parts.push(`background:${f.bg}`);
+    if (f.color && f.color !== '#000000' && f.color !== '#000') parts.push(`color:${f.color}`);
+    if (f.fontSize) parts.push(`font-size:${f.fontSize}px`);
+    if (f.fontFamily) parts.push(`font-family:${f.fontFamily}`);
+    if (f.indent) parts.push(`padding-left:${f.indent * 12}px`);
+    if (f.wrap) parts.push('white-space:pre-wrap;word-wrap:break-word');
+    if (f.borderTop) parts.push(`border-top:${f.borderTop}`);
+    if (f.borderBottom) parts.push(`border-bottom:${f.borderBottom}`);
+    if (f.borderLeft) parts.push(`border-left:${f.borderLeft}`);
+    if (f.borderRight) parts.push(`border-right:${f.borderRight}`);
+  } else if (typeof cell.value === 'number') {
+    parts.push('text-align:right');
+  }
+  return parts.join(';');
+}
+
+/**
+ * Show print preview dialog with page setup options.
+ */
+function showPrintPreviewDialog() {
   const sheet = getSheet();
+  // Determine data range
   let maxR = 0, maxC = 0;
   for (const key of Object.keys(sheet.cells)) {
     const [r, c] = key.split(',').map(Number);
     if (r > maxR) maxR = r;
     if (c > maxC) maxC = c;
   }
+  if (maxR === 0 && maxC === 0 && !getCell(sheet, 0, 0)) {
+    alert('Sheet is empty — nothing to print.');
+    return;
+  }
+
+  const { r1, r2, c1, c2 } = getSelectionRange();
+  const hasSelection = r1 !== r2 || c1 !== c2;
+
+  const dlg = document.createElement('div');
+  dlg.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center';
+  dlg.innerHTML = `
+    <div style="background:var(--bg-primary);color:var(--text-primary);border-radius:12px;padding:24px;box-shadow:0 16px 48px rgba(0,0,0,.3);max-width:480px;width:90%;max-height:90vh;overflow-y:auto;font-size:14px">
+      <h3 style="margin:0 0 16px;font-size:18px">Print / Export PDF</h3>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div>
+          <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Paper Size</label>
+          <select id="pp-paper" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+            <option value="a4" selected>A4 (210 x 297 mm)</option>
+            <option value="letter">Letter (8.5 x 11 in)</option>
+            <option value="legal">Legal (8.5 x 14 in)</option>
+            <option value="a3">A3 (297 x 420 mm)</option>
+            <option value="b5">B5 (176 x 250 mm)</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Orientation</label>
+          <select id="pp-orient" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+            <option value="portrait" selected>Portrait</option>
+            <option value="landscape">Landscape</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div>
+          <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Margins</label>
+          <select id="pp-margins" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+            <option value="normal" selected>Normal (20mm)</option>
+            <option value="narrow">Narrow (10mm)</option>
+            <option value="wide">Wide (30mm)</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Scaling</label>
+          <select id="pp-scale" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+            <option value="100">100% (Actual Size)</option>
+            <option value="fit-width" selected>Fit to Page Width</option>
+            <option value="fit-page">Fit to One Page</option>
+            <option value="75">75%</option>
+            <option value="50">50%</option>
+            <option value="150">150%</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Print Area</label>
+        <select id="pp-area" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+          <option value="all">Entire Sheet (used range)</option>
+          ${hasSelection ? `<option value="selection" selected>Current Selection (${colToLetter(c1)}${r1+1}:${colToLetter(c2)}${r2+1})</option>` : ''}
+        </select>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:16px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="pp-gridlines" checked> Show Gridlines
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="pp-headers"> Row/Column Headers
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="pp-repeat-header" checked> Repeat Header Row
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="pp-formatting" checked> Cell Formatting
+        </label>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div>
+          <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Header (top of page)</label>
+          <input type="text" id="pp-header" placeholder="e.g. Sheet Report" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Footer (bottom of page)</label>
+          <input type="text" id="pp-footer" value="Page {page}" placeholder="Use {page} for page #" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:13px;box-sizing:border-box">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
+        <button id="pp-cancel" style="padding:8px 20px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);cursor:pointer;font-size:13px">Cancel</button>
+        <button id="pp-print" style="padding:8px 20px;border:none;border-radius:6px;background:#3b82f6;color:#fff;cursor:pointer;font-size:13px;font-weight:600">Print / PDF</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(dlg);
+
+  dlg.querySelector('#pp-cancel').addEventListener('click', () => dlg.remove());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.remove(); });
+
+  dlg.querySelector('#pp-print').addEventListener('click', () => {
+    const paper = dlg.querySelector('#pp-paper').value;
+    const orient = dlg.querySelector('#pp-orient').value;
+    const margins = dlg.querySelector('#pp-margins').value;
+    const scale = dlg.querySelector('#pp-scale').value;
+    const area = dlg.querySelector('#pp-area').value;
+    const showGridlines = dlg.querySelector('#pp-gridlines').checked;
+    const showHeaders = dlg.querySelector('#pp-headers').checked;
+    const repeatHeader = dlg.querySelector('#pp-repeat-header').checked;
+    const showFormatting = dlg.querySelector('#pp-formatting').checked;
+    const headerText = dlg.querySelector('#pp-header').value.trim();
+    const footerText = dlg.querySelector('#pp-footer').value.trim();
+    dlg.remove();
+    executePrint(sheet, { paper, orient, margins, scale, area, showGridlines, showHeaders, repeatHeader, showFormatting, headerText, footerText, maxR, maxC, r1, c1, r2, c2 });
+  });
+}
+
+/**
+ * Execute printing with the given options.
+ */
+function executePrint(sheet, opts) {
+  const { paper, orient, margins, scale, area, showGridlines, showHeaders, repeatHeader, showFormatting, headerText, footerText } = opts;
+
+  // Determine print range
+  let printR1, printR2, printC1, printC2;
+  if (area === 'selection') {
+    printR1 = opts.r1; printR2 = opts.r2; printC1 = opts.c1; printC2 = opts.c2;
+  } else {
+    printR1 = 0; printR2 = opts.maxR; printC1 = 0; printC2 = opts.maxC;
+  }
+
+  // Paper sizes in mm
+  const paperSizes = {
+    a4: { w: 210, h: 297 }, letter: { w: 216, h: 279 }, legal: { w: 216, h: 356 },
+    a3: { w: 297, h: 420 }, b5: { w: 176, h: 250 }
+  };
+  const ps = paperSizes[paper] || paperSizes.a4;
+  const pageW = orient === 'landscape' ? ps.h : ps.w;
+  const pageH = orient === 'landscape' ? ps.w : ps.h;
+
+  const marginMap = { normal: 20, narrow: 10, wide: 30, none: 0 };
+  const marginMM = marginMap[margins] ?? 20;
+
+  // Scale CSS
+  let scaleCSS = '';
+  if (scale === 'fit-width') {
+    scaleCSS = `table { width: 100%; table-layout: auto; }`;
+  } else if (scale === 'fit-page') {
+    scaleCSS = `table { width: 100%; table-layout: auto; } body { height: ${pageH - marginMM * 2}mm; overflow: hidden; }`;
+  } else {
+    const pct = parseInt(scale) || 100;
+    if (pct !== 100) scaleCSS = `table { transform: scale(${pct / 100}); transform-origin: top left; }`;
+  }
+
+  const gridBorder = showGridlines ? '1px solid #ccc' : '1px solid transparent';
 
   const win = window.open('', '_blank');
-  let html = `<!DOCTYPE html><html><head><title>Print Sheet</title><style>
-    body { font-family: -apple-system, sans-serif; margin: 20px; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #ccc; padding: 6px 10px; font-size: 12px; text-align: left; }
-    th { background: #f5f5f5; font-weight: 600; font-size: 11px; }
-    @media print { body { margin: 0; } }
-  </style></head><body><table><thead><tr><th></th>`;
+  if (!win) { alert('Popup blocked — please allow popups for print.'); return; }
 
-  for (let c = 0; c <= maxC; c++) {
-    html += `<th>${colToLetter(c)}</th>`;
+  let html = `<!DOCTYPE html><html><head><title>Print Sheet</title><style>
+    @page {
+      size: ${pageW}mm ${pageH}mm;
+      margin: ${marginMM}mm;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: ${marginMM}mm; color: #000; }
+    table { border-collapse: collapse; ${scale === 'fit-width' || scale === 'fit-page' ? 'width:100%;' : ''} }
+    th, td { border: ${gridBorder}; padding: 4px 8px; font-size: 12px; vertical-align: middle; }
+    th { background: ${showHeaders ? '#f0f0f2' : 'transparent'}; font-weight: 600; font-size: 11px; color: #555; text-align: center; }
+    ${!showHeaders ? 'th { display: none; } td:first-child { border-left: ' + gridBorder + '; }' : ''}
+    thead { ${repeatHeader ? 'display: table-header-group;' : ''} }
+    .page-header { text-align: center; font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #333; }
+    .page-footer { position: fixed; bottom: ${marginMM}mm; left: ${marginMM}mm; right: ${marginMM}mm; text-align: center; font-size: 10px; color: #888; }
+    ${scaleCSS}
+    @media print {
+      body { margin: 0; }
+      .no-print { display: none !important; }
+    }
+    @media screen {
+      body { max-width: ${pageW}mm; margin: 20px auto; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,.15); background: #fff; }
+      .print-toolbar { position: sticky; top: 0; background: #f5f5f7; padding: 10px 16px; margin: -20px -20px 20px; border-bottom: 1px solid #ddd; display: flex; gap: 8px; align-items: center; z-index: 10; }
+      .print-toolbar button { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+      .print-toolbar .btn-print { background: #3b82f6; color: #fff; }
+      .print-toolbar .btn-close { background: #e5e7eb; color: #333; }
+    }
+  </style></head><body>`;
+
+  // Screen-only preview toolbar
+  html += `<div class="print-toolbar no-print">
+    <button class="btn-print" onclick="window.print()">Print</button>
+    <button class="btn-close" onclick="window.close()">Close</button>
+    <span style="margin-left:auto;font-size:12px;color:#666">Print Preview — ${paper.toUpperCase()} ${orient}</span>
+  </div>`;
+
+  if (headerText) {
+    html += `<div class="page-header">${escapeHTML(headerText)}</div>`;
+  }
+
+  html += '<table>';
+
+  // Table header
+  html += '<thead><tr>';
+  if (showHeaders) html += '<th></th>';
+  for (let c = printC1; c <= printC2; c++) {
+    if (hiddenCols.has(c)) continue;
+    const w = getColWidth(c);
+    html += `<th style="min-width:${w}px">${colToLetter(c)}</th>`;
   }
   html += '</tr></thead><tbody>';
 
-  for (let r = 0; r <= maxR; r++) {
-    html += `<tr><th>${r + 1}</th>`;
-    for (let c = 0; c <= maxC; c++) {
-      html += `<td>${getDisplayValue(sheet, r, c)}</td>`;
+  // Data rows
+  for (let r = printR1; r <= printR2; r++) {
+    if (hiddenRows.has(r)) continue;
+    html += '<tr>';
+    if (showHeaders) html += `<th>${r + 1}</th>`;
+    for (let c = printC1; c <= printC2; c++) {
+      if (hiddenCols.has(c)) continue;
+      const cell = getCell(sheet, r, c);
+      if (cell?.format?.merged) continue;
+      const val = getDisplayValue(sheet, r, c);
+      const style = showFormatting ? printCellStyle(cell) : (typeof cell?.value === 'number' ? 'text-align:right' : '');
+      const mergeSpan = cell?.format?.mergeSpan;
+      const spanAttrs = mergeSpan ? ` rowspan="${mergeSpan.rows}" colspan="${mergeSpan.cols}"` : '';
+      html += `<td style="${style}"${spanAttrs}>${escapeHTML(String(val))}</td>`;
     }
     html += '</tr>';
   }
-  html += '</tbody></table></body></html>';
+  html += '</tbody></table>';
+
+  if (footerText) {
+    html += `<div class="page-footer">${escapeHTML(footerText).replace(/\{page\}/g, '<span class="page-num"></span>')}</div>`;
+    // Use CSS counters for page numbers
+    html += `<style>
+      @media print {
+        .page-footer { content: counter(page); }
+        .page-num::after { content: counter(page); }
+      }
+      @media screen { .page-num::after { content: '1'; } }
+    </style>`;
+  }
+
+  html += '</body></html>';
 
   win.document.write(html);
   win.document.close();
-  setTimeout(() => win.print(), 300);
 }
 
 /* ==================== Sparklines ==================== */

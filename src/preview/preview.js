@@ -302,13 +302,22 @@ export function initBidirectionalScrollSync(editorContainer, previewContainer) {
   editorScrollerRef = editorScroller;
   previewContainerRef = previewContainer;
 
+  // Scroll sync lock: use a timeout to guarantee reset even if frames are dropped
+  let scrollSyncTimer = null;
+  const lockScrollSync = () => {
+    scrollSyncing = true;
+    if (scrollSyncTimer) clearTimeout(scrollSyncTimer);
+    scrollSyncTimer = setTimeout(() => { scrollSyncing = false; }, 80);
+  };
+
   // Editor scroll -> preview scroll (RAF-throttled)
   let editorScrollRAF;
   const throttledEditorScroll = () => {
     if (editorScrollRAF) return;
     editorScrollRAF = requestAnimationFrame(() => {
-      if (!scrollSyncEnabled || scrollSyncing) { editorScrollRAF = null; return; }
-      scrollSyncing = true;
+      editorScrollRAF = null;
+      if (!scrollSyncEnabled || scrollSyncing) return;
+      lockScrollSync();
       const editorMax = editorScroller.scrollHeight - editorScroller.clientHeight;
       const ratio = editorMax > 0 ? editorScroller.scrollTop / editorMax : 0;
 
@@ -320,8 +329,6 @@ export function initBidirectionalScrollSync(editorContainer, previewContainer) {
         const previewMax = previewContainer.scrollHeight - previewContainer.clientHeight;
         previewContainer.scrollTop = ratio * previewMax;
       }
-      requestAnimationFrame(() => { scrollSyncing = false; });
-      editorScrollRAF = null;
     });
   };
   editorScroller.addEventListener('scroll', () => throttledEditorScroll());
@@ -331,14 +338,13 @@ export function initBidirectionalScrollSync(editorContainer, previewContainer) {
   const throttledPreviewScroll = () => {
     if (previewScrollRAF) return;
     previewScrollRAF = requestAnimationFrame(() => {
-      if (!scrollSyncEnabled || scrollSyncing) { previewScrollRAF = null; return; }
-      scrollSyncing = true;
+      previewScrollRAF = null;
+      if (!scrollSyncEnabled || scrollSyncing) return;
+      lockScrollSync();
       const previewMax = previewContainer.scrollHeight - previewContainer.clientHeight;
       const ratio = previewMax > 0 ? previewContainer.scrollTop / previewMax : 0;
       const editorMax = editorScroller.scrollHeight - editorScroller.clientHeight;
       editorScroller.scrollTop = ratio * editorMax;
-      requestAnimationFrame(() => { scrollSyncing = false; });
-      previewScrollRAF = null;
     });
   };
   previewContainer.addEventListener('scroll', () => throttledPreviewScroll());
@@ -648,8 +654,8 @@ function splitIntoSlides(html) {
       flushSlide();
       return;
     }
-    // Split on <h2> (## heading)
-    if (node.nodeType === 1 && node.tagName === 'H2' && currentSlide.length > 0) {
+    // Split on <h1> or <h2> headings (# or ## heading)
+    if (node.nodeType === 1 && (node.tagName === 'H1' || node.tagName === 'H2') && currentSlide.length > 0) {
       flushSlide();
     }
     currentSlide.push(node);

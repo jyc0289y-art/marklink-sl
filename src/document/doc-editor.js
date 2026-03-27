@@ -625,8 +625,7 @@ export function initDocEditor() {
         .replace(/style="[^"]*mso[^"]*"/gi, '')
         .replace(/<o:p>.*?<\/o:p>/gi, '')
         .replace(/<!--.*?-->/gs, '')
-        .replace(/<span\s*>/gi, '')   // Only strip empty spans (no attributes)
-        .replace(/<\/span>/gi, '')
+        .replace(/<span(?:\s+(?!style\b)[a-z-]+=["'][^"']*["'])*\s*>(.*?)<\/span>/gi, '$1')   // Strip spans without style attr (preserve styled spans)
         .replace(/<\/?font[^>]*>/gi, '');
       document.execCommand('insertHTML', false, cleaned);
     }
@@ -635,13 +634,20 @@ export function initDocEditor() {
     const text = e.clipboardData.getData('text/plain');
     if (!html && text && text.includes('\t') && text.includes('\n')) {
       e.preventDefault();
+      const cellStyle = 'border:1px solid var(--border-color);padding:8px 12px';
+      const headerStyle = cellStyle + ';font-weight:600;background:rgba(0,0,0,0.05)';
       const rows = text.split('\n').filter((r) => r.trim().length > 0);
-      const tableRows = rows.map((row, i) => {
+      let headerHtml = '';
+      let bodyHtml = '';
+      rows.forEach((row, i) => {
         const cells = row.split('\t');
-        const tag = i === 0 ? 'th' : 'td';
-        return `<tr>${cells.map((c) => `<${tag}>${c.replace(/</g, '&lt;')}</${tag}>`).join('')}</tr>`;
-      }).join('');
-      const tableHtml = `<table style="width:100%;border-collapse:collapse;margin:8px 0"><tbody>${tableRows}</tbody></table>`;
+        if (i === 0) {
+          headerHtml = `<tr>${cells.map((c) => `<th style="${headerStyle}">${c.replace(/</g, '&lt;')}</th>`).join('')}</tr>`;
+        } else {
+          bodyHtml += `<tr>${cells.map((c) => `<td style="${cellStyle}">${c.replace(/</g, '&lt;')}</td>`).join('')}</tr>`;
+        }
+      });
+      const tableHtml = `<table style="width:100%;border-collapse:collapse;margin:8px 0"><thead>${headerHtml}</thead><tbody>${bodyHtml}</tbody></table><p>&nbsp;</p>`;
       document.execCommand('insertHTML', false, tableHtml);
     }
   });
@@ -685,6 +691,16 @@ export function initDocEditor() {
       hideTableToolbar();
     }
   });
+
+  // Hide table toolbar on scroll (since it's position:fixed)
+  const editorContainer = editorEl.closest('.editor-content') || editorEl.parentElement;
+  if (editorContainer) {
+    _addHandler(editorContainer, 'scroll', () => hideTableToolbar());
+  }
+  _addHandler(editorEl, 'scroll', () => hideTableToolbar());
+
+  // Column resize via drag
+  initTableColumnResize();
 
   // Auto-correct toggle
   autoCorrectEnabled = localStorage.getItem(AUTO_CORRECT_KEY) === 'true';
@@ -792,18 +808,24 @@ function showTableToolbar(table, td) {
 
   const toolbar = document.createElement('div');
   toolbar.className = 'doc-table-toolbar';
-  toolbar.style.cssText = 'position:absolute;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:4px;display:flex;gap:2px;z-index:1500;font-size:11px';
+  toolbar.contentEditable = 'false';
+  toolbar.style.cssText = 'position:fixed;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:4px;display:flex;flex-wrap:wrap;gap:2px;z-index:1500;font-size:11px;max-width:calc(100vw - 32px)';
 
   const actions = [
-    { label: '+Row↑', title: 'Insert Row Above', fn: () => insertTableRow(table, td, 'before') },
-    { label: '+Row↓', title: 'Insert Row Below', fn: () => insertTableRow(table, td, 'after') },
-    { label: '+Col←', title: 'Insert Column Left', fn: () => insertTableCol(table, td, 'before') },
-    { label: '+Col→', title: 'Insert Column Right', fn: () => insertTableCol(table, td, 'after') },
-    { label: '−Row', title: 'Delete Row', fn: () => deleteTableRow(table, td) },
-    { label: '−Col', title: 'Delete Column', fn: () => deleteTableCol(table, td) },
+    { label: '+Row\u2191', title: 'Insert Row Above', fn: () => insertTableRow(table, td, 'before') },
+    { label: '+Row\u2193', title: 'Insert Row Below', fn: () => insertTableRow(table, td, 'after') },
+    { label: '+Col\u2190', title: 'Insert Column Left', fn: () => insertTableCol(table, td, 'before') },
+    { label: '+Col\u2192', title: 'Insert Column Right', fn: () => insertTableCol(table, td, 'after') },
+    { label: '\u2212Row', title: 'Delete Row', fn: () => deleteTableRow(table, td) },
+    { label: '\u2212Col', title: 'Delete Column', fn: () => deleteTableCol(table, td) },
+    { label: 'Merge', title: 'Merge Selected Cells', fn: () => mergeSelectedCells(table) },
+    { label: 'Split', title: 'Split Cell', fn: () => splitCell(td) },
     { label: 'Header', title: 'Toggle Header Row', fn: () => toggleTableHeader(table) },
-    { label: 'Color', title: 'Cell Color', fn: (e) => showTableCellColor(td, e.currentTarget) },
-    { label: '🗑', title: 'Delete Table', fn: () => { table.remove(); hideTableToolbar(); dirty = true; } },
+    { label: 'VAlign', title: 'Cell Vertical Alignment', fn: (e) => showCellVAlignMenu(td, e.currentTarget) },
+    { label: 'Borders', title: 'Table Borders', fn: (e) => showTableBorderMenu(table, e.currentTarget) },
+    { label: 'Color', title: 'Cell Background Color', fn: (e) => showTableCellColor(td, e.currentTarget) },
+    { label: 'Align', title: 'Table Alignment', fn: (e) => showTableAlignMenu(table, e.currentTarget) },
+    { label: '\u{1F5D1}', title: 'Delete Table', fn: () => { table.remove(); hideTableToolbar(); dirty = true; } },
   ];
 
   actions.forEach(a => {
@@ -816,21 +838,33 @@ function showTableToolbar(table, td) {
     toolbar.appendChild(btn);
   });
 
-  // Position toolbar above the table
+  // Position toolbar above the table using fixed positioning (outside contentEditable)
   const tableRect = table.getBoundingClientRect();
-  const editorRect = editorEl.getBoundingClientRect();
-  toolbar.style.left = (tableRect.left - editorRect.left) + 'px';
-  toolbar.style.top = (tableRect.top - editorRect.top - 36) + 'px';
+  toolbar.style.left = Math.max(8, tableRect.left) + 'px';
+  toolbar.style.top = Math.max(8, tableRect.top - 40) + 'px';
 
-  editorEl.style.position = 'relative';
-  editorEl.appendChild(toolbar);
+  document.body.appendChild(toolbar);
   activeTableToolbar = toolbar;
+}
+
+function getTableColCount(table) {
+  // Calculate the actual number of columns considering colspan
+  let maxCols = 0;
+  const rows = table.querySelectorAll('tr');
+  rows.forEach(row => {
+    let cols = 0;
+    Array.from(row.cells).forEach(cell => {
+      cols += cell.colSpan || 1;
+    });
+    if (cols > maxCols) maxCols = cols;
+  });
+  return maxCols;
 }
 
 function insertTableRow(table, td, position) {
   const row = td.closest('tr');
   if (!row) return;
-  const colCount = row.cells.length;
+  const colCount = getTableColCount(table);
   const newRow = document.createElement('tr');
   for (let i = 0; i < colCount; i++) {
     const cell = document.createElement('td');
@@ -922,6 +956,358 @@ function showTableCellColor(td, btn) {
       if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener('click', close); }
     });
   }, 10);
+}
+
+// ─── Cell Merge / Split ─────────────────────────────────────
+
+function mergeSelectedCells(table) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) {
+    alert('Select multiple cells by clicking and dragging across cells, then click Merge.');
+    return;
+  }
+
+  // Collect all selected cells within this table
+  const range = sel.getRangeAt(0);
+  const allCells = Array.from(table.querySelectorAll('td, th'));
+  const selectedCells = allCells.filter(cell => {
+    return range.intersectsNode(cell) || sel.containsNode(cell, true);
+  });
+
+  if (selectedCells.length < 2) {
+    alert('Select at least 2 cells to merge. Click and drag across cells.');
+    return;
+  }
+
+  // Calculate bounding rectangle of selected cells in row/col coordinates
+  const rows = Array.from(table.querySelectorAll('tr'));
+  let minRow = Infinity, maxRow = -1, minCol = Infinity, maxCol = -1;
+  const cellPositions = [];
+
+  selectedCells.forEach(cell => {
+    const row = cell.closest('tr');
+    const rowIdx = rows.indexOf(row);
+    const colIdx = Array.from(row.cells).indexOf(cell);
+    // Account for existing colspans before this cell
+    let actualCol = 0;
+    for (let i = 0; i < colIdx; i++) {
+      actualCol += (row.cells[i].colSpan || 1);
+    }
+    const colspan = cell.colSpan || 1;
+    const rowspan = cell.rowSpan || 1;
+
+    if (rowIdx < minRow) minRow = rowIdx;
+    if (rowIdx + rowspan - 1 > maxRow) maxRow = rowIdx + rowspan - 1;
+    if (actualCol < minCol) minCol = actualCol;
+    if (actualCol + colspan - 1 > maxCol) maxCol = actualCol + colspan - 1;
+    cellPositions.push({ cell, rowIdx, colIdx: actualCol });
+  });
+
+  const mergeRowSpan = maxRow - minRow + 1;
+  const mergeColSpan = maxCol - minCol + 1;
+
+  // Collect content from all selected cells
+  let mergedContent = '';
+  selectedCells.forEach(cell => {
+    const text = cell.innerHTML.trim();
+    if (text && text !== '&nbsp;') {
+      if (mergedContent) mergedContent += ' ';
+      mergedContent += text;
+    }
+  });
+
+  // Use the top-left cell as the merge target
+  const targetCell = selectedCells.sort((a, b) => {
+    const aRow = rows.indexOf(a.closest('tr'));
+    const bRow = rows.indexOf(b.closest('tr'));
+    if (aRow !== bRow) return aRow - bRow;
+    return Array.from(a.closest('tr').cells).indexOf(a) - Array.from(b.closest('tr').cells).indexOf(b);
+  })[0];
+
+  targetCell.rowSpan = mergeRowSpan;
+  targetCell.colSpan = mergeColSpan;
+  targetCell.innerHTML = mergedContent || '&nbsp;';
+
+  // Remove other selected cells
+  selectedCells.slice(1).forEach(cell => cell.remove());
+
+  dirty = true;
+}
+
+function splitCell(td) {
+  if (!td) return;
+  const colspan = td.colSpan || 1;
+  const rowspan = td.rowSpan || 1;
+
+  if (colspan <= 1 && rowspan <= 1) {
+    alert('This cell is not merged. Select a merged cell to split.');
+    return;
+  }
+
+  const table = td.closest('table');
+  const row = td.closest('tr');
+  const rows = Array.from(table.querySelectorAll('tr'));
+  const rowIdx = rows.indexOf(row);
+  const cellStyle = 'border:1px solid var(--border-color);padding:8px 12px';
+
+  // Reset the cell's span
+  td.colSpan = 1;
+  td.rowSpan = 1;
+
+  // Add extra columns in the same row
+  for (let c = 1; c < colspan; c++) {
+    const newCell = document.createElement(td.tagName);
+    newCell.style.cssText = cellStyle;
+    newCell.innerHTML = '&nbsp;';
+    td.after(newCell);
+  }
+
+  // Add cells in subsequent rows
+  for (let r = 1; r < rowspan; r++) {
+    const targetRow = rows[rowIdx + r];
+    if (!targetRow) continue;
+    // Find the right position to insert
+    const colIdx = Array.from(row.cells).indexOf(td);
+    let actualCol = 0;
+    for (let i = 0; i < colIdx; i++) {
+      actualCol += (row.cells[i].colSpan || 1);
+    }
+    // Insert colspan cells at the right position in target row
+    let insertBefore = null;
+    let col = 0;
+    for (const cell of targetRow.cells) {
+      if (col >= actualCol) { insertBefore = cell; break; }
+      col += (cell.colSpan || 1);
+    }
+    for (let c = 0; c < colspan; c++) {
+      const newCell = document.createElement('td');
+      newCell.style.cssText = cellStyle;
+      newCell.innerHTML = '&nbsp;';
+      if (insertBefore) targetRow.insertBefore(newCell, insertBefore);
+      else targetRow.appendChild(newCell);
+    }
+  }
+
+  dirty = true;
+}
+
+// ─── Cell Vertical Alignment ────────────────────────────────
+
+function showCellVAlignMenu(td, btn) {
+  const existing = document.querySelector('.doc-table-valign-menu');
+  if (existing) { existing.remove(); return; }
+
+  const menu = document.createElement('div');
+  menu.className = 'doc-table-valign-menu';
+  menu.style.cssText = 'position:fixed;z-index:2000;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:4px;display:flex;flex-direction:column;gap:2px';
+
+  const rect = btn.getBoundingClientRect();
+  menu.style.top = (rect.bottom + 4) + 'px';
+  menu.style.left = rect.left + 'px';
+
+  const alignments = [
+    { value: 'top', label: 'Top' },
+    { value: 'middle', label: 'Middle' },
+    { value: 'bottom', label: 'Bottom' },
+  ];
+
+  alignments.forEach(a => {
+    const item = document.createElement('button');
+    item.style.cssText = 'padding:4px 12px;border:none;border-radius:4px;background:transparent;cursor:pointer;font-size:12px;color:var(--text-primary);text-align:left;white-space:nowrap';
+    if (td.style.verticalAlign === a.value) item.style.background = 'var(--accent-color)';
+    item.textContent = a.label;
+    item.addEventListener('click', () => {
+      td.style.verticalAlign = a.value;
+      menu.remove();
+      dirty = true;
+    });
+    menu.appendChild(item);
+  });
+
+  document.body.appendChild(menu);
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', close); }
+    });
+  }, 10);
+}
+
+// ─── Table Borders ──────────────────────────────────────────
+
+function showTableBorderMenu(table, btn) {
+  const existing = document.querySelector('.doc-table-border-menu');
+  if (existing) { existing.remove(); return; }
+
+  const menu = document.createElement('div');
+  menu.className = 'doc-table-border-menu';
+  menu.style.cssText = 'position:fixed;z-index:2000;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:8px;display:flex;flex-direction:column;gap:4px;min-width:140px';
+
+  const rect = btn.getBoundingClientRect();
+  menu.style.top = (rect.bottom + 4) + 'px';
+  menu.style.left = rect.left + 'px';
+
+  const styles = [
+    { label: 'All Borders', border: '1px solid var(--border-color)' },
+    { label: 'No Borders', border: 'none' },
+    { label: 'Thick Borders', border: '2px solid var(--border-color)' },
+    { label: 'Double Borders', border: '3px double var(--border-color)' },
+    { label: 'Dashed', border: '1px dashed var(--border-color)' },
+    { label: 'Dotted', border: '1px dotted var(--border-color)' },
+  ];
+
+  styles.forEach(s => {
+    const item = document.createElement('button');
+    item.style.cssText = 'padding:6px 12px;border:none;border-radius:4px;background:transparent;cursor:pointer;font-size:12px;color:var(--text-primary);text-align:left;white-space:nowrap';
+    item.textContent = s.label;
+    item.addEventListener('mouseenter', () => { item.style.background = 'var(--bg-tertiary)'; });
+    item.addEventListener('mouseleave', () => { item.style.background = 'transparent'; });
+    item.addEventListener('click', () => {
+      table.querySelectorAll('td, th').forEach(cell => {
+        cell.style.border = s.border;
+      });
+      menu.remove();
+      dirty = true;
+    });
+    menu.appendChild(item);
+  });
+
+  document.body.appendChild(menu);
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', close); }
+    });
+  }, 10);
+}
+
+// ─── Table Alignment ────────────────────────────────────────
+
+function showTableAlignMenu(table, btn) {
+  const existing = document.querySelector('.doc-table-align-menu');
+  if (existing) { existing.remove(); return; }
+
+  const menu = document.createElement('div');
+  menu.className = 'doc-table-align-menu';
+  menu.style.cssText = 'position:fixed;z-index:2000;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:4px;display:flex;flex-direction:column;gap:2px';
+
+  const rect = btn.getBoundingClientRect();
+  menu.style.top = (rect.bottom + 4) + 'px';
+  menu.style.left = rect.left + 'px';
+
+  const alignments = [
+    { value: '', label: 'Full Width (100%)', width: '100%' },
+    { value: '', label: 'Left', width: 'auto', margin: '0 auto 0 0' },
+    { value: 'center', label: 'Center', width: 'auto', margin: '0 auto' },
+    { value: '', label: 'Right', width: 'auto', margin: '0 0 0 auto' },
+  ];
+
+  alignments.forEach(a => {
+    const item = document.createElement('button');
+    item.style.cssText = 'padding:4px 12px;border:none;border-radius:4px;background:transparent;cursor:pointer;font-size:12px;color:var(--text-primary);text-align:left;white-space:nowrap';
+    item.textContent = a.label;
+    item.addEventListener('click', () => {
+      table.style.width = a.width;
+      table.style.margin = a.margin || '8px 0';
+      menu.remove();
+      dirty = true;
+    });
+    menu.appendChild(item);
+  });
+
+  document.body.appendChild(menu);
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', close); }
+    });
+  }, 10);
+}
+
+// ─── Column Resize (drag column borders) ────────────────────
+
+function initTableColumnResize() {
+  if (!editorEl) return;
+
+  let resizing = false;
+  let resizeTable = null;
+  let resizeColIdx = -1;
+  let startX = 0;
+  let startWidths = [];
+
+  editorEl.addEventListener('mousemove', (e) => {
+    if (resizing) return;
+    const td = e.target.closest('td, th');
+    if (!td || !editorEl.contains(td)) {
+      editorEl.style.cursor = '';
+      return;
+    }
+    const rect = td.getBoundingClientRect();
+    const nearRightBorder = e.clientX > rect.right - 5;
+    const nearLeftBorder = e.clientX < rect.left + 5;
+    if (nearRightBorder || nearLeftBorder) {
+      editorEl.style.cursor = 'col-resize';
+    } else {
+      editorEl.style.cursor = '';
+    }
+  });
+
+  editorEl.addEventListener('mousedown', (e) => {
+    const td = e.target.closest('td, th');
+    if (!td || !editorEl.contains(td)) return;
+
+    const rect = td.getBoundingClientRect();
+    const nearRightBorder = e.clientX > rect.right - 5;
+    const nearLeftBorder = e.clientX < rect.left + 5;
+
+    if (!nearRightBorder && !nearLeftBorder) return;
+
+    e.preventDefault();
+    resizing = true;
+    resizeTable = td.closest('table');
+    if (!resizeTable) return;
+
+    const row = td.closest('tr');
+    const cellIdx = Array.from(row.cells).indexOf(td);
+    resizeColIdx = nearLeftBorder ? cellIdx - 1 : cellIdx;
+    if (resizeColIdx < 0) { resizing = false; return; }
+
+    startX = e.clientX;
+
+    // Ensure table has explicit widths
+    if (!resizeTable.style.tableLayout) {
+      resizeTable.style.tableLayout = 'fixed';
+    }
+
+    // Capture current widths
+    const firstRow = resizeTable.querySelector('tr');
+    startWidths = Array.from(firstRow.cells).map(c => c.getBoundingClientRect().width);
+    // Set explicit widths
+    Array.from(firstRow.cells).forEach((c, i) => {
+      c.style.width = startWidths[i] + 'px';
+    });
+
+    const onMove = (ev) => {
+      const dx = ev.clientX - startX;
+      const firstRowCells = resizeTable.querySelector('tr').cells;
+      if (firstRowCells[resizeColIdx]) {
+        const newWidth = Math.max(30, startWidths[resizeColIdx] + dx);
+        firstRowCells[resizeColIdx].style.width = newWidth + 'px';
+      }
+      if (resizeColIdx + 1 < firstRowCells.length && firstRowCells[resizeColIdx + 1]) {
+        const newWidth = Math.max(30, startWidths[resizeColIdx + 1] - dx);
+        firstRowCells[resizeColIdx + 1].style.width = newWidth + 'px';
+      }
+    };
+
+    const onUp = () => {
+      resizing = false;
+      editorEl.style.cursor = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      dirty = true;
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
 }
 
 // ─── Find / Replace ────────────────────────────────────────

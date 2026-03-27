@@ -3,7 +3,7 @@
 let _appAutoSaveInterval = null;
 let _appVersionInterval = null;
 
-import { createEditor, onChange, getContent, setContent, wrapSelection } from './editor/editor.js';
+import { createEditor, onChange, getContent, setContent, wrapSelection, getEditorView } from './editor/editor.js';
 import { initPreview, updatePreview, updatePreviewImmediate, initBidirectionalScrollSync, initPreviewToolbar, setSourceAccessors } from './preview/preview.js';
 import { registerAllPlugins } from './preview/plugins.js';
 import { getRenderer } from './preview/renderer.js';
@@ -1897,6 +1897,28 @@ function buildOutline(markdownText) {
       if (target) {
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
+
+      // Also scroll the editor to the corresponding heading line
+      try {
+        const view = getEditorView();
+        if (view) {
+          const doc = view.state.doc;
+          for (let i = 1; i <= doc.lines; i++) {
+            const line = doc.line(i);
+            if (line.text.match(/^#{1,6}\s+/) && line.text.includes(h.text.substring(0, 20))) {
+              view.dispatch({ selection: { anchor: line.from } });
+              const coords = view.coordsAtPos(line.from);
+              if (coords) {
+                view.scrollDOM.scrollTo({
+                  top: view.scrollDOM.scrollTop + coords.top - view.scrollDOM.getBoundingClientRect().top - 80,
+                  behavior: 'smooth',
+                });
+              }
+              break;
+            }
+          }
+        }
+      } catch { /* editor not ready */ }
 
       // Highlight active outline item
       list.querySelectorAll('.md-outline-item').forEach(b => b.classList.remove('active'));
