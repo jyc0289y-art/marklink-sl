@@ -132,6 +132,19 @@ const getElementsByLocalName = (parent, localName) => {
 const getFirstByLocalName = (parent, localName) => getElementsByLocalName(parent, localName)[0] || null;
 
 /**
+ * Get direct child elements matching a local name (non-recursive)
+ */
+const getDirectChildrenByLocalName = (parent, localName) => {
+  if (!parent) return [];
+  const results = [];
+  for (let i = 0; i < parent.childNodes.length; i++) {
+    const child = parent.childNodes[i];
+    if (child.nodeType === 1 && child.localName === localName) results.push(child);
+  }
+  return results;
+};
+
+/**
  * Import a .pptx file
  */
 async function importPptx(file) {
@@ -753,14 +766,14 @@ async function parseGraphicFrame(frameEl, slideRelMap, zip, themeColors) {
  * Parse a table (a:tbl) into HTML table
  */
 function parseTable(tblEl, themeColors) {
-  const rows = getElementsByLocalName(tblEl, 'tr');
+  const rows = getDirectChildrenByLocalName(tblEl, 'tr');
   if (rows.length === 0) return null;
 
   let html = '<table style="border-collapse:collapse;width:100%;margin:12px 0">';
 
   rows.forEach((row, rowIdx) => {
     html += '<tr>';
-    const cells = getElementsByLocalName(row, 'tc');
+    const cells = getDirectChildrenByLocalName(row, 'tc');
     cells.forEach((cell) => {
       const tag = rowIdx === 0 ? 'th' : 'td';
       const txBody = getFirstByLocalName(cell, 'txBody');
@@ -994,7 +1007,9 @@ function extractSlideTransition(slideXml) {
     }
 
     // If transition element exists but no recognized child, default to fade
-    if (result.type === 'none' && transition.childNodes.length > 0) {
+    // Only count element nodes (nodeType === 1) — ignore whitespace text nodes
+    const hasElementChildren = Array.from(transition.childNodes).some((n) => n.nodeType === 1);
+    if (result.type === 'none' && hasElementChildren) {
       result.type = 'fade';
     }
   } catch (e) {

@@ -260,14 +260,14 @@ async function extractDocxWithJSZip(arrayBuffer) {
       styles.push('color:transparent');
     }
 
-    // Letter spacing (w:spacing val in half-points → convert to em)
+    // Letter spacing (w:spacing val is in twips = 1/20 pt → convert to pt)
     const spacingEl = queryFirst(rPr, 'spacing');
     const spacingVal = getAttr(spacingEl, 'val');
     if (spacingVal) {
-      const halfPts = parseInt(spacingVal, 10);
-      if (halfPts !== 0) {
-        const em = (halfPts / 20).toFixed(2);
-        styles.push(`letter-spacing:${em}em`);
+      const twips = parseInt(spacingVal, 10);
+      if (twips !== 0) {
+        const pt = (twips / 20).toFixed(1);
+        styles.push(`letter-spacing:${pt}pt`);
       }
     }
 
@@ -350,10 +350,17 @@ async function extractDocxWithJSZip(arrayBuffer) {
    */
   const processRun = (r) => {
     const rPr = queryFirst(r, 'rPr');
-    const isBold = rPr && queryFirst(rPr, 'b') !== null;
-    const isItalic = rPr && queryFirst(rPr, 'i') !== null;
-    const isUnderline = rPr && queryFirst(rPr, 'u') !== null;
-    const isStrike = rPr && (queryFirst(rPr, 'strike') !== null || queryFirst(rPr, 'dstrike') !== null);
+    // Helper to check toggle properties — val="false" or val="0" means OFF
+    const isToggleOn = (el) => {
+      if (!el) return false;
+      const val = getAttr(el, 'val');
+      return val !== 'false' && val !== '0';
+    };
+    const isBold = rPr && isToggleOn(queryFirst(rPr, 'b'));
+    const isItalic = rPr && isToggleOn(queryFirst(rPr, 'i'));
+    const uEl = rPr && queryFirst(rPr, 'u');
+    const isUnderline = uEl && getAttr(uEl, 'val') !== 'none' && getAttr(uEl, 'val') !== 'false' && getAttr(uEl, 'val') !== '0';
+    const isStrike = rPr && (isToggleOn(queryFirst(rPr, 'strike')) || isToggleOn(queryFirst(rPr, 'dstrike')));
     // Superscript / subscript from w:vertAlign
     const vertAlignEl = rPr && queryFirst(rPr, 'vertAlign');
     const vertAlignVal = vertAlignEl ? getAttr(vertAlignEl, 'val') : '';
@@ -656,7 +663,12 @@ async function extractDocxWithJSZip(arrayBuffer) {
         for (const cellChild of tc.children) {
           const cln = cellChild.localName;
           if (cln === 'p') {
-            cellContent += await processParaContent(cellChild);
+            // Preserve paragraph-level formatting (alignment, indentation, etc.)
+            const cpPr = queryFirst(cellChild, 'pPr');
+            const cpStyle = extractParaStyles(cpPr);
+            const cpStyleAttr = cpStyle ? ` style="${cpStyle}"` : '';
+            const cpContent = await processParaContent(cellChild);
+            cellContent += `<p${cpStyleAttr}>${cpContent}</p>`;
           } else if (cln === 'tbl') {
             cellContent += await processTable(cellChild);
           }
@@ -762,9 +774,10 @@ async function extractDocxWithJSZip(arrayBuffer) {
 
   // Wrap consecutive <li> elements in appropriate list tags (ol or ul)
   // Group by data-list-type attribute
-  html = html.replace(/((?:<li data-list-type="(ol|ul)"[^>]*>.*?<\/li>\n?)+)/g, (match, _group, type) => {
+  html = html.replace(/((?:<li data-list-type="(ol|ul)"[^>]*>[\s\S]*?<\/li>\n?)+)/g, (match) => {
     // Use the type from the first li in the group
-    const firstType = type || 'ul';
+    const firstTypeMatch = match.match(/data-list-type="(ol|ul)"/);
+    const firstType = firstTypeMatch ? firstTypeMatch[1] : 'ul';
     const cleaned = match.replace(/ data-list-type="(?:ol|ul)"/g, '').replace(/ data-level="\d+"/g, '');
     return `<${firstType}>\n${cleaned}</${firstType}>\n`;
   });
@@ -1150,15 +1163,16 @@ function _extractParagraphFormatting(el, AlignmentType, convertInchesToTwip) {
     if (marginTop) {
       const val = parseFloat(marginTop);
       if (val > 0) {
-        // If in pt, convert to twips (1pt = 20twips)
-        const unit = marginTop.includes('pt') ? 20 : (96 / 72) * 20; // px→pt→twips
-        opts.spacing.before = Math.round(val * (marginTop.includes('pt') ? 20 : (20 / (96 / 72))));
+        // If in pt, convert to twips (1pt = 20twips); if in px, convert px→pt→twips
+        const twipsPerUnit = marginTop.includes('pt') ? 20 : (20 * 72 / 96);
+        opts.spacing.before = Math.round(val * twipsPerUnit);
       }
     }
     if (marginBottom) {
       const val = parseFloat(marginBottom);
       if (val > 0) {
-        opts.spacing.after = Math.round(val * (marginBottom.includes('pt') ? 20 : (20 / (96 / 72))));
+        const twipsPerUnit = marginBottom.includes('pt') ? 20 : (20 * 72 / 96);
+        opts.spacing.after = Math.round(val * twipsPerUnit);
       }
     }
     if (lineHeight) {

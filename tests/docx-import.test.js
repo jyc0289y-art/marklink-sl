@@ -191,3 +191,144 @@ describe('halfPointsToPt (DOCX font size conversion)', () => {
     expect(halfPointsToPt('25')).toBe(12.5);
   });
 });
+
+// ── Toggle property detection (bug fix: val="false" and val="0" should disable) ──
+function isToggleOn(val) {
+  // Replicates the fixed logic from docx.js processRun
+  // An element exists but val is "false" or "0" → OFF
+  if (val === null || val === undefined) return false; // element doesn't exist
+  if (val === 'false' || val === '0') return false;
+  return true; // element exists with no val, or val is something else
+}
+
+describe('DOCX import toggle property detection (w:b, w:i, etc.)', () => {
+  it('treats element with no val attribute as ON', () => {
+    // <w:b/> (no val) means bold
+    expect(isToggleOn('')).toBe(true);
+  });
+
+  it('treats val="true" as ON', () => {
+    expect(isToggleOn('true')).toBe(true);
+  });
+
+  it('treats val="1" as ON', () => {
+    expect(isToggleOn('1')).toBe(true);
+  });
+
+  it('treats val="false" as OFF', () => {
+    // <w:b w:val="false"/> means NOT bold
+    expect(isToggleOn('false')).toBe(false);
+  });
+
+  it('treats val="0" as OFF', () => {
+    // <w:b w:val="0"/> means NOT bold
+    expect(isToggleOn('0')).toBe(false);
+  });
+
+  it('treats null (element absent) as OFF', () => {
+    expect(isToggleOn(null)).toBe(false);
+  });
+});
+
+// ── Underline val="none" detection ──
+function isUnderlineOn(val) {
+  // Replicates underline check: val="none", "false", "0" all mean OFF
+  if (val === null || val === undefined) return false;
+  if (val === 'none' || val === 'false' || val === '0') return false;
+  return true;
+}
+
+describe('DOCX import underline detection', () => {
+  it('detects underline with val="single"', () => {
+    expect(isUnderlineOn('single')).toBe(true);
+  });
+
+  it('detects underline with empty val (element present)', () => {
+    expect(isUnderlineOn('')).toBe(true);
+  });
+
+  it('rejects underline with val="none"', () => {
+    expect(isUnderlineOn('none')).toBe(false);
+  });
+
+  it('rejects underline with val="false"', () => {
+    expect(isUnderlineOn('false')).toBe(false);
+  });
+
+  it('rejects underline with val="0"', () => {
+    expect(isUnderlineOn('0')).toBe(false);
+  });
+});
+
+// ── Letter spacing conversion (bug fix: was using em, should be pt) ──
+function letterSpacingToCss(twipsVal) {
+  // Replicates the fixed logic from docx.js extractRunStyles
+  const twips = parseInt(twipsVal, 10);
+  if (twips === 0 || isNaN(twips)) return null;
+  const pt = (twips / 20).toFixed(1);
+  return `letter-spacing:${pt}pt`;
+}
+
+describe('DOCX import letter spacing conversion', () => {
+  it('converts 20 twips to 1.0pt', () => {
+    expect(letterSpacingToCss('20')).toBe('letter-spacing:1.0pt');
+  });
+
+  it('converts 40 twips to 2.0pt', () => {
+    expect(letterSpacingToCss('40')).toBe('letter-spacing:2.0pt');
+  });
+
+  it('converts negative twips for condensed spacing', () => {
+    expect(letterSpacingToCss('-10')).toBe('letter-spacing:-0.5pt');
+  });
+
+  it('returns null for 0', () => {
+    expect(letterSpacingToCss('0')).toBeNull();
+  });
+});
+
+// ── List wrapping regex (bug fix: should handle multi-line li content) ──
+describe('DOCX import list wrapping', () => {
+  function wrapLists(html) {
+    return html.replace(/((?:<li data-list-type="(ol|ul)"[^>]*>[\s\S]*?<\/li>\n?)+)/g, (match) => {
+      const firstTypeMatch = match.match(/data-list-type="(ol|ul)"/);
+      const firstType = firstTypeMatch ? firstTypeMatch[1] : 'ul';
+      const cleaned = match.replace(/ data-list-type="(?:ol|ul)"/g, '').replace(/ data-level="\d+"/g, '');
+      return `<${firstType}>\n${cleaned}</${firstType}>\n`;
+    });
+  }
+
+  it('wraps consecutive ol items', () => {
+    const input = '<li data-list-type="ol" data-level="0">First</li>\n<li data-list-type="ol" data-level="0">Second</li>\n';
+    const result = wrapLists(input);
+    expect(result).toContain('<ol>');
+    expect(result).toContain('</ol>');
+    expect(result).not.toContain('data-list-type');
+  });
+
+  it('wraps consecutive ul items', () => {
+    const input = '<li data-list-type="ul" data-level="0">Bullet</li>\n';
+    const result = wrapLists(input);
+    expect(result).toContain('<ul>');
+    expect(result).toContain('</ul>');
+  });
+
+  it('uses first li type when mixed (edge case)', () => {
+    const input = '<li data-list-type="ol" data-level="0">Ordered</li>\n<li data-list-type="ul" data-level="0">Bullet</li>\n';
+    const result = wrapLists(input);
+    expect(result).toMatch(/^<ol>/);
+  });
+
+  it('handles multi-line content inside li elements', () => {
+    const input = '<li data-list-type="ul" data-level="0">Line1<br>\nLine2</li>\n';
+    const result = wrapLists(input);
+    expect(result).toContain('<ul>');
+    expect(result).toContain('Line1<br>\nLine2');
+  });
+
+  it('strips data-level attributes', () => {
+    const input = '<li data-list-type="ol" data-level="2">Deep</li>\n';
+    const result = wrapLists(input);
+    expect(result).not.toContain('data-level');
+  });
+});

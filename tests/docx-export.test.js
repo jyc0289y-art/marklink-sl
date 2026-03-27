@@ -277,6 +277,30 @@ describe('_extractParagraphFormatting', () => {
       expect(result.indent.left).toBeUndefined();
     }
   });
+
+  it('converts px marginTop to correct twips (bug fix: dead variable removed)', () => {
+    // 48px marginTop → 48 * (20 * 72 / 96) = 48 * 15 = 720 twips
+    const result = _extractParagraphFormatting({ marginTop: '48px' });
+    expect(result.spacing.before).toBe(720);
+  });
+
+  it('converts pt marginTop to correct twips', () => {
+    // 12pt marginTop → 12 * 20 = 240 twips
+    const result = _extractParagraphFormatting({ marginTop: '12pt' });
+    expect(result.spacing.before).toBe(240);
+  });
+
+  it('converts px marginBottom to correct twips', () => {
+    // 48px marginBottom → 48 * 15 = 720 twips
+    const result = _extractParagraphFormatting({ marginBottom: '48px' });
+    expect(result.spacing.after).toBe(720);
+  });
+
+  it('converts pt marginBottom to correct twips', () => {
+    // 12pt marginBottom → 12 * 20 = 240 twips
+    const result = _extractParagraphFormatting({ marginBottom: '12pt' });
+    expect(result.spacing.after).toBe(240);
+  });
 });
 
 // ── Section break detection for DOCX export ──

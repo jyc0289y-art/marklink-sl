@@ -2,7 +2,7 @@
 
 // XLSX (~1MB) loaded dynamically to reduce initial bundle
 import {
-  createSheetData, setCell, colToLetter, getDisplayValue, recalcAll,
+  createSheetData, setCell, getDisplayValue, recalcAll,
   setCellFormat, mergeCells, getRawValue, getCell, cellKey,
 } from './sheet-engine.js';
 import { getSheetsData, setSheetsData } from './sheet-ui.js';
@@ -102,20 +102,24 @@ export async function saveSheetCSV() {
   const sheets = getSheetsData();
   const sheet = sheets[0]; // CSV = single sheet
 
-  // Find the last row with data to avoid trailing empty rows
+  // Find the last row and last column with data to avoid trailing empties
   let lastDataRow = 0;
+  let lastDataCol = 0;
   for (let r = 0; r < sheet.rows; r++) {
     for (let c = 0; c < sheet.cols; c++) {
-      const val = getDisplayValue(sheet, r, c);
-      if (val) { lastDataRow = r; break; }
+      const val = getRawValue(sheet, r, c);
+      if (val) {
+        lastDataRow = r;
+        if (c > lastDataCol) lastDataCol = c;
+      }
     }
   }
 
   let csv = '';
   for (let r = 0; r <= lastDataRow; r++) {
     const row = [];
-    for (let c = 0; c < sheet.cols; c++) {
-      const val = getDisplayValue(sheet, r, c);
+    for (let c = 0; c <= lastDataCol; c++) {
+      const val = getRawValue(sheet, r, c);
       // Escape CSV per RFC 4180
       const str = String(val);
       if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
@@ -285,8 +289,8 @@ async function importFile(file) {
             } else if (cellType === 'd') {
               // Date: store as Excel serial number so roundtrip preserves it
               if (cell.v instanceof Date) {
-                const epoch = new Date(1899, 11, 30);
-                const serial = (cell.v.getTime() - epoch.getTime()) / 86400000;
+                const epoch = Date.UTC(1899, 11, 30);
+                const serial = Math.round((Date.UTC(cell.v.getFullYear(), cell.v.getMonth(), cell.v.getDate()) - epoch) / 86400000);
                 setCell(sheetData, r, c, String(serial));
                 // Apply date numFormat so it displays as a date
                 if (!cell.z && !cell.s?.numFmt) {
@@ -633,7 +637,7 @@ async function exportToWorkbook() {
       const addr = XLSX.utils.encode_cell({ r, c });
       if (!ws[addr]) ws[addr] = { t: 's', v: '' };
 
-      const raw = cellData.raw || '';
+      const raw = cellData.raw != null ? String(cellData.raw) : '';
       const val = cellData.value;
 
       // Formulas: if raw starts with '=', write as formula
@@ -816,8 +820,11 @@ async function exportToWorkbook() {
         cfRule.ref = cf.range || '';
         cfRule.type = cf.type || 'cellIs';
         if (cf.operator) cfRule.operator = cf.operator;
-        if (cf.value != null) cfRule.formula = [String(cf.value)];
-        if (cf.value2 != null) cfRule.formula = [String(cf.value), String(cf.value2)];
+        if (cf.value != null && cf.value2 != null) {
+          cfRule.formula = [String(cf.value), String(cf.value2)];
+        } else if (cf.value != null) {
+          cfRule.formula = [String(cf.value)];
+        }
         // Style
         const cfStyle = {};
         if (cf.color) cfStyle.font = { color: { rgb: cf.color.replace('#', '').toUpperCase() } };
@@ -834,3 +841,6 @@ async function exportToWorkbook() {
 
   return wb;
 }
+
+// Exported for unit testing
+export { parseDelimited, extractColor, cssBorderToXlsx, xlsxBorderToCss };

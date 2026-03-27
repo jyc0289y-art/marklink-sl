@@ -347,3 +347,161 @@ describe('Slide undo/redo state tracking', () => {
     expect(slides[1].content).toBe('slide-1'); // restored
   });
 });
+
+/* ─── getDirectChildrenByLocalName: replicated from slide-file.js ─── */
+// Simulated with a minimal DOM-like structure for testing
+describe('getDirectChildrenByLocalName (logic test)', () => {
+  // Simulate the function logic
+  function getDirectChildrenByLocalName(parent, localName) {
+    if (!parent) return [];
+    const results = [];
+    for (let i = 0; i < parent.childNodes.length; i++) {
+      const child = parent.childNodes[i];
+      if (child.nodeType === 1 && child.localName === localName) results.push(child);
+    }
+    return results;
+  }
+
+  it('returns only direct children, not nested descendants', () => {
+    // Simulate: parent has 2 direct 'tr' children, one of which has a nested 'tr'
+    const nestedTr = { nodeType: 1, localName: 'tr', childNodes: [] };
+    const innerTbl = { nodeType: 1, localName: 'tbl', childNodes: [nestedTr] };
+    const tc = { nodeType: 1, localName: 'tc', childNodes: [innerTbl] };
+    const tr1 = { nodeType: 1, localName: 'tr', childNodes: [tc] };
+    const tr2 = { nodeType: 1, localName: 'tr', childNodes: [] };
+    const parent = { childNodes: [tr1, tr2] };
+
+    const result = getDirectChildrenByLocalName(parent, 'tr');
+    expect(result).toHaveLength(2); // only direct tr children, not nested one
+    expect(result[0]).toBe(tr1);
+    expect(result[1]).toBe(tr2);
+  });
+
+  it('returns empty array for null parent', () => {
+    expect(getDirectChildrenByLocalName(null, 'tr')).toEqual([]);
+  });
+
+  it('skips text nodes (nodeType !== 1)', () => {
+    const textNode = { nodeType: 3, localName: undefined, childNodes: [] };
+    const element = { nodeType: 1, localName: 'tr', childNodes: [] };
+    const parent = { childNodes: [textNode, element] };
+    expect(getDirectChildrenByLocalName(parent, 'tr')).toHaveLength(1);
+  });
+
+  it('returns empty when no children match', () => {
+    const el = { nodeType: 1, localName: 'td', childNodes: [] };
+    const parent = { childNodes: [el] };
+    expect(getDirectChildrenByLocalName(parent, 'tr')).toEqual([]);
+  });
+});
+
+/* ─── extractSlideTransition whitespace fix test ─── */
+describe('extractSlideTransition — whitespace node handling (logic test)', () => {
+  // Replicate the fixed transition detection logic
+  function extractTransitionType(childNodes) {
+    const transTypeMap = {
+      'fade': 'fade', 'push': 'slide', 'wipe': 'wipe',
+      'split': 'split', 'cut': 'cut', 'cover': 'slide',
+    };
+
+    let type = 'none';
+    for (const child of childNodes) {
+      if (child.nodeType !== 1) continue;
+      if (transTypeMap[child.localName]) {
+        type = transTypeMap[child.localName];
+        break;
+      }
+    }
+
+    // Fixed logic: only count element nodes for fallback
+    const hasElementChildren = childNodes.some((n) => n.nodeType === 1);
+    if (type === 'none' && hasElementChildren) {
+      type = 'fade';
+    }
+    return type;
+  }
+
+  it('should NOT fallback to fade when only whitespace text nodes exist', () => {
+    // Simulate: <p:transition> with only whitespace text nodes (from formatted XML)
+    const nodes = [
+      { nodeType: 3, localName: undefined }, // whitespace text node
+      { nodeType: 3, localName: undefined }, // another whitespace
+    ];
+    expect(extractTransitionType(nodes)).toBe('none');
+  });
+
+  it('should detect fade transition element', () => {
+    const nodes = [
+      { nodeType: 1, localName: 'fade' },
+    ];
+    expect(extractTransitionType(nodes)).toBe('fade');
+  });
+
+  it('should fallback to fade for unrecognized element children', () => {
+    const nodes = [
+      { nodeType: 1, localName: 'unknownTransition' },
+    ];
+    expect(extractTransitionType(nodes)).toBe('fade');
+  });
+
+  it('should ignore text nodes mixed with element nodes', () => {
+    const nodes = [
+      { nodeType: 3, localName: undefined },
+      { nodeType: 1, localName: 'wipe' },
+      { nodeType: 3, localName: undefined },
+    ];
+    expect(extractTransitionType(nodes)).toBe('wipe');
+  });
+
+  it('returns none for empty childNodes', () => {
+    expect(extractTransitionType([])).toBe('none');
+  });
+});
+
+/* ─── Table parsing: nested table isolation test ─── */
+describe('parseTable — nested table isolation (logic test)', () => {
+  // This tests that using direct children lookup prevents nested table corruption
+
+  function getElementsByLocalName_recursive(parent, localName) {
+    if (!parent) return [];
+    const results = [];
+    const walk = (node) => {
+      if (node.nodeType === 1) {
+        if (node.localName === localName) results.push(node);
+        if (node.childNodes) {
+          for (let i = 0; i < node.childNodes.length; i++) walk(node.childNodes[i]);
+        }
+      }
+    };
+    walk(parent);
+    return results;
+  }
+
+  function getDirectChildrenByLocalName(parent, localName) {
+    if (!parent) return [];
+    const results = [];
+    for (let i = 0; i < parent.childNodes.length; i++) {
+      const child = parent.childNodes[i];
+      if (child.nodeType === 1 && child.localName === localName) results.push(child);
+    }
+    return results;
+  }
+
+  it('recursive search finds nested tr elements (demonstrating the bug)', () => {
+    // Outer table: 2 rows, inner table in one cell: 1 row
+    const innerTr = { nodeType: 1, localName: 'tr', childNodes: [] };
+    const innerTbl = { nodeType: 1, localName: 'tbl', childNodes: [innerTr] };
+    const tc = { nodeType: 1, localName: 'tc', childNodes: [innerTbl] };
+    const outerTr1 = { nodeType: 1, localName: 'tr', childNodes: [tc] };
+    const outerTr2 = { nodeType: 1, localName: 'tr', childNodes: [] };
+    const outerTbl = { nodeType: 1, localName: 'tbl', childNodes: [outerTr1, outerTr2] };
+
+    // Bug: recursive search finds 3 tr elements instead of 2
+    const recursiveResult = getElementsByLocalName_recursive(outerTbl, 'tr');
+    expect(recursiveResult).toHaveLength(3); // WRONG: includes nested tr
+
+    // Fix: direct children search finds only 2
+    const directResult = getDirectChildrenByLocalName(outerTbl, 'tr');
+    expect(directResult).toHaveLength(2); // CORRECT: only outer rows
+  });
+});
