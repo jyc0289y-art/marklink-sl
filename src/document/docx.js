@@ -406,8 +406,10 @@ async function extractDocxWithJSZip(arrayBuffer) {
    * Process a hyperlink element
    */
   const processHyperlink = (hlNode) => {
-    const rId = hlNode.getAttribute('r:id') || hlNode.getAttribute('id') || '';
-    const url = relsMap[rId] || '#';
+    const rId = hlNode.getAttribute('r:id') || '';
+    const anchor = hlNode.getAttribute('w:anchor') || hlNode.getAttribute('anchor') || '';
+    // External hyperlinks use r:id to reference a relationship, internal bookmarks use w:anchor
+    const url = rId ? (relsMap[rId] || '#') : (anchor ? `#${anchor}` : '#');
     const runs = queryAll(hlNode, 'r');
     let content = '';
     for (const r of runs) {
@@ -807,7 +809,7 @@ const _highlightColorMap = {
 /**
  * Escape a string for use in an HTML attribute
  */
-const _escapeAttr = (str) => str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const _escapeAttr = (str) => str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /**
  * Export Document editor content → .docx file

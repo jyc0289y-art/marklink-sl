@@ -202,12 +202,15 @@ async function importPptx(file) {
       // Extract background color
       const bgColor = extractSlideBackground(slideXml, themeColors);
 
+      // Extract slide transition
+      const transitionData = extractSlideTransition(slideXml);
+
       slides.push({
         content,
         notes,
         theme: 'default',
-        transition: 'none',
-        transitionDuration: 0.5,
+        transition: transitionData.type,
+        transitionDuration: transitionData.duration,
         transitionEasing: 'ease',
         animations: [],
         layout: null,
@@ -937,6 +940,67 @@ function extractSlideBackground(slideXml, themeColors) {
     console.warn('Failed to extract slide background:', e);
     return null;
   }
+}
+
+/**
+ * Extract transition data from a slide XML
+ * Maps OOXML transition types to our internal transition names
+ */
+function extractSlideTransition(slideXml) {
+  const result = { type: 'none', duration: 0.5 };
+  try {
+    const transition = getFirstByLocalName(slideXml, 'transition');
+    if (!transition) return result;
+
+    // Duration: spd attribute ('slow'=1s, 'med'=0.5s, 'fast'=0.25s) or dur in ms
+    const spd = transition.getAttribute('spd');
+    const dur = transition.getAttribute('dur');
+    if (dur) {
+      result.duration = parseInt(dur, 10) / 1000;
+    } else if (spd === 'slow') {
+      result.duration = 1.0;
+    } else if (spd === 'fast') {
+      result.duration = 0.25;
+    } else {
+      result.duration = 0.5; // medium (default)
+    }
+
+    // Map OOXML transition child elements to our types
+    const transTypeMap = {
+      'fade': 'fade',
+      'push': 'slide',
+      'wipe': 'wipe',
+      'split': 'split',
+      'cut': 'cut',
+      'cover': 'slide',
+      'pull': 'slide',
+      'strips': 'wipe',
+      'wheel': 'spin',
+      'dissolve': 'fade',
+      'blinds': 'wipe',
+      'checker': 'fade',
+      'comb': 'wipe',
+      'random': 'fade',
+      'zoom': 'zoom',
+    };
+
+    for (const child of Array.from(transition.childNodes)) {
+      if (child.nodeType !== 1) continue;
+      const localName = child.localName;
+      if (transTypeMap[localName]) {
+        result.type = transTypeMap[localName];
+        break;
+      }
+    }
+
+    // If transition element exists but no recognized child, default to fade
+    if (result.type === 'none' && transition.childNodes.length > 0) {
+      result.type = 'fade';
+    }
+  } catch (e) {
+    console.warn('Failed to extract slide transition:', e);
+  }
+  return result;
 }
 
 /* ─── END PPTX Import ────────────────────────────────────────── */

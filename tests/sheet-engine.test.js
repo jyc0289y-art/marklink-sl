@@ -251,10 +251,10 @@ describe('sortByColumn', () => {
 
     sortByColumn(sheet, 0, true);
 
-    // Empty rows (3,4) sort to the beginning, data rows follow in sorted order
-    expect(getCell(sheet, 2, 0).value).toBe(10);
-    expect(getCell(sheet, 3, 0).value).toBe(20);
-    expect(getCell(sheet, 4, 0).value).toBe(30);
+    // Data rows sorted ascending, empty rows at the bottom (standard spreadsheet behavior)
+    expect(getCell(sheet, 0, 0).value).toBe(10);
+    expect(getCell(sheet, 1, 0).value).toBe(20);
+    expect(getCell(sheet, 2, 0).value).toBe(30);
   });
 
   it('sorts numbers in descending order', () => {

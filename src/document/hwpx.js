@@ -243,6 +243,10 @@ export async function exportHwpx(fileName) {
   // Contents/content.hpf
   zip.file('Contents/content.hpf', `<?xml version="1.0" encoding="UTF-8"?>
 <opf:package xmlns:opf="http://www.idpf.org/2007/opf" version="1.0">
+  <opf:manifest>
+    <opf:item id="header" href="header.xml" media-type="text/xml"/>
+    <opf:item id="section0" href="section0.xml" media-type="text/xml"/>
+  </opf:manifest>
   <opf:spine>
     <opf:itemref idref="section0"/>
   </opf:spine>
@@ -997,11 +1001,12 @@ function htmlToOwpml(html) {
     const tag = node.tagName.toLowerCase();
     const text = node.textContent;
 
-    if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
+    if (/^h[1-6]$/.test(tag)) {
       owpml += wrapParagraph(text, `Heading${tag[1]}`);
     } else if (tag === 'ul' || tag === 'ol') {
       for (const li of node.querySelectorAll('li')) {
-        owpml += wrapParagraph(li.textContent);
+        const listStyleId = tag === 'ol' ? '번호' : '글머리표';
+        owpml += wrapParagraph(li.textContent, listStyleId);
       }
     } else if (tag === 'table') {
       owpml += htmlTableToOwpml(node);
@@ -1182,5 +1187,5 @@ function findChildren(parent, name) {
 const escapeHTML = escapeHtml;
 
 function escapeXML(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
