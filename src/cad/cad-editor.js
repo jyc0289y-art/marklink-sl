@@ -631,14 +631,18 @@ function deleteSelected() {
     occtShapes.delete(selectedObject.uuid);
   }
 
-  // Dispose geometry and material
+  // Dispose geometry and material (including textures)
   if (selectedObject.geometry) selectedObject.geometry.dispose();
   if (selectedObject.material) {
-    if (Array.isArray(selectedObject.material)) {
-      selectedObject.material.forEach((m) => m.dispose());
-    } else {
-      selectedObject.material.dispose();
-    }
+    const mats = Array.isArray(selectedObject.material) ? selectedObject.material : [selectedObject.material];
+    mats.forEach((m) => {
+      if (m.map) m.map.dispose();
+      if (m.normalMap) m.normalMap.dispose();
+      if (m.roughnessMap) m.roughnessMap.dispose();
+      if (m.metalnessMap) m.metalnessMap.dispose();
+      if (m.envMap) m.envMap.dispose();
+      m.dispose();
+    });
   }
 
   multiSelection = multiSelection.filter((o) => o !== selectedObject);
@@ -653,7 +657,12 @@ function deleteSelected() {
 function duplicateSelected() {
   if (!selectedObject) return;
   const clone = selectedObject.clone();
-  clone.material = selectedObject.material.clone();
+  // Handle both single and array materials
+  if (Array.isArray(selectedObject.material)) {
+    clone.material = selectedObject.material.map((m) => m.clone());
+  } else {
+    clone.material = selectedObject.material.clone();
+  }
   objectCounter++;
   clone.name = `${selectedObject.userData.type || 'Object'}_${objectCounter}`;
   clone.position.x += 2;
@@ -664,6 +673,7 @@ function duplicateSelected() {
   if (srcShape && OCCT.isOCCTReady()) {
     try {
       const oc = OCCT.getOC();
+      // Deep-copy the OCCT shape for the clone
       const copier = new oc.BRepBuilderAPI_Copy_2(srcShape, true, false);
       const clonedShape = copier.Shape();
       copier.delete();
@@ -686,19 +696,23 @@ function duplicateSelected() {
 function pushUndo(action, obj) {
   const state = {
     action,
-    objects: sceneObjects.map((o) => ({
-      uuid: o.uuid,
-      name: o.name,
-      type: o.userData.type,
-      position: o.position.clone(),
-      rotation: o.rotation.clone(),
-      scale: o.scale.clone(),
-      color: o.material ? o.material.color.getHex() : 0xcccccc,
-      metalness: o.material ? o.material.metalness : 0,
-      roughness: o.material ? o.material.roughness : 0.5,
-      visible: o.visible,
-      geometry: o.geometry.clone(),
-    })),
+    objects: sceneObjects.map((o) => {
+      // Handle both single and array materials
+      const mat = Array.isArray(o.material) ? o.material[0] : o.material;
+      return {
+        uuid: o.uuid,
+        name: o.name,
+        type: o.userData.type,
+        position: o.position.clone(),
+        rotation: o.rotation.clone(),
+        scale: o.scale.clone(),
+        color: mat ? mat.color.getHex() : 0xcccccc,
+        metalness: mat ? mat.metalness : 0,
+        roughness: mat ? mat.roughness : 0.5,
+        visible: o.visible,
+        geometry: o.geometry.clone(),
+      };
+    }),
   };
   if (obj) {
     state.targetUuid = obj.uuid;
@@ -723,8 +737,15 @@ function restoreState(state) {
     }
     if (o.geometry) o.geometry.dispose();
     if (o.material) {
-      if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
-      else o.material.dispose();
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      mats.forEach((m) => {
+        if (m.map) m.map.dispose();
+        if (m.normalMap) m.normalMap.dispose();
+        if (m.roughnessMap) m.roughnessMap.dispose();
+        if (m.metalnessMap) m.metalnessMap.dispose();
+        if (m.envMap) m.envMap.dispose();
+        m.dispose();
+      });
     }
   });
   sceneObjects = [];
@@ -760,19 +781,22 @@ function restoreState(state) {
 function undo() {
   if (undoStack.length === 0) return;
   const current = {
-    objects: sceneObjects.map((o) => ({
-      uuid: o.uuid,
-      name: o.name,
-      type: o.userData.type,
-      position: o.position.clone(),
-      rotation: o.rotation.clone(),
-      scale: o.scale.clone(),
-      color: o.material ? o.material.color.getHex() : 0xcccccc,
-      metalness: o.material ? o.material.metalness : 0,
-      roughness: o.material ? o.material.roughness : 0.5,
-      visible: o.visible,
-      geometry: o.geometry.clone(),
-    })),
+    objects: sceneObjects.map((o) => {
+      const mat = Array.isArray(o.material) ? o.material[0] : o.material;
+      return {
+        uuid: o.uuid,
+        name: o.name,
+        type: o.userData.type,
+        position: o.position.clone(),
+        rotation: o.rotation.clone(),
+        scale: o.scale.clone(),
+        color: mat ? mat.color.getHex() : 0xcccccc,
+        metalness: mat ? mat.metalness : 0,
+        roughness: mat ? mat.roughness : 0.5,
+        visible: o.visible,
+        geometry: o.geometry.clone(),
+      };
+    }),
   };
   redoStack.push(current);
 
@@ -785,19 +809,22 @@ function undo() {
 function redo() {
   if (redoStack.length === 0) return;
   const current = {
-    objects: sceneObjects.map((o) => ({
-      uuid: o.uuid,
-      name: o.name,
-      type: o.userData.type,
-      position: o.position.clone(),
-      rotation: o.rotation.clone(),
-      scale: o.scale.clone(),
-      color: o.material ? o.material.color.getHex() : 0xcccccc,
-      metalness: o.material ? o.material.metalness : 0,
-      roughness: o.material ? o.material.roughness : 0.5,
-      visible: o.visible,
-      geometry: o.geometry.clone(),
-    })),
+    objects: sceneObjects.map((o) => {
+      const mat = Array.isArray(o.material) ? o.material[0] : o.material;
+      return {
+        uuid: o.uuid,
+        name: o.name,
+        type: o.userData.type,
+        position: o.position.clone(),
+        rotation: o.rotation.clone(),
+        scale: o.scale.clone(),
+        color: mat ? mat.color.getHex() : 0xcccccc,
+        metalness: mat ? mat.metalness : 0,
+        roughness: mat ? mat.roughness : 0.5,
+        visible: o.visible,
+        geometry: o.geometry.clone(),
+      };
+    }),
   };
   undoStack.push(current);
 
@@ -983,10 +1010,18 @@ function performBooleanOp(op, objA, objB) {
       mesh.userData.type = 'union';
       mesh.userData.isCADObject = true;
 
-      // Remove originals
+      // Dispose intermediate cloned geometries
+      geoA.dispose();
+      geoB.dispose();
+      // Remove originals and dispose their resources
       scene.remove(objA);
       scene.remove(objB);
       sceneObjects = sceneObjects.filter((o) => o !== objA && o !== objB);
+      // Dispose cloned geometries (geoA/geoB are separate clones, but originals still need cleanup)
+      if (objA.geometry) objA.geometry.dispose();
+      if (objA.material) objA.material.dispose();
+      if (objB.geometry) objB.geometry.dispose();
+      if (objB.material) objB.material.dispose();
 
       scene.add(mesh);
       sceneObjects.push(mesh);
@@ -1010,9 +1045,11 @@ function performBooleanOp(op, objA, objB) {
     objA.material.needsUpdate = true;
     renderer.localClippingEnabled = true;
 
-    // Hide the subtraction object
+    // Hide the subtraction object and dispose its resources
     scene.remove(objB);
     sceneObjects = sceneObjects.filter((o) => o !== objB);
+    if (objB.geometry) objB.geometry.dispose();
+    if (objB.material) objB.material.dispose();
     updateSceneTree();
     updateStatusBar('Subtract applied (clipping approximation)');
   } else if (op === 'intersect') {
@@ -1034,6 +1071,8 @@ function performBooleanOp(op, objA, objB) {
 
     scene.remove(objB);
     sceneObjects = sceneObjects.filter((o) => o !== objB);
+    if (objB.geometry) objB.geometry.dispose();
+    if (objB.material) objB.material.dispose();
     updateSceneTree();
     updateStatusBar('Intersect applied (clipping approximation)');
   }
@@ -1281,8 +1320,8 @@ function screenToSketchCoords(clientX, clientY) {
   const plane3 = new THREE.Plane();
   plane3.setFromNormalAndCoplanarPoint(sketchPlane.normal, sketchPlane.origin);
   const intersection = new THREE.Vector3();
-  rc.ray.intersectPlane(plane3, intersection);
-  if (!intersection) return { x: 0, y: 0 };
+  const hit = rc.ray.intersectPlane(plane3, intersection);
+  if (!hit) return { x: 0, y: 0 };
 
   // Project onto sketch 2D coords using right and up vectors
   const local = intersection.clone().sub(sketchPlane.origin);
@@ -3835,7 +3874,17 @@ function clearScene() {
       occtShapes.delete(obj.uuid);
     }
     if (obj.geometry) obj.geometry.dispose();
-    if (obj.material) obj.material.dispose();
+    if (obj.material) {
+      if (Array.isArray(obj.material)) {
+        obj.material.forEach((m) => {
+          if (m.map) m.map.dispose();
+          m.dispose();
+        });
+      } else {
+        if (obj.material.map) obj.material.map.dispose();
+        obj.material.dispose();
+      }
+    }
   });
   sceneObjects = [];
   selectedObject = null;

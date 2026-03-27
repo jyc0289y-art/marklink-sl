@@ -407,10 +407,12 @@ export const createSketchWire = (entities, plane) => {
  */
 export const extrudeShape = (profile, direction, distance, symmetric = false) => {
   if (!oc || !profile) return null;
+  // Declare outside try so catch can clean up
+  let faceMakerRef = null;
+  let vec = null;
   try {
     // First make a face from wire if it's a wire
     let face = profile;
-    let faceMakerRef = null; // keep alive until extrude is done
     if (profile.ShapeType && profile.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_WIRE) {
       faceMakerRef = new oc.BRepBuilderAPI_MakeFace_15(profile, true);
       if (!faceMakerRef.IsDone()) {
@@ -422,7 +424,7 @@ export const extrudeShape = (profile, direction, distance, symmetric = false) =>
       // Deleting the maker invalidates the face. We delete it after extrusion below.
     }
 
-    const vec = new oc.gp_Vec_4(
+    vec = new oc.gp_Vec_4(
       direction.x * distance,
       direction.y * distance,
       direction.z * distance
@@ -452,11 +454,12 @@ export const extrudeShape = (profile, direction, distance, symmetric = false) =>
       safeDelete(copy, prism);
     }
 
-    vec.delete();
-    if (faceMakerRef) faceMakerRef.delete();
+    safeDelete(vec);
+    vec = null;
+    if (faceMakerRef) { faceMakerRef.delete(); faceMakerRef = null; }
     return result;
   } catch (e) {
-    if (faceMakerRef) try { faceMakerRef.delete(); } catch { /* ignore */ }
+    safeDelete(vec, faceMakerRef);
     console.error('[OCCT] extrudeShape error:', e);
     return null;
   }
@@ -819,12 +822,17 @@ export const tessellate = (shape, deflection = 0.1) => {
           const node = tri.Node(i);
           const transformed = node.Transformed(transform);
           vertices.push(transformed.X(), transformed.Y(), transformed.Z());
+          // Free WASM heap objects returned by Node/Transformed
+          try { node.delete(); } catch { /* value type */ }
+          try { transformed.delete(); } catch { /* value type */ }
 
           // Compute normal from triangulation if available
           if (tri.HasNormals()) {
             const normal = tri.Normal(i);
             const tDir = normal.Transformed(transform);
             normals.push(tDir.X(), tDir.Y(), tDir.Z());
+            try { normal.delete(); } catch { /* value type */ }
+            try { tDir.delete(); } catch { /* value type */ }
           } else {
             normals.push(0, 1, 0);
           }
@@ -871,9 +879,14 @@ export const tessellate = (shape, deflection = 0.1) => {
         const transform = location.Transformation();
 
         for (let i = 1; i <= nNodes; i++) {
-          const node = poly.Nodes().Value(i);
+          const nodesArr = poly.Nodes();
+          const node = nodesArr.Value(i);
           const transformed = node.Transformed(transform);
           edges.push(transformed.X(), transformed.Y(), transformed.Z());
+          // Free WASM heap objects
+          try { transformed.delete(); } catch { /* value type */ }
+          try { node.delete(); } catch { /* value type */ }
+          try { nodesArr.delete(); } catch { /* value type */ }
         }
         // Add NaN separator between edges
         if (nNodes > 0) edges.push(NaN, NaN, NaN);
@@ -1146,6 +1159,13 @@ export const getSurfaceArea = (shape) => {
 export const getVolume = (shape) => {
   if (!oc || !shape) return -1;
   try {
+    // Volume is only meaningful for solids/compsolids
+    const shapeType = shape.ShapeType();
+    if (shapeType !== oc.TopAbs_ShapeEnum.TopAbs_SOLID &&
+        shapeType !== oc.TopAbs_ShapeEnum.TopAbs_COMPSOLID &&
+        shapeType !== oc.TopAbs_ShapeEnum.TopAbs_COMPOUND) {
+      return 0;
+    }
     const props = new oc.GProp_GProps_1();
     oc.BRepGProp.VolumeProperties_1(shape, props, 1e-6, false, false);
     const volume = props.Mass();
@@ -1166,9 +1186,19 @@ export const getCenterOfMass = (shape) => {
   if (!oc || !shape) return null;
   try {
     const props = new oc.GProp_GProps_1();
-    oc.BRepGProp.VolumeProperties_1(shape, props, 1e-6, false, false);
+    // Use VolumeProperties for solids, SurfaceProperties for non-solids
+    const shapeType = shape.ShapeType();
+    if (shapeType === oc.TopAbs_ShapeEnum.TopAbs_SOLID ||
+        shapeType === oc.TopAbs_ShapeEnum.TopAbs_COMPSOLID ||
+        shapeType === oc.TopAbs_ShapeEnum.TopAbs_COMPOUND) {
+      oc.BRepGProp.VolumeProperties_1(shape, props, 1e-6, false, false);
+    } else {
+      oc.BRepGProp.SurfaceProperties_1(shape, props, 1e-6, false);
+    }
     const center = props.CentreOfMass();
     const result = { x: center.X(), y: center.Y(), z: center.Z() };
+    // Free WASM heap object returned by CentreOfMass
+    try { center.delete(); } catch { /* value type */ }
     props.delete();
     return result;
   } catch (e) {

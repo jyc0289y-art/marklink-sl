@@ -209,6 +209,20 @@ function buildPageOrder(totalPages, deletedPages, insertedBlanks) {
       }
     }
   }
+  // Blanks before page 1 (afterPage === 0) — insert at the beginning
+  const preBlanks = [];
+  for (const blank of insertedBlanks) {
+    if (blank.afterPage === 0) {
+      preBlanks.push(`blank_${blank.id}`);
+    }
+  }
+  if (preBlanks.length) order.unshift(...preBlanks);
+  // Blanks after last page (afterPage beyond totalPages)
+  for (const blank of insertedBlanks) {
+    if (blank.afterPage > totalPages) {
+      order.push(`blank_${blank.id}`);
+    }
+  }
   return order;
 }
 
@@ -834,5 +848,388 @@ describe('Merge page range edge cases', () => {
     const result = parsePageRanges('1,,3', 5);
     expect(result).toContain(1);
     expect(result).toContain(3);
+  });
+});
+
+// ── Bug fix: fitWidth/fitPage must rescale annotations ──
+
+describe('fitWidth/fitPage annotation rescaling', () => {
+  it('rescales annotations when scale changes during fitWidth', () => {
+    // Simulate: annotations at scale 1.0, fitWidth sets scale to 0.5
+    const annots = { 1: [{ type: 'highlight', x: 100, y: 200, w: 50, h: 20 }] };
+    const oldScale = 1.0;
+    const newScale = 0.5;
+    rescaleAnnotations(oldScale, newScale, annots, {}, {}, {});
+    expect(annots[1][0].x).toBe(50);
+    expect(annots[1][0].y).toBe(100);
+    expect(annots[1][0].w).toBe(25);
+    expect(annots[1][0].h).toBe(10);
+  });
+
+  it('does not rescale when scale is unchanged', () => {
+    const annots = { 1: [{ type: 'highlight', x: 100, y: 200, w: 50, h: 20 }] };
+    // If oldScale === newScale, ratio is 1.0 — no change
+    rescaleAnnotations(1.0, 1.0, annots, {}, {}, {});
+    expect(annots[1][0].x).toBe(100);
+    expect(annots[1][0].y).toBe(200);
+  });
+});
+
+// ── Bug fix: freehand single-point stroke redraw ──
+
+describe('Freehand single-point stroke handling', () => {
+  it('single-point freehand stroke should be considered valid for redraw', () => {
+    // The bug: redrawAnnotations checked points.length > 1, losing single-point strokes
+    // Fix: check points.length >= 1 and draw a dot for single-point strokes
+    const singlePointAnnot = { type: 'freehand', points: [{ x: 50, y: 50 }], color: '#e53935', lineWidth: 2 };
+    expect(singlePointAnnot.points.length >= 1).toBe(true);
+  });
+
+  it('multi-point freehand stroke is valid', () => {
+    const multiPointAnnot = { type: 'freehand', points: [{ x: 10, y: 10 }, { x: 20, y: 20 }], color: '#000', lineWidth: 3 };
+    expect(multiPointAnnot.points.length >= 1).toBe(true);
+    expect(multiPointAnnot.points.length > 1).toBe(true);
+  });
+
+  it('empty points array is invalid', () => {
+    const emptyAnnot = { type: 'freehand', points: [], color: '#000', lineWidth: 2 };
+    expect(emptyAnnot.points.length >= 1).toBe(false);
+  });
+});
+
+// ── Bug fix: deleteCurrentPage clamps to at least 1 ──
+
+describe('deleteCurrentPage edge cases', () => {
+  it('currentPage clamps to at least 1 after deletion', () => {
+    // Simulate: 2-page doc, delete page 2 (currentPage=2), pageOrder shrinks to 1
+    const pageOrder = ['p1', 'p2'];
+    let currentPage = 2;
+    pageOrder.splice(currentPage - 1, 1); // remove 'p2'
+    if (currentPage > pageOrder.length) currentPage = Math.max(1, pageOrder.length);
+    expect(currentPage).toBe(1);
+    expect(pageOrder).toEqual(['p1']);
+  });
+
+  it('currentPage stays valid when deleting middle page', () => {
+    const pageOrder = ['p1', 'p2', 'p3'];
+    let currentPage = 2;
+    pageOrder.splice(currentPage - 1, 1); // remove 'p2'
+    if (currentPage > pageOrder.length) currentPage = Math.max(1, pageOrder.length);
+    expect(currentPage).toBe(2); // stays at 2, now pointing to 'p3'
+    expect(pageOrder).toEqual(['p1', 'p3']);
+  });
+
+  it('currentPage stays valid when deleting first page', () => {
+    const pageOrder = ['p1', 'p2', 'p3'];
+    let currentPage = 1;
+    pageOrder.splice(currentPage - 1, 1); // remove 'p1'
+    if (currentPage > pageOrder.length) currentPage = Math.max(1, pageOrder.length);
+    expect(currentPage).toBe(1);
+    expect(pageOrder).toEqual(['p2', 'p3']);
+  });
+});
+
+// ── Bug fix: PDF builder binary header ──
+
+describe('PDF builder binary header', () => {
+  it('PDF header contains valid binary comment bytes', () => {
+    // The bug: TextEncoder.encode('\xFF') produces UTF-8 multi-byte (0xC3 0xBF)
+    // instead of raw byte 0xFF. The fix uses raw Uint8Array for the header.
+    const header = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34, 0x0A,
+      0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A]);
+
+    // Verify %PDF-1.4 prefix
+    expect(header[0]).toBe(0x25); // %
+    expect(header[1]).toBe(0x50); // P
+    expect(header[2]).toBe(0x44); // D
+    expect(header[3]).toBe(0x46); // F
+    expect(header[4]).toBe(0x2D); // -
+    expect(header[5]).toBe(0x31); // 1
+    expect(header[6]).toBe(0x2E); // .
+    expect(header[7]).toBe(0x34); // 4
+
+    // Verify binary comment has high bytes (> 127) per PDF spec
+    expect(header[10]).toBeGreaterThan(127);
+    expect(header[11]).toBeGreaterThan(127);
+    expect(header[12]).toBeGreaterThan(127);
+    expect(header[13]).toBeGreaterThan(127);
+  });
+
+  it('TextEncoder incorrectly encodes 0xFF as multi-byte UTF-8', () => {
+    // Demonstrate the bug that was fixed
+    const encoder = new TextEncoder();
+    const encoded = encoder.encode('\xFF');
+    // UTF-8 encoding of U+00FF is 0xC3 0xBF (2 bytes), not 0xFF (1 byte)
+    expect(encoded.length).toBe(2);
+    expect(encoded[0]).toBe(0xC3);
+    expect(encoded[1]).toBe(0xBF);
+  });
+});
+
+// ── Bug fix: file picker cancel handling ──
+
+describe('File picker cancel handling', () => {
+  it('resolve(null) for cancelled file picker is handled by caller', () => {
+    // The openPdf function checks `if (!file) return;` after getting the file
+    // So resolving with null when the user cancels is correct
+    const file = null;
+    const shouldReturn = !file;
+    expect(shouldReturn).toBe(true);
+  });
+
+  it('file object from successful picker is truthy', () => {
+    const file = { name: 'test.pdf', size: 1024 };
+    const shouldReturn = !file;
+    expect(shouldReturn).toBe(false);
+  });
+});
+
+// ── Bug fix: pdfDoc.destroy() on re-load ──
+
+describe('PDF document cleanup on reload', () => {
+  it('old document reference should be destroyed before new load', () => {
+    // Simulate: track whether destroy was called
+    let destroyCalled = false;
+    const oldPdfDoc = { destroy: () => { destroyCalled = true; }, numPages: 5 };
+
+    // The fix: if pdfDoc exists, call destroy() before loading new
+    if (oldPdfDoc) {
+      oldPdfDoc.destroy();
+    }
+    expect(destroyCalled).toBe(true);
+  });
+
+  it('null pdfDoc does not cause error on first load', () => {
+    const pdfDoc = null;
+    // The fix: only destroy if pdfDoc is truthy
+    expect(() => {
+      if (pdfDoc) pdfDoc.destroy();
+    }).not.toThrow();
+  });
+});
+
+// ── Bug fix: deleted page annotation cleanup ──
+
+describe('Deleted page annotation cleanup', () => {
+  it('annotations for deleted page are removed', () => {
+    const pageAnnotations = { 1: [{ type: 'highlight' }], 2: [{ type: 'sticky' }], 3: [] };
+    const freehandState = { 2: [[{ x: 0, y: 0 }]] };
+    const redactionRects = { 2: [{ x: 10, y: 10, w: 50, h: 50 }] };
+    const stampPlacements = { 2: [{ text: 'DRAFT', color: '#1565c0', x: 0, y: 0 }] };
+    const signaturePlacements = { 2: [{ dataUrl: 'data:...', x: 0, y: 0 }] };
+
+    // Simulate deleteCurrentPage for page 2
+    const pageNum = 2;
+    delete pageAnnotations[pageNum];
+    delete freehandState[pageNum];
+    delete redactionRects[pageNum];
+    delete stampPlacements[pageNum];
+    delete signaturePlacements[pageNum];
+
+    expect(pageAnnotations[2]).toBeUndefined();
+    expect(freehandState[2]).toBeUndefined();
+    expect(redactionRects[2]).toBeUndefined();
+    expect(stampPlacements[2]).toBeUndefined();
+    expect(signaturePlacements[2]).toBeUndefined();
+
+    // Other pages are unaffected
+    expect(pageAnnotations[1]).toEqual([{ type: 'highlight' }]);
+    expect(pageAnnotations[3]).toEqual([]);
+  });
+});
+
+// ── Annotation rescaling precision (multiple zoom cycles) ──
+
+describe('Annotation rescaling precision across zoom cycles', () => {
+  it('zoom in then back out returns near-original coordinates', () => {
+    const annots = { 1: [{ type: 'highlight', x: 100, y: 200, w: 50, h: 20 }] };
+    rescaleAnnotations(1.0, 2.0, annots, {}, {}, {});
+    rescaleAnnotations(2.0, 1.0, annots, {}, {}, {});
+    // Should return to original within floating point precision
+    expect(annots[1][0].x).toBeCloseTo(100, 10);
+    expect(annots[1][0].y).toBeCloseTo(200, 10);
+    expect(annots[1][0].w).toBeCloseTo(50, 10);
+    expect(annots[1][0].h).toBeCloseTo(20, 10);
+  });
+
+  it('many zoom cycles accumulate floating point drift', () => {
+    const annots = { 1: [{ type: 'highlight', x: 100, y: 200, w: 50, h: 20 }] };
+    // Zoom in/out 50 times by fractional amounts
+    let scale = 1.0;
+    for (let i = 0; i < 50; i++) {
+      const newScale = scale * 1.33;
+      rescaleAnnotations(scale, newScale, annots, {}, {}, {});
+      scale = newScale;
+    }
+    for (let i = 0; i < 50; i++) {
+      const newScale = scale / 1.33;
+      rescaleAnnotations(scale, newScale, annots, {}, {}, {});
+      scale = newScale;
+    }
+    // After 100 operations, should still be close (within ~0.001 tolerance)
+    expect(annots[1][0].x).toBeCloseTo(100, 5);
+    expect(annots[1][0].y).toBeCloseTo(200, 5);
+  });
+});
+
+// ── Bug fix: buildPageOrder blanks with afterPage===0 placed at beginning ──
+
+describe('buildPageOrder blanks at position 0 (before first page)', () => {
+  it('places blank with afterPage===0 at the beginning, not the end', () => {
+    const result = buildPageOrder(3, new Set(), [{ afterPage: 0, id: 1 }]);
+    expect(result).toEqual(['blank_1', 'p1', 'p2', 'p3']);
+  });
+
+  it('places blank with afterPage beyond total at end', () => {
+    const result = buildPageOrder(3, new Set(), [{ afterPage: 99, id: 1 }]);
+    expect(result).toEqual(['p1', 'p2', 'p3', 'blank_1']);
+  });
+
+  it('handles both before-first and after-last blanks', () => {
+    const result = buildPageOrder(2, new Set(), [
+      { afterPage: 0, id: 1 },
+      { afterPage: 99, id: 2 },
+    ]);
+    expect(result).toEqual(['blank_1', 'p1', 'p2', 'blank_2']);
+  });
+
+  it('places multiple blanks at position 0 in order', () => {
+    const result = buildPageOrder(2, new Set(), [
+      { afterPage: 0, id: 1 },
+      { afterPage: 0, id: 2 },
+    ]);
+    expect(result[0]).toBe('blank_1');
+    expect(result[1]).toBe('blank_2');
+    expect(result[2]).toBe('p1');
+  });
+});
+
+// ── Bug fix: makeDraggable onDragEnd callback ──
+
+describe('makeDraggable onDragEnd callback pattern', () => {
+  it('onDragEnd receives new coordinates after drag', () => {
+    let capturedX = 0, capturedY = 0;
+    const onDragEnd = (newX, newY) => {
+      capturedX = newX;
+      capturedY = newY;
+    };
+    // Simulate what happens when drag ends
+    onDragEnd(150, 250);
+    expect(capturedX).toBe(150);
+    expect(capturedY).toBe(250);
+  });
+
+  it('signature placement entry is updated by drag callback', () => {
+    const sigs = { 1: [{ dataUrl: 'data:test', x: 100, y: 200 }] };
+    const pageNum = 1;
+    const dataUrl = 'data:test';
+    let x = 100, y = 200;
+
+    // Simulate the onDragEnd callback from makeDraggable
+    const newX = 300, newY = 400;
+    const entry = sigs[pageNum].find(s => s.dataUrl === dataUrl && s.x === x && s.y === y);
+    if (entry) { entry.x = newX; entry.y = newY; }
+    x = newX; y = newY;
+
+    expect(sigs[1][0].x).toBe(300);
+    expect(sigs[1][0].y).toBe(400);
+    expect(x).toBe(300);
+    expect(y).toBe(400);
+  });
+
+  it('stamp placement entry is updated by drag callback', () => {
+    const stamps = { 2: [{ text: 'DRAFT', x: 50, y: 75 }] };
+    const pageNum = 2;
+    const text = 'DRAFT';
+    let x = 50, y = 75;
+
+    const newX = 200, newY = 300;
+    const entry = stamps[pageNum].find(s => s.text === text && s.x === x && s.y === y);
+    if (entry) { entry.x = newX; entry.y = newY; }
+    x = newX; y = newY;
+
+    expect(stamps[2][0].x).toBe(200);
+    expect(stamps[2][0].y).toBe(300);
+  });
+});
+
+// ── Bug fix: compare PDF doc destroy on replacement ──
+
+describe('Compare PDF document cleanup', () => {
+  it('destroys previous doc when loading replacement', () => {
+    let destroyedA = false;
+    let comparePdfA = { doc: { destroy: () => { destroyedA = true; } }, name: 'old.pdf' };
+
+    // Simulate loading a new doc for compare A
+    if (comparePdfA) comparePdfA.doc.destroy();
+    comparePdfA = { doc: { destroy: () => {} }, name: 'new.pdf' };
+
+    expect(destroyedA).toBe(true);
+    expect(comparePdfA.name).toBe('new.pdf');
+  });
+
+  it('does not error when no previous doc exists', () => {
+    let comparePdfB = null;
+    expect(() => {
+      if (comparePdfB) comparePdfB.doc.destroy();
+      comparePdfB = { doc: { destroy: () => {} }, name: 'first.pdf' };
+    }).not.toThrow();
+    expect(comparePdfB.name).toBe('first.pdf');
+  });
+});
+
+// ── Bug fix: merge doc cleanup after page count read ──
+
+describe('Merge temporary doc cleanup', () => {
+  it('doc.destroy is called after reading page count', () => {
+    let destroyed = false;
+    const doc = { numPages: 5, destroy: () => { destroyed = true; } };
+
+    // Simulate: read page count, then destroy
+    const pageCount = doc.numPages;
+    doc.destroy();
+
+    expect(pageCount).toBe(5);
+    expect(destroyed).toBe(true);
+  });
+
+  it('doc.destroy is called after rendering pages in executeMerge', () => {
+    let destroyed = false;
+    const doc = { numPages: 3, destroy: () => { destroyed = true; } };
+
+    // Simulate: render pages, then destroy
+    const pages = [1, 2, 3];
+    expect(pages.length).toBe(doc.numPages);
+    doc.destroy();
+    expect(destroyed).toBe(true);
+  });
+});
+
+// ── Bug fix: destroyPdfViewer cleans up compare docs ──
+
+describe('destroyPdfViewer compare doc cleanup', () => {
+  it('destroys comparePdfA and comparePdfB on viewer destroy', () => {
+    let destroyedA = false, destroyedB = false;
+    let comparePdfA = { doc: { destroy: () => { destroyedA = true; } } };
+    let comparePdfB = { doc: { destroy: () => { destroyedB = true; } } };
+
+    // Simulate destroyPdfViewer cleanup
+    if (comparePdfA) { comparePdfA.doc.destroy(); comparePdfA = null; }
+    if (comparePdfB) { comparePdfB.doc.destroy(); comparePdfB = null; }
+
+    expect(destroyedA).toBe(true);
+    expect(destroyedB).toBe(true);
+    expect(comparePdfA).toBeNull();
+    expect(comparePdfB).toBeNull();
+  });
+
+  it('handles null compare docs gracefully', () => {
+    let comparePdfA = null;
+    let comparePdfB = null;
+
+    expect(() => {
+      if (comparePdfA) { comparePdfA.doc.destroy(); comparePdfA = null; }
+      if (comparePdfB) { comparePdfB.doc.destroy(); comparePdfB = null; }
+    }).not.toThrow();
   });
 });

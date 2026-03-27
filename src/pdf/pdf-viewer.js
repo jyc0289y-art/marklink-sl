@@ -375,9 +375,18 @@ function buildPageOrder() {
       }
     }
   }
-  // blanks after last page
+  // blanks before page 1 (afterPage === 0) — insert at the beginning
+  const preBlanks = [];
   for (const b of insertedBlanks) {
-    if (b.afterPage > pdfDoc.numPages || b.afterPage === 0) {
+    if (b.afterPage === 0) {
+      preBlanks.push('blank_' + b.id);
+    }
+  }
+  if (preBlanks.length) pageOrder.unshift(...preBlanks);
+
+  // blanks after last page (afterPage beyond numPages)
+  for (const b of insertedBlanks) {
+    if (b.afterPage > pdfDoc.numPages) {
       pageOrder.push('blank_' + b.id);
     }
   }
@@ -402,6 +411,14 @@ async function openPdf() {
       input.type = 'file';
       input.accept = '.pdf';
       input.onchange = () => resolve(input.files[0]);
+      // Handle cancel: focus returns to window without a file selection
+      const onFocus = () => {
+        window.removeEventListener('focus', onFocus);
+        setTimeout(() => {
+          if (!input.files || input.files.length === 0) resolve(null);
+        }, 300);
+      };
+      window.addEventListener('focus', onFocus);
       input.click();
     });
   }
@@ -443,6 +460,10 @@ async function loadPdfData(data) {
   };
 
   try {
+    // Destroy previous PDF document to release memory/workers
+    if (pdfDoc) {
+      pdfDoc.destroy();
+    }
     pdfDoc = await loadingTask.promise;
   } catch (err) {
     if (progressEl) progressEl.style.display = 'none';
@@ -636,7 +657,7 @@ async function renderSinglePage(wrapper, idx) {
     // Re-place saved stamps
     if (stampPlacements[pageNum]) {
       for (const st of stampPlacements[pageNum]) {
-        placeStampOnPage(wrapper, st.text, st.color, st.x, st.y);
+        placeStampOnPage(wrapper, st.text, st.color, st.x, st.y, pageNum);
       }
     }
 
@@ -914,7 +935,9 @@ async function fitWidth() {
   const page = await pdfDoc.getPage(1);
   const viewport = page.getViewport({ scale: 1 });
   const containerWidth = containerEl.clientWidth - 48;
+  const oldScale = scale;
   scale = Math.max(0.25, Math.min(5, containerWidth / viewport.width));
+  if (scale !== oldScale) rescaleAnnotations(oldScale, scale);
   updatePageInfo();
   await renderAllPages();
   await renderThumbnails();
@@ -928,7 +951,9 @@ async function fitPage() {
   const containerHeight = containerEl.clientHeight - 48;
   const scaleW = containerWidth / viewport.width;
   const scaleH = containerHeight / viewport.height;
+  const oldScale = scale;
   scale = Math.max(0.25, Math.min(5, Math.min(scaleW, scaleH)));
+  if (scale !== oldScale) rescaleAnnotations(oldScale, scale);
   updatePageInfo();
   await renderAllPages();
   await renderThumbnails();
@@ -1108,14 +1133,22 @@ async function deleteCurrentPage() {
 
   if (pageNum) {
     deletedPages.add(pageNum);
+    // Clean up annotations for deleted page
+    delete pageAnnotations[pageNum];
+    delete freehandState[pageNum];
+    delete redactionRects[pageNum];
+    delete stampPlacements[pageNum];
+    delete signaturePlacements[pageNum];
+    persistAnnotationsToStorage();
   }
   // Remove from pageOrder
   pageOrder.splice(currentPage - 1, 1);
-  if (currentPage > pageOrder.length) currentPage = pageOrder.length;
+  if (currentPage > pageOrder.length) currentPage = Math.max(1, pageOrder.length);
 
   updatePageInfo();
   await renderAllPages();
   await renderThumbnails();
+  scrollToPageIdx(currentPage - 1);
 }
 
 let blankCounter = 0;
@@ -1506,16 +1539,23 @@ function redrawAnnotations(annotCanvas, pageNum, viewport) {
       ctx.moveTo(a.x, a.y + a.h / 2);
       ctx.lineTo(a.x + a.w, a.y + a.h / 2);
       ctx.stroke();
-    } else if (a.type === 'freehand' && a.points && a.points.length > 1) {
+    } else if (a.type === 'freehand' && a.points && a.points.length >= 1) {
       ctx.strokeStyle = a.color || '#e53935';
       ctx.lineWidth = a.lineWidth || 2;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(a.points[0].x, a.points[0].y);
-      for (let i = 1; i < a.points.length; i++) {
-        ctx.lineTo(a.points[i].x, a.points[i].y);
+      if (a.points.length === 1) {
+        // Single-point stroke: draw a dot
+        ctx.arc(a.points[0].x, a.points[0].y, (a.lineWidth || 2) / 2, 0, Math.PI * 2);
+        ctx.fillStyle = a.color || '#e53935';
+        ctx.fill();
+      } else {
+        ctx.moveTo(a.points[0].x, a.points[0].y);
+        for (let i = 1; i < a.points.length; i++) {
+          ctx.lineTo(a.points[i].x, a.points[i].y);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
     } else if (a.type === 'sticky' && wrapper) {
       // Re-create sticky note DOM elements from saved annotation
       addStickyNoteFromSaved(wrapper, a.x, a.y, pageNum, a.text || '', a.color || '#fff9c4');
@@ -1986,7 +2026,7 @@ function handleSignaturePlacement(wrapper, pageNum, e) {
   return true;
 }
 
-function placeSignatureOnPage(wrapper, _pageNum, dataUrl, x, y) {
+function placeSignatureOnPage(wrapper, pageNum, dataUrl, x, y) {
   const sigEl = document.createElement('div');
   sigEl.className = 'pdf-signature-placed';
   sigEl.style.left = x + 'px';
@@ -1994,11 +2034,21 @@ function placeSignatureOnPage(wrapper, _pageNum, dataUrl, x, y) {
   const img = document.createElement('img');
   img.src = dataUrl;
   sigEl.appendChild(img);
-  makeDraggable(sigEl, wrapper);
+  makeDraggable(sigEl, wrapper, (newX, newY) => {
+    // Update stored position so it persists across re-renders
+    const sigs = signaturePlacements[pageNum];
+    if (sigs) {
+      const entry = sigs.find(s => s.dataUrl === dataUrl && s.x === x && s.y === y);
+      if (entry) { entry.x = newX; entry.y = newY; }
+    }
+    // Update closure vars for future drag callbacks
+    x = newX; y = newY;
+    persistAnnotationsToStorage();
+  });
   wrapper.appendChild(sigEl);
 }
 
-function makeDraggable(el, container) {
+function makeDraggable(el, container, onDragEnd) {
   let isDragging = false, offsetX, offsetY;
   const onMouseMove = (e) => {
     if (!isDragging) return;
@@ -2011,6 +2061,12 @@ function makeDraggable(el, container) {
     isDragging = false;
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
+    // Notify caller of new position so it can persist the change
+    if (onDragEnd) {
+      const newX = parseFloat(el.style.left) || 0;
+      const newY = parseFloat(el.style.top) || 0;
+      onDragEnd(newX, newY);
+    }
   };
   el.addEventListener('mousedown', (e) => {
     if (e.target.tagName === 'BUTTON') return;
@@ -2129,7 +2185,7 @@ function handleStampPlacement(wrapper, pageNum, e) {
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
 
-  placeStampOnPage(wrapper, activeStamp.text, activeStamp.color, x, y);
+  placeStampOnPage(wrapper, activeStamp.text, activeStamp.color, x, y, pageNum);
   if (!stampPlacements[pageNum]) stampPlacements[pageNum] = [];
   stampPlacements[pageNum].push({ text: activeStamp.text, color: activeStamp.color, x, y });
   persistAnnotationsToStorage();
@@ -2138,7 +2194,7 @@ function handleStampPlacement(wrapper, pageNum, e) {
   return true;
 }
 
-function placeStampOnPage(wrapper, text, color, x, y) {
+function placeStampOnPage(wrapper, text, color, x, y, pageNum) {
   const stampEl = document.createElement('div');
   stampEl.className = 'pdf-stamp-placed';
   stampEl.style.left = x + 'px';
@@ -2146,7 +2202,17 @@ function placeStampOnPage(wrapper, text, color, x, y) {
   stampEl.style.color = color;
   stampEl.style.borderColor = color;
   stampEl.textContent = text;
-  makeDraggable(stampEl, wrapper);
+  makeDraggable(stampEl, wrapper, (newX, newY) => {
+    // Update stored position so it persists across re-renders
+    const stamps = stampPlacements[pageNum];
+    if (stamps) {
+      const entry = stamps.find(s => s.text === text && s.x === x && s.y === y);
+      if (entry) { entry.x = newX; entry.y = newY; }
+    }
+    // Update closure vars for future drag callbacks
+    x = newX; y = newY;
+    persistAnnotationsToStorage();
+  });
   wrapper.appendChild(stampEl);
 }
 
@@ -2459,6 +2525,7 @@ const initMergeModal = () => {
     const data = await file.arrayBuffer();
     const doc = await pdfjsLib.getDocument({ data: new Uint8Array(data) }).promise;
     mergeFiles.push({ name: file.name, data, pageCount: doc.numPages });
+    doc.destroy(); // release temporary doc after reading page count
     renderMergeFileList();
   });
 
@@ -2471,6 +2538,14 @@ const pickPdfFile = () => {
     input.type = 'file';
     input.accept = '.pdf';
     input.onchange = () => resolve(input.files[0]);
+    // Handle cancel: focus returns to window without a file selection
+    const onFocus = () => {
+      window.removeEventListener('focus', onFocus);
+      setTimeout(() => {
+        if (!input.files || input.files.length === 0) resolve(null);
+      }, 300);
+    };
+    window.addEventListener('focus', onFocus);
     input.click();
   });
 };
@@ -2585,6 +2660,7 @@ const executeMerge = async () => {
         await page.render({ canvasContext: ctx, viewport }).promise;
         allPageCanvases.push({ canvas, width: viewport.width, height: viewport.height });
       }
+      doc.destroy(); // release temporary doc after rendering its pages
     }
 
     if (allPageCanvases.length === 0) { alert('No pages to merge.'); return; }
@@ -2726,6 +2802,7 @@ const initCompareModal = () => {
     if (!file) return;
     const data = await file.arrayBuffer();
     const doc = await pdfjsLib.getDocument({ data }).promise;
+    if (comparePdfA) comparePdfA.doc.destroy(); // release previous doc
     comparePdfA = { doc, name: file.name };
     document.getElementById('pdf-compare-name-a').textContent = file.name;
     compareCurrentPage = 1;
@@ -2737,6 +2814,7 @@ const initCompareModal = () => {
     if (!file) return;
     const data = await file.arrayBuffer();
     const doc = await pdfjsLib.getDocument({ data }).promise;
+    if (comparePdfB) comparePdfB.doc.destroy(); // release previous doc
     comparePdfB = { doc, name: file.name };
     document.getElementById('pdf-compare-name-b').textContent = file.name;
     compareCurrentPage = 1;
@@ -2956,7 +3034,10 @@ const buildPdfFromCanvases = (canvases) => {
     offset += bytes.length;
   };
 
-  write('%PDF-1.4\n%\xFF\xFF\xFF\xFF\n');
+  // Write PDF header — binary comment must be raw bytes, not UTF-8 encoded
+  const header = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34, 0x0A,
+    0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A]); // %PDF-1.4\n%âãÏÓ\n
+  writeBytes(header);
 
   // Object offsets tracking
   const offsets = {};
@@ -3102,10 +3183,18 @@ export function destroyPdfViewer() {
   // Reset all state
   resetPdfState();
 
-  // Release PDF document reference
+  // Release PDF document references
   if (pdfDoc) {
     pdfDoc.destroy();
     pdfDoc = null;
+  }
+  if (comparePdfA) {
+    comparePdfA.doc.destroy();
+    comparePdfA = null;
+  }
+  if (comparePdfB) {
+    comparePdfB.doc.destroy();
+    comparePdfB = null;
   }
   currentPage = 1;
   scale = 1.0;

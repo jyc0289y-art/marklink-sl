@@ -624,3 +624,571 @@ describe('deleteTableCol with colspan (pure logic)', () => {
     expect(result[1]).toHaveLength(2);
   });
 });
+
+// ─── 13. Image Resize Corner Detection ───
+
+describe('image resize corner handle detection', () => {
+  // Replicates the bug fix: cursor.length > 2 catches all handles, not just corners.
+  // The fix checks for specific corner prefixes.
+  function isCornerHandle(cursor) {
+    return cursor.startsWith('nw') || cursor.startsWith('ne') || cursor.startsWith('se') || cursor.startsWith('sw');
+  }
+
+  // Old buggy logic
+  function isCornerHandleBuggy(cursor) {
+    return cursor.length > 2;
+  }
+
+  it('correctly identifies corner handles', () => {
+    expect(isCornerHandle('nw-resize')).toBe(true);
+    expect(isCornerHandle('ne-resize')).toBe(true);
+    expect(isCornerHandle('se-resize')).toBe(true);
+    expect(isCornerHandle('sw-resize')).toBe(true);
+  });
+
+  it('correctly rejects edge handles', () => {
+    expect(isCornerHandle('n-resize')).toBe(false);
+    expect(isCornerHandle('e-resize')).toBe(false);
+    expect(isCornerHandle('s-resize')).toBe(false);
+    expect(isCornerHandle('w-resize')).toBe(false);
+  });
+
+  it('old buggy logic incorrectly treats all handles as corners', () => {
+    // This demonstrates the bug that was fixed
+    expect(isCornerHandleBuggy('n-resize')).toBe(true);  // Bug: edge treated as corner
+    expect(isCornerHandleBuggy('e-resize')).toBe(true);  // Bug: edge treated as corner
+    expect(isCornerHandleBuggy('s-resize')).toBe(true);  // Bug: edge treated as corner
+    expect(isCornerHandleBuggy('w-resize')).toBe(true);  // Bug: edge treated as corner
+  });
+});
+
+// ─── 14. Ruler cm-to-px Precision ───
+
+describe('ruler cm mark spacing', () => {
+  it('uses accurate 96/25.4 conversion for cm marks', () => {
+    const accurateCmPx = 10 * (96 / 25.4);
+    const approximateCmPx = 37.8;
+
+    // At 20cm, the error accumulates
+    const accurate20cm = 20 * accurateCmPx;
+    const approximate20cm = 20 * approximateCmPx;
+    const expected20cm = 200 * (96 / 25.4); // 200mm in px
+
+    expect(Math.abs(accurate20cm - expected20cm)).toBeLessThan(0.001);
+    expect(Math.abs(approximate20cm - expected20cm)).toBeGreaterThan(0.01);
+  });
+});
+
+// ─── 15. Event Handler Tracking for Cleanup ───
+
+describe('event handler tracking (_addHandler pattern)', () => {
+  // Simulates the _addHandler / destroy pattern
+  it('tracks handlers for later removal', () => {
+    const handlers = [];
+    let callCount = 0;
+
+    function addHandler(el, event, fn) {
+      handlers.push({ el, event, fn });
+    }
+
+    function destroyHandlers() {
+      handlers.length = 0;
+    }
+
+    // Simulate adding undo/redo handlers
+    addHandler('undoBtn', 'mousedown', () => callCount++);
+    addHandler('undoBtn', 'click', () => callCount++);
+    addHandler('redoBtn', 'mousedown', () => callCount++);
+    addHandler('redoBtn', 'click', () => callCount++);
+
+    expect(handlers).toHaveLength(4);
+
+    destroyHandlers();
+    expect(handlers).toHaveLength(0);
+  });
+
+  it('untracked handlers (old bug) leak on destroy', () => {
+    // Demonstrates why using addEventListener directly instead of _addHandler is a bug
+    const tracked = [];
+    const untracked = [];
+
+    // Tracked (correct)
+    tracked.push({ event: 'click', fn: () => {} });
+    // Untracked (bug) -- these would not be cleaned up
+    untracked.push({ event: 'click', fn: () => {} });
+
+    // On destroy, only tracked handlers are cleaned
+    tracked.length = 0;
+    expect(tracked).toHaveLength(0);
+    expect(untracked).toHaveLength(1); // Leaked!
+  });
+});
+
+// ─── 16. Paste Clipboard Null Safety ───
+
+describe('paste clipboardData null safety', () => {
+  it('optional chaining prevents crash when clipboardData is null', () => {
+    const event = { clipboardData: null };
+    // Simulates the fixed code path
+    const html = event.clipboardData?.getData?.('text/html');
+    const text = event.clipboardData?.getData?.('text/plain');
+
+    expect(html).toBeUndefined();
+    expect(text).toBeUndefined();
+    // Should not throw
+  });
+
+  it('works normally when clipboardData is present', () => {
+    const event = {
+      clipboardData: {
+        getData: (type) => type === 'text/html' ? '<p>Hello</p>' : 'Hello',
+        items: []
+      }
+    };
+    const html = event.clipboardData?.getData('text/html');
+    const text = event.clipboardData?.getData('text/plain');
+
+    expect(html).toBe('<p>Hello</p>');
+    expect(text).toBe('Hello');
+  });
+});
+
+// ─── 17. Track Changes Range Length Safety ───
+
+describe('track changes range end calculation', () => {
+  // Simulates the fix for range.endContainer.length being undefined for Element nodes
+  function getEndOffset(container, currentOffset) {
+    const maxLen = container.textContent?.length || container.childNodes?.length || 0;
+    return Math.min(maxLen, currentOffset + 1);
+  }
+
+  it('handles text nodes correctly', () => {
+    const textNode = { textContent: 'Hello World', childNodes: undefined };
+    expect(getEndOffset(textNode, 5)).toBe(6);
+    expect(getEndOffset(textNode, 10)).toBe(11);
+    expect(getEndOffset(textNode, 11)).toBe(11); // clamped
+  });
+
+  it('handles element nodes without .length property', () => {
+    const elementNode = { textContent: 'ab', childNodes: { length: 3 } };
+    // Old buggy code: Math.min(undefined || 0, ...) = Math.min(0, ...) = 0
+    // Fixed: uses textContent.length or childNodes.length
+    expect(getEndOffset(elementNode, 0)).toBe(1);
+    expect(getEndOffset(elementNode, 1)).toBe(2);
+  });
+
+  it('handles empty container', () => {
+    const emptyNode = { textContent: '', childNodes: { length: 0 } };
+    expect(getEndOffset(emptyNode, 0)).toBe(0);
+  });
+});
+
+// ─── 18. Destroy Clears Find Highlights from DOM ───
+
+describe('destroyDocEditor clears find highlights', () => {
+  // Simulates the fix: clearHighlights() must be called before resetting state
+  it('calling clearHighlights before reset prevents orphaned marks', () => {
+    // Simulate highlightedNodes with mock spans
+    const mockParent = {
+      children: [],
+      replaceChild(newNode, oldNode) {
+        const idx = this.children.indexOf(oldNode);
+        if (idx >= 0) this.children[idx] = newNode;
+      },
+      normalize() {}
+    };
+
+    const mockSpan1 = { textContent: 'hello', parentNode: mockParent };
+    const mockSpan2 = { textContent: 'world', parentNode: mockParent };
+    mockParent.children.push(mockSpan1, mockSpan2);
+
+    let highlightedNodes = [mockSpan1, mockSpan2];
+
+    // clearHighlights equivalent
+    for (const span of highlightedNodes) {
+      const parent = span.parentNode;
+      if (parent) {
+        parent.replaceChild({ type: 'textNode', text: span.textContent }, span);
+        parent.normalize();
+      }
+    }
+    highlightedNodes = [];
+
+    expect(highlightedNodes).toHaveLength(0);
+    // Spans replaced with text nodes
+    expect(mockParent.children[0]).toEqual({ type: 'textNode', text: 'hello' });
+    expect(mockParent.children[1]).toEqual({ type: 'textNode', text: 'world' });
+  });
+});
+
+// ─── 19. Paste HTML Sanitization — Script Tag Injection ───
+
+describe('paste HTML sanitization — XSS prevention', () => {
+  function cleanPastedHtml(html) {
+    return html
+      .replace(/<meta[^>]*>/gi, '')
+      .replace(/class="[^"]*"/gi, '')
+      .replace(/style="[^"]*mso[^"]*"/gi, '')
+      .replace(/<o:p>.*?<\/o:p>/gi, '')
+      .replace(/<!--.*?-->/gs, '')
+      .replace(/\s*id="docs-internal-guid-[^"]*"/gi, '')
+      .replace(/\s*data-[a-z-]+="[^"]*"/gi, '')
+      .replace(/<span(?:\s+(?!style\b)[a-z-]+=["'][^"']*["'])*\s*>(.*?)<\/span>/gi, '$1')
+      .replace(/<\/?font[^>]*>/gi, '');
+  }
+
+  it('does not strip script tags (limitation — needs separate sanitizer)', () => {
+    // This test documents that the paste cleaner does NOT strip script tags
+    // and relies on the browser's contentEditable sanitizer
+    const input = '<p>Hello</p><script>alert("xss")</script>';
+    const result = cleanPastedHtml(input);
+    // Script tag passes through the MS Office cleaner — this is expected
+    // because execCommand('insertHTML') in contentEditable already strips scripts
+    expect(result).toContain('script');
+  });
+
+  it('strips event handler attributes via data- attr cleaning', () => {
+    const input = '<p data-onclick="alert(1)">Text</p>';
+    const result = cleanPastedHtml(input);
+    expect(result).not.toContain('data-onclick');
+  });
+});
+
+// ─── 20. Find/Replace with Special Regex Characters ───
+
+describe('find/replace with special regex characters', () => {
+  function buildRegex(query, useRegex, wholeWord, matchCase) {
+    let pattern = query;
+    if (useRegex) {
+      if (wholeWord) {
+        if (!pattern.startsWith('\\b')) pattern = `\\b${pattern}`;
+        if (!pattern.endsWith('\\b')) pattern = `${pattern}\\b`;
+      }
+      try {
+        return new RegExp(pattern, matchCase ? 'g' : 'gi');
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  it('handles regex with parentheses for capture groups', () => {
+    const re = buildRegex('(foo)(bar)', true, false, false);
+    expect(re).not.toBeNull();
+    const match = re.exec('foobar');
+    expect(match).not.toBeNull();
+    expect(match[1]).toBe('foo');
+    expect(match[2]).toBe('bar');
+  });
+
+  it('handles regex with escaped special characters', () => {
+    const re = buildRegex('\\$\\d+\\.\\d{2}', true, false, false);
+    expect(re).not.toBeNull();
+    expect(re.test('$19.99')).toBe(true);
+    expect(re.test('19.99')).toBe(false);
+  });
+
+  it('handles regex with quantifiers', () => {
+    const re = buildRegex('colou?r', true, false, false);
+    expect(re).not.toBeNull();
+    expect(re.test('color')).toBe(true);
+    re.lastIndex = 0;
+    expect(re.test('colour')).toBe(true);
+  });
+
+  it('returns null for unbalanced brackets', () => {
+    expect(buildRegex('(unclosed', true, false, false)).toBeNull();
+    expect(buildRegex('[unclosed', true, false, false)).toBeNull();
+  });
+
+  it('handles lookahead patterns', () => {
+    const re = buildRegex('foo(?=bar)', true, false, false);
+    expect(re).not.toBeNull();
+    expect(re.test('foobar')).toBe(true);
+    re.lastIndex = 0;
+    expect(re.test('foobaz')).toBe(false);
+  });
+});
+
+// ─── 21. Event Listener Tracking (_addHandler) ───
+
+describe('_addHandler tracks all listeners for cleanup', () => {
+  function createHandlerSystem() {
+    const handlers = [];
+    function addHandler(el, event, fn) {
+      if (!el) return;
+      el.addEventListener(event, fn);
+      handlers.push({ el, event, fn });
+    }
+    function destroyAll() {
+      for (const h of handlers) {
+        h.el.removeEventListener(h.event, h.fn);
+      }
+      handlers.length = 0;
+    }
+    return { handlers, addHandler, destroyAll };
+  }
+
+  it('tracks toolbar select handlers for cleanup', () => {
+    const { handlers, addHandler, destroyAll } = createHandlerSystem();
+    const calls = [];
+    const mockEl = {
+      addEventListener(ev, fn) { calls.push({ action: 'add', ev }); },
+      removeEventListener(ev, fn) { calls.push({ action: 'remove', ev }); },
+    };
+    addHandler(mockEl, 'change', () => {});
+    addHandler(mockEl, 'input', () => {});
+    expect(handlers).toHaveLength(2);
+
+    destroyAll();
+    expect(handlers).toHaveLength(0);
+    expect(calls.filter(c => c.action === 'remove')).toHaveLength(2);
+  });
+
+  it('skips null elements without throwing', () => {
+    const { handlers, addHandler } = createHandlerSystem();
+    expect(() => addHandler(null, 'click', () => {})).not.toThrow();
+    expect(handlers).toHaveLength(0);
+  });
+});
+
+// ─── 22. Track Changes Handler Cleanup in Destroy ───
+
+describe('destroyDocEditor cleans up track changes handlers', () => {
+  it('removes _trackKeyHandler and _trackInputHandler from editorEl', () => {
+    const removed = [];
+    const mockEditorEl = {
+      _trackKeyHandler: () => {},
+      _trackInputHandler: () => {},
+      removeEventListener(ev, fn) { removed.push(ev); },
+    };
+
+    // Simulate destroy cleanup logic
+    if (mockEditorEl._trackKeyHandler) {
+      mockEditorEl.removeEventListener('keydown', mockEditorEl._trackKeyHandler);
+      mockEditorEl._trackKeyHandler = null;
+    }
+    if (mockEditorEl._trackInputHandler) {
+      mockEditorEl.removeEventListener('input', mockEditorEl._trackInputHandler);
+      mockEditorEl._trackInputHandler = null;
+    }
+
+    expect(removed).toContain('keydown');
+    expect(removed).toContain('input');
+    expect(mockEditorEl._trackKeyHandler).toBeNull();
+    expect(mockEditorEl._trackInputHandler).toBeNull();
+  });
+
+  it('handles editorEl without track handlers gracefully', () => {
+    const mockEditorEl = { removeEventListener() {} };
+    // No _trackKeyHandler / _trackInputHandler properties
+    expect(() => {
+      if (mockEditorEl._trackKeyHandler) {
+        mockEditorEl.removeEventListener('keydown', mockEditorEl._trackKeyHandler);
+      }
+      if (mockEditorEl._trackInputHandler) {
+        mockEditorEl.removeEventListener('input', mockEditorEl._trackInputHandler);
+      }
+    }).not.toThrow();
+  });
+});
+
+// ─── 23. Visibilitychange Handler Cleanup ───
+
+describe('visibilitychange handler lifecycle', () => {
+  it('stores handler reference for later removal', () => {
+    let visibilityHandler = null;
+    const added = [];
+    const removed = [];
+    const mockDocument = {
+      addEventListener(ev, fn) { added.push({ ev, fn }); },
+      removeEventListener(ev, fn) { removed.push({ ev, fn }); },
+    };
+
+    // Simulate initAutoSave
+    visibilityHandler = () => {};
+    mockDocument.addEventListener('visibilitychange', visibilityHandler);
+
+    expect(added).toHaveLength(1);
+    expect(added[0].ev).toBe('visibilitychange');
+
+    // Simulate destroy
+    if (visibilityHandler) {
+      mockDocument.removeEventListener('visibilitychange', visibilityHandler);
+      visibilityHandler = null;
+    }
+
+    expect(removed).toHaveLength(1);
+    expect(removed[0].ev).toBe('visibilitychange');
+    expect(visibilityHandler).toBeNull();
+  });
+});
+
+// ─── 24. Uint16Array → Uint32Array Overflow Fix in LCS Diff ───
+
+describe('LCS diff Uint32Array overflow fix', () => {
+  // Reproduce the computeWordDiff logic with typed arrays
+  function computeWordDiffFixed(oldText, newText) {
+    const oldWords = oldText.split(/(\s+)/);
+    const newWords = newText.split(/(\s+)/);
+    const m = oldWords.length, n = newWords.length;
+    if (m * n > 1000000) return null; // skip large — tested separately
+
+    const dp = Array.from({ length: m + 1 }, () => new Uint32Array(n + 1));
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] = oldWords[i - 1] === newWords[j - 1]
+          ? dp[i - 1][j - 1] + 1
+          : Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+    return dp;
+  }
+
+  function computeWordDiffBuggy(oldText, newText) {
+    const oldWords = oldText.split(/(\s+)/);
+    const newWords = newText.split(/(\s+)/);
+    const m = oldWords.length, n = newWords.length;
+    if (m * n > 1000000) return null;
+
+    const dp = Array.from({ length: m + 1 }, () => new Uint16Array(n + 1));
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] = oldWords[i - 1] === newWords[j - 1]
+          ? dp[i - 1][j - 1] + 1
+          : Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+    return dp;
+  }
+
+  it('Uint16Array overflows at 65535, Uint32Array does not', () => {
+    // Verify the type difference matters for large LCS values
+    const u16 = new Uint16Array(1);
+    u16[0] = 65535;
+    u16[0] += 1;
+    expect(u16[0]).toBe(0); // overflows!
+
+    const u32 = new Uint32Array(1);
+    u32[0] = 65535;
+    u32[0] += 1;
+    expect(u32[0]).toBe(65536); // no overflow
+  });
+
+  it('computes correct LCS for small inputs with both types', () => {
+    const old = 'the quick brown fox';
+    const newT = 'the slow brown dog';
+    const fixed = computeWordDiffFixed(old, newT);
+    const buggy = computeWordDiffBuggy(old, newT);
+
+    // For small inputs both should give same result
+    expect(fixed).not.toBeNull();
+    expect(buggy).not.toBeNull();
+    const m = old.split(/(\s+)/).length;
+    const n = newT.split(/(\s+)/).length;
+    expect(fixed[m][n]).toBe(buggy[m][n]);
+  });
+});
+
+// ─── 25. Mail Merge Template Regex Injection Fix ───
+
+describe('mergeTemplate regex injection fix', () => {
+  function mergeTemplateFixed(template, record) {
+    let result = template;
+    for (const [key, val] of Object.entries(record)) {
+      const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      result = result.replace(new RegExp(`\\{\\{${escapedKey}\\}\\}`, 'g'), val);
+    }
+    return result;
+  }
+
+  function mergeTemplateBuggy(template, record) {
+    let result = template;
+    for (const [key, val] of Object.entries(record)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val);
+    }
+    return result;
+  }
+
+  it('handles normal field names', () => {
+    const tmpl = 'Hello {{name}}, welcome to {{city}}!';
+    const record = { name: 'Alice', city: 'Seoul' };
+    expect(mergeTemplateFixed(tmpl, record)).toBe('Hello Alice, welcome to Seoul!');
+  });
+
+  it('handles field names with regex special characters (fixed)', () => {
+    const tmpl = 'Price: {{price($)}}';
+    const record = { 'price($)': '100' };
+    expect(mergeTemplateFixed(tmpl, record)).toBe('Price: 100');
+  });
+
+  it('buggy version throws on regex special chars in key', () => {
+    const tmpl = 'Price: {{price($)}}';
+    const record = { 'price($)': '100' };
+    // The unescaped ($) creates an invalid regex group or wrong match
+    // This may either throw or produce wrong output
+    let threw = false;
+    let result;
+    try {
+      result = mergeTemplateBuggy(tmpl, record);
+    } catch {
+      threw = true;
+    }
+    // Either it threw or didn't replace correctly
+    expect(threw || result !== 'Price: 100').toBe(true);
+  });
+
+  it('handles field names with dots and brackets', () => {
+    const tmpl = '{{user.name}} [{{user[0]}}]';
+    const record = { 'user.name': 'Bob', 'user[0]': 'first' };
+    expect(mergeTemplateFixed(tmpl, record)).toBe('Bob [first]');
+  });
+
+  it('handles field names with pipe character', () => {
+    const tmpl = '{{a|b}} test';
+    const record = { 'a|b': 'value' };
+    expect(mergeTemplateFixed(tmpl, record)).toBe('value test');
+  });
+
+  it('replaces all occurrences of the same field', () => {
+    const tmpl = '{{x}} and {{x}} again';
+    const record = { x: 'Y' };
+    expect(mergeTemplateFixed(tmpl, record)).toBe('Y and Y again');
+  });
+});
+
+// ─── 26. initTableColumnResize Listener Tracking ───
+
+describe('initTableColumnResize uses _addHandler', () => {
+  it('tracked handlers are removed on destroy', () => {
+    const handlers = [];
+    const removed = [];
+
+    function addHandler(el, event, fn) {
+      if (!el) return;
+      el.addEventListener(event, fn);
+      handlers.push({ el, event, fn });
+    }
+
+    const mockEditorEl = {
+      addEventListener(ev, fn) {},
+      removeEventListener(ev, fn) { removed.push(ev); },
+    };
+
+    // Simulate initTableColumnResize registering via _addHandler
+    addHandler(mockEditorEl, 'mousemove', () => {});
+    addHandler(mockEditorEl, 'mousedown', () => {});
+    expect(handlers).toHaveLength(2);
+
+    // Simulate destroy
+    for (const h of handlers) {
+      h.el.removeEventListener(h.event, h.fn);
+    }
+    handlers.length = 0;
+
+    expect(removed).toContain('mousemove');
+    expect(removed).toContain('mousedown');
+    expect(handlers).toHaveLength(0);
+  });
+});

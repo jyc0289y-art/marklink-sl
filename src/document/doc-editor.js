@@ -43,6 +43,7 @@ const AUTO_CORRECT_KEY = 'doc-autocorrect-enabled';
 // Stored event handlers for cleanup
 const _docHandlers = [];
 const _docIntervals = [];
+let _visibilityHandler = null;
 
 function _addHandler(el, event, fn) {
   if (!el) return;
@@ -121,13 +122,13 @@ export function initDocEditor() {
   // Undo / Redo buttons
   const undoBtn = document.getElementById('doc-undo');
   if (undoBtn) {
-    undoBtn.addEventListener('mousedown', (e) => e.preventDefault());
-    undoBtn.addEventListener('click', () => { document.execCommand('undo'); editorEl.focus(); });
+    _addHandler(undoBtn, 'mousedown', (e) => e.preventDefault());
+    _addHandler(undoBtn, 'click', () => { document.execCommand('undo'); editorEl.focus(); });
   }
   const redoBtn = document.getElementById('doc-redo');
   if (redoBtn) {
-    redoBtn.addEventListener('mousedown', (e) => e.preventDefault());
-    redoBtn.addEventListener('click', () => { document.execCommand('redo'); editorEl.focus(); });
+    _addHandler(redoBtn, 'mousedown', (e) => e.preventDefault());
+    _addHandler(redoBtn, 'click', () => { document.execCommand('redo'); editorEl.focus(); });
   }
 
   // Find/Replace
@@ -135,8 +136,8 @@ export function initDocEditor() {
 
   // Formatting commands
   document.querySelectorAll('.doc-cmd').forEach((btn) => {
-    btn.addEventListener('mousedown', (e) => e.preventDefault());
-    btn.addEventListener('click', () => {
+    _addHandler(btn, 'mousedown', (e) => e.preventDefault());
+    _addHandler(btn, 'click', () => {
       document.execCommand(btn.dataset.cmd, false, null);
       editorEl.focus();
     });
@@ -145,7 +146,7 @@ export function initDocEditor() {
   // Heading select
   const headingSelect = document.getElementById('doc-heading');
   if (headingSelect) {
-    headingSelect.addEventListener('change', () => {
+    _addHandler(headingSelect, 'change', () => {
       const val = headingSelect.value;
       document.execCommand('formatBlock', false, val || 'P');
       editorEl.focus();
@@ -155,7 +156,7 @@ export function initDocEditor() {
   // Font family
   const fontFamily = document.getElementById('doc-font-family');
   if (fontFamily) {
-    fontFamily.addEventListener('change', () => {
+    _addHandler(fontFamily, 'change', () => {
       document.execCommand('fontName', false, fontFamily.value);
       editorEl.focus();
     });
@@ -164,7 +165,7 @@ export function initDocEditor() {
   // Font size — apply to selection, not entire editor
   const fontSize = document.getElementById('doc-font-size');
   if (fontSize) {
-    fontSize.addEventListener('change', () => {
+    _addHandler(fontSize, 'change', () => {
       const sel = window.getSelection();
       if (sel && !sel.isCollapsed && editorEl.contains(sel.anchorNode)) {
         const range = sel.getRangeAt(0);
@@ -195,7 +196,7 @@ export function initDocEditor() {
   // Text color
   const textColor = document.getElementById('doc-color');
   if (textColor) {
-    textColor.addEventListener('input', () => {
+    _addHandler(textColor, 'input', () => {
       document.execCommand('foreColor', false, textColor.value);
       editorEl.focus();
     });
@@ -204,7 +205,7 @@ export function initDocEditor() {
   // Background/highlight color
   const bgColor = document.getElementById('doc-bg-color');
   if (bgColor) {
-    bgColor.addEventListener('input', () => {
+    _addHandler(bgColor, 'input', () => {
       document.execCommand('hiliteColor', false, bgColor.value);
       editorEl.focus();
     });
@@ -616,7 +617,7 @@ export function initDocEditor() {
     }
 
     // Clean up external HTML (MS Office, Google Docs)
-    const html = e.clipboardData.getData('text/html');
+    const html = e.clipboardData?.getData('text/html');
     if (html && (html.includes('data-meta') || html.includes('MsoNormal') || html.includes('docs-internal'))) {
       e.preventDefault();
       const cleaned = html
@@ -633,7 +634,7 @@ export function initDocEditor() {
     }
 
     // Handle tab-separated data paste — auto-create table
-    const text = e.clipboardData.getData('text/plain');
+    const text = e.clipboardData?.getData('text/plain');
     if (!html && text && text.includes('\t') && text.includes('\n')) {
       e.preventDefault();
       const cellStyle = 'border:1px solid var(--border-color);padding:8px 12px';
@@ -770,6 +771,24 @@ export function destroyDocEditor() {
   }
   _docIntervals.length = 0;
 
+  // Remove track changes handlers (attached directly, not via _addHandler)
+  if (editorEl) {
+    if (editorEl._trackKeyHandler) {
+      editorEl.removeEventListener('keydown', editorEl._trackKeyHandler);
+      editorEl._trackKeyHandler = null;
+    }
+    if (editorEl._trackInputHandler) {
+      editorEl.removeEventListener('input', editorEl._trackInputHandler);
+      editorEl._trackInputHandler = null;
+    }
+  }
+
+  // Remove visibilitychange handler
+  if (_visibilityHandler) {
+    document.removeEventListener('visibilitychange', _visibilityHandler);
+    _visibilityHandler = null;
+  }
+
   // Remove dynamic overlays
   document.querySelector('.doc-focus-overlay')?.remove();
   document.querySelector('.doc-reading-overlay')?.remove();
@@ -777,6 +796,9 @@ export function destroyDocEditor() {
   document.querySelector('.doc-table-color-picker')?.remove();
   hideTableToolbar();
   destroyPageBreakIndicators();
+
+  // Clear find highlights from DOM before resetting state
+  clearHighlights();
 
   // Reset state
   editorEl = null;
@@ -1344,7 +1366,7 @@ function initTableColumnResize() {
   let startX = 0;
   let startWidths = [];
 
-  editorEl.addEventListener('mousemove', (e) => {
+  _addHandler(editorEl, 'mousemove', (e) => {
     if (resizing) return;
     const td = e.target.closest('td, th');
     if (!td || !editorEl.contains(td)) {
@@ -1361,7 +1383,7 @@ function initTableColumnResize() {
     }
   });
 
-  editorEl.addEventListener('mousedown', (e) => {
+  _addHandler(editorEl, 'mousedown', (e) => {
     const td = e.target.closest('td, th');
     if (!td || !editorEl.contains(td)) return;
 
@@ -2429,8 +2451,8 @@ function renderRuler() {
   ruler.style.width = rulerWidth + 'px';
 
   let html = '';
-  // Draw ruler marks every 1cm (approximately 37.8px)
-  const cmPx = 37.8;
+  // Draw ruler marks every 1cm (10mm = 10 * 96/25.4 px)
+  const cmPx = 10 * (96 / 25.4);
   const totalCm = Math.floor(editorWidth / cmPx);
 
   // Left margin indicator
@@ -2967,7 +2989,8 @@ function showMailMergeDialog() {
   function mergeTemplate(template, record) {
     let result = template;
     for (const [key, val] of Object.entries(record)) {
-      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val);
+      const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      result = result.replace(new RegExp(`\\{\\{${escapedKey}\\}\\}`, 'g'), val);
     }
     return result;
   }
@@ -3681,7 +3704,7 @@ function handleTrackDelete(direction) {
   if (direction === 'back') {
     range.setStart(range.startContainer, Math.max(0, range.startOffset - 1));
   } else {
-    range.setEnd(range.endContainer, Math.min(range.endContainer.length || 0, range.endOffset + 1));
+    range.setEnd(range.endContainer, Math.min(range.endContainer.textContent?.length || range.endContainer.childNodes?.length || 0, range.endOffset + 1));
   }
 
   const text = range.toString();
@@ -4032,8 +4055,8 @@ function startImageResize(e, img, cursor) {
     if (cursor.includes('s')) newH = startH + dy;
     if (cursor.includes('n')) newH = startH - dy;
 
-    // Maintain aspect ratio for corner handles
-    if (cursor.length > 2) {
+    // Maintain aspect ratio for corner handles (nw, ne, se, sw)
+    if (cursor.startsWith('nw') || cursor.startsWith('ne') || cursor.startsWith('se') || cursor.startsWith('sw')) {
       newH = newW / ratio;
     }
 
@@ -4241,7 +4264,7 @@ function computeWordDiff(oldText, newText) {
   }
 
   // Build LCS table
-  const dp = Array.from({ length: m + 1 }, () => new Uint16Array(n + 1));
+  const dp = Array.from({ length: m + 1 }, () => new Uint32Array(n + 1));
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
       dp[i][j] = oldWords[i - 1] === newWords[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
@@ -5720,11 +5743,12 @@ function initAutoSave() {
     }
   }, AUTO_SAVE_INTERVAL_MS);
 
-  document.addEventListener('visibilitychange', () => {
+  _visibilityHandler = () => {
     if (document.visibilityState === 'hidden' && editorEl && dirty) {
       performAutoSave();
     }
-  });
+  };
+  document.addEventListener('visibilitychange', _visibilityHandler);
 }
 
 function performAutoSave() {
@@ -5945,7 +5969,7 @@ function computeLineDiff(currentLines, compareLines) {
     return result;
   }
 
-  const dp = Array.from({ length: m + 1 }, () => new Uint16Array(n + 1));
+  const dp = Array.from({ length: m + 1 }, () => new Uint32Array(n + 1));
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
       dp[i][j] = currentLines[i - 1] === compareLines[j - 1]
