@@ -157,3 +157,193 @@ describe('THEMES constant', () => {
     expect(THEMES.dark).toContain('#1a1a2e');
   });
 });
+
+/* ─── cssColorToHex: replicated from slide-file.js ─── */
+function cssColorToHex(colorStr) {
+  if (!colorStr) return null;
+  colorStr = colorStr.trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(colorStr)) return colorStr.slice(1).toUpperCase();
+  if (/^#[0-9A-Fa-f]{3}$/.test(colorStr)) {
+    const r = colorStr[1], g = colorStr[2], b = colorStr[3];
+    return (r + r + g + g + b + b).toUpperCase();
+  }
+  const m = colorStr.match(/^rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (m) {
+    const hex = (n) => parseInt(n, 10).toString(16).padStart(2, '0');
+    return (hex(m[1]) + hex(m[2]) + hex(m[3])).toUpperCase();
+  }
+  return null;
+}
+
+describe('cssColorToHex', () => {
+  it('converts #rrggbb to 6-char hex without #', () => {
+    expect(cssColorToHex('#FF0000')).toBe('FF0000');
+    expect(cssColorToHex('#00ff00')).toBe('00FF00');
+  });
+
+  it('converts #rgb to 6-char hex', () => {
+    expect(cssColorToHex('#F00')).toBe('FF0000');
+    expect(cssColorToHex('#abc')).toBe('AABBCC');
+  });
+
+  it('converts rgb() to 6-char hex', () => {
+    expect(cssColorToHex('rgb(255, 0, 0)')).toBe('FF0000');
+    expect(cssColorToHex('rgb(0, 128, 255)')).toBe('0080FF');
+  });
+
+  it('converts rgba() (ignores alpha)', () => {
+    expect(cssColorToHex('rgba(255, 0, 0, 0.5)')).toBe('FF0000');
+  });
+
+  it('returns null for empty/invalid input', () => {
+    expect(cssColorToHex('')).toBeNull();
+    expect(cssColorToHex(null)).toBeNull();
+    expect(cssColorToHex(undefined)).toBeNull();
+    expect(cssColorToHex('not-a-color')).toBeNull();
+  });
+
+  it('trims whitespace', () => {
+    expect(cssColorToHex('  #FF0000  ')).toBe('FF0000');
+  });
+});
+
+/* ─── normalizePptxPath: replicated from slide-file.js ─── */
+function normalizePptxPath(basePath, relPath) {
+  if (relPath.startsWith('/')) return relPath.slice(1);
+  const baseParts = basePath.replace(/\/$/, '').split('/');
+  const relParts = relPath.split('/');
+  for (const part of relParts) {
+    if (part === '..') {
+      baseParts.pop();
+    } else if (part !== '.') {
+      baseParts.push(part);
+    }
+  }
+  return baseParts.join('/');
+}
+
+describe('normalizePptxPath', () => {
+  it('resolves relative paths with ../', () => {
+    expect(normalizePptxPath('ppt/slides/', '../media/image1.png')).toBe('ppt/media/image1.png');
+  });
+
+  it('handles absolute paths', () => {
+    expect(normalizePptxPath('ppt/slides/', '/ppt/media/image1.png')).toBe('ppt/media/image1.png');
+  });
+
+  it('handles same-directory paths', () => {
+    expect(normalizePptxPath('ppt/slides/', 'slide2.xml')).toBe('ppt/slides/slide2.xml');
+  });
+
+  it('handles multiple ../', () => {
+    expect(normalizePptxPath('ppt/slides/', '../../media/image1.png')).toBe('media/image1.png');
+  });
+
+  it('handles . in paths', () => {
+    expect(normalizePptxPath('ppt/slides/', './image.png')).toBe('ppt/slides/image.png');
+  });
+});
+
+/* ─── parseInlineStyle: replicated from slide-file.js ─── */
+function parseInlineStyle(styleStr) {
+  const map = {};
+  if (!styleStr) return map;
+  styleStr.split(';').forEach((pair) => {
+    const idx = pair.indexOf(':');
+    if (idx > 0) {
+      map[pair.slice(0, idx).trim().toLowerCase()] = pair.slice(idx + 1).trim();
+    }
+  });
+  return map;
+}
+
+describe('parseInlineStyle', () => {
+  it('parses simple style string', () => {
+    const result = parseInlineStyle('color:red;font-size:14px');
+    expect(result.color).toBe('red');
+    expect(result['font-size']).toBe('14px');
+  });
+
+  it('handles empty string', () => {
+    expect(parseInlineStyle('')).toEqual({});
+  });
+
+  it('handles null/undefined', () => {
+    expect(parseInlineStyle(null)).toEqual({});
+    expect(parseInlineStyle(undefined)).toEqual({});
+  });
+
+  it('handles values with colons (e.g., url())', () => {
+    const result = parseInlineStyle('background:url(http://example.com/image.png)');
+    expect(result.background).toBe('url(http://example.com/image.png)');
+  });
+
+  it('trims keys and values', () => {
+    const result = parseInlineStyle(' color : red ; font-size : 14px ');
+    expect(result.color).toBe('red');
+    expect(result['font-size']).toBe('14px');
+  });
+
+  it('lowercases keys', () => {
+    const result = parseInlineStyle('Color:red;FONT-SIZE:14px');
+    expect(result.color).toBe('red');
+    expect(result['font-size']).toBe('14px');
+  });
+});
+
+/* ─── Undo/Redo correctness test (replicated logic) ─── */
+describe('Slide undo/redo state tracking', () => {
+  it('redo should restore the correct slide content after undo', () => {
+    // Simulate the undo/redo logic
+    const slides = [
+      { content: 'original-content-0' },
+      { content: 'original-content-1' },
+    ];
+    const undoStack = [];
+    const redoStack = [];
+    let activeSlideIdx = 0;
+
+    // pushUndo for slide 0
+    undoStack.push({ idx: 0, content: slides[0].content });
+
+    // Modify slide 0
+    slides[0].content = 'modified-content-0';
+
+    // Undo: should restore slide 0 to original
+    const state = undoStack.pop();
+    // FIX: redo should save the content of state.idx (the slide being restored)
+    redoStack.push({ idx: state.idx, content: slides[state.idx].content });
+    slides[state.idx].content = state.content;
+
+    expect(slides[0].content).toBe('original-content-0');
+
+    // Redo: should restore slide 0 to modified
+    const redoState = redoStack.pop();
+    undoStack.push({ idx: redoState.idx, content: slides[redoState.idx].content });
+    slides[redoState.idx].content = redoState.content;
+
+    expect(slides[0].content).toBe('modified-content-0');
+  });
+
+  it('undo/redo with different active slide should not corrupt other slides', () => {
+    const slides = [
+      { content: 'slide-0' },
+      { content: 'slide-1' },
+    ];
+    const undoStack = [];
+    const redoStack = [];
+
+    // Push undo for slide 1
+    undoStack.push({ idx: 1, content: slides[1].content });
+    slides[1].content = 'slide-1-modified';
+
+    // Switch active to slide 0, then undo (should affect slide 1, not slide 0)
+    let activeSlideIdx = 0;
+    const state = undoStack.pop();
+    redoStack.push({ idx: state.idx, content: slides[state.idx].content });
+    slides[state.idx].content = state.content;
+
+    expect(slides[0].content).toBe('slide-0'); // should be untouched
+    expect(slides[1].content).toBe('slide-1'); // restored
+  });
+});

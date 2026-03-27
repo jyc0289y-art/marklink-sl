@@ -388,8 +388,11 @@ export const createSketchWire = (entities, plane) => {
       return null;
     }
 
-    const wire = wireBuilder.Wire();
-    safeDelete(wireBuilder);
+    // Wire() returns a reference owned by wireBuilder — deep copy before deleting
+    const wireRef = wireBuilder.Wire();
+    const wireCopy = new oc.BRepBuilderAPI_Copy_2(wireRef, true, false);
+    const wire = wireCopy.Shape();
+    safeDelete(wireCopy, wireBuilder);
     return wire;
   });
 };
@@ -437,19 +440,19 @@ export const extrudeShape = (profile, direction, distance, symmetric = false) =>
       trsf.SetTranslation_1(halfVec);
       const movedFace = new oc.BRepBuilderAPI_Transform_2(face, trsf, true);
       const prism = new oc.BRepPrimAPI_MakePrism_1(movedFace.Shape(), vec, false, true);
-      result = prism.Shape();
-      halfVec.delete();
-      trsf.delete();
-      movedFace.delete();
-      prism.delete();
+      // Shape() returns a reference owned by prism — deep copy before deleting
+      const copy = new oc.BRepBuilderAPI_Copy_2(prism.Shape(), true, false);
+      result = copy.Shape();
+      safeDelete(copy, prism, movedFace, trsf, halfVec);
     } else {
       const prism = new oc.BRepPrimAPI_MakePrism_1(face, vec, false, true);
-      result = prism.Shape();
-      prism.delete();
+      // Shape() returns a reference owned by prism — deep copy before deleting
+      const copy = new oc.BRepBuilderAPI_Copy_2(prism.Shape(), true, false);
+      result = copy.Shape();
+      safeDelete(copy, prism);
     }
 
     vec.delete();
-    // Now safe to delete the face maker — result is a deep copy inside MakePrism
     if (faceMakerRef) faceMakerRef.delete();
     return result;
   } catch (e) {
@@ -484,12 +487,11 @@ export const revolveShape = (profile, axis, angleDeg = 360) => {
 
     const angleRad = (angleDeg * Math.PI) / 180;
     const revolve = new oc.BRepPrimAPI_MakeRevol_1(face, ax1, angleRad, true);
-    const result = revolve.Shape();
+    // Shape() returns a reference owned by revolve — deep copy before deleting
+    const copy = new oc.BRepBuilderAPI_Copy_2(revolve.Shape(), true, false);
+    const result = copy.Shape();
 
-    origin.delete();
-    dir.delete();
-    ax1.delete();
-    revolve.delete();
+    safeDelete(copy, revolve, ax1, dir, origin);
     if (faceMakerRef) faceMakerRef.delete();
     return result;
   } catch (e) {
@@ -602,15 +604,19 @@ export const filletEdges = (shape, radius = 0.2, edgeIndices = []) => {
       });
     }
 
-    fillet.Build(new oc.Message_ProgressRange_1());
+    const filletProgress = new oc.Message_ProgressRange_1();
+    fillet.Build(filletProgress);
+    safeDelete(filletProgress);
     if (!fillet.IsDone()) {
       fillet.delete();
       console.warn('[OCCT] filletEdges: build failed — try a smaller radius');
       return null;
     }
 
-    const result = fillet.Shape();
-    fillet.delete();
+    // Shape() returns a reference owned by fillet — deep copy before deleting
+    const copy = new oc.BRepBuilderAPI_Copy_2(fillet.Shape(), true, false);
+    const result = copy.Shape();
+    safeDelete(copy, fillet);
     return result;
   } catch (e) {
     console.error('[OCCT] filletEdges error:', e);
@@ -659,14 +665,18 @@ export const chamferEdges = (shape, distance = 0.2, edgeIndices = []) => {
     }
 
     edgeMap.delete();
-    chamfer.Build(new oc.Message_ProgressRange_1());
+    const chamferProgress = new oc.Message_ProgressRange_1();
+    chamfer.Build(chamferProgress);
+    safeDelete(chamferProgress);
     if (!chamfer.IsDone()) {
       chamfer.delete();
       console.warn('[OCCT] chamferEdges: build failed — try a smaller distance');
       return null;
     }
-    const result = chamfer.Shape();
-    chamfer.delete();
+    // Shape() returns a reference owned by chamfer — deep copy before deleting
+    const copy = new oc.BRepBuilderAPI_Copy_2(chamfer.Shape(), true, false);
+    const result = copy.Shape();
+    safeDelete(copy, chamfer);
     return result;
   } catch (e) {
     console.error('[OCCT] chamferEdges error:', e);
@@ -724,8 +734,10 @@ export const shellShape = (shape, thickness = 0.2, faceIndicesToRemove = [0]) =>
       return null;
     }
 
-    const result = shell.Shape();
-    shell.delete();
+    // Shape() returns a reference owned by shell — deep copy before deleting
+    const copy = new oc.BRepBuilderAPI_Copy_2(shell.Shape(), true, false);
+    const result = copy.Shape();
+    safeDelete(copy, shell);
     return result;
   } catch (e) {
     console.error('[OCCT] shellShape error:', e);
@@ -748,8 +760,10 @@ export const loftShapes = (wires) => {
     safeDelete(progress);
 
     if (!loft.IsDone()) { loft.delete(); return null; }
-    const result = loft.Shape();
-    loft.delete();
+    // Shape() returns a reference owned by loft — deep copy before deleting
+    const copy = new oc.BRepBuilderAPI_Copy_2(loft.Shape(), true, false);
+    const result = copy.Shape();
+    safeDelete(copy, loft);
     return result;
   } catch (e) {
     console.error('[OCCT] loftShapes error:', e);
@@ -944,9 +958,11 @@ export const importSTEP = (stepContent) => {
     const progress = new oc.Message_ProgressRange_1();
     reader.TransferRoots(progress);
     safeDelete(progress);
-    const shape = reader.OneShape();
-
-    reader.delete();
+    // OneShape() returns a reference owned by reader — deep copy before deleting
+    const shapeRef = reader.OneShape();
+    const copy = new oc.BRepBuilderAPI_Copy_2(shapeRef, true, false);
+    const shape = copy.Shape();
+    safeDelete(copy, reader);
     try { oc.FS.unlink('/import.step'); } catch { /* ignore */ }
     return shape;
   } catch (e) {
@@ -1005,9 +1021,11 @@ export const importIGES = (igesContent) => {
     const progress = new oc.Message_ProgressRange_1();
     reader.TransferRoots(progress);
     safeDelete(progress);
-    const shape = reader.OneShape();
-
-    reader.delete();
+    // OneShape() returns a reference owned by reader — deep copy before deleting
+    const shapeRef = reader.OneShape();
+    const copy = new oc.BRepBuilderAPI_Copy_2(shapeRef, true, false);
+    const shape = copy.Shape();
+    safeDelete(copy, reader);
     try { oc.FS.unlink('/import.iges'); } catch { /* ignore */ }
     return shape;
   } catch (e) {

@@ -669,7 +669,6 @@ async function parsePicture(picEl, slideRelMap, zip) {
     const embedId = blip.getAttribute('r:embed') || blip.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'embed');
     if (!embedId || !slideRelMap[embedId]) return null;
 
-    const imgPath = 'ppt/slides/' + slideRelMap[embedId].replace(/^\.\.\//, '../').replace(/^\.\.\//, '');
     // Normalize path: resolve ../
     const normalizedPath = normalizePptxPath('ppt/slides/', slideRelMap[embedId]);
 
@@ -689,7 +688,11 @@ async function parsePicture(picEl, slideRelMap, zip) {
     if (ext2) {
       const w = emuToPx(ext2.getAttribute('cx'));
       const h = emuToPx(ext2.getAttribute('cy'));
-      if (w > 0) styleStr = `width:${Math.min(w, 800)}px;max-width:100%`;
+      if (w > 0 && h > 0) {
+        styleStr = `width:${Math.min(w, 800)}px;height:${Math.min(h, 600)}px;max-width:100%;object-fit:contain`;
+      } else if (w > 0) {
+        styleStr = `width:${Math.min(w, 800)}px;max-width:100%`;
+      }
     }
 
     return `<img src="data:${mime};base64,${imgData}" style="${styleStr}" alt="Slide image">`;

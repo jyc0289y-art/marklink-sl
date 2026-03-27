@@ -93,12 +93,14 @@ export function initSlideEditor() {
 function bindEvents() {
   // Save content on input
   canvasEl.addEventListener('input', () => {
+    if (!slides[activeSlideIdx]) return;
     slides[activeSlideIdx].content = getCleanCanvasContent();
     updateThumb(activeSlideIdx);
   });
 
   // Notes (contenteditable div or textarea)
   notesEl?.addEventListener('input', () => {
+    if (!slides[activeSlideIdx]) return;
     slides[activeSlideIdx].notes = notesEl.tagName === 'TEXTAREA' ? notesEl.value : notesEl.innerHTML;
   });
 
@@ -456,6 +458,7 @@ function getCleanCanvasContent() {
 }
 
 function saveCurrentSlide() {
+  if (!slides[activeSlideIdx]) return;
   slides[activeSlideIdx].content = getCleanCanvasContent();
   if (notesEl) {
     slides[activeSlideIdx].notes = notesEl.tagName === 'TEXTAREA' ? (notesEl.value || '') : (notesEl.innerHTML || '');
@@ -463,6 +466,7 @@ function saveCurrentSlide() {
 }
 
 function loadSlide(idx) {
+  if (idx < 0 || idx >= slides.length) return;
   activeSlideIdx = idx;
   const slide = slides[idx];
   canvasEl.innerHTML = slide.content;
@@ -645,6 +649,7 @@ async function exportSlideAsImage() {
  */
 function startPresentation() {
   saveCurrentSlide();
+  morphPreviousSlide = null; // Reset morph state for fresh presentation
   let presIdx = activeSlideIdx;
 
   const overlay = document.createElement('div');
@@ -992,6 +997,10 @@ export function getSlidesData() {
 
 /** Set slides data (from file load) */
 export function setSlidesData(newSlides) {
+  if (!Array.isArray(newSlides) || newSlides.length === 0) {
+    console.warn('setSlidesData called with empty or invalid data');
+    return;
+  }
   slides = newSlides;
   activeSlideIdx = 0;
   renderPanel();
@@ -2545,10 +2554,10 @@ function pushSlideUndo() {
 function slideUndo() {
   if (_slideUndoStack.length === 0) return;
   const state = _slideUndoStack.pop();
-  // Save current state for redo
+  // Save current state of the TARGET slide (not activeSlideIdx) for redo
   _slideRedoStack.push({
-    idx: activeSlideIdx,
-    content: slides[activeSlideIdx]?.content || '',
+    idx: state.idx,
+    content: slides[state.idx]?.content || '',
   });
   slides[state.idx].content = state.content;
   if (state.idx === activeSlideIdx) {
@@ -2561,9 +2570,10 @@ function slideUndo() {
 function slideRedo() {
   if (_slideRedoStack.length === 0) return;
   const state = _slideRedoStack.pop();
+  // Save current state of the TARGET slide for undo
   _slideUndoStack.push({
-    idx: activeSlideIdx,
-    content: slides[activeSlideIdx]?.content || '',
+    idx: state.idx,
+    content: slides[state.idx]?.content || '',
   });
   slides[state.idx].content = state.content;
   if (state.idx === activeSlideIdx) {
@@ -3250,10 +3260,8 @@ export function initSlideEditorEnhanced() {
     // Delete selected objects — only when NOT editing text inside canvas
     if (e.key === 'Delete' || e.key === 'Backspace') {
       const sel = window.getSelection();
-      const isEditingText = canvasEl && canvasEl.contains(document.activeElement) &&
-        sel && sel.type !== 'None' && !sel.isCollapsed === false;
-      // Allow delete if shapes are selected AND user is not actively typing in the canvas
-      // (i.e., the canvas doesn't have a text cursor / collapsed selection inside it)
+      // Check if user has a text cursor (collapsed selection) inside the canvas,
+      // which means they are editing text and Delete/Backspace should work normally.
       const isTextCursorInCanvas = canvasEl && canvasEl.contains(document.activeElement) &&
         sel && sel.rangeCount > 0 && sel.isCollapsed;
       if (slideSelectedObjects.length > 0 && !isTextCursorInCanvas) {
@@ -3327,7 +3335,10 @@ export function initSlideEditorEnhanced() {
 
     // Ctrl/Cmd + V = paste copied shapes
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'v') {
-      if (_slideClipboard.length > 0 && canvasEl && document.activeElement !== canvasEl) {
+      // Allow paste when shapes are in clipboard and user is NOT editing text in canvas
+      const pasteTextCursor = canvasEl && canvasEl.contains(document.activeElement) &&
+        window.getSelection()?.rangeCount > 0 && window.getSelection().isCollapsed;
+      if (_slideClipboard.length > 0 && canvasEl && !pasteTextCursor) {
         e.preventDefault();
         pushSlideUndo();
         clearObjectSelection();
@@ -4926,12 +4937,7 @@ function toggleSlideView() {
    Wire up Morph transition in presentation mode
    ═══════════════════════════════════════════════════════════════ */
 
-// Patch the existing startPresentation transition map to include morph
-const _origStartPresentation = startPresentation;
-
-// We need to override the showSlide function inside startPresentation
-// Since we can't directly patch inside a closure, we'll handle morph
-// by hooking into the transition mechanism via a flag
+// Morph transition state — reset at start of each presentation
 let morphPreviousSlide = null;
 
 
@@ -5094,11 +5100,16 @@ export function destroySlideEditor() {
     '.slide-shape-menu',
     '.slide-align-menu',
     '.slide-anim-panel',
+    '.slide-anim-timeline-panel',
+    '.anim-tl-add-dialog',
     '.slide-draw-toolbar',
     '.slide-layout-picker',
+    '.slide-shape-lib-panel',
     '.slide-sorter-overlay',
     '.sorter-ctx-menu',
+    '.slide-context-menu',
     '.master-slide-dialog',
+    '.slide-master-editor-overlay',
     '.gradient-bg-dialog',
     '.pres-timer-dialog',
     '.transition-preview-popup',
@@ -5117,4 +5128,14 @@ export function destroySlideEditor() {
   _slideClipboard = [];
   _slideUndoStack.length = 0;
   _slideRedoStack.length = 0;
+  morphPreviousSlide = null;
+  slideGridVisible = false;
+  snapGridEnabled = false;
+  animTimelineOpen = false;
+  slideIsResizing = false;
+  slideIsRotating = false;
+  slideIsDragging = false;
+  currentSlideView = 'normal';
+  sorterSelectedIndices.clear();
+  sorterClipboard = [];
 }

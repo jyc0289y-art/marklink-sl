@@ -613,19 +613,20 @@ const MAX_HISTORY_ENTRIES = 50;
 let historyEntries = [{ action: 'Open Image', timestamp: new Date() }];
 
 function addHistoryEntry(action) {
-  // Remove future entries if we're not at the end
-  if (historyIndex < history.length - 1) {
-    historyEntries = historyEntries.slice(0, historyIndex + 1);
-  }
-  // Also push to param history
-  pushHistory();
+  // Truncate future entries from both arrays before appending
+  history = history.slice(0, historyIndex + 1);
+  historyEntries = historyEntries.slice(0, historyIndex + 1);
+  // Push new state to both arrays
+  history.push(cloneParams(currentParams));
   historyEntries.push({ action, timestamp: new Date() });
-  // Trim to max
-  if (historyEntries.length > MAX_HISTORY_ENTRIES) {
+  historyIndex = history.length - 1;
+  // Trim to max (from both arrays equally)
+  while (history.length > MAX_HISTORY_ENTRIES) {
     historyEntries.shift();
     history.shift();
     historyIndex = Math.max(0, historyIndex - 1);
   }
+  updateUndoRedo();
   renderHistoryPanel();
 }
 
@@ -929,7 +930,7 @@ function bindToolbar() {
     imageInfo.width = imageInfo.height;
     imageInfo.height = tmp;
     compositeAndRender();
-    pushHistory();
+    addHistoryEntry('Rotate 90° CW');
     updateInfoBar();
     renderLayersStack();
   });
@@ -941,7 +942,7 @@ function bindToolbar() {
       }
     }
     compositeAndRender();
-    pushHistory();
+    addHistoryEntry('Flip Horizontal');
     renderLayersStack();
   });
   document.getElementById('photo-flip-v')?.addEventListener('click', () => {
@@ -952,7 +953,7 @@ function bindToolbar() {
       }
     }
     compositeAndRender();
-    pushHistory();
+    addHistoryEntry('Flip Vertical');
     renderLayersStack();
   });
 
@@ -1397,7 +1398,7 @@ function applyCrop() {
   imageInfo.width = sw;
   imageInfo.height = sh;
   compositeAndRender();
-  pushHistory();
+  addHistoryEntry(`Crop to ${sw}×${sh}`);
   cancelCrop();
   updateInfoBar();
   renderLayersStack();
@@ -1478,7 +1479,7 @@ function showResizeDialog() {
       imageInfo.width = nw;
       imageInfo.height = nh;
       compositeAndRender();
-      pushHistory();
+      addHistoryEntry(`Resize to ${nw}×${nh}`);
       updateInfoBar();
       renderLayersStack();
     }
@@ -1542,14 +1543,20 @@ function addTextItem(layer) {
     oy = e.offsetY;
     e.preventDefault();
   });
-  window.addEventListener('mousemove', (e) => {
+  const onMoveText = (e) => {
     if (!dragging) return;
     const rect = layer.getBoundingClientRect();
     item.style.left = (e.clientX - rect.left - ox) + 'px';
     item.style.top = (e.clientY - rect.top - oy) + 'px';
     item.style.transform = 'none';
-  });
-  window.addEventListener('mouseup', () => { dragging = false; });
+  };
+  const onUpText = () => { dragging = false; };
+  window.addEventListener('mousemove', onMoveText);
+  window.addEventListener('mouseup', onUpText);
+  _managedListeners.push(
+    { target: window, event: 'mousemove', handler: onMoveText },
+    { target: window, event: 'mouseup', handler: onUpText }
+  );
 
   textItems.push(item);
 
@@ -2275,13 +2282,16 @@ function showBatchModal() {
             tctx.drawImage(img, 0, 0, w, h);
 
             // Apply current params via temp engine
-            const tempEngine = new WebGLEngine(document.createElement('canvas'));
+            const tempCanvas = document.createElement('canvas');
+            const tempEngine = new WebGLEngine(tempCanvas);
             tempEngine.loadImage(tmpCanvas);
             tempEngine.render(currentParams);
 
             const resultCanvas = tempEngine.getCanvas();
             const mimeType = `image/${format}`;
             resultCanvas.toBlob(blob => {
+              // Clean up temp engine to prevent WebGL context leak
+              try { tempEngine.destroy(); } catch (_) { /* ignore */ }
               const baseName = batchFiles[i].name.replace(/\.[^.]+$/, '');
               downloadBlob(blob, `${baseName}_edit.${format}`);
               resolve();
@@ -2477,8 +2487,9 @@ function exportImage() {
   const existing = document.querySelector('.photo-export-modal');
   if (existing) { existing.remove(); return; }
 
-  // Flatten all layers for export (use composited result if multiple layers)
-  const canvas = layers.length > 1 ? compositeLayersToCanvas() || engine.getCanvas() : engine.getCanvas();
+  // Flatten all layers for export — apply WebGL params to get the final rendered result
+  // engine.getCanvas() already has the current render with all params applied
+  const canvas = engine.getCanvas();
 
   const modal = document.createElement('div');
   modal.className = 'photo-resize-modal photo-export-modal';
@@ -2705,6 +2716,7 @@ function toggleSplitView() {
     if (divider) divider.style.display = 'none';
     if (beforeCanvas) beforeCanvas.style.display = 'none';
     document.querySelectorAll('.photo-split-label').forEach(l => l.remove());
+    if (_splitDragCleanup) { _splitDragCleanup(); _splitDragCleanup = null; }
   }
 }
 
@@ -2763,9 +2775,12 @@ function updateSplitView() {
   afterLabel.style.right = (ar.width - offsetLeft - cr.width + 8) + 'px';
 }
 
+let _splitDragCleanup = null;
+
 function bindSplitDrag() {
   const divider = document.getElementById('photo-split-divider');
   if (!divider) return;
+  if (_splitDragCleanup) { _splitDragCleanup(); _splitDragCleanup = null; }
 
   let dragging = false;
 
@@ -2787,6 +2802,15 @@ function bindSplitDrag() {
   window.addEventListener('touchmove', onMove, { passive: false });
   window.addEventListener('mouseup', onUp);
   window.addEventListener('touchend', onUp);
+
+  _splitDragCleanup = () => {
+    divider.removeEventListener('mousedown', onDown);
+    divider.removeEventListener('touchstart', onDown);
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('touchmove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    window.removeEventListener('touchend', onUp);
+  };
 }
 
 /* ==================== Image Histogram ==================== */
@@ -2890,8 +2914,10 @@ function toggleCloneMode() {
     const cr = canvas.getBoundingClientRect();
     const ar = area.getBoundingClientRect();
 
-    cc.width = cr.width;
-    cc.height = cr.height;
+    const srcCanvas = engine.getCanvas();
+    // Use actual image resolution for the clone canvas, CSS sizes it to match display
+    cc.width = srcCanvas.width;
+    cc.height = srcCanvas.height;
     cc.style.display = 'block';
     cc.style.left = (cr.left - ar.left) + 'px';
     cc.style.top = (cr.top - ar.top) + 'px';
@@ -2902,7 +2928,6 @@ function toggleCloneMode() {
     const cloneCtx = cc.getContext('2d');
     cloneSourceSet = false;
 
-    const srcCanvas = engine.getCanvas();
     const workCanvas = document.createElement('canvas');
     workCanvas.width = srcCanvas.width;
     workCanvas.height = srcCanvas.height;
@@ -2911,7 +2936,7 @@ function toggleCloneMode() {
     cc._scaleX = srcCanvas.width / cr.width;
     cc._scaleY = srcCanvas.height / cr.height;
 
-    cloneCtx.drawImage(srcCanvas, 0, 0, cc.width, cc.height);
+    cloneCtx.drawImage(srcCanvas, 0, 0);
 
     let painting = false;
     let lastX, lastY;
@@ -2921,7 +2946,7 @@ function toggleCloneMode() {
         cloneSourceX = e.offsetX;
         cloneSourceY = e.offsetY;
         cloneSourceSet = true;
-        cloneCtx.drawImage(cc._workCanvas, 0, 0, cc.width, cc.height);
+        cloneCtx.drawImage(cc._workCanvas, 0, 0);
         cloneCtx.strokeStyle = '#0f0';
         cloneCtx.lineWidth = 2;
         cloneCtx.beginPath();
@@ -2981,7 +3006,7 @@ function toggleCloneMode() {
         }
       }
       workCtx.putImageData(destData, Math.max(0, tx - halfBrush), Math.max(0, ty - halfBrush));
-      cloneCtx.drawImage(cc._workCanvas, 0, 0, cc.width, cc.height);
+      cloneCtx.drawImage(cc._workCanvas, 0, 0);
 
       lastX = x;
       lastY = y;
@@ -3055,8 +3080,10 @@ function toggleSpotHealMode() {
     const cr = canvas.getBoundingClientRect();
     const ar = area.getBoundingClientRect();
 
-    hc.width = cr.width;
-    hc.height = cr.height;
+    const srcCanvas = engine.getCanvas();
+    // Use actual image resolution for the heal canvas
+    hc.width = srcCanvas.width;
+    hc.height = srcCanvas.height;
     hc.style.display = 'block';
     hc.style.left = (cr.left - ar.left) + 'px';
     hc.style.top = (cr.top - ar.top) + 'px';
@@ -3066,7 +3093,6 @@ function toggleSpotHealMode() {
 
     const healCtx = hc.getContext('2d');
 
-    const srcCanvas = engine.getCanvas();
     const workCanvas = document.createElement('canvas');
     workCanvas.width = srcCanvas.width;
     workCanvas.height = srcCanvas.height;
@@ -3075,14 +3101,14 @@ function toggleSpotHealMode() {
     hc._scaleX = srcCanvas.width / cr.width;
     hc._scaleY = srcCanvas.height / cr.height;
 
-    healCtx.drawImage(srcCanvas, 0, 0, hc.width, hc.height);
+    healCtx.drawImage(srcCanvas, 0, 0);
 
     hc.onmousedown = (e) => {
       const x = Math.round(e.offsetX * hc._scaleX);
       const y = Math.round(e.offsetY * hc._scaleY);
       const radius = Math.round(cloneBrushSize * hc._scaleX / 2);
       spotHealAt(workCanvas, x, y, radius);
-      healCtx.drawImage(workCanvas, 0, 0, hc.width, hc.height);
+      healCtx.drawImage(workCanvas, 0, 0);
     };
 
     showCloneToolbar(hc, 'heal');
@@ -3887,11 +3913,18 @@ function showBeforeAfterModal() {
 
   let sliderDragging = false;
   slider.addEventListener('mousedown', () => { sliderDragging = true; });
-  window.addEventListener('mousemove', (e) => { if (sliderDragging) updateSlider(e.clientX); });
-  window.addEventListener('mouseup', () => { sliderDragging = false; });
+  const onBaMove = (e) => { if (sliderDragging) updateSlider(e.clientX); };
+  const onBaUp = () => { sliderDragging = false; };
+  window.addEventListener('mousemove', onBaMove);
+  window.addEventListener('mouseup', onBaUp);
   container.addEventListener('click', (e) => updateSlider(e.clientX));
-  modal.querySelector('button').addEventListener('click', () => modal.remove());
-  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  const cleanupBaModal = () => {
+    window.removeEventListener('mousemove', onBaMove);
+    window.removeEventListener('mouseup', onBaUp);
+    modal.remove();
+  };
+  modal.querySelector('button').addEventListener('click', cleanupBaModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) cleanupBaModal(); });
 }
 
 /* ==================== Keyboard Shortcuts (Undo/Redo) ==================== */
@@ -4112,6 +4145,7 @@ export function destroyPhotoEditor() {
   gifFrames = [];
   cropActive = false;
   if (_cropDragCleanup) { _cropDragCleanup(); _cropDragCleanup = null; }
+  if (_splitDragCleanup) { _splitDragCleanup(); _splitDragCleanup = null; }
   textMode = false;
   drawMode = false;
   drawCtx = null;

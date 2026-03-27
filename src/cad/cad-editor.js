@@ -244,8 +244,54 @@ export function destroyCadEditor() {
   occtShapes.clear();
   occtEnabled = false;
 
-  // 10. Reset remaining state
+  // 10. Dispose view cube resources
+  if (viewCubeRenderer) {
+    viewCubeRenderer.dispose();
+    if (viewCubeRenderer.domElement && viewCubeRenderer.domElement.parentNode) {
+      viewCubeRenderer.domElement.parentNode.removeChild(viewCubeRenderer.domElement);
+    }
+    viewCubeRenderer = null;
+  }
+  if (viewCubeScene) {
+    viewCubeScene.traverse((child) => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (child.material.map) child.material.map.dispose();
+        child.material.dispose();
+      }
+    });
+    viewCubeScene = null;
+  }
+  viewCubeCamera = null;
+
+  // 11. Clean up measure lines, clipping helper, sketch grid
+  clearMeasureLines();
+  if (clippingHelper) {
+    if (clippingHelper.geometry) clippingHelper.geometry.dispose();
+    if (clippingHelper.material) clippingHelper.material.dispose();
+    clippingHelper = null;
+  }
+  clippingPlane = null;
+  sectionActive = false;
+  hideSketchGrid();
+
+  // 12. Dispose geometries stored in undo/redo states
+  undoStack.forEach((state) => {
+    if (state.objects) state.objects.forEach((o) => { if (o.geometry) o.geometry.dispose(); });
+  });
+  redoStack.forEach((state) => {
+    if (state.objects) state.objects.forEach((o) => { if (o.geometry) o.geometry.dispose(); });
+  });
+
+  // 13. Clean up box select div
+  if (boxSelectDiv) {
+    if (boxSelectDiv.parentNode) boxSelectDiv.parentNode.removeChild(boxSelectDiv);
+    boxSelectDiv = null;
+  }
+
+  // 14. Reset remaining state
   selectedObject = null;
+  multiSelection = [];
   gridHelper = null;
   axesHelper = null;
   camera = null;
@@ -253,6 +299,13 @@ export function destroyCadEditor() {
   undoStack = [];
   redoStack = [];
   objectCounter = 0;
+  featureTree = [];
+  featureCounter = 0;
+  allSketches = [];
+  sketchCounter = 0;
+  clipboardData = null;
+  measurementMode = false;
+  measurePoints = [];
   viewportEl = null;
   canvasEl = null;
   isInitialized = false;
@@ -588,6 +641,7 @@ function deleteSelected() {
     }
   }
 
+  multiSelection = multiSelection.filter((o) => o !== selectedObject);
   selectedObject = null;
   clearPropertiesPanel();
   updateSceneTree();
@@ -610,9 +664,9 @@ function duplicateSelected() {
   if (srcShape && OCCT.isOCCTReady()) {
     try {
       const oc = OCCT.getOC();
-      const copy = new oc.BRepBuilderAPI_Copy_2(srcShape, true, false);
-      const clonedShape = copy.Shape();
-      copy.delete();
+      const copier = new oc.BRepBuilderAPI_Copy_2(srcShape, true, false);
+      const clonedShape = copier.Shape();
+      copier.delete();
       occtShapes.set(clone.uuid, clonedShape);
     } catch {
       // If copy fails, mark clone as non-BRep
@@ -658,8 +712,8 @@ function pushUndo(action, obj) {
 
 function restoreState(state) {
   // Remove all current objects
+  transformControls.detach();
   sceneObjects.forEach((o) => {
-    transformControls.detach();
     scene.remove(o);
     // Clean up OCCT shape references (undo loses B-Rep precision)
     const occtShape = occtShapes.get(o.uuid);
@@ -668,10 +722,14 @@ function restoreState(state) {
       occtShapes.delete(o.uuid);
     }
     if (o.geometry) o.geometry.dispose();
-    if (o.material) o.material.dispose();
+    if (o.material) {
+      if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
+      else o.material.dispose();
+    }
   });
   sceneObjects = [];
   selectedObject = null;
+  multiSelection = [];
 
   // Recreate from state
   state.objects.forEach((data) => {
@@ -2108,8 +2166,17 @@ function updateFeatureTree() {
               if (mesh === selectedObject) { transformControls.detach(); selectedObject = null; }
               scene.remove(mesh);
               sceneObjects = sceneObjects.filter((o) => o !== mesh);
+              // Dispose OCCT B-Rep shape (free WASM memory)
+              const occtShape = occtShapes.get(mesh.uuid);
+              if (occtShape) {
+                try { if (typeof occtShape.delete === 'function') occtShape.delete(); } catch { /* already freed */ }
+                occtShapes.delete(mesh.uuid);
+              }
               if (mesh.geometry) mesh.geometry.dispose();
-              if (mesh.material) mesh.material.dispose();
+              if (mesh.material) {
+                if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
+                else mesh.material.dispose();
+              }
             }
           }
           if (feat.type === 'sketch') {
@@ -3773,9 +3840,17 @@ function clearScene() {
   sceneObjects = [];
   selectedObject = null;
   objectCounter = 0;
+  multiSelection = [];
+
+  // Reset feature tree and sketches
+  featureTree = [];
+  featureCounter = 0;
+  allSketches = [];
+  sketchCounter = 0;
 
   clearPropertiesPanel();
   updateSceneTree();
+  updateFeatureTree();
   updateStatusBar('Scene cleared');
 }
 

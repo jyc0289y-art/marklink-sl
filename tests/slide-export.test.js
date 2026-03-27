@@ -164,3 +164,97 @@ describe('THEMES constant', () => {
     expect(THEMES.dark).toContain('#1a1a2e');
   });
 });
+
+/* ─── escXmlExport: replicated from slide-file.js ─── */
+const escXmlExport = (s) => String(s)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&apos;');
+
+describe('escXmlExport', () => {
+  it('escapes ampersand', () => {
+    expect(escXmlExport('a&b')).toBe('a&amp;b');
+  });
+
+  it('escapes < and >', () => {
+    expect(escXmlExport('<tag>')).toBe('&lt;tag&gt;');
+  });
+
+  it('escapes quotes', () => {
+    expect(escXmlExport('say "hello"')).toBe('say &quot;hello&quot;');
+    expect(escXmlExport("it's")).toBe('it&apos;s');
+  });
+
+  it('handles empty string', () => {
+    expect(escXmlExport('')).toBe('');
+  });
+
+  it('handles non-string input', () => {
+    expect(escXmlExport(42)).toBe('42');
+    expect(escXmlExport(null)).toBe('null');
+  });
+
+  it('handles special characters in presentation content', () => {
+    expect(escXmlExport('10 > 5 & 3 < 7')).toBe('10 &gt; 5 &amp; 3 &lt; 7');
+  });
+});
+
+/* ─── ptToEmu ─── */
+const ptToEmu = (pt) => Math.round(pt * 12700);
+
+describe('ptToEmu — point to EMU conversion', () => {
+  it('converts 1pt to 12700 EMU', () => {
+    expect(ptToEmu(1)).toBe(12700);
+  });
+
+  it('converts common font sizes', () => {
+    expect(ptToEmu(12)).toBe(152400);
+    expect(ptToEmu(44)).toBe(558800); // h1 size in hundredths
+  });
+
+  it('handles 0', () => {
+    expect(ptToEmu(0)).toBe(0);
+  });
+
+  it('handles fractional points', () => {
+    expect(ptToEmu(0.5)).toBe(6350);
+  });
+});
+
+/* ─── Slide validation edge cases ─── */
+describe('validateSlides — edge cases', () => {
+  it('handles slides with extra unknown properties (does not carry them over)', () => {
+    const result = validateSlides([{ content: 'test', unknownProp: 'value' }]);
+    expect(result[0].content).toBe('test');
+    expect(result[0]).not.toHaveProperty('unknownProp');
+  });
+
+  it('handles slide with NaN transitionDuration (typeof NaN === "number")', () => {
+    const result = validateSlides([{ transitionDuration: NaN }]);
+    expect(result[0].transitionDuration).toBeNaN(); // typeof NaN === 'number', so it passes through
+  });
+
+  it('handles slide with Infinity transitionDuration', () => {
+    const result = validateSlides([{ transitionDuration: Infinity }]);
+    expect(result[0].transitionDuration).toBe(Infinity); // Infinity IS typeof number
+  });
+
+  it('handles slide with negative transitionDuration (preserves as-is)', () => {
+    const result = validateSlides([{ transitionDuration: -1 }]);
+    expect(result[0].transitionDuration).toBe(-1);
+  });
+
+  it('handles very large slide arrays', () => {
+    const largeArray = Array.from({ length: 1000 }, (_, i) => ({ content: `Slide ${i}` }));
+    const result = validateSlides(largeArray);
+    expect(result).toHaveLength(1000);
+    expect(result[999].content).toBe('Slide 999');
+  });
+
+  it('handles content with special HTML characters', () => {
+    const result = validateSlides([{ content: '<h1>Title & Subtitle</h1>' }]);
+    expect(result[0].content).toBe('<h1>Title & Subtitle</h1>');
+  });
+});
