@@ -10,7 +10,7 @@ function evalExpression(expr) {
     .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-')
     .replace(/π/g, `(${Math.PI})`)
     .replace(/\^/g, '**')
-    .replace(/(?<![a-zA-Z])e(?![a-zA-Z\d.])/g, `(${Math.E})`)
+    .replace(/(?<![a-zA-Z\d.])e(?![a-zA-Z\d.])/g, `(${Math.E})`)
     .replace(/mod/g, '%');
   // Insert implicit multiplication
   clean = clean
@@ -127,27 +127,36 @@ describe('Memory operations (simulated)', () => {
 
 // ─── Graph Expression Parsing ───
 
-describe('Graph expression parsing', () => {
-  // Replicate the graph expression evaluation pattern from calculator.js
-  function evalGraphExpr(exprStr, x) {
+// Replicate the graph expression evaluation pattern from calculator.js (top-level for reuse)
+function evalGraphExpr(exprStr, x) {
     let clean = exprStr
       .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-')
       .replace(/\bsin\b/g, 'Math.sin').replace(/\bcos\b/g, 'Math.cos')
-      .replace(/\btan\b/g, 'Math.tan').replace(/\bsqrt\b/g, 'Math.sqrt')
-      .replace(/\babs\b/g, 'Math.abs').replace(/\blog\b/g, 'Math.log10')
-      .replace(/\bln\b/g, 'Math.log').replace(/\bexp\b/g, 'Math.exp')
-      .replace(/\bπ\b|π/g, 'Math.PI')
-      .replace(/\^/g, '**')
-      .replace(/(?<![a-zA-Z.])e(?![a-zA-Z\d.])/g, 'Math.E');
-    // Implicit multiplication with x
-    clean = clean.replace(/(\d)x/g, '$1*x').replace(/x(\d)/g, 'x*$1');
+      .replace(/\btan\b/g, 'Math.tan')
+      .replace(/\basin\b/g, 'Math.asin').replace(/\bacos\b/g, 'Math.acos').replace(/\batan\b/g, 'Math.atan')
+      .replace(/\bln\b/g, 'Math.log').replace(/\blog\b/g, 'Math.log10')
+      .replace(/\bsqrt\b/g, 'Math.sqrt').replace(/\bcbrt\b/g, 'Math.cbrt')
+      .replace(/\babs\b/g, 'Math.abs').replace(/\bexp\b/g, 'Math.exp')
+      .replace(/π/g, `(${Math.PI})`).replace(/\bpi\b/gi, `(${Math.PI})`)
+      .replace(/(?<![a-zA-Z.\d])e(?![a-zA-Z\d.])/g, 'Math.E')
+      .replace(/\^/g, '**');
+    // Implicit multiplication: 2x -> 2*x, 2sin -> 2*sin, )x -> )*x, x( -> x*(
+    clean = clean
+      .replace(/(\d)([a-zA-Z(])/g, '$1*$2')
+      .replace(/\)([a-zA-Z\d(])/g, ')*$1')
+      .replace(/([a-zA-Z\d])\(/g, (match, p1) => {
+        // Don't insert * before function call parens
+        if (/[a-zA-Z]$/.test(p1)) return match;
+        return p1 + '*(';
+      });
     try {
       return Function('x', `"use strict"; return (${clean})`)(x);
     } catch {
       return NaN;
     }
-  }
+}
 
+describe('Graph expression parsing', () => {
   it('evaluates simple linear: x at x=5', () => {
     expect(evalGraphExpr('x', 5)).toBe(5);
   });
@@ -216,5 +225,105 @@ describe('factorial extended', () => {
 
   it('computes factorial(-5) as NaN', () => {
     expect(factorial(-5)).toBeNaN();
+  });
+});
+
+// ─── e constant vs scientific notation ───
+
+describe('e constant edge cases', () => {
+  it('standalone e evaluates to Math.E', () => {
+    const result = evalExpression('e');
+    expect(result).toBeCloseTo(Math.E, 8);
+  });
+
+  it('e after operator evaluates to Math.E: 2+e', () => {
+    const result = evalExpression('2+e');
+    expect(result).toBeCloseTo(2 + Math.E, 8);
+  });
+
+  it('e in multiplication context: e×2', () => {
+    const result = evalExpression('e×2');
+    expect(result).toBeCloseTo(Math.E * 2, 8);
+  });
+
+  it('e^2 evaluates correctly', () => {
+    const result = evalExpression('e^2');
+    expect(result).toBeCloseTo(Math.E ** 2, 8);
+  });
+
+  it('does not replace e inside words like "eval"', () => {
+    // "eval" should be blocked by the whitelist
+    expect(evalExpression('eval')).toBeNull();
+  });
+});
+
+// ─── Division by zero and overflow ───
+
+describe('Division by zero and edge cases', () => {
+  it('division by zero returns Infinity (caught by isFinite)', () => {
+    const result = evalExpression('1÷0');
+    expect(result).toBe(Infinity);
+  });
+
+  it('0 divided by 0 returns NaN', () => {
+    const result = evalExpression('0÷0');
+    expect(result).toBeNaN();
+  });
+
+  it('very large exponent returns Infinity', () => {
+    const result = evalExpression('10^1000');
+    expect(result).toBe(Infinity);
+  });
+});
+
+// ─── Security: input sanitization ───
+
+describe('Security: expression sanitization', () => {
+  it('blocks alert()', () => {
+    expect(evalExpression('alert(1)')).toBeNull();
+  });
+
+  it('blocks constructor access', () => {
+    expect(evalExpression('constructor')).toBeNull();
+  });
+
+  it('blocks window reference', () => {
+    expect(evalExpression('window')).toBeNull();
+  });
+
+  it('blocks fetch', () => {
+    expect(evalExpression('fetch')).toBeNull();
+  });
+
+  it('allows valid arithmetic with parens', () => {
+    expect(evalExpression('(2+3)×(4+5)')).toBe(45);
+  });
+});
+
+// ─── Graph expression with unicode operators ───
+
+describe('Graph expression with unicode operators', () => {
+  it('handles × in graph expression', () => {
+    expect(evalGraphExpr('2×x', 3)).toBe(6);
+  });
+
+  it('handles ÷ in graph expression', () => {
+    expect(evalGraphExpr('6÷x', 2)).toBe(3);
+  });
+
+  it('handles π symbol in graph expression', () => {
+    expect(evalGraphExpr('π', 0)).toBeCloseTo(Math.PI, 8);
+  });
+
+  it('handles asin in graph expression', () => {
+    expect(evalGraphExpr('asin(x)', 1)).toBeCloseTo(Math.PI / 2, 8);
+  });
+
+  it('handles cbrt in graph expression', () => {
+    expect(evalGraphExpr('cbrt(x)', 27)).toBeCloseTo(3, 8);
+  });
+
+  it('handles pi text in graph expression', () => {
+    expect(evalGraphExpr('pi', 0)).toBeCloseTo(Math.PI, 8);
   });
 });

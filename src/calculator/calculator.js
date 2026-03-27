@@ -301,7 +301,7 @@ function evalExpression(expr) {
     .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-')
     .replace(/π/g, `(${Math.PI})`)
     .replace(/\^/g, '**')
-    .replace(/(?<![a-zA-Z])e(?![a-zA-Z\d.])/g, `(${Math.E})`)
+    .replace(/(?<![a-zA-Z\d.])e(?![a-zA-Z\d.])/g, `(${Math.E})`)
     .replace(/mod/g, '%');
   // Insert implicit multiplication: 2(3) -> 2*(3), (2)(3) -> (2)*(3), 5π -> 5*(π)
   clean = clean
@@ -488,12 +488,14 @@ function resizeGraphCanvas() {
 
 function evalGraphExpr(exprStr, x) {
   let clean = exprStr
+    .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-')
+    .replace(/π/g, `(${Math.PI})`).replace(/\bpi\b/gi, `(${Math.PI})`)
     .replace(/\bsin\b/g, 'Math.sin').replace(/\bcos\b/g, 'Math.cos').replace(/\btan\b/g, 'Math.tan')
     .replace(/\basin\b/g, 'Math.asin').replace(/\bacos\b/g, 'Math.acos').replace(/\batan\b/g, 'Math.atan')
     .replace(/\bln\b/g, 'Math.log').replace(/\blog\b/g, 'Math.log10')
     .replace(/\bsqrt\b/g, 'Math.sqrt').replace(/\bcbrt\b/g, 'Math.cbrt')
     .replace(/\babs\b/g, 'Math.abs').replace(/\bexp\b/g, 'Math.exp')
-    .replace(/\bpi\b/gi, 'Math.PI').replace(/(?<![a-zA-Z.])e(?![a-zA-Z\d.])/g, 'Math.E')
+    .replace(/(?<![a-zA-Z.\d])e(?![a-zA-Z\d.])/g, 'Math.E')
     .replace(/\^/g, '**');
   // Implicit multiplication: 2x -> 2*x, 2sin -> 2*sin, )x -> )*x, x( -> x*(
   clean = clean
@@ -2322,12 +2324,14 @@ function init3DSurface() {
 
 function eval3DExpr(exprStr, x, y) {
   let clean = exprStr
+    .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-')
+    .replace(/π/g, `(${Math.PI})`).replace(/\bpi\b/gi, `(${Math.PI})`)
     .replace(/\bsin\b/g, 'Math.sin').replace(/\bcos\b/g, 'Math.cos').replace(/\btan\b/g, 'Math.tan')
     .replace(/\basin\b/g, 'Math.asin').replace(/\bacos\b/g, 'Math.acos').replace(/\batan\b/g, 'Math.atan')
     .replace(/\bln\b/g, 'Math.log').replace(/\blog\b/g, 'Math.log10')
     .replace(/\bsqrt\b/g, 'Math.sqrt').replace(/\bcbrt\b/g, 'Math.cbrt')
     .replace(/\babs\b/g, 'Math.abs').replace(/\bexp\b/g, 'Math.exp')
-    .replace(/\bpi\b/gi, 'Math.PI').replace(/(?<![a-zA-Z.])e(?![a-zA-Z\d.])/g, 'Math.E')
+    .replace(/(?<![a-zA-Z.\d])e(?![a-zA-Z\d.])/g, 'Math.E')
     .replace(/\^/g, '**');
   // Implicit multiplication: 2x -> 2*x, 2sin -> 2*sin
   clean = clean

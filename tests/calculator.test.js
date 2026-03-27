@@ -10,10 +10,16 @@ import { describe, it, expect } from 'vitest';
 function evalExpression(expr) {
   let clean = expr
     .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-')
-    .replace(/π/g, String(Math.PI))
-    .replace(/(?<![a-zA-Z])e(?![a-zA-Z^])/g, String(Math.E))
-    .replace(/mod/g, '%').replace(/\^/g, '**');
-  if (!/^[\d\s+\-*/().%*e]+$/i.test(clean)) return null;
+    .replace(/π/g, `(${Math.PI})`)
+    .replace(/\^/g, '**')
+    .replace(/(?<![a-zA-Z\d.])e(?![a-zA-Z\d.])/g, `(${Math.E})`)
+    .replace(/mod/g, '%');
+  // Insert implicit multiplication: 2(3) -> 2*(3), (2)(3) -> (2)*(3)
+  clean = clean
+    .replace(/(\d)\s*\(/g, '$1*(')
+    .replace(/\)\s*(\d)/g, ')*$1')
+    .replace(/\)\s*\(/g, ')*(');
+  if (!/^[\d\s+\-*/().%]+$/i.test(clean)) return null;
   return Function(`"use strict"; return (${clean})`)();
 }
 

@@ -257,3 +257,288 @@ describe('zoomAt (zoom centered on mouse)', () => {
     expect(result.zoom).toBeLessThanOrEqual(10);
   });
 });
+
+// ── Object bounds ──
+
+function getObjectBounds(obj) {
+  switch (obj.type) {
+    case 'path': {
+      if (!obj.points.length) return null;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      obj.points.forEach((p) => { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); });
+      return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    }
+    case 'line': case 'arrow':
+      return { x: Math.min(obj.x1, obj.x2), y: Math.min(obj.y1, obj.y2), w: Math.abs(obj.x2 - obj.x1), h: Math.abs(obj.y2 - obj.y1) };
+    case 'rect':
+      return { x: obj.x, y: obj.y, w: obj.w, h: obj.h };
+    case 'ellipse':
+      return { x: obj.cx - obj.rx, y: obj.cy - obj.ry, w: obj.rx * 2, h: obj.ry * 2 };
+    case 'polygon': case 'star':
+      return { x: obj.cx - obj.r, y: obj.cy - obj.r, w: obj.r * 2, h: obj.r * 2 };
+    case 'text':
+      return { x: obj.x, y: obj.y - (obj.fontSize || 16), w: (obj.text?.length || 1) * (obj.fontSize || 16) * 0.6, h: (obj.fontSize || 16) * 1.2 };
+    case 'image':
+      return { x: obj.x, y: obj.y, w: obj.w, h: obj.h };
+    case 'group': {
+      if (!obj.children || obj.children.length === 0) return null;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      obj.children.forEach((child) => {
+        const cb = getObjectBounds(child);
+        if (!cb) return;
+        minX = Math.min(minX, cb.x); minY = Math.min(minY, cb.y);
+        maxX = Math.max(maxX, cb.x + cb.w); maxY = Math.max(maxY, cb.y + cb.h);
+      });
+      return minX === Infinity ? null : { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    }
+    default:
+      return null;
+  }
+}
+
+// ── Object position helpers (replicated from draw-editor.js) ──
+
+function getObjPosition(obj) {
+  if (obj.type === 'group') {
+    const b = getObjectBounds(obj);
+    return b ? { x: b.x, y: b.y } : { x: 0, y: 0 };
+  }
+  if (obj.type === 'path') return { x: obj.points[0]?.x || 0, y: obj.points[0]?.y || 0 };
+  if (obj.x1 !== undefined) return { x: obj.x1, y: obj.y1 };
+  if (obj.cx !== undefined) return { x: obj.cx, y: obj.cy };
+  return { x: obj.x || 0, y: obj.y || 0 };
+}
+
+function setObjPosition(obj, pos) {
+  const cur = getObjPosition(obj);
+  const dx = pos.x - cur.x, dy = pos.y - cur.y;
+  if (obj.type === 'group') {
+    (obj.children || []).forEach((child) => {
+      const childPos = getObjPosition(child);
+      setObjPosition(child, { x: childPos.x + dx, y: childPos.y + dy });
+    });
+  } else if (obj.type === 'path') {
+    obj.points.forEach((p) => { p.x += dx; p.y += dy; });
+  } else if (obj.x1 !== undefined) {
+    obj.x1 += dx; obj.y1 += dy; obj.x2 += dx; obj.y2 += dy;
+  } else if (obj.cx !== undefined) {
+    obj.cx += dx; obj.cy += dy;
+  } else {
+    obj.x = (obj.x || 0) + dx; obj.y = (obj.y || 0) + dy;
+  }
+}
+
+describe('getObjectBounds', () => {
+  it('returns bounds for rect', () => {
+    const b = getObjectBounds({ type: 'rect', x: 10, y: 20, w: 100, h: 50 });
+    expect(b).toEqual({ x: 10, y: 20, w: 100, h: 50 });
+  });
+
+  it('returns bounds for ellipse', () => {
+    const b = getObjectBounds({ type: 'ellipse', cx: 50, cy: 50, rx: 30, ry: 20 });
+    expect(b).toEqual({ x: 20, y: 30, w: 60, h: 40 });
+  });
+
+  it('returns bounds for line', () => {
+    const b = getObjectBounds({ type: 'line', x1: 100, y1: 50, x2: 10, y2: 200 });
+    expect(b).toEqual({ x: 10, y: 50, w: 90, h: 150 });
+  });
+
+  it('returns bounds for group by computing child union', () => {
+    const group = {
+      type: 'group', children: [
+        { type: 'rect', x: 10, y: 10, w: 20, h: 20 },
+        { type: 'rect', x: 50, y: 50, w: 30, h: 30 },
+      ],
+    };
+    const b = getObjectBounds(group);
+    expect(b).toEqual({ x: 10, y: 10, w: 70, h: 70 });
+  });
+
+  it('returns null for empty group', () => {
+    expect(getObjectBounds({ type: 'group', children: [] })).toBeNull();
+  });
+
+  it('returns null for path with no points', () => {
+    expect(getObjectBounds({ type: 'path', points: [] })).toBeNull();
+  });
+});
+
+describe('setObjPosition (duplicate offset)', () => {
+  it('offsets a group by moving all children', () => {
+    const group = {
+      type: 'group', children: [
+        { type: 'rect', x: 10, y: 10, w: 20, h: 20 },
+        { type: 'rect', x: 50, y: 50, w: 30, h: 30 },
+      ],
+    };
+    const pos = getObjPosition(group);
+    setObjPosition(group, { x: pos.x + 20, y: pos.y + 20 });
+    expect(group.children[0].x).toBe(30);
+    expect(group.children[0].y).toBe(30);
+    expect(group.children[1].x).toBe(70);
+    expect(group.children[1].y).toBe(70);
+  });
+
+  it('offsets a line by moving both endpoints', () => {
+    const line = { type: 'line', x1: 0, y1: 0, x2: 100, y2: 100 };
+    const pos = getObjPosition(line);
+    setObjPosition(line, { x: pos.x + 10, y: pos.y + 5 });
+    expect(line.x1).toBe(10);
+    expect(line.y1).toBe(5);
+    expect(line.x2).toBe(110);
+    expect(line.y2).toBe(105);
+  });
+
+  it('offsets an ellipse by moving center', () => {
+    const e = { type: 'ellipse', cx: 50, cy: 50, rx: 20, ry: 10 };
+    setObjPosition(e, { x: 70, y: 60 });
+    expect(e.cx).toBe(70);
+    expect(e.cy).toBe(60);
+  });
+
+  it('offsets a path by moving all points', () => {
+    const p = { type: 'path', points: [{ x: 0, y: 0 }, { x: 10, y: 10 }] };
+    setObjPosition(p, { x: 5, y: 5 });
+    expect(p.points[0]).toEqual({ x: 5, y: 5 });
+    expect(p.points[1]).toEqual({ x: 15, y: 15 });
+  });
+});
+
+// ── SVG export helpers ──
+
+function escapeXml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function objectToSVG(obj) {
+  const opacity = obj.opacity !== undefined ? ` opacity="${obj.opacity}"` : '';
+  const stroke = obj.stroke ? ` stroke="${obj.stroke}"` : '';
+  const fill = obj.fill && obj.fill !== 'transparent' ? ` fill="${obj.fill}"` : ' fill="none"';
+  const sw = ` stroke-width="${obj.lineWidth || 2}"`;
+  const lc = ' stroke-linecap="round" stroke-linejoin="round"';
+
+  let rotOpen = '', rotClose = '';
+  if (obj.rotation) {
+    const bounds = getObjectBounds(obj);
+    if (bounds) {
+      const cx = bounds.x + bounds.w / 2;
+      const cy = bounds.y + bounds.h / 2;
+      const deg = obj.rotation * (180 / Math.PI);
+      rotOpen = `<g transform="rotate(${deg},${cx},${cy})">`;
+      rotClose = '</g>';
+    }
+  }
+
+  let svgContent = '';
+  switch (obj.type) {
+    case 'rect':
+      svgContent = `<rect x="${obj.x}" y="${obj.y}" width="${obj.w}" height="${obj.h}"${stroke}${fill}${sw}${opacity}/>`;
+      break;
+    case 'ellipse':
+      svgContent = `<ellipse cx="${obj.cx}" cy="${obj.cy}" rx="${obj.rx}" ry="${obj.ry}"${stroke}${fill}${sw}${opacity}/>`;
+      break;
+    case 'line':
+      svgContent = `<line x1="${obj.x1}" y1="${obj.y1}" x2="${obj.x2}" y2="${obj.y2}"${stroke}${sw}${lc}${opacity}/>`;
+      break;
+    case 'text':
+      svgContent = `<text x="${obj.x}" y="${obj.y}" font-size="${obj.fontSize || 16}" font-family="${obj.fontFamily || 'Arial'}" fill="${obj.stroke || '#000'}"${opacity}>${escapeXml(obj.text || '')}</text>`;
+      break;
+    case 'image':
+      if (obj.imgSrc) {
+        svgContent = `<image x="${obj.x}" y="${obj.y}" width="${obj.w}" height="${obj.h}" href="${escapeXml(obj.imgSrc)}"${opacity}/>`;
+      }
+      break;
+    case 'group': {
+      let g = `<g${opacity}>`;
+      (obj.children || []).forEach((child) => { g += objectToSVG(child); });
+      g += '</g>';
+      svgContent = g;
+      break;
+    }
+    default:
+      return '';
+  }
+  return rotOpen + svgContent + rotClose;
+}
+
+describe('objectToSVG', () => {
+  it('exports rect to SVG element', () => {
+    const svg = objectToSVG({ type: 'rect', x: 10, y: 20, w: 100, h: 50, stroke: '#000', fill: '#fff', lineWidth: 2, opacity: 1 });
+    expect(svg).toContain('<rect');
+    expect(svg).toContain('x="10"');
+    expect(svg).toContain('width="100"');
+  });
+
+  it('exports rotated object with transform wrapper', () => {
+    const svg = objectToSVG({ type: 'rect', x: 0, y: 0, w: 100, h: 100, stroke: '#000', fill: '#fff', lineWidth: 2, opacity: 1, rotation: Math.PI / 4 });
+    expect(svg).toContain('<g transform="rotate(');
+    expect(svg).toContain('</g>');
+    expect(svg).toContain('<rect');
+  });
+
+  it('exports image objects with href', () => {
+    const svg = objectToSVG({ type: 'image', x: 0, y: 0, w: 200, h: 150, imgSrc: 'data:image/png;base64,abc', opacity: 1 });
+    expect(svg).toContain('<image');
+    expect(svg).toContain('href="data:image/png;base64,abc"');
+    expect(svg).toContain('width="200"');
+  });
+
+  it('exports group with children', () => {
+    const svg = objectToSVG({
+      type: 'group', opacity: 0.8, children: [
+        { type: 'rect', x: 10, y: 10, w: 20, h: 20, stroke: '#000', fill: '#fff', lineWidth: 1 },
+        { type: 'line', x1: 0, y1: 0, x2: 50, y2: 50, stroke: '#f00', lineWidth: 2 },
+      ],
+    });
+    expect(svg).toContain('<g');
+    expect(svg).toContain('<rect');
+    expect(svg).toContain('<line');
+    expect(svg).toContain('</g>');
+  });
+
+  it('escapes XML in text', () => {
+    const svg = objectToSVG({ type: 'text', x: 10, y: 20, text: 'a < b & c > d', stroke: '#000', fontSize: 16 });
+    expect(svg).toContain('a &lt; b &amp; c &gt; d');
+  });
+});
+
+// ── Undo debounce clearing ──
+
+describe('Undo debounce behavior', () => {
+  it('debounce timer prevents duplicate undo pushes within window', () => {
+    const undoStack = [];
+    const redoStack = [];
+    const MAX = 150;
+    let debounceTimer = null;
+
+    function pushUndo(state) {
+      undoStack.push(JSON.parse(JSON.stringify(state)));
+      if (undoStack.length > MAX) undoStack.shift();
+      redoStack.length = 0;
+    }
+
+    function pushUndoDebounced(state) {
+      if (debounceTimer) return;
+      pushUndo(state);
+      debounceTimer = setTimeout(() => { debounceTimer = null; }, 300);
+    }
+
+    function clearDebounce() {
+      if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+    }
+
+    // First call pushes
+    pushUndoDebounced({ n: 1 });
+    expect(undoStack).toHaveLength(1);
+
+    // Second call within window is blocked
+    pushUndoDebounced({ n: 2 });
+    expect(undoStack).toHaveLength(1);
+
+    // Clearing debounce allows next push
+    clearDebounce();
+    pushUndoDebounced({ n: 3 });
+    expect(undoStack).toHaveLength(2);
+  });
+});

@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { sanitizeUrl } from '../src/utils/sanitize.js';
 
 // ── AI Chat Markdown Renderer Tests ──
 // Replicated renderMarkdown from ai-chat.js for pure function testing.
+// IMPORTANT: Must be kept in sync with the real renderMarkdown in ai-chat.js.
 
 function renderMarkdown(text) {
   let html = text;
@@ -33,8 +35,12 @@ function renderMarkdown(text) {
   // Horizontal rule
   html = html.replace(/^---$/gm, '<hr class="ai-md-hr">');
 
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="ai-md-link">$1</a>');
+  // Links — sanitize href to block javascript: and other dangerous protocols
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
+    const safeUrl = sanitizeUrl(url);
+    if (!safeUrl) return text; // strip link, keep text
+    return `<a href="${safeUrl}" target="_blank" rel="noopener" class="ai-md-link">${text}</a>`;
+  });
 
   // Unordered list items
   html = html.replace(/^[\s]*[-*]\s+(.+)$/gm, '<li class="ai-md-li">$1</li>');
@@ -166,5 +172,56 @@ describe('renderMarkdown — XSS prevention', () => {
   it('escapes ampersands', () => {
     const result = renderMarkdown('a & b');
     expect(result).toContain('&amp;');
+  });
+
+  it('blocks javascript: protocol in links', () => {
+    const result = renderMarkdown('[click](javascript:alert(1))');
+    expect(result).not.toContain('javascript:');
+    // Link text should be preserved but without the dangerous href
+    expect(result).toContain('click');
+    expect(result).not.toContain('href="javascript');
+  });
+
+  it('blocks data:text/html in links', () => {
+    const result = renderMarkdown('[click](data:text/html,<script>alert(1)</script>)');
+    expect(result).not.toContain('href="data:text/html');
+    expect(result).toContain('click');
+  });
+
+  it('allows safe https links', () => {
+    const result = renderMarkdown('[safe](https://example.com)');
+    expect(result).toContain('href="https://example.com"');
+    expect(result).toContain('safe');
+  });
+
+  it('allows safe http links', () => {
+    const result = renderMarkdown('[link](http://example.com/path?q=1)');
+    expect(result).toContain('href="http://example.com/path?q=1"');
+  });
+});
+
+describe('renderMarkdown — edge cases', () => {
+  it('handles empty string', () => {
+    const result = renderMarkdown('');
+    expect(result).toBe('');
+  });
+
+  it('handles text with no markdown syntax', () => {
+    const result = renderMarkdown('Hello world');
+    expect(result).toBe('Hello world');
+  });
+
+  it('handles nested bold and italic', () => {
+    const result = renderMarkdown('***bold italic***');
+    // Bold regex runs first, then italic
+    expect(result).toContain('<strong>');
+    expect(result).toContain('<em>');
+  });
+
+  it('handles code block with angle brackets (no double-escape)', () => {
+    const result = renderMarkdown('```html\n<div>test</div>\n```');
+    expect(result).toContain('&lt;div&gt;test&lt;/div&gt;');
+    // Should NOT have &amp;lt; (double-escaped)
+    expect(result).not.toContain('&amp;lt;');
   });
 });

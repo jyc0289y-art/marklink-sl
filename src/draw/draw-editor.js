@@ -583,6 +583,9 @@ function onPointerMove(e, isTouch) {
 }
 
 function onPointerUp(e, isTouch) {
+  // Always clear undo debounce timer on pointer up to ensure clean state for next interaction
+  if (undoDebounceTimer) { clearTimeout(undoDebounceTimer); undoDebounceTimer = null; }
+
   if (isPanning) {
     isPanning = false;
     const containerEl = document.getElementById('draw-canvas-container');
@@ -1577,11 +1580,9 @@ function handleKeyDown(e) {
       const dupes = [];
       selectedObjects.forEach((obj) => {
         const dupe = JSON.parse(JSON.stringify(obj));
-        // Offset duplicate slightly
-        if (dupe.type === 'path') dupe.points.forEach((p) => { p.x += 20; p.y += 20; });
-        else if (dupe.x1 !== undefined) { dupe.x1 += 20; dupe.y1 += 20; dupe.x2 += 20; dupe.y2 += 20; }
-        else if (dupe.cx !== undefined) { dupe.cx += 20; dupe.cy += 20; }
-        else { dupe.x = (dupe.x || 0) + 20; dupe.y = (dupe.y || 0) + 20; }
+        // Offset duplicate slightly using setObjPosition for correct handling of all types including groups
+        const pos = getObjPosition(dupe);
+        setObjPosition(dupe, { x: pos.x + 20, y: pos.y + 20 });
         getActiveLayer().objects.push(dupe);
         dupes.push(dupe);
       });
@@ -1740,6 +1741,7 @@ function exportCanvas(format) {
     if (!layer.visible) return;
     expCtx.save();
     expCtx.globalAlpha = layer.opacity;
+    expCtx.globalCompositeOperation = layer.blendMode || 'source-over';
     layer.objects.forEach((obj) => drawObject(expCtx, obj));
     expCtx.restore();
   });
@@ -1779,34 +1781,55 @@ function objectToSVG(obj) {
   const sw = ` stroke-width="${obj.lineWidth || 2}"`;
   const lc = ' stroke-linecap="round" stroke-linejoin="round"';
 
+  // Handle rotation by wrapping in a group with transform
+  let rotOpen = '', rotClose = '';
+  if (obj.rotation) {
+    const bounds = getObjectBounds(obj);
+    if (bounds) {
+      const cx = bounds.x + bounds.w / 2;
+      const cy = bounds.y + bounds.h / 2;
+      const deg = obj.rotation * (180 / Math.PI);
+      rotOpen = `<g transform="rotate(${deg},${cx},${cy})">`;
+      rotClose = '</g>';
+    }
+  }
+
+  let svgContent = '';
   switch (obj.type) {
     case 'path':
       if (obj.points.length < 2) return '';
-      let d = `M${obj.points[0].x},${obj.points[0].y}`;
+      { let d = `M${obj.points[0].x},${obj.points[0].y}`;
       for (let i = 1; i < obj.points.length; i++) d += ` L${obj.points[i].x},${obj.points[i].y}`;
-      return `<path d="${d}"${stroke} fill="none"${sw}${lc}${opacity}/>`;
+      svgContent = `<path d="${d}"${stroke} fill="none"${sw}${lc}${opacity}/>`; }
+      break;
     case 'line':
-      return `<line x1="${obj.x1}" y1="${obj.y1}" x2="${obj.x2}" y2="${obj.y2}"${stroke}${sw}${lc}${opacity}/>`;
+      svgContent = `<line x1="${obj.x1}" y1="${obj.y1}" x2="${obj.x2}" y2="${obj.y2}"${stroke}${sw}${lc}${opacity}/>`;
+      break;
     case 'arrow': {
       const angle = Math.atan2(obj.y2 - obj.y1, obj.x2 - obj.x1);
       const hl = Math.max(10, (obj.lineWidth || 2) * 3);
       const ax1 = obj.x2 - hl * Math.cos(angle - Math.PI / 6), ay1 = obj.y2 - hl * Math.sin(angle - Math.PI / 6);
       const ax2 = obj.x2 - hl * Math.cos(angle + Math.PI / 6), ay2 = obj.y2 - hl * Math.sin(angle + Math.PI / 6);
-      return `<line x1="${obj.x1}" y1="${obj.y1}" x2="${obj.x2}" y2="${obj.y2}"${stroke}${sw}${lc}${opacity}/><polyline points="${ax1},${ay1} ${obj.x2},${obj.y2} ${ax2},${ay2}"${stroke}${sw} fill="none"${lc}${opacity}/>`;
+      svgContent = `<line x1="${obj.x1}" y1="${obj.y1}" x2="${obj.x2}" y2="${obj.y2}"${stroke}${sw}${lc}${opacity}/><polyline points="${ax1},${ay1} ${obj.x2},${obj.y2} ${ax2},${ay2}"${stroke}${sw} fill="none"${lc}${opacity}/>`;
+      break;
     }
     case 'rect':
-      return `<rect x="${obj.x}" y="${obj.y}" width="${obj.w}" height="${obj.h}"${stroke}${fill}${sw}${opacity}/>`;
+      svgContent = `<rect x="${obj.x}" y="${obj.y}" width="${obj.w}" height="${obj.h}"${stroke}${fill}${sw}${opacity}/>`;
+      break;
     case 'ellipse':
-      return `<ellipse cx="${obj.cx}" cy="${obj.cy}" rx="${obj.rx}" ry="${obj.ry}"${stroke}${fill}${sw}${opacity}/>`;
+      svgContent = `<ellipse cx="${obj.cx}" cy="${obj.cy}" rx="${obj.rx}" ry="${obj.ry}"${stroke}${fill}${sw}${opacity}/>`;
+      break;
     case 'text':
-      return `<text x="${obj.x}" y="${obj.y}" font-size="${obj.fontSize || 16}" font-family="${obj.fontFamily || 'Arial'}" fill="${obj.stroke || '#000'}"${opacity}>${escapeXml(obj.text || '')}</text>`;
+      svgContent = `<text x="${obj.x}" y="${obj.y}" font-size="${obj.fontSize || 16}" font-family="${obj.fontFamily || 'Arial'}" fill="${obj.stroke || '#000'}"${opacity}>${escapeXml(obj.text || '')}</text>`;
+      break;
     case 'polygon': {
       let pts = '';
       for (let i = 0; i < obj.sides; i++) {
         const a = (Math.PI * 2 * i) / obj.sides - Math.PI / 2;
         pts += `${obj.cx + obj.r * Math.cos(a)},${obj.cy + obj.r * Math.sin(a)} `;
       }
-      return `<polygon points="${pts.trim()}"${stroke}${fill}${sw}${opacity}/>`;
+      svgContent = `<polygon points="${pts.trim()}"${stroke}${fill}${sw}${opacity}/>`;
+      break;
     }
     case 'star': {
       let pts = '';
@@ -1816,17 +1839,25 @@ function objectToSVG(obj) {
         const r = i % 2 === 0 ? obj.r : innerR;
         pts += `${obj.cx + r * Math.cos(a)},${obj.cy + r * Math.sin(a)} `;
       }
-      return `<polygon points="${pts.trim()}"${stroke}${fill}${sw}${opacity}/>`;
+      svgContent = `<polygon points="${pts.trim()}"${stroke}${fill}${sw}${opacity}/>`;
+      break;
     }
+    case 'image':
+      if (obj.imgSrc) {
+        svgContent = `<image x="${obj.x}" y="${obj.y}" width="${obj.w}" height="${obj.h}" href="${escapeXml(obj.imgSrc)}"${opacity}/>`;
+      }
+      break;
     case 'group': {
       let g = `<g${opacity}>`;
       (obj.children || []).forEach((child) => { g += objectToSVG(child); });
       g += '</g>';
-      return g;
+      svgContent = g;
+      break;
     }
     default:
       return '';
   }
+  return rotOpen + svgContent + rotClose;
 }
 
 function escapeXml(s) {
@@ -2002,6 +2033,10 @@ export function destroyDrawEditor() {
   // Zero out canvases to release GPU memory before clearing references
   if (canvas) { canvas.width = 0; canvas.height = 0; }
   if (overlayCanvas) { overlayCanvas.width = 0; overlayCanvas.height = 0; }
+  const rulerH = document.getElementById('draw-ruler-h');
+  const rulerV = document.getElementById('draw-ruler-v');
+  if (rulerH) { rulerH.width = 0; rulerH.height = 0; }
+  if (rulerV) { rulerV.width = 0; rulerV.height = 0; }
   canvas = null;
   ctx = null;
   overlayCanvas = null;

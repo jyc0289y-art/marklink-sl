@@ -380,13 +380,17 @@ function initApiKeySettings() {
 
 // ─── Offline Mode Detection ──────────────────────────────
 
+// Store bound handlers for cleanup in destroyAiChat
+let _onlineHandler = null;
+let _offlineHandler = null;
+
 function initOfflineDetection() {
   const updateOfflineStatus = () => {
     isOffline = !navigator.onLine && !ollamaReady;
     updateOfflineIndicator();
   };
 
-  window.addEventListener('online', () => {
+  _onlineHandler = () => {
     isOffline = false;
     updateOfflineIndicator();
     // Try to send queued messages
@@ -395,14 +399,17 @@ function initOfflineDetection() {
       processOfflineQueue();
     }
     checkStatus();
-  });
+  };
 
-  window.addEventListener('offline', () => {
+  _offlineHandler = () => {
     if (!ollamaReady) {
       isOffline = true;
       updateOfflineIndicator();
     }
-  });
+  };
+
+  window.addEventListener('online', _onlineHandler);
+  window.addEventListener('offline', _offlineHandler);
 
   updateOfflineStatus();
 }
@@ -1109,16 +1116,50 @@ async function sendMessage() {
       ? history.slice(-MAX_HISTORY_MESSAGES)
       : history;
 
+    // Throttle markdown re-rendering during streaming to avoid O(n^2) work
+    let lastRenderTime = 0;
+    let pendingRenderFull = '';
+    let renderRAF = null;
+    const RENDER_THROTTLE_MS = 80; // re-render at most every 80ms
+
+    const flushRender = () => {
+      if (pendingRenderFull) {
+        streamDiv.innerHTML = renderMarkdown(pendingRenderFull);
+        attachCodeCopyListeners(streamDiv);
+        streamDiv.classList.remove('streaming');
+        scrollToBottom();
+        lastRenderTime = Date.now();
+        pendingRenderFull = '';
+      }
+      renderRAF = null;
+    };
+
     const result = await streamChat(selectedModel, trimmedHistory, getSystemPrompt(), (token, full) => {
-      streamDiv.innerHTML = renderMarkdown(full);
-      attachCodeCopyListeners(streamDiv);
-      streamDiv.classList.remove('streaming');
-      scrollToBottom();
+      pendingRenderFull = full;
+      const now = Date.now();
+      if (now - lastRenderTime >= RENDER_THROTTLE_MS) {
+        flushRender();
+      } else if (!renderRAF) {
+        renderRAF = requestAnimationFrame(flushRender);
+      }
     }, currentAbortController.signal);
+
+    // Final render to ensure last tokens are displayed
+    if (renderRAF) { cancelAnimationFrame(renderRAF); renderRAF = null; }
+    if (result.content) {
+      streamDiv.innerHTML = renderMarkdown(result.content);
+      attachCodeCopyListeners(streamDiv);
+    }
+
+    // Ensure streaming indicator is removed on completion
+    streamDiv.classList.remove('streaming');
 
     if (result.aborted) {
       // User stopped generation
       if (result.content) {
+        // Final render of partial content (onToken may not have fired for all tokens)
+        streamDiv.innerHTML = renderMarkdown(result.content);
+        attachCodeCopyListeners(streamDiv);
         history.push({ role: 'assistant', content: result.content });
         const stoppedEl = document.createElement('div');
         stoppedEl.className = 'ai-token-stats';
@@ -1155,11 +1196,17 @@ async function sendMessage() {
       retryBtn.className = 'ai-retry-btn';
       retryBtn.textContent = 'Retry';
       retryBtn.addEventListener('click', () => {
-        // Remove the failed assistant message from history if it was pushed
+        // Remove the user message that was pushed to history for this failed attempt
+        // so sendMessage() can push it again without duplication
         if (history.length > 0 && history[history.length - 1].role === 'user') {
-          // user message is still the last, good
+          history.pop();
         }
+        // Remove the failed message bubble and the user message bubble
         streamDiv.remove();
+        const userMsgs = chatListEl?.querySelectorAll('.ai-msg-user');
+        if (userMsgs && userMsgs.length > 0) {
+          userMsgs[userMsgs.length - 1].remove();
+        }
         chatInputEl.value = lastUserMessage;
         sendMessage();
       });
@@ -1969,6 +2016,10 @@ export function destroyAiChat() {
   // Clear intervals
   if (healthCheckInterval) { clearInterval(healthCheckInterval); healthCheckInterval = null; }
   if (connectionRetryInterval) { clearInterval(connectionRetryInterval); connectionRetryInterval = null; }
+
+  // Remove window event listeners to prevent memory leaks
+  if (_onlineHandler) { window.removeEventListener('online', _onlineHandler); _onlineHandler = null; }
+  if (_offlineHandler) { window.removeEventListener('offline', _offlineHandler); _offlineHandler = null; }
 
   // Abort pending request
   if (currentAbortController) {
