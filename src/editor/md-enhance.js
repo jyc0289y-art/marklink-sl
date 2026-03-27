@@ -53,7 +53,7 @@ function getCustomSnippets() {
 }
 
 function saveCustomSnippets(snippets) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(snippets));
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snippets)); } catch { /* quota exceeded */ }
 }
 
 function processSnippetText(text) {

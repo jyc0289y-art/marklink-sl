@@ -387,10 +387,15 @@ function buildPageOrder() {
 async function openPdf() {
   let file;
   if (window.showOpenFilePicker) {
-    const [handle] = await window.showOpenFilePicker({
-      types: [{ description: 'PDF Files', accept: { 'application/pdf': ['.pdf'] } }],
-    });
-    file = await handle.getFile();
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: 'PDF Files', accept: { 'application/pdf': ['.pdf'] } }],
+      });
+      file = await handle.getFile();
+    } catch (e) {
+      if (e.name === 'AbortError') return; // user cancelled
+      throw e;
+    }
   } else {
     file = await new Promise((resolve) => {
       const input = document.createElement('input');
@@ -402,6 +407,13 @@ async function openPdf() {
   }
 
   if (!file) return;
+
+  // Handle empty (0-byte) files
+  if (file.size === 0) {
+    alert('The PDF file is empty (0 bytes).');
+    return;
+  }
+
   currentName = file.name;
 
   const data = await file.arrayBuffer();

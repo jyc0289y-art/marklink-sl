@@ -70,3 +70,8 @@
 | P9.22wc | Markdown Editor & Preview Quality Audit | 2026-03-27 | 없음 | 진행중 |
 | P9.23wc | PDF Viewer Annotation & Form Quality Fix | 2026-03-27 | 없음 | 진행중 |
 | P9.24wc | Sheet UI Interaction Quality Bugfix | 2026-03-27 | 없음 | 진행중 |
+| P9.25wc | DOCX Export Quality Enhancement | 2026-03-27 | 없음 | 진행중 |
+| P9.26wc | Photo Editor Deep Audit & Bugfix | 2026-03-27 | 없음 | 진행중 |
+| P9.27wc | Draw Editor Deep Audit & Bugfix | 2026-03-27 | 없음 | 진행중 |
+| P9.28wc | Sheet Formula Engine Correctness Hardening | 2026-03-27 | 없음 | 진행중 |
+| P9.25wc | Error Handling & Edge Case Audit | 2026-03-27 | 없음 | 진행중 |

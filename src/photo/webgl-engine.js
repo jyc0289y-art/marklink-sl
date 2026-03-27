@@ -85,9 +85,6 @@ export const DEFAULT_PARAMS = {
     green: [{ x: 0, y: 0 }, { x: 255, y: 255 }],
     blue: [{ x: 0, y: 0 }, { x: 255, y: 255 }],
   },
-  rotation: 0,
-  flipH: false,
-  flipV: false,
 };
 
 export function cloneParams(p) {

@@ -2,6 +2,11 @@
 import { initApp } from './app.js';
 import { initErrorBoundary } from './ui/error-boundary.js';
 
+// Polyfill structuredClone for older browsers (Safari <15.4, Chrome <98)
+if (typeof globalThis.structuredClone !== 'function') {
+  globalThis.structuredClone = (obj) => JSON.parse(JSON.stringify(obj));
+}
+
 // Install error boundary before anything else
 initErrorBoundary();
 

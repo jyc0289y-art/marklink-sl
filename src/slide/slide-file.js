@@ -22,14 +22,25 @@ const THEMES = {
  */
 export async function openSlideFile() {
   if (window.showOpenFilePicker) {
-    const [handle] = await window.showOpenFilePicker({
-      types: [{ description: 'Presentation Files', accept: {
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
-        'text/html': ['.html'],
-        'application/json': ['.json'],
-      } }],
-    });
+    let handles;
+    try {
+      handles = await window.showOpenFilePicker({
+        types: [{ description: 'Presentation Files', accept: {
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+          'text/html': ['.html'],
+          'application/json': ['.json'],
+        } }],
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') return null;
+      throw e;
+    }
+    const [handle] = handles;
     const file = await handle.getFile();
+    if (file.size === 0) {
+      alert('The file is empty (0 bytes).');
+      return null;
+    }
     if (/\.pptx$/i.test(file.name)) {
       await importPptx(file);
     } else {
@@ -47,6 +58,10 @@ export async function openSlideFile() {
     input.onchange = async () => {
       const file = input.files[0];
       if (!file) return resolve(null);
+      if (file.size === 0) {
+        alert('The file is empty (0 bytes).');
+        return resolve(null);
+      }
       if (/\.pptx$/i.test(file.name)) {
         await importPptx(file);
       } else {
@@ -1566,10 +1581,16 @@ export async function saveSlideJSON() {
   const blob = new Blob([json], { type: 'application/json' });
 
   if (window.showSaveFilePicker) {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: tsName,
-      types: [{ description: 'Slide JSON', accept: { 'application/json': ['.json'] } }],
-    });
+    let handle;
+    try {
+      handle = await window.showSaveFilePicker({
+        suggestedName: tsName,
+        types: [{ description: 'Slide JSON', accept: { 'application/json': ['.json'] } }],
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') return null;
+      throw e;
+    }
     const writable = await handle.createWritable();
     await writable.write(blob);
     await writable.close();
@@ -1638,10 +1659,16 @@ export async function saveSlideFile() {
   const blob = new Blob([html], { type: 'text/html' });
 
   if (window.showSaveFilePicker) {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: tsName,
-      types: [{ description: 'Presentation', accept: { 'text/html': ['.html'] } }],
-    });
+    let handle;
+    try {
+      handle = await window.showSaveFilePicker({
+        suggestedName: tsName,
+        types: [{ description: 'Presentation', accept: { 'text/html': ['.html'] } }],
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') return null;
+      throw e;
+    }
     const writable = await handle.createWritable();
     await writable.write(blob);
     await writable.close();

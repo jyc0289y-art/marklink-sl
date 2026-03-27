@@ -105,6 +105,14 @@ function buildUI(container) {
         <div class="draw-tool-sep"></div>
         <button class="draw-tool-btn" id="draw-dist-h" title="Distribute Horizontally">⫦</button>
         <button class="draw-tool-btn" id="draw-dist-v" title="Distribute Vertically">⫧</button>
+        <div class="draw-tool-sep"></div>
+        <button class="draw-tool-btn" id="draw-group-btn" title="Group (Ctrl+G)">⊞G</button>
+        <button class="draw-tool-btn" id="draw-ungroup-btn" title="Ungroup (Ctrl+Shift+G)">⊟G</button>
+        <div class="draw-tool-sep"></div>
+        <button class="draw-tool-btn" id="draw-z-front" title="Bring to Front">⤒</button>
+        <button class="draw-tool-btn" id="draw-z-forward" title="Bring Forward">↑</button>
+        <button class="draw-tool-btn" id="draw-z-backward" title="Send Backward">↓</button>
+        <button class="draw-tool-btn" id="draw-z-back" title="Send to Back">⤓</button>
       </div>
       <!-- Canvas Area -->
       <div class="draw-canvas-area" id="draw-canvas-area">
@@ -245,7 +253,7 @@ export function resizeCanvas() {
 /* ==================== Layers ==================== */
 
 function initLayers() {
-  layers = [{ name: 'Layer 1', objects: [], visible: true, opacity: 1, blendMode: 'source-over' }];
+  layers = [{ name: 'Layer 1', objects: [], visible: true, locked: false, opacity: 1, blendMode: 'source-over' }];
   activeLayerIdx = 0;
   renderLayerList();
 }
@@ -260,6 +268,7 @@ function renderLayerList() {
   list.innerHTML = layers.map((l, i) => `
     <div class="draw-layer-item${i === activeLayerIdx ? ' active' : ''}" data-idx="${i}">
       <button class="draw-layer-vis" data-idx="${i}" title="Toggle visibility">${l.visible ? '👁' : '⊘'}</button>
+      <button class="draw-layer-lock" data-idx="${i}" title="Toggle lock">${l.locked ? '🔒' : '🔓'}</button>
       <span class="draw-layer-name">${_esc(l.name)}</span>
       <span class="draw-layer-count">(${l.objects.length})</span>
     </div>
@@ -283,6 +292,20 @@ function bindEvents() {
   container?.addEventListener('mousemove', (e) => onPointerMove(e));
   container?.addEventListener('mouseup', (e) => onPointerUp(e));
   container?.addEventListener('mouseleave', (e) => onPointerUp(e));
+
+  // Double-click to edit text objects
+  container?.addEventListener('dblclick', (e) => {
+    const { x, y } = screenToWorld(e.clientX, e.clientY);
+    const obj = hitTest(x, y);
+    if (obj && obj.type === 'text') {
+      const newText = prompt('Edit text:', obj.text || '');
+      if (newText !== null) {
+        pushUndo();
+        obj.text = newText;
+        render();
+      }
+    }
+  });
 
   // Touch events
   container?.addEventListener('touchstart', (e) => { e.preventDefault(); onPointerDown(e.touches[0], true); }, { passive: false });
@@ -339,9 +362,17 @@ function bindEvents() {
     document.getElementById('draw-opacity-val').textContent = Math.round(opacity * 100) + '%';
   });
 
-  // Font size/family
-  document.getElementById('draw-font-size')?.addEventListener('change', (e) => { textFontSize = parseInt(e.target.value) || 16; });
-  document.getElementById('draw-font-family')?.addEventListener('change', (e) => { textFontFamily = e.target.value; });
+  // Font size/family — also apply to selected text objects
+  document.getElementById('draw-font-size')?.addEventListener('change', (e) => {
+    textFontSize = parseInt(e.target.value) || 16;
+    const textSel = selectedObjects.filter((o) => o.type === 'text');
+    if (textSel.length > 0) { pushUndo(); textSel.forEach((o) => { o.fontSize = textFontSize; }); render(); }
+  });
+  document.getElementById('draw-font-family')?.addEventListener('change', (e) => {
+    textFontFamily = e.target.value;
+    const textSel = selectedObjects.filter((o) => o.type === 'text');
+    if (textSel.length > 0) { pushUndo(); textSel.forEach((o) => { o.fontFamily = textFontFamily; }); render(); }
+  });
 
   // Polygon sides / Star points
   document.getElementById('draw-polygon-sides')?.addEventListener('change', (e) => { polygonSides = parseInt(e.target.value) || 5; });
@@ -355,11 +386,18 @@ function bindEvents() {
   document.getElementById('draw-layer-list')?.addEventListener('click', (e) => {
     const item = e.target.closest('.draw-layer-item');
     const visBtn = e.target.closest('.draw-layer-vis');
+    const lockBtn = e.target.closest('.draw-layer-lock');
     if (visBtn) {
       const idx = parseInt(visBtn.dataset.idx);
       layers[idx].visible = !layers[idx].visible;
       renderLayerList();
       render();
+      return;
+    }
+    if (lockBtn) {
+      const idx = parseInt(lockBtn.dataset.idx);
+      layers[idx].locked = !layers[idx].locked;
+      renderLayerList();
       return;
     }
     if (item) {
@@ -391,6 +429,16 @@ function bindEvents() {
   document.getElementById('draw-align-bottom')?.addEventListener('click', () => alignSelectedObjects('bottom'));
   document.getElementById('draw-dist-h')?.addEventListener('click', () => distributeSelectedObjects('horizontal'));
   document.getElementById('draw-dist-v')?.addEventListener('click', () => distributeSelectedObjects('vertical'));
+
+  // Group/Ungroup
+  document.getElementById('draw-group-btn')?.addEventListener('click', () => groupSelected());
+  document.getElementById('draw-ungroup-btn')?.addEventListener('click', () => ungroupSelected());
+
+  // Z-order
+  document.getElementById('draw-z-front')?.addEventListener('click', () => zOrder('front'));
+  document.getElementById('draw-z-forward')?.addEventListener('click', () => zOrder('forward'));
+  document.getElementById('draw-z-backward')?.addEventListener('click', () => zOrder('backward'));
+  document.getElementById('draw-z-back')?.addEventListener('click', () => zOrder('back'));
 
   // Export/Import
   document.getElementById('draw-export-png')?.addEventListener('click', () => exportCanvas('png'));
@@ -425,7 +473,7 @@ function selectTool(tool) {
   currentTool = tool;
   selectedObjects = [];
   document.querySelectorAll('.draw-tool-btn[data-tool]').forEach((b) => b.classList.toggle('active', b.dataset.tool === tool));
-  document.getElementById('draw-font-row').style.display = tool === 'text' ? '' : 'none';
+  document.getElementById('draw-font-row').style.display = (tool === 'text' || tool === 'select') ? '' : 'none';
   document.getElementById('draw-polygon-row').style.display = tool === 'polygon' ? '' : 'none';
   document.getElementById('draw-star-row').style.display = tool === 'star' ? '' : 'none';
   const containerEl = document.getElementById('draw-canvas-container');
@@ -478,11 +526,13 @@ function onPointerDown(e, isTouch) {
   }
 
   if (currentTool === 'eraser') {
+    if (getActiveLayer().locked) return;
     isDrawing = true;
     handleEraser(wx, wy);
     return;
   }
 
+  if (getActiveLayer().locked) return;
   isDrawing = true;
 
   if (currentTool === 'pen') {
@@ -524,7 +574,7 @@ function onPointerMove(e, isTouch) {
 
   if (currentTool === 'pen') {
     currentPath.push({ x: wx, y: wy });
-    renderOverlay();
+    render();
   } else if (shapeStart) {
     renderOverlay();
     drawShapePreview(overlayCtx, shapeStart.x, shapeStart.y, wx, wy);
@@ -630,6 +680,18 @@ function drawObject(c, obj) {
   c.lineCap = 'round';
   c.lineJoin = 'round';
 
+  // Apply rotation if present
+  if (obj.rotation) {
+    const bounds = getObjectBounds(obj);
+    if (bounds) {
+      const cx = bounds.x + bounds.w / 2;
+      const cy = bounds.y + bounds.h / 2;
+      c.translate(cx, cy);
+      c.rotate(obj.rotation);
+      c.translate(-cx, -cy);
+    }
+  }
+
   switch (obj.type) {
     case 'path':
       if (obj.points.length < 2) break;
@@ -692,6 +754,12 @@ function drawObject(c, obj) {
     case 'image':
       if (obj.img) {
         c.drawImage(obj.img, obj.x, obj.y, obj.w, obj.h);
+      }
+      break;
+
+    case 'group':
+      if (obj.children) {
+        obj.children.forEach((child) => drawObject(c, child));
       }
       break;
   }
@@ -795,7 +863,7 @@ function handleSelectDown(wx, wy, e) {
   // Check if clicking on an object
   const obj = hitTest(wx, wy);
   if (obj) {
-    if (e.shiftKey) {
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
       const idx = selectedObjects.indexOf(obj);
       if (idx >= 0) selectedObjects.splice(idx, 1);
       else selectedObjects.push(obj);
@@ -845,7 +913,7 @@ function handleSelectUp() {
     const r = normalizeRect(selectionRect);
     selectedObjects = [];
     layers.forEach((layer) => {
-      if (!layer.visible) return;
+      if (!layer.visible || layer.locked) return;
       layer.objects.forEach((obj) => {
         const bounds = getObjectBounds(obj);
         if (bounds && rectsIntersect(r, bounds)) selectedObjects.push(obj);
@@ -859,6 +927,10 @@ function handleSelectUp() {
 }
 
 function getObjPosition(obj) {
+  if (obj.type === 'group') {
+    const b = getObjectBounds(obj);
+    return b ? { x: b.x, y: b.y } : { x: 0, y: 0 };
+  }
   if (obj.type === 'path') return { x: obj.points[0]?.x || 0, y: obj.points[0]?.y || 0 };
   if (obj.x1 !== undefined) return { x: obj.x1, y: obj.y1 };
   if (obj.cx !== undefined) return { x: obj.cx, y: obj.cy };
@@ -868,7 +940,12 @@ function getObjPosition(obj) {
 function setObjPosition(obj, pos) {
   const cur = getObjPosition(obj);
   const dx = pos.x - cur.x, dy = pos.y - cur.y;
-  if (obj.type === 'path') {
+  if (obj.type === 'group') {
+    (obj.children || []).forEach((child) => {
+      const childPos = getObjPosition(child);
+      setObjPosition(child, { x: childPos.x + dx, y: childPos.y + dy });
+    });
+  } else if (obj.type === 'path') {
     obj.points.forEach((p) => { p.x += dx; p.y += dy; });
   } else if (obj.x1 !== undefined) {
     obj.x1 += dx; obj.y1 += dy; obj.x2 += dx; obj.y2 += dy;
@@ -881,7 +958,7 @@ function setObjPosition(obj, pos) {
 
 function hitTest(wx, wy) {
   for (let li = layers.length - 1; li >= 0; li--) {
-    if (!layers[li].visible) continue;
+    if (!layers[li].visible || layers[li].locked) continue;
     const objs = layers[li].objects;
     for (let i = objs.length - 1; i >= 0; i--) {
       if (isPointInObject(objs[i], wx, wy)) return objs[i];
@@ -907,6 +984,8 @@ function isPointInObject(obj, wx, wy) {
       return wx >= obj.x - margin && wx <= obj.x + (obj.text?.length || 1) * (obj.fontSize || 16) * 0.6 + margin && wy >= obj.y - (obj.fontSize || 16) - margin && wy <= obj.y + margin;
     case 'image':
       return wx >= obj.x && wx <= obj.x + obj.w && wy >= obj.y && wy <= obj.y + obj.h;
+    case 'group':
+      return (obj.children || []).some((child) => isPointInObject(child, wx, wy));
     default:
       return false;
   }
@@ -941,6 +1020,17 @@ function getObjectBounds(obj) {
       return { x: obj.x, y: obj.y - (obj.fontSize || 16), w: (obj.text?.length || 1) * (obj.fontSize || 16) * 0.6, h: (obj.fontSize || 16) * 1.2 };
     case 'image':
       return { x: obj.x, y: obj.y, w: obj.w, h: obj.h };
+    case 'group': {
+      if (!obj.children || obj.children.length === 0) return null;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      obj.children.forEach((child) => {
+        const cb = getObjectBounds(child);
+        if (!cb) return;
+        minX = Math.min(minX, cb.x); minY = Math.min(minY, cb.y);
+        maxX = Math.max(maxX, cb.x + cb.w); maxY = Math.max(maxY, cb.y + cb.h);
+      });
+      return minX === Infinity ? null : { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    }
     default:
       return null;
   }
@@ -950,10 +1040,27 @@ function getResizeHandle(obj, wx, wy) {
   const bounds = getObjectBounds(obj);
   if (!bounds) return null;
   const hs = 6;
+
+  // For line/arrow, use endpoints directly instead of bounding box corners
+  if (obj.type === 'line' || obj.type === 'arrow') {
+    if (Math.abs(wx - obj.x1) < hs && Math.abs(wy - obj.y1) < hs) return 'p1';
+    if (Math.abs(wx - obj.x2) < hs && Math.abs(wy - obj.y2) < hs) return 'p2';
+    return null;
+  }
+
+  // Rotation handle (above top center)
+  const rotX = bounds.x + bounds.w / 2;
+  const rotY = bounds.y - 25;
+  if (Math.abs(wx - rotX) < hs && Math.abs(wy - rotY) < hs) return 'rotate';
+
   const handles = [
     { name: 'nw', x: bounds.x, y: bounds.y },
+    { name: 'n', x: bounds.x + bounds.w / 2, y: bounds.y },
     { name: 'ne', x: bounds.x + bounds.w, y: bounds.y },
+    { name: 'w', x: bounds.x, y: bounds.y + bounds.h / 2 },
+    { name: 'e', x: bounds.x + bounds.w, y: bounds.y + bounds.h / 2 },
     { name: 'sw', x: bounds.x, y: bounds.y + bounds.h },
+    { name: 's', x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h },
     { name: 'se', x: bounds.x + bounds.w, y: bounds.y + bounds.h },
   ];
   for (const h of handles) {
@@ -963,6 +1070,23 @@ function getResizeHandle(obj, wx, wy) {
 }
 
 function resizeObject(obj, handle, wx, wy, orig) {
+  // Handle rotation for any object type
+  if (handle === 'rotate') {
+    const bounds = getObjectBounds(orig);
+    if (!bounds) return;
+    const cx = bounds.x + bounds.w / 2;
+    const cy = bounds.y + bounds.h / 2;
+    obj.rotation = Math.atan2(wy - cy, wx - cx) + Math.PI / 2;
+    return;
+  }
+
+  // Line/arrow: use endpoint handles
+  if (obj.type === 'line' || obj.type === 'arrow') {
+    if (handle === 'p1') { obj.x1 = wx; obj.y1 = wy; }
+    else if (handle === 'p2') { obj.x2 = wx; obj.y2 = wy; }
+    return;
+  }
+
   if (obj.type === 'rect') {
     const b = { x: orig.x, y: orig.y, w: orig.w, h: orig.h };
     if (handle.includes('e')) b.w = wx - b.x;
@@ -981,8 +1105,6 @@ function resizeObject(obj, handle, wx, wy, orig) {
     obj.rx = Math.max(5, Math.abs(b.w) / 2);
     obj.ry = Math.max(5, Math.abs(b.h) / 2);
   } else if (obj.type === 'polygon' || obj.type === 'star') {
-    // Resize by adjusting radius based on drag distance from center
-    const origBounds = getObjectBounds({ ...orig, type: obj.type });
     const origCx = orig.cx, origCy = orig.cy;
     const newR = Math.max(5, Math.hypot(wx - origCx, wy - origCy));
     obj.r = newR;
@@ -993,13 +1115,6 @@ function resizeObject(obj, handle, wx, wy, orig) {
     if (handle.includes('s')) b.h = wy - b.y;
     if (handle.includes('n')) { b.h = (orig.y + orig.h) - wy; b.y = wy; }
     obj.x = b.x; obj.y = b.y; obj.w = Math.max(10, b.w); obj.h = Math.max(10, b.h);
-  } else if (obj.type === 'line' || obj.type === 'arrow') {
-    // Resize line/arrow by moving endpoint closest to the handle
-    if (handle === 'nw' || handle === 'sw') {
-      obj.x1 = wx; obj.y1 = wy;
-    } else {
-      obj.x2 = wx; obj.y2 = wy;
-    }
   }
 }
 
@@ -1193,7 +1308,7 @@ function restoreLayers(state) {
 function addLayer() {
   pushUndo();
   const num = layers.length + 1;
-  layers.push({ name: `Layer ${num}`, objects: [], visible: true, opacity: 1, blendMode: 'source-over' });
+  layers.push({ name: `Layer ${num}`, objects: [], visible: true, locked: false, opacity: 1, blendMode: 'source-over' });
   activeLayerIdx = layers.length - 1;
   renderLayerList();
 }
@@ -1388,15 +1503,43 @@ function render() {
       ctx.setLineDash([4 / zoom, 2 / zoom]);
       ctx.strokeRect(bounds.x - 2, bounds.y - 2, bounds.w + 4, bounds.h + 4);
       ctx.setLineDash([]);
-      // Corner handles
+      // Resize handles (8 for shapes, 2 endpoints for lines)
       const hs = 5 / zoom;
       ctx.fillStyle = '#fff';
       ctx.strokeStyle = '#0099ff';
       ctx.lineWidth = 1.5 / zoom;
-      [[bounds.x, bounds.y], [bounds.x + bounds.w, bounds.y], [bounds.x, bounds.y + bounds.h], [bounds.x + bounds.w, bounds.y + bounds.h]].forEach(([hx, hy]) => {
-        ctx.fillRect(hx - hs, hy - hs, hs * 2, hs * 2);
-        ctx.strokeRect(hx - hs, hy - hs, hs * 2, hs * 2);
-      });
+      if (obj.type === 'line' || obj.type === 'arrow') {
+        // Draw endpoint handles for lines/arrows
+        [[obj.x1, obj.y1], [obj.x2, obj.y2]].forEach(([hx, hy]) => {
+          ctx.beginPath();
+          ctx.arc(hx, hy, hs, 0, Math.PI * 2);
+          ctx.fill(); ctx.stroke();
+        });
+      } else {
+        // 8 handles + rotation handle
+        const allHandles = [
+          [bounds.x, bounds.y], [bounds.x + bounds.w / 2, bounds.y], [bounds.x + bounds.w, bounds.y],
+          [bounds.x, bounds.y + bounds.h / 2], [bounds.x + bounds.w, bounds.y + bounds.h / 2],
+          [bounds.x, bounds.y + bounds.h], [bounds.x + bounds.w / 2, bounds.y + bounds.h], [bounds.x + bounds.w, bounds.y + bounds.h],
+        ];
+        allHandles.forEach(([hx, hy]) => {
+          ctx.fillRect(hx - hs, hy - hs, hs * 2, hs * 2);
+          ctx.strokeRect(hx - hs, hy - hs, hs * 2, hs * 2);
+        });
+        // Rotation handle
+        const rotX = bounds.x + bounds.w / 2;
+        const rotY = bounds.y - 25;
+        ctx.beginPath();
+        ctx.setLineDash([]);
+        ctx.moveTo(bounds.x + bounds.w / 2, bounds.y);
+        ctx.lineTo(rotX, rotY);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(rotX, rotY, hs, 0, Math.PI * 2);
+        ctx.fillStyle = '#4CAF50';
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#fff';
+      }
     });
     ctx.restore();
   }
@@ -1420,9 +1563,9 @@ function handleKeyDown(e) {
   if (ctrl && e.key === 'y') { e.preventDefault(); redo(); return; }
   if (ctrl && (e.key === 'a' || e.key === 'A')) {
     e.preventDefault();
-    selectedObjects = [];
-    layers.forEach((layer) => { if (layer.visible) selectedObjects.push(...layer.objects); });
     if (currentTool !== 'select') selectTool('select');
+    selectedObjects = [];
+    layers.forEach((layer) => { if (layer.visible && !layer.locked) selectedObjects.push(...layer.objects); });
     render();
     return;
   }
@@ -1447,6 +1590,16 @@ function handleKeyDown(e) {
     }
     return;
   }
+  // Group/Ungroup
+  if (ctrl && e.shiftKey && (e.key === 'g' || e.key === 'G')) { e.preventDefault(); ungroupSelected(); return; }
+  if (ctrl && (e.key === 'g' || e.key === 'G')) { e.preventDefault(); groupSelected(); return; }
+
+  // Z-order: Ctrl+] forward, Ctrl+[ backward, Ctrl+Shift+] front, Ctrl+Shift+[ back
+  if (ctrl && e.shiftKey && e.key === ']') { e.preventDefault(); zOrder('front'); return; }
+  if (ctrl && e.shiftKey && e.key === '[') { e.preventDefault(); zOrder('back'); return; }
+  if (ctrl && e.key === ']') { e.preventDefault(); zOrder('forward'); return; }
+  if (ctrl && e.key === '[') { e.preventDefault(); zOrder('backward'); return; }
+
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (selectedObjects.length > 0) {
       e.preventDefault();
@@ -1471,6 +1624,96 @@ function handleKeyDown(e) {
   if (ctrl && (e.key === '=' || e.key === '+')) { e.preventDefault(); zoomAt(canvas.width / 2, canvas.height / 2, 1.2); }
   if (ctrl && e.key === '-') { e.preventDefault(); zoomAt(canvas.width / 2, canvas.height / 2, 0.8); }
   if (ctrl && e.key === '0') { e.preventDefault(); zoom = 1; viewX = 0; viewY = 0; document.getElementById('draw-zoom-level').textContent = '100%'; render(); renderRulers(); }
+}
+
+/* ==================== Group / Ungroup ==================== */
+
+function groupSelected() {
+  if (selectedObjects.length < 2) return;
+  pushUndo();
+  // Find which layer holds the first selected object
+  let targetLayer = null;
+  for (const layer of layers) {
+    if (layer.objects.some((o) => selectedObjects.includes(o))) { targetLayer = layer; break; }
+  }
+  if (!targetLayer) return;
+
+  const group = {
+    type: 'group',
+    children: [...selectedObjects],
+    stroke: 'transparent', fill: 'transparent',
+    lineWidth: 0, opacity: 1,
+  };
+
+  // Remove selected objects from all layers
+  layers.forEach((layer) => {
+    layer.objects = layer.objects.filter((o) => !selectedObjects.includes(o));
+  });
+
+  targetLayer.objects.push(group);
+  selectedObjects = [group];
+  render();
+  renderLayerList();
+}
+
+function ungroupSelected() {
+  if (selectedObjects.length !== 1 || selectedObjects[0].type !== 'group') return;
+  pushUndo();
+  const group = selectedObjects[0];
+  const children = group.children || [];
+
+  // Find the layer holding the group
+  for (const layer of layers) {
+    const idx = layer.objects.indexOf(group);
+    if (idx >= 0) {
+      layer.objects.splice(idx, 1, ...children);
+      break;
+    }
+  }
+
+  selectedObjects = [...children];
+  render();
+  renderLayerList();
+}
+
+/* ==================== Z-Order ==================== */
+
+function zOrder(action) {
+  if (selectedObjects.length === 0) return;
+  pushUndo();
+
+  selectedObjects.forEach((obj) => {
+    for (const layer of layers) {
+      const idx = layer.objects.indexOf(obj);
+      if (idx < 0) continue;
+
+      switch (action) {
+        case 'front':
+          layer.objects.splice(idx, 1);
+          layer.objects.push(obj);
+          break;
+        case 'back':
+          layer.objects.splice(idx, 1);
+          layer.objects.unshift(obj);
+          break;
+        case 'forward':
+          if (idx < layer.objects.length - 1) {
+            layer.objects.splice(idx, 1);
+            layer.objects.splice(idx + 1, 0, obj);
+          }
+          break;
+        case 'backward':
+          if (idx > 0) {
+            layer.objects.splice(idx, 1);
+            layer.objects.splice(idx - 1, 0, obj);
+          }
+          break;
+      }
+      break;
+    }
+  });
+
+  render();
 }
 
 /* ==================== Export ==================== */
@@ -1574,6 +1817,12 @@ function objectToSVG(obj) {
       }
       return `<polygon points="${pts.trim()}"${stroke}${fill}${sw}${opacity}/>`;
     }
+    case 'group': {
+      let g = `<g${opacity}>`;
+      (obj.children || []).forEach((child) => { g += objectToSVG(child); });
+      g += '</g>';
+      return g;
+    }
     default:
       return '';
   }
@@ -1594,6 +1843,7 @@ function saveDrawingJSON() {
     layers: layers.map((layer) => ({
       name: layer.name,
       visible: layer.visible,
+      locked: layer.locked || false,
       opacity: layer.opacity,
       blendMode: layer.blendMode,
       objects: layer.objects.map((obj) => {
@@ -1648,6 +1898,7 @@ function loadDrawingJSON() {
         layers.push({
           name: layerData.name || `Layer ${layers.length + 1}`,
           visible: layerData.visible !== false,
+          locked: !!layerData.locked,
           opacity: typeof layerData.opacity === 'number' ? layerData.opacity : 1,
           blendMode: layerData.blendMode || 'source-over',
           objects: restoredObjects,
@@ -1680,6 +1931,7 @@ function getAllObjectsBounds() {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   let hasObj = false;
   layers.forEach((layer) => {
+    if (!layer.visible) return;
     layer.objects.forEach((obj) => {
       const b = getObjectBounds(obj);
       if (!b) return;

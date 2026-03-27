@@ -812,7 +812,8 @@ const _escapeAttr = (str) => str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').
  * highlight/background, nested formatting, images (base64), A4 page margins.
  */
 export async function exportDocx(fileName) {
-  const { Document, Packer, Paragraph, TextRun, convertInchesToTwip } = await getDocxLib();
+  const { Document, Packer, Paragraph, TextRun, convertInchesToTwip,
+          LevelFormat, AlignmentType } = await getDocxLib();
   const content = getDocContent();
   const parser = new DOMParser();
   const doc = parser.parseFromString(`<body>${content}</body>`, 'text/html');
@@ -829,6 +830,26 @@ export async function exportDocx(fileName) {
   }
 
   const docx = new Document({
+    numbering: {
+      config: [
+        {
+          reference: 'default-numbering',
+          levels: [
+            { level: 0, format: LevelFormat.DECIMAL, text: '%1.', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 720, hanging: 360 } } } },
+            { level: 1, format: LevelFormat.LOWER_LETTER, text: '%2)', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 1440, hanging: 360 } } } },
+            { level: 2, format: LevelFormat.LOWER_ROMAN, text: '%3.', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 2160, hanging: 360 } } } },
+          ],
+        },
+        {
+          reference: 'bullet-numbering',
+          levels: [
+            { level: 0, format: LevelFormat.BULLET, text: '\u2022', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 720, hanging: 360 } } } },
+            { level: 1, format: LevelFormat.BULLET, text: '\u25E6', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 1440, hanging: 360 } } } },
+            { level: 2, format: LevelFormat.BULLET, text: '\u25AA', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 2160, hanging: 360 } } } },
+          ],
+        },
+      ],
+    },
     sections: [{
       properties: {
         page: {
@@ -880,7 +901,8 @@ export async function exportDocx(fileName) {
  */
 async function convertNode(node) {
   const { Paragraph, TextRun, ImageRun, HeadingLevel, AlignmentType, BorderStyle,
-          Table, TableRow, TableCell, WidthType } = await getDocxLib();
+          Table, TableRow, TableCell, WidthType, PageBreak, ExternalHyperlink,
+          ShadingType, VerticalAlign, convertInchesToTwip } = await getDocxLib();
 
   if (node.nodeType === Node.TEXT_NODE) {
     const text = node.textContent.trim();
@@ -898,48 +920,85 @@ async function convertNode(node) {
     return [new Paragraph({ children: [new TextRun('[Image]')] })];
   }
 
+  // Page break — <div class="doc-page-break"> or <hr class="page-break">
+  if ((tag === 'div' && node.classList?.contains('doc-page-break')) ||
+      (tag === 'hr' && node.classList?.contains('page-break'))) {
+    return [new Paragraph({ children: [new PageBreak()] })];
+  }
+
   const headingMap = {
     h1: HeadingLevel.HEADING_1, h2: HeadingLevel.HEADING_2,
     h3: HeadingLevel.HEADING_3, h4: HeadingLevel.HEADING_4,
     h5: HeadingLevel.HEADING_5, h6: HeadingLevel.HEADING_6,
   };
   if (headingMap[tag]) {
-    return [new Paragraph({
+    const hOpts = {
       heading: headingMap[tag],
-      children: _extractTextRuns(node, TextRun, ImageRun),
-    })];
+      children: _extractTextRuns(node, TextRun, ImageRun, ExternalHyperlink),
+    };
+    // Preserve alignment on headings
+    const hAlign = node.style?.textAlign;
+    if (hAlign === 'center') hOpts.alignment = AlignmentType.CENTER;
+    else if (hAlign === 'right') hOpts.alignment = AlignmentType.RIGHT;
+    else if (hAlign === 'justify') hOpts.alignment = AlignmentType.JUSTIFIED;
+    return [new Paragraph(hOpts)];
   }
 
   if (tag === 'p' || tag === 'div') {
-    const style = node.style?.textAlign || '';
-    const align = style === 'center' ? AlignmentType.CENTER
-      : style === 'right' ? AlignmentType.RIGHT
-      : style === 'justify' ? AlignmentType.JUSTIFIED
-      : AlignmentType.LEFT;
-    return [new Paragraph({ alignment: align, children: _extractTextRuns(node, TextRun, ImageRun) })];
+    const paraOpts = _extractParagraphFormatting(node, AlignmentType, convertInchesToTwip);
+    paraOpts.children = _extractTextRuns(node, TextRun, ImageRun, ExternalHyperlink);
+    return [new Paragraph(paraOpts)];
   }
 
   if (tag === 'ul' || tag === 'ol') {
-    const items = [];
-    for (const li of node.querySelectorAll(':scope > li')) {
-      items.push(new Paragraph({
-        bullet: tag === 'ul' ? { level: 0 } : undefined,
-        numbering: tag === 'ol' ? { reference: 'default-numbering', level: 0 } : undefined,
-        children: _extractTextRuns(li, TextRun, ImageRun),
-      }));
-    }
-    return items;
+    return _convertList(node, tag, 0, TextRun, ImageRun, ExternalHyperlink, Paragraph);
   }
 
   if (tag === 'table') {
-    const { ShadingType, TableCellBorders } = await getDocxLib();
     const rows = [];
-    for (const tr of node.querySelectorAll('tr')) {
+    // Only process direct <tr> children (or inside <thead>/<tbody>/<tfoot>)
+    const trElements = [];
+    for (const child of node.children) {
+      if (child.tagName.toLowerCase() === 'tr') {
+        trElements.push(child);
+      } else if (['thead', 'tbody', 'tfoot'].includes(child.tagName.toLowerCase())) {
+        for (const tr of child.children) {
+          if (tr.tagName.toLowerCase() === 'tr') trElements.push(tr);
+        }
+      }
+    }
+
+    // Count max columns for width calculation
+    let maxCols = 0;
+    for (const tr of trElements) {
+      let cols = 0;
+      for (const td of tr.children) {
+        if (td.tagName.toLowerCase() === 'td' || td.tagName.toLowerCase() === 'th') {
+          cols += parseInt(td.getAttribute('colspan') || '1', 10);
+        }
+      }
+      if (cols > maxCols) maxCols = cols;
+    }
+
+    for (const tr of trElements) {
       const cells = [];
-      for (const td of tr.querySelectorAll('td, th')) {
+      // Only direct children td/th — not nested table cells
+      for (const td of tr.children) {
+        const tdTag = td.tagName.toLowerCase();
+        if (tdTag !== 'td' && tdTag !== 'th') continue;
+
+        // Process cell content — may contain multiple paragraphs
+        const cellChildren = [];
+        const cellParas = _extractCellContent(td, TextRun, ImageRun, ExternalHyperlink, Paragraph, AlignmentType, convertInchesToTwip);
+        if (cellParas.length > 0) {
+          cellChildren.push(...cellParas);
+        } else {
+          cellChildren.push(new Paragraph({ children: [new TextRun('')] }));
+        }
+
         const cellOpts = {
-          children: [new Paragraph({ children: _extractTextRuns(td, TextRun, ImageRun) })],
-          width: { size: 100 / tr.children.length, type: WidthType.PERCENTAGE },
+          children: cellChildren,
+          width: { size: Math.round(100 / (maxCols || 1)), type: WidthType.PERCENTAGE },
         };
 
         // Preserve background color from inline style
@@ -947,7 +1006,7 @@ async function convertNode(node) {
         if (bgColor) {
           const hex = _cssColorToHex(bgColor);
           if (hex) {
-            cellOpts.shading = { type: ShadingType?.CLEAR || 'clear', fill: hex };
+            cellOpts.shading = { type: ShadingType.CLEAR, fill: hex };
           }
         }
 
@@ -958,9 +1017,9 @@ async function convertNode(node) {
         if (rowspan > 1) cellOpts.rowSpan = rowspan;
 
         // Preserve vertical alignment
-        const vAlign = td.style?.verticalAlign;
-        if (vAlign === 'middle') cellOpts.verticalAlign = 'center';
-        else if (vAlign === 'bottom') cellOpts.verticalAlign = 'bottom';
+        const vAlignVal = td.style?.verticalAlign;
+        if (vAlignVal === 'middle') cellOpts.verticalAlign = VerticalAlign.CENTER;
+        else if (vAlignVal === 'bottom') cellOpts.verticalAlign = VerticalAlign.BOTTOM;
 
         // Preserve borders
         const borderStyle = td.style?.border || td.style?.borderTop;
@@ -978,13 +1037,53 @@ async function convertNode(node) {
       if (cells.length > 0) rows.push(new TableRow({ children: cells }));
     }
     if (rows.length === 0) {
-      rows.push(new TableRow({ children: [new TableCell({ children: [new Paragraph('')] })] }));
+      rows.push(new TableRow({ children: [new TableCell({ children: [new Paragraph({ children: [new TextRun('')] })] })] }));
     }
     return [new Table({ rows })];
   }
 
   if (tag === 'blockquote') {
-    return [new Paragraph({ indent: { left: 720 }, children: _extractTextRuns(node, TextRun, ImageRun) })];
+    const bqChildren = [];
+    // Process child paragraphs within blockquote
+    for (const child of node.childNodes) {
+      if (child.nodeType === Node.ELEMENT_NODE && (child.tagName.toLowerCase() === 'p' || child.tagName.toLowerCase() === 'div')) {
+        bqChildren.push(new Paragraph({
+          indent: { left: 720 },
+          children: _extractTextRuns(child, TextRun, ImageRun, ExternalHyperlink),
+        }));
+      } else if (child.nodeType === Node.TEXT_NODE && child.textContent.trim()) {
+        bqChildren.push(new Paragraph({
+          indent: { left: 720 },
+          children: [new TextRun(child.textContent.trim())],
+        }));
+      }
+    }
+    if (bqChildren.length === 0) {
+      bqChildren.push(new Paragraph({
+        indent: { left: 720 },
+        children: _extractTextRuns(node, TextRun, ImageRun, ExternalHyperlink),
+      }));
+    }
+    return bqChildren;
+  }
+
+  // Code block: <pre> or <pre><code>
+  if (tag === 'pre') {
+    const codeEl = node.querySelector('code') || node;
+    const text = codeEl.textContent || '';
+    const lines = text.split('\n');
+    return lines.map(line => new Paragraph({
+      children: [new TextRun({ text: line, font: 'Courier New', size: 20 })],
+      spacing: { after: 0, before: 0, line: 276 },
+      shading: { type: ShadingType.CLEAR, fill: 'F5F5F5' },
+    }));
+  }
+
+  // Inline code as standalone element
+  if (tag === 'code') {
+    return [new Paragraph({
+      children: [new TextRun({ text: node.textContent || '', font: 'Courier New', size: 20 })],
+    })];
   }
 
   if (tag === 'hr') {
@@ -994,10 +1093,166 @@ async function convertNode(node) {
     })];
   }
 
+  // <br> as a block-level element (rare, but handle gracefully)
+  if (tag === 'br') {
+    return [new Paragraph({ children: [new TextRun('')] })];
+  }
+
   if (node.textContent.trim() || node.querySelector('img')) {
-    return [new Paragraph({ children: _extractTextRuns(node, TextRun, ImageRun) })];
+    return [new Paragraph({ children: _extractTextRuns(node, TextRun, ImageRun, ExternalHyperlink) })];
   }
   return [];
+}
+
+/**
+ * Extract paragraph-level formatting from an HTML element's inline styles
+ */
+function _extractParagraphFormatting(el, AlignmentType, convertInchesToTwip) {
+  const opts = {};
+  const style = el.style;
+  if (!style) return opts;
+
+  // Text alignment
+  const align = style.textAlign;
+  if (align === 'center') opts.alignment = AlignmentType.CENTER;
+  else if (align === 'right') opts.alignment = AlignmentType.RIGHT;
+  else if (align === 'justify') opts.alignment = AlignmentType.JUSTIFIED;
+
+  // Indentation
+  const marginLeft = style.marginLeft;
+  const textIndent = style.textIndent;
+  if (marginLeft || textIndent) {
+    opts.indent = {};
+    if (marginLeft) {
+      const px = parseInt(marginLeft, 10);
+      if (px > 0) opts.indent.left = Math.round((px / 96) * 1440); // px → twips
+    }
+    if (textIndent) {
+      const px = parseInt(textIndent, 10);
+      if (px > 0) opts.indent.firstLine = Math.round((px / 96) * 1440);
+      else if (px < 0) opts.indent.hanging = Math.round((Math.abs(px) / 96) * 1440);
+    }
+  }
+
+  // Spacing
+  const marginTop = style.marginTop;
+  const marginBottom = style.marginBottom;
+  const lineHeight = style.lineHeight;
+  if (marginTop || marginBottom || lineHeight) {
+    opts.spacing = {};
+    if (marginTop) {
+      const val = parseFloat(marginTop);
+      if (val > 0) {
+        // If in pt, convert to twips (1pt = 20twips)
+        const unit = marginTop.includes('pt') ? 20 : (96 / 72) * 20; // px→pt→twips
+        opts.spacing.before = Math.round(val * (marginTop.includes('pt') ? 20 : (20 / (96 / 72))));
+      }
+    }
+    if (marginBottom) {
+      const val = parseFloat(marginBottom);
+      if (val > 0) {
+        opts.spacing.after = Math.round(val * (marginBottom.includes('pt') ? 20 : (20 / (96 / 72))));
+      }
+    }
+    if (lineHeight) {
+      const val = parseFloat(lineHeight);
+      if (val > 0) {
+        if (lineHeight.includes('pt')) {
+          // Exact line height in twips
+          opts.spacing.line = Math.round(val * 20);
+          opts.spacing.lineRule = 'exact';
+        } else {
+          // Proportional (unitless or em): multiply by 240
+          opts.spacing.line = Math.round(val * 240);
+        }
+      }
+    }
+  }
+
+  return opts;
+}
+
+/**
+ * Convert a list (ul/ol) to docx Paragraph items with proper numbering levels
+ */
+function _convertList(listNode, listType, level, TextRun, ImageRun, ExternalHyperlink, Paragraph) {
+  const items = [];
+  for (const child of listNode.children) {
+    if (child.tagName.toLowerCase() !== 'li') continue;
+
+    // Extract text runs from the li, excluding nested lists
+    const liRuns = [];
+    for (const liChild of child.childNodes) {
+      const lcTag = liChild.tagName?.toLowerCase();
+      if (lcTag === 'ul' || lcTag === 'ol') continue; // skip nested lists, handle below
+      if (liChild.nodeType === Node.TEXT_NODE) {
+        const text = liChild.textContent;
+        if (text) liRuns.push(new TextRun(text));
+      } else if (liChild.nodeType === Node.ELEMENT_NODE) {
+        liRuns.push(..._extractTextRuns(liChild, TextRun, ImageRun, ExternalHyperlink));
+      }
+    }
+    if (liRuns.length === 0) liRuns.push(new TextRun(''));
+
+    const paraOpts = {
+      children: liRuns,
+    };
+
+    if (listType === 'ol') {
+      paraOpts.numbering = { reference: 'default-numbering', level: Math.min(level, 2) };
+    } else {
+      paraOpts.numbering = { reference: 'bullet-numbering', level: Math.min(level, 2) };
+    }
+
+    items.push(new Paragraph(paraOpts));
+
+    // Process nested lists
+    for (const liChild of child.children) {
+      const lcTag = liChild.tagName.toLowerCase();
+      if (lcTag === 'ul' || lcTag === 'ol') {
+        items.push(..._convertList(liChild, lcTag, level + 1, TextRun, ImageRun, ExternalHyperlink, Paragraph));
+      }
+    }
+  }
+  return items;
+}
+
+/**
+ * Extract cell content as multiple paragraphs (handles <p>, <br>, text nodes)
+ */
+function _extractCellContent(td, TextRun, ImageRun, ExternalHyperlink, Paragraph, AlignmentType, convertInchesToTwip) {
+  const paras = [];
+  let currentRuns = [];
+
+  const flushRuns = () => {
+    if (currentRuns.length > 0) {
+      paras.push(new Paragraph({ children: currentRuns }));
+      currentRuns = [];
+    }
+  };
+
+  for (const child of td.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      const text = child.textContent;
+      if (text && text.trim()) {
+        currentRuns.push(new TextRun(text));
+      }
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      const ctag = child.tagName.toLowerCase();
+      if (ctag === 'p' || ctag === 'div') {
+        flushRuns();
+        const pOpts = _extractParagraphFormatting(child, AlignmentType, convertInchesToTwip);
+        pOpts.children = _extractTextRuns(child, TextRun, ImageRun, ExternalHyperlink);
+        paras.push(new Paragraph(pOpts));
+      } else if (ctag === 'br') {
+        currentRuns.push(new TextRun({ break: 1 }));
+      } else {
+        currentRuns.push(..._extractTextRuns(child, TextRun, ImageRun, ExternalHyperlink));
+      }
+    }
+  }
+  flushRuns();
+  return paras;
 }
 
 /**
@@ -1014,7 +1269,7 @@ async function convertNode(node) {
  * @param {Function} ImageRun - docx ImageRun constructor
  * @param {Object} inherited - accumulated formatting from parent elements
  */
-function _extractTextRuns(el, TextRun, ImageRun, inherited = {}) {
+function _extractTextRuns(el, TextRun, ImageRun, ExternalHyperlink, inherited = {}) {
   const runs = [];
 
   for (const child of el.childNodes) {
@@ -1027,6 +1282,8 @@ function _extractTextRuns(el, TextRun, ImageRun, inherited = {}) {
         if (!opts.italics) delete opts.italics;
         if (!opts.underline) delete opts.underline;
         if (!opts.strike) delete opts.strike;
+        if (!opts.superScript) delete opts.superScript;
+        if (!opts.subScript) delete opts.subScript;
         runs.push(new TextRun(opts));
       }
     } else if (child.nodeType === Node.ELEMENT_NODE) {
@@ -1049,13 +1306,64 @@ function _extractTextRuns(el, TextRun, ImageRun, inherited = {}) {
         continue;
       }
 
+      // Hyperlink element → ExternalHyperlink
+      if (ctag === 'a' && ExternalHyperlink) {
+        const href = child.getAttribute('href') || '';
+        if (href && href !== '#') {
+          const linkRuns = _extractTextRuns(child, TextRun, ImageRun, ExternalHyperlink, {
+            ...inherited,
+            color: '0563C1',
+            underline: { type: 'single' },
+          });
+          // Filter out empty text runs
+          const validRuns = linkRuns.filter(r => !(r instanceof TextRun) || r.root?.length > 0);
+          if (validRuns.length > 0) {
+            runs.push(new ExternalHyperlink({ children: validRuns, link: href }));
+          } else {
+            // Fallback: use text content
+            const linkText = child.textContent || href;
+            runs.push(new ExternalHyperlink({
+              children: [new TextRun({ text: linkText, color: '0563C1', underline: { type: 'single' } })],
+              link: href,
+            }));
+          }
+        } else {
+          // No valid href — just extract text runs normally
+          const childRuns = _extractTextRuns(child, TextRun, ImageRun, ExternalHyperlink, inherited);
+          runs.push(...childRuns);
+        }
+        continue;
+      }
+
+      // Inline code
+      if (ctag === 'code') {
+        const fmt = { ...inherited, font: 'Courier New' };
+        const childRuns = _extractTextRuns(child, TextRun, ImageRun, ExternalHyperlink, fmt);
+        runs.push(...childRuns);
+        continue;
+      }
+
+      // Superscript / subscript
+      if (ctag === 'sup') {
+        const fmt = { ...inherited, superScript: true };
+        const childRuns = _extractTextRuns(child, TextRun, ImageRun, ExternalHyperlink, fmt);
+        runs.push(...childRuns);
+        continue;
+      }
+      if (ctag === 'sub') {
+        const fmt = { ...inherited, subScript: true };
+        const childRuns = _extractTextRuns(child, TextRun, ImageRun, ExternalHyperlink, fmt);
+        runs.push(...childRuns);
+        continue;
+      }
+
       // Build accumulated formatting for this element
       const fmt = { ...inherited };
 
       // Semantic formatting tags
       if (ctag === 'strong' || ctag === 'b') fmt.bold = true;
       if (ctag === 'em' || ctag === 'i') fmt.italics = true;
-      if (ctag === 'u') fmt.underline = {};
+      if (ctag === 'u') fmt.underline = { type: 'single' };
       if (ctag === 's' || ctag === 'del' || ctag === 'strike') fmt.strike = true;
 
       // Parse inline styles from any element (span, strong, em, etc.)
@@ -1087,10 +1395,27 @@ function _extractTextRuns(el, TextRun, ImageRun, inherited = {}) {
           // Remove quotes around font name
           fmt.font = fontFamily.replace(/['"]/g, '').split(',')[0].trim();
         }
+
+        // Text decoration from style (e.g., text-decoration: underline, line-through)
+        const textDecoration = child.style.textDecoration || child.style.textDecorationLine;
+        if (textDecoration) {
+          if (textDecoration.includes('underline')) fmt.underline = { type: 'single' };
+          if (textDecoration.includes('line-through')) fmt.strike = true;
+        }
+
+        // Font weight from style
+        const fontWeight = child.style.fontWeight;
+        if (fontWeight === 'bold' || fontWeight === '700' || fontWeight === '800' || fontWeight === '900') {
+          fmt.bold = true;
+        }
+
+        // Font style from style
+        const fontStyle = child.style.fontStyle;
+        if (fontStyle === 'italic') fmt.italics = true;
       }
 
       // Recurse into children to handle nested formatting
-      const childRuns = _extractTextRuns(child, TextRun, ImageRun, fmt);
+      const childRuns = _extractTextRuns(child, TextRun, ImageRun, ExternalHyperlink, fmt);
       runs.push(...childRuns);
     }
   }

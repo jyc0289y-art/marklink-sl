@@ -501,11 +501,11 @@ function applyAdjustmentToCanvas(canvas, type, params) {
       d[i + 2] = clampByte(factor * (d[i + 2] + br - 128) + 128);
     }
   } else if (type === 'levels') {
-    const ib = params.inputBlack || 0;
-    const iw = params.inputWhite || 255;
-    const gamma = params.gamma || 1;
-    const ob = params.outputBlack || 0;
-    const ow = params.outputWhite || 255;
+    const ib = params.inputBlack ?? 0;
+    const iw = params.inputWhite ?? 255;
+    const gamma = params.gamma ?? 1;
+    const ob = params.outputBlack ?? 0;
+    const ow = params.outputWhite ?? 255;
     const range = iw - ib || 1;
     for (let i = 0; i < d.length; i += 4) {
       for (let c = 0; c < 3; c++) {
@@ -915,21 +915,45 @@ function bindToolbar() {
     });
   });
 
-  // Rotation / Flip
+  // Rotation / Flip — apply actual pixel transforms to all layers
   document.getElementById('photo-rotate-cw')?.addEventListener('click', () => {
-    currentParams.rotation = ((currentParams.rotation || 0) + 90) % 360;
-    applyTransform();
+    if (!imageInfo) return;
+    // Rotate all layer canvases 90 degrees clockwise
+    for (const layer of layers) {
+      if (layer.canvas) {
+        layer.canvas = rotateCanvas90CW(layer.canvas);
+      }
+    }
+    // Swap width/height in imageInfo
+    const tmp = imageInfo.width;
+    imageInfo.width = imageInfo.height;
+    imageInfo.height = tmp;
+    compositeAndRender();
     pushHistory();
+    updateInfoBar();
+    renderLayersStack();
   });
   document.getElementById('photo-flip-h')?.addEventListener('click', () => {
-    currentParams.flipH = !currentParams.flipH;
-    applyTransform();
+    if (!imageInfo) return;
+    for (const layer of layers) {
+      if (layer.canvas) {
+        layer.canvas = flipCanvasH(layer.canvas);
+      }
+    }
+    compositeAndRender();
     pushHistory();
+    renderLayersStack();
   });
   document.getElementById('photo-flip-v')?.addEventListener('click', () => {
-    currentParams.flipV = !currentParams.flipV;
-    applyTransform();
+    if (!imageInfo) return;
+    for (const layer of layers) {
+      if (layer.canvas) {
+        layer.canvas = flipCanvasV(layer.canvas);
+      }
+    }
+    compositeAndRender();
     pushHistory();
+    renderLayersStack();
   });
 
   // Crop
@@ -1006,8 +1030,39 @@ function renderOriginal() {
   engine.render(cloneParams(DEFAULT_PARAMS));
 }
 
-function applyTransform() {
-  applyZoomTransform();
+function rotateCanvas90CW(srcCanvas) {
+  const w = srcCanvas.width;
+  const h = srcCanvas.height;
+  const dst = document.createElement('canvas');
+  dst.width = h;
+  dst.height = w;
+  const ctx = dst.getContext('2d');
+  ctx.translate(h, 0);
+  ctx.rotate(Math.PI / 2);
+  ctx.drawImage(srcCanvas, 0, 0);
+  return dst;
+}
+
+function flipCanvasH(srcCanvas) {
+  const dst = document.createElement('canvas');
+  dst.width = srcCanvas.width;
+  dst.height = srcCanvas.height;
+  const ctx = dst.getContext('2d');
+  ctx.translate(srcCanvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(srcCanvas, 0, 0);
+  return dst;
+}
+
+function flipCanvasV(srcCanvas) {
+  const dst = document.createElement('canvas');
+  dst.width = srcCanvas.width;
+  dst.height = srcCanvas.height;
+  const ctx = dst.getContext('2d');
+  ctx.translate(0, srcCanvas.height);
+  ctx.scale(1, -1);
+  ctx.drawImage(srcCanvas, 0, 0);
+  return dst;
 }
 
 /* ==================== Sliders ==================== */
@@ -1221,10 +1276,15 @@ function updateCropSelection() {
   }
 }
 
+let _cropDragCleanup = null;
+
 function bindCropDrag() {
   const overlay = document.getElementById('photo-crop-overlay');
   const sel = document.getElementById('crop-selection');
   if (!overlay || !sel) return;
+
+  // Clean up previous crop drag listeners if any
+  if (_cropDragCleanup) { _cropDragCleanup(); _cropDragCleanup = null; }
 
   let dragging = null; // 'move' | handle name
   let startX, startY, startRect;
@@ -1283,6 +1343,16 @@ function bindCropDrag() {
   window.addEventListener('touchmove', onMove, { passive: false });
   window.addEventListener('mouseup', onUp);
   window.addEventListener('touchend', onUp);
+
+  // Store cleanup function to remove listeners later
+  _cropDragCleanup = () => {
+    overlay.removeEventListener('mousedown', onDown);
+    overlay.removeEventListener('touchstart', onDown);
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('touchmove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    window.removeEventListener('touchend', onUp);
+  };
 }
 
 function getCropRatio() {
@@ -1311,26 +1381,31 @@ function applyCrop() {
   const sw = Math.min(canvas.width - sx, Math.round(cropRect.w * scaleX));
   const sh = Math.min(canvas.height - sy, Math.round(cropRect.h * scaleY));
 
-  // Extract cropped region
-  const srcCanvas = engine.getCanvas();
-  const tmpCanvas = document.createElement('canvas');
-  tmpCanvas.width = sw;
-  tmpCanvas.height = sh;
-  const ctx = tmpCanvas.getContext('2d');
-  ctx.drawImage(srcCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+  if (sw <= 0 || sh <= 0) return;
 
-  // Reload cropped image
-  engine.loadImage(tmpCanvas);
+  // Crop all layer canvases to the same region
+  for (const layer of layers) {
+    if (layer.canvas) {
+      const layerTmp = document.createElement('canvas');
+      layerTmp.width = sw;
+      layerTmp.height = sh;
+      layerTmp.getContext('2d').drawImage(layer.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+      layer.canvas = layerTmp;
+    }
+  }
+
   imageInfo.width = sw;
   imageInfo.height = sh;
-  render();
+  compositeAndRender();
   pushHistory();
   cancelCrop();
   updateInfoBar();
+  renderLayersStack();
 }
 
 function cancelCrop() {
   cropActive = false;
+  if (_cropDragCleanup) { _cropDragCleanup(); _cropDragCleanup = null; }
   const overlay = document.getElementById('photo-crop-overlay');
   const bar = document.getElementById('photo-crop-bar');
   if (overlay) overlay.style.display = 'none';
@@ -1390,17 +1465,22 @@ function showResizeDialog() {
     const nw = parseInt(wInput.value);
     const nh = parseInt(hInput.value);
     if (nw > 0 && nh > 0) {
-      const srcCanvas = engine.getCanvas();
-      const tmpCanvas = document.createElement('canvas');
-      tmpCanvas.width = nw;
-      tmpCanvas.height = nh;
-      tmpCanvas.getContext('2d').drawImage(srcCanvas, 0, 0, nw, nh);
-      engine.loadImage(tmpCanvas);
+      // Resize all layer canvases
+      for (const layer of layers) {
+        if (layer.canvas) {
+          const layerTmp = document.createElement('canvas');
+          layerTmp.width = nw;
+          layerTmp.height = nh;
+          layerTmp.getContext('2d').drawImage(layer.canvas, 0, 0, nw, nh);
+          layer.canvas = layerTmp;
+        }
+      }
       imageInfo.width = nw;
       imageInfo.height = nh;
-      render();
+      compositeAndRender();
       pushHistory();
       updateInfoBar();
+      renderLayersStack();
     }
     modal.remove();
   };
@@ -1430,19 +1510,37 @@ function toggleTextMode() {
 function addTextItem(layer) {
   const item = document.createElement('div');
   item.className = 'photo-text-item selected';
-  item.contentEditable = true;
-  item.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);font-size:24px;color:#ffffff;font-family:sans-serif;text-shadow:1px 1px 3px rgba(0,0,0,0.5)';
+  item.contentEditable = false; // Start in drag mode, dblclick to edit text
+  item.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);font-size:24px;color:#ffffff;font-family:sans-serif;text-shadow:1px 1px 3px rgba(0,0,0,0.5);cursor:move;user-select:none;';
   item.textContent = 'Text';
   layer.appendChild(item);
+
+  // Double-click to enter edit mode
+  item.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    item.contentEditable = true;
+    item.style.cursor = 'text';
+    item.style.userSelect = 'auto';
+    item.focus();
+    const range = document.createRange();
+    range.selectNodeContents(item);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+  });
+  item.addEventListener('blur', () => {
+    item.contentEditable = false;
+    item.style.cursor = 'move';
+    item.style.userSelect = 'none';
+  });
 
   // Drag
   let dragging = false, ox, oy;
   item.addEventListener('mousedown', (e) => {
-    if (e.target === item && !item.isContentEditable) {
-      dragging = true;
-      ox = e.offsetX;
-      oy = e.offsetY;
-    }
+    if (item.contentEditable === 'true' || item.contentEditable === true) return;
+    dragging = true;
+    ox = e.offsetX;
+    oy = e.offsetY;
+    e.preventDefault();
   });
   window.addEventListener('mousemove', (e) => {
     if (!dragging) return;
@@ -1454,7 +1552,6 @@ function addTextItem(layer) {
   window.addEventListener('mouseup', () => { dragging = false; });
 
   textItems.push(item);
-  item.focus();
 
   // Show text toolbar
   showTextToolbar(item, layer);
@@ -1542,12 +1639,36 @@ function flattenText() {
     const ir = item.getBoundingClientRect();
     const x = (ir.left - cr.left) * scaleX;
     const y = (ir.top - cr.top) * scaleY;
-    const fontSize = parseFloat(getComputedStyle(item).fontSize) * scaleX;
+    const computed = getComputedStyle(item);
+    const fontSize = parseFloat(computed.fontSize) * scaleX;
 
-    ctx.font = `${item.style.fontWeight || 'normal'} ${fontSize}px ${getComputedStyle(item).fontFamily}`;
+    ctx.save();
+    ctx.font = `${item.style.fontStyle || 'normal'} ${item.style.fontWeight || 'normal'} ${fontSize}px ${computed.fontFamily}`;
     ctx.fillStyle = item.style.color || '#fff';
+    ctx.globalAlpha = parseFloat(item.style.opacity) || 1;
     ctx.textBaseline = 'top';
+
+    // Handle rotation if any
+    const transformMatch = (item.style.transform || '').match(/rotate\(([^)]+)deg\)/);
+    if (transformMatch) {
+      const deg = parseFloat(transformMatch[1]);
+      const cx = x + ir.width * scaleX / 2;
+      const cy = y + ir.height * scaleY / 2;
+      ctx.translate(cx, cy);
+      ctx.rotate(deg * Math.PI / 180);
+      ctx.translate(-cx, -cy);
+    }
+
+    // Handle text shadow
+    if (item.style.textShadow && item.style.textShadow !== 'none') {
+      ctx.shadowColor = 'rgba(0,0,0,0.7)';
+      ctx.shadowBlur = 6 * scaleX;
+      ctx.shadowOffsetX = 2 * scaleX;
+      ctx.shadowOffsetY = 2 * scaleY;
+    }
+
     ctx.fillText(item.textContent, x, y);
+    ctx.restore();
   });
 
   engine.loadImage(tmpCanvas);
@@ -1580,26 +1701,31 @@ function toggleDrawMode() {
     const area = document.getElementById('photo-canvas-area');
     const ar = area.getBoundingClientRect();
 
-    dc.width = cr.width;
-    dc.height = cr.height;
+    // Use actual image resolution for the draw canvas, CSS sizes it to match display
+    const srcCanvas = engine.getCanvas();
+    dc.width = srcCanvas.width;
+    dc.height = srcCanvas.height;
     dc.style.display = 'block';
     dc.style.left = (cr.left - ar.left) + 'px';
     dc.style.top = (cr.top - ar.top) + 'px';
     dc.style.width = cr.width + 'px';
     dc.style.height = cr.height + 'px';
 
+    const scaleX = srcCanvas.width / cr.width;
+    const scaleY = srcCanvas.height / cr.height;
+
     drawCtx = dc.getContext('2d');
     drawCtx.strokeStyle = '#ff0000';
-    drawCtx.lineWidth = 3;
+    drawCtx.lineWidth = 3 * scaleX;
     drawCtx.lineCap = 'round';
     drawCtx.lineJoin = 'round';
 
     let drawing = false;
-    dc.onmousedown = (e) => { drawing = true; drawCtx.beginPath(); drawCtx.moveTo(e.offsetX, e.offsetY); };
-    dc.onmousemove = (e) => { if (drawing) { drawCtx.lineTo(e.offsetX, e.offsetY); drawCtx.stroke(); } };
+    dc.onmousedown = (e) => { drawing = true; drawCtx.beginPath(); drawCtx.moveTo(e.offsetX * scaleX, e.offsetY * scaleY); };
+    dc.onmousemove = (e) => { if (drawing) { drawCtx.lineTo(e.offsetX * scaleX, e.offsetY * scaleY); drawCtx.stroke(); } };
     dc.onmouseup = () => { drawing = false; };
-    dc.ontouchstart = (e) => { e.preventDefault(); drawing = true; const t = e.touches[0]; const r = dc.getBoundingClientRect(); drawCtx.beginPath(); drawCtx.moveTo(t.clientX - r.left, t.clientY - r.top); };
-    dc.ontouchmove = (e) => { e.preventDefault(); if (!drawing) return; const t = e.touches[0]; const r = dc.getBoundingClientRect(); drawCtx.lineTo(t.clientX - r.left, t.clientY - r.top); drawCtx.stroke(); };
+    dc.ontouchstart = (e) => { e.preventDefault(); drawing = true; const t = e.touches[0]; const r = dc.getBoundingClientRect(); drawCtx.beginPath(); drawCtx.moveTo((t.clientX - r.left) * scaleX, (t.clientY - r.top) * scaleY); };
+    dc.ontouchmove = (e) => { e.preventDefault(); if (!drawing) return; const t = e.touches[0]; const r = dc.getBoundingClientRect(); drawCtx.lineTo((t.clientX - r.left) * scaleX, (t.clientY - r.top) * scaleY); drawCtx.stroke(); };
     dc.ontouchend = () => { drawing = false; };
 
     showDrawToolbar(dc);
@@ -1625,12 +1751,17 @@ function showDrawToolbar(dc) {
   const canvasArea = document.getElementById('photo-canvas-area');
   canvasArea.appendChild(bar);
 
+  // Calculate scale for brush size (draw canvas is at image resolution)
+  const srcCanvas = engine ? engine.getCanvas() : null;
+  const photoCanvas = document.getElementById('photo-canvas');
+  const drawScale = (srcCanvas && photoCanvas) ? srcCanvas.width / photoCanvas.getBoundingClientRect().width : 1;
+
   bar.querySelector('#draw-color-input').oninput = (e) => {
     drawCtx.strokeStyle = e.target.value;
     drawCtx.globalCompositeOperation = 'source-over';
   };
-  bar.querySelector('#draw-size-input').oninput = (e) => { drawCtx.lineWidth = e.target.value; };
-  bar.querySelector('#draw-eraser').onclick = () => { drawCtx.globalCompositeOperation = 'destination-out'; drawCtx.lineWidth = 15; };
+  bar.querySelector('#draw-size-input').oninput = (e) => { drawCtx.lineWidth = e.target.value * drawScale; };
+  bar.querySelector('#draw-eraser').onclick = () => { drawCtx.globalCompositeOperation = 'destination-out'; drawCtx.lineWidth = 15 * drawScale; };
   bar.querySelector('#draw-clear').onclick = () => { drawCtx.clearRect(0, 0, dc.width, dc.height); };
   bar.querySelector('#draw-done').onclick = () => { flattenDraw(); };
 }
@@ -1646,8 +1777,8 @@ function flattenDraw() {
   const ctx = tmpCanvas.getContext('2d');
   ctx.drawImage(srcCanvas, 0, 0);
 
-  // Scale draw canvas to match
-  ctx.drawImage(dc, 0, 0, dc.width, dc.height, 0, 0, srcCanvas.width, srcCanvas.height);
+  // Draw canvas is now at image resolution, draw directly
+  ctx.drawImage(dc, 0, 0);
 
   engine.loadImage(tmpCanvas);
   render();
@@ -1878,7 +2009,10 @@ async function generateGif(modal) {
   try {
     const gifData = encodeGIF(images, maxW, maxH, delay, loop);
     const blob = new Blob([gifData], { type: 'image/gif' });
+    // Revoke any previous GIF blob URL to prevent memory leaks
+    if (preview._gifBlobUrl) URL.revokeObjectURL(preview._gifBlobUrl);
     const url = URL.createObjectURL(blob);
+    preview._gifBlobUrl = url;
     preview.innerHTML = `<img src="${url}" alt="Generated GIF"><p style="font-size:11px;margin-top:4px">${maxW}×${maxH}, ${gifFrames.length} frames, ${(blob.size / 1024).toFixed(1)}KB</p>`;
 
     // Add download button
@@ -2343,7 +2477,8 @@ function exportImage() {
   const existing = document.querySelector('.photo-export-modal');
   if (existing) { existing.remove(); return; }
 
-  const canvas = engine.getCanvas();
+  // Flatten all layers for export (use composited result if multiple layers)
+  const canvas = layers.length > 1 ? compositeLayersToCanvas() || engine.getCanvas() : engine.getCanvas();
 
   const modal = document.createElement('div');
   modal.className = 'photo-resize-modal photo-export-modal';
@@ -2397,8 +2532,8 @@ function exportImage() {
     const mimeType = `image/${fmt}`;
     canvas.toBlob((blob) => {
       if (blob && sizeVal) {
-        const kb = (blob.size / 1024).toFixed(1);
-        sizeVal.textContent = kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`;
+        const kb = blob.size / 1024;
+        sizeVal.textContent = kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb.toFixed(1)} KB`;
       }
     }, mimeType, fmt === 'png' ? undefined : quality);
   };
@@ -3870,9 +4005,7 @@ function applyZoomTransform() {
     transforms.push(`translate(${zoomPanX}px, ${zoomPanY}px)`);
     transforms.push(`scale(${zoomLevel})`);
   }
-  if (currentParams.rotation) transforms.push(`rotate(${currentParams.rotation}deg)`);
-  if (currentParams.flipH) transforms.push('scaleX(-1)');
-  if (currentParams.flipV) transforms.push('scaleY(-1)');
+  // Rotation/flip are now applied as pixel transforms, not CSS
   canvas.style.transform = transforms.join(' ') || 'none';
   canvas.style.transformOrigin = 'center center';
 }
@@ -3971,6 +4104,7 @@ export function destroyPhotoEditor() {
   layerIdCounter = 0;
   gifFrames = [];
   cropActive = false;
+  if (_cropDragCleanup) { _cropDragCleanup(); _cropDragCleanup = null; }
   textMode = false;
   drawMode = false;
   drawCtx = null;

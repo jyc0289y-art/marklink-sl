@@ -196,6 +196,13 @@ export async function pullModel(modelName, onProgress) {
     body: JSON.stringify({ name: modelName, stream: true }),
   });
 
+  if (!res.ok) {
+    throw new Error(`Pull failed: ${res.status} ${res.statusText}`);
+  }
+  if (!res.body) {
+    throw new Error('Pull response has no body stream');
+  }
+
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let lineBuffer = '';
@@ -267,6 +274,9 @@ export async function chat(model, messages, systemPrompt, onToken, abortSignal) 
 
   if (!res.ok) {
     throw new Error(`Ollama error: ${res.status} ${res.statusText}`);
+  }
+  if (!res.body) {
+    return { content: '', tokenStats: null };
   }
 
   const reader = res.body.getReader();
@@ -382,6 +392,9 @@ export async function streamChat(model, messages, systemPrompt, onToken, abortSi
 
   if (!res.ok) {
     throw new Error(`LLM error: ${res.status} ${res.statusText}`);
+  }
+  if (!res.body) {
+    return { content: '', tokenStats: null, aborted: false };
   }
 
   const reader = res.body.getReader();

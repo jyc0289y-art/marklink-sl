@@ -60,6 +60,12 @@ async function hasOleMagicBytes(file) {
  * Process a file — auto-detect format and convert to HTML
  */
 async function processDocFile(file) {
+  // Handle empty (0-byte) files gracefully
+  if (file.size === 0) {
+    setDocContent('');
+    return { name: file.name, content: '' };
+  }
+
   // Check magic bytes for ZIP-based formats (DOCX) even if extension is wrong
   const isZip = await hasZipMagicBytes(file);
 
@@ -121,16 +127,24 @@ async function processDocFile(file) {
  */
 export async function openDocFile() {
   if (window.showOpenFilePicker) {
-    const [handle] = await window.showOpenFilePicker({
-      types: [
-        { description: 'Document Files', accept: {
-          'text/html': ['.html', '.htm'],
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-          'application/hwpx': ['.hwpx'],
-          'application/x-hwp': ['.hwp'],
-        }},
-      ],
-    });
+    let handles;
+    try {
+      handles = await window.showOpenFilePicker({
+        types: [
+          { description: 'Document Files', accept: {
+            'text/html': ['.html', '.htm'],
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+            'application/hwpx': ['.hwpx'],
+            'application/x-hwp': ['.hwp'],
+          }},
+        ],
+      });
+    } catch (e) {
+      // User cancelled the picker (AbortError) — not an error
+      if (e.name === 'AbortError') return null;
+      throw e;
+    }
+    const [handle] = handles;
     const file = await handle.getFile();
     const result = await processDocFile(file);
     currentHandle = isDocxFile(file) || isHwpxFile(file) || isHwpFile(file) ? null : handle;
@@ -167,10 +181,16 @@ export async function saveDocFile() {
   const tsName = generateTimestampFilename(currentName, 'html');
 
   if (window.showSaveFilePicker) {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: tsName,
-      types: [{ description: 'HTML Files', accept: { 'text/html': ['.html'] } }],
-    });
+    let handle;
+    try {
+      handle = await window.showSaveFilePicker({
+        suggestedName: tsName,
+        types: [{ description: 'HTML Files', accept: { 'text/html': ['.html'] } }],
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') return null; // user cancelled
+      throw e;
+    }
     const writable = await handle.createWritable();
     await writable.write(html);
     await writable.close();

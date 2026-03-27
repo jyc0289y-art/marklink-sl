@@ -1603,7 +1603,7 @@ function saveVersionSnapshot(type = 'auto') {
 
     if (!content) return;
 
-    const versions = JSON.parse(localStorage.getItem(VERSION_KEY) || '[]');
+    let versions; try { versions = JSON.parse(localStorage.getItem(VERSION_KEY) || '[]'); } catch { versions = []; }
 
     // Don't save duplicate if content is same as last snapshot for this tab
     const lastSame = versions.find(v => v.tab === tab);

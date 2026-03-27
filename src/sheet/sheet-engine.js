@@ -328,9 +328,11 @@ export function letterToCol(s) {
   return n - 1;
 }
 
-/** Cell reference (e.g. "A1") → [row, col] (0-based) */
+/** Cell reference (e.g. "A1", "$A$1", "$A1", "A$1") → [row, col] (0-based) */
 export function refToRC(ref) {
-  const match = ref.match(/^([A-Z]+)(\d+)$/);
+  // Strip $ signs for absolute reference support
+  const cleaned = ref.replace(/\$/g, '');
+  const match = cleaned.match(/^([A-Z]+)(\d+)$/);
   if (!match) return null;
   return [parseInt(match[2], 10) - 1, letterToCol(match[1])];
 }
@@ -420,6 +422,27 @@ function resolveSheetRef(currentSheet, refStr) {
 }
 
 /**
+ * Uppercase formula text while preserving string literals inside double quotes.
+ * E.g. '="Hello" & " " & "World"' -> '="Hello" & " " & "World"' (function/ref parts uppercased)
+ */
+function uppercasePreservingStrings(expr) {
+  let result = '';
+  let inString = false;
+  for (let i = 0; i < expr.length; i++) {
+    const ch = expr[i];
+    if (ch === '"') {
+      inString = !inString;
+      result += ch;
+    } else if (inString) {
+      result += ch; // preserve original case
+    } else {
+      result += ch.toUpperCase();
+    }
+  }
+  return result;
+}
+
+/**
  * Evaluate a cell value — supports formulas starting with '='.
  * Plain numeric strings are converted to numbers; non-numeric strings are
  * returned as-is. Formulas are parsed and evaluated via evalFormula().
@@ -447,7 +470,9 @@ function evaluate(sheet, raw, allSheets, cellId) {
   const prevSheets = _evalSheets;
   try {
     _evalSheets = allSheets || null;
-    const expr = raw.substring(1).toUpperCase();
+    // Uppercase function names and cell refs but preserve string literals inside quotes
+    const rawExpr = raw.substring(1);
+    const expr = uppercasePreservingStrings(rawExpr);
     const result = evalFormula(sheet, expr);
     return result;
   } catch (e) {
@@ -637,12 +662,34 @@ function evalFunctionCall(sheet, fn, argsStr) {
         const lookupVal = evalSimpleExpr(sheet, args[0]);
         const tableRange = resolveRangeAsTable(sheet, args[1]);
         const colIndex = Number(evalSimpleExpr(sheet, args[2])) - 1;
-        for (const row of tableRange) {
-          if (row[0] == lookupVal || String(row[0]) === String(lookupVal)) {
-            return colIndex < row.length ? row[colIndex] : '#REF';
+        // 4th arg: FALSE or 0 = exact match; TRUE or 1 or omitted = approximate match
+        const rangeLookupArg = args[3] ? evalSimpleExpr(sheet, args[3]) : true;
+        const exactMatch = rangeLookupArg === false || rangeLookupArg === 0 || rangeLookupArg === 'FALSE';
+
+        if (exactMatch) {
+          // Exact match
+          for (const row of tableRange) {
+            if (row[0] == lookupVal || String(row[0]) === String(lookupVal)) {
+              return colIndex < row.length ? row[colIndex] : '#REF';
+            }
           }
+          return '#N/A';
+        } else {
+          // Approximate match: find largest value <= lookupVal (assumes sorted ascending)
+          let bestRow = null;
+          for (const row of tableRange) {
+            if (row[0] == lookupVal || String(row[0]) === String(lookupVal)) {
+              return colIndex < row.length ? row[colIndex] : '#REF';
+            }
+            if (typeof row[0] === 'number' && typeof lookupVal === 'number' && row[0] <= lookupVal) {
+              bestRow = row;
+            } else if (String(row[0]) <= String(lookupVal)) {
+              bestRow = row;
+            }
+          }
+          if (bestRow) return colIndex < bestRow.length ? bestRow[colIndex] : '#REF';
+          return '#N/A';
         }
-        return '#N/A';
       }
       case 'XLOOKUP': {
         const args = splitArgs(argsStr);
@@ -1045,12 +1092,8 @@ function evalFunctionCall(sheet, fn, argsStr) {
         const args = splitArgs(argsStr);
         const val = Number(evalSimpleExpr(sheet, args[0]));
         const fmt = String(evalSimpleExpr(sheet, args[1])).replace(/^"|"$/g, '');
-        if (fmt === '0') return Math.round(val).toString();
-        if (fmt === '0.00') return val.toFixed(2);
-        if (fmt === '#,##0') return Math.round(val).toLocaleString();
-        if (fmt === '0%') return Math.round(val * 100) + '%';
-        if (fmt === '0.0%') return (val * 100).toFixed(1) + '%';
-        return String(val);
+        // Use applyExcelFormat which handles #,##0, #,##0.00, 0.00, 0%, etc.
+        return applyExcelFormat(val, fmt);
       }
 
       // ─── Array / Modern Functions ───
@@ -1662,14 +1705,17 @@ function evalFunctionCall(sheet, fn, argsStr) {
   return '#ERROR'; // unknown function
 }
 
-/** Split function arguments respecting nested parentheses */
+/** Split function arguments respecting nested parentheses and string literals */
 function splitArgs(str) {
   const args = [];
-  let depth = 0, current = '';
+  let depth = 0, current = '', inString = false;
   for (const ch of str) {
-    if (ch === '(') depth++;
-    else if (ch === ')') depth--;
-    if (ch === ',' && depth === 0) {
+    if (ch === '"') inString = !inString;
+    if (!inString) {
+      if (ch === '(') depth++;
+      else if (ch === ')') depth--;
+    }
+    if (ch === ',' && depth === 0 && !inString) {
       args.push(current.trim());
       current = '';
     } else {
@@ -1739,12 +1785,16 @@ function evalSimpleExpr(sheet, expr) {
     return evalFormula(sheet, expr.trim());
   }
 
+  // Strip $ signs from absolute references ($A$1 -> A1, $B2 -> B2, C$3 -> C3)
+  let resolved = expr.replace(/\$/g, '');
+
   // Replace cross-sheet cell references first (Sheet2!A1 or 'Sheet Name'!A1)
-  let resolved = expr.replace(/(?:'([^']+)'|SHEET(\d+))!([A-Z]+\d+)/gi, (match, quotedName, numName, cellRef) => {
+  resolved = resolved.replace(/(?:'([^']+)'|SHEET(\d+))!([A-Z]+\d+)/gi, (match, quotedName, numName, cellRef) => {
     const { sheet: targetSheet, ref } = resolveSheetRef(sheet, match);
     const rc = refToRC(ref.toUpperCase());
     if (!rc) return match;
     const val = getDisplayValue(targetSheet, rc[0], rc[1]);
+    if (typeof val === 'string' && val.startsWith('#')) return val; // propagate errors
     const num = Number(val);
     return isNaN(num) ? `"${val}"` : num;
   });
@@ -1754,9 +1804,16 @@ function evalSimpleExpr(sheet, expr) {
     const rc = refToRC(match);
     if (!rc) return match;
     const val = getDisplayValue(sheet, rc[0], rc[1]);
+    if (typeof val === 'string' && val.startsWith('#')) return val; // propagate errors
     const num = Number(val);
     return isNaN(num) ? `"${val}"` : num;
   });
+
+  // Check for error propagation — if any #ERROR, #REF!, #N/A etc. is outside string literals, propagate it
+  // Strip quoted strings first before checking for errors
+  const unquoted = resolved.replace(/"[^"]*"/g, '');
+  const errorMatch = unquoted.match(/#(ERROR|REF!?|N\/A|VALUE!?|DIV\/0!?|CIRC!?|NUM!?|CALC!?|NAME\??)/);
+  if (errorMatch) return '#' + errorMatch[1];
 
   // Handle string literals — strip surrounding quotes and return
   if (/^"[^"]*"$/.test(resolved.trim())) {
@@ -1767,8 +1824,34 @@ function evalSimpleExpr(sheet, expr) {
   if (resolved.trim() === 'TRUE') return true;
   if (resolved.trim() === 'FALSE') return false;
 
-  // Safe eval of arithmetic (only numbers and operators)
-  if (/^[\d\s+\-*/().,"<>=!&|]+$/.test(resolved)) {
+  // Handle & (concatenation operator): split by &, evaluate parts, concatenate
+  if (resolved.includes('&')) {
+    const parts = resolved.split('&');
+    return parts.map(p => {
+      const trimmed = p.trim();
+      if (/^"(.*)"$/.test(trimmed)) return trimmed.slice(1, -1);
+      const num = Number(trimmed);
+      if (!isNaN(num) && trimmed !== '') return String(num);
+      // Try evaluating as sub-expression
+      if (trimmed) {
+        const sub = evalSimpleExpr(sheet, trimmed);
+        return sub != null ? String(sub) : '';
+      }
+      return '';
+    }).join('');
+  }
+
+  // Handle % (percentage operator): replace e.g. "10%" with "0.1", "50%" with "0.5"
+  resolved = resolved.replace(/(\d+(?:\.\d+)?)%/g, (match, num) => String(Number(num) / 100));
+
+  // Translate spreadsheet comparison operators to JavaScript equivalents
+  // <> -> !== (must come before < and > replacements)
+  resolved = resolved.replace(/<>/g, '!==');
+  // Translate single = to == for JS comparison, but don't touch <=, >=, !=, ==, ===
+  resolved = resolved.replace(/(?<![<>!=])=(?!=)/g, '==');
+
+  // Safe eval of arithmetic (only numbers, operators, strings, booleans)
+  if (/^[\d\s+\-*/().,"<>=!|%?:]+$/.test(resolved)) {
     try {
       return Function(`"use strict"; return (${resolved})`)();
     } catch {

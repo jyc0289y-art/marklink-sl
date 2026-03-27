@@ -4796,7 +4796,7 @@ function updateReferencesSection(style) {
 /* ==================== Spell Check ==================== */
 
 let spellCheckEnabled = false;
-let customDictionary = JSON.parse(localStorage.getItem('doc-custom-dict') || '[]');
+let customDictionary = (() => { try { return JSON.parse(localStorage.getItem('doc-custom-dict') || '[]'); } catch { return []; } })();
 
 // Basic English word list (common words). Words not in this set are flagged.
 // This is a compact list; real spell check would use a larger dictionary.
@@ -5161,7 +5161,8 @@ function showAutoSaveRecoveryDialog(savedContent, timestamp) {
 
 function showVersionDiffDialog() {
   document.querySelector('.doc-version-diff-dialog')?.remove();
-  const versionHistory = JSON.parse(localStorage.getItem('doc-version-history') || '[]');
+  let versionHistory;
+  try { versionHistory = JSON.parse(localStorage.getItem('doc-version-history') || '[]'); } catch { versionHistory = []; }
 
   const dlg = document.createElement('div');
   dlg.className = 'doc-dialog-overlay doc-version-diff-dialog';
@@ -5374,7 +5375,8 @@ function highlightWordChanges(oldLine, newLine, side) {
 
 export function saveVersionSnapshot() {
   if (!editorEl) return;
-  const history = JSON.parse(localStorage.getItem('doc-version-history') || '[]');
+  let history;
+  try { history = JSON.parse(localStorage.getItem('doc-version-history') || '[]'); } catch { history = []; }
   history.push({
     content: editorEl.innerText,
     html: editorEl.innerHTML,
@@ -5382,7 +5384,7 @@ export function saveVersionSnapshot() {
     wordCount: getWordCount()
   });
   if (history.length > 20) history.splice(0, history.length - 20);
-  localStorage.setItem('doc-version-history', JSON.stringify(history));
+  try { localStorage.setItem('doc-version-history', JSON.stringify(history)); } catch { /* quota exceeded */ }
 }
 
 function getWordCount() {

@@ -22,16 +22,23 @@ let currentName = 'untitled.xlsx';
  */
 export async function openSheetFile() {
   if (window.showOpenFilePicker) {
-    const [handle] = await window.showOpenFilePicker({
-      types: [{
-        description: 'Spreadsheet Files',
-        accept: {
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-          'text/csv': ['.csv'],
-          'text/tab-separated-values': ['.tsv'],
-        },
-      }],
-    });
+    let handles;
+    try {
+      handles = await window.showOpenFilePicker({
+        types: [{
+          description: 'Spreadsheet Files',
+          accept: {
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+            'text/csv': ['.csv'],
+            'text/tab-separated-values': ['.tsv'],
+          },
+        }],
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') return null;
+      throw e;
+    }
+    const [handle] = handles;
     const file = await handle.getFile();
     await importFile(file);
     currentName = file.name;
@@ -65,10 +72,16 @@ export async function saveSheetFile() {
   const tsName = generateTimestampFilename(currentName, 'xlsx');
 
   if (window.showSaveFilePicker) {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: tsName,
-      types: [{ description: 'Excel Files', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] } }],
-    });
+    let handle;
+    try {
+      handle = await window.showSaveFilePicker({
+        suggestedName: tsName,
+        types: [{ description: 'Excel Files', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] } }],
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') return null;
+      throw e;
+    }
     const writable = await handle.createWritable();
     await writable.write(blob);
     await writable.close();
@@ -120,10 +133,16 @@ export async function saveSheetCSV() {
   const tsName = generateTimestampFilename(currentName, 'csv');
 
   if (window.showSaveFilePicker) {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: tsName,
-      types: [{ description: 'CSV Files', accept: { 'text/csv': ['.csv'] } }],
-    });
+    let handle;
+    try {
+      handle = await window.showSaveFilePicker({
+        suggestedName: tsName,
+        types: [{ description: 'CSV Files', accept: { 'text/csv': ['.csv'] } }],
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') return null;
+      throw e;
+    }
     const writable = await handle.createWritable();
     await writable.write(blob);
     await writable.close();
@@ -176,6 +195,12 @@ function extractColor(colorObj) {
  * Import file data into sheets
  */
 async function importFile(file) {
+  // Handle empty (0-byte) files — create a blank sheet
+  if (file.size === 0) {
+    setSheetsData([createSheetData()]);
+    return;
+  }
+
   const ext = file.name.replace(/.*\./, '').toLowerCase();
 
   // CSV/TSV: use our own robust parser for proper quoted field handling
