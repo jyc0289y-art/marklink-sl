@@ -347,3 +347,280 @@ describe('buildPastedTable', () => {
     expect(html).toContain('<tbody>');
   });
 });
+
+// ─── 6. Paste HTML Sanitization (enhanced for Google Docs) ───
+
+function cleanMsOfficeHtmlEnhanced(html) {
+  return html
+    .replace(/<meta[^>]*>/gi, '')
+    .replace(/class="[^"]*"/gi, '')
+    .replace(/style="[^"]*mso[^"]*"/gi, '')
+    .replace(/<o:p>.*?<\/o:p>/gi, '')
+    .replace(/<!--.*?-->/gs, '')
+    .replace(/\s*id="docs-internal-guid-[^"]*"/gi, '')  // Google Docs internal IDs
+    .replace(/\s*data-[a-z-]+="[^"]*"/gi, '')           // data- attributes from external apps
+    .replace(/<span(?:\s+(?!style\b)[a-z-]+=["'][^"']*["'])*\s*>(.*?)<\/span>/gi, '$1')
+    .replace(/<\/?font[^>]*>/gi, '');
+}
+
+describe('cleanMsOfficeHtmlEnhanced (Google Docs & external apps)', () => {
+  it('strips Google Docs internal guid IDs', () => {
+    const input = '<b id="docs-internal-guid-abc123"><span style="color:red">Hello</span></b>';
+    const result = cleanMsOfficeHtmlEnhanced(input);
+    expect(result).not.toContain('docs-internal-guid');
+    expect(result).toContain('Hello');
+  });
+
+  it('strips data- attributes from external apps', () => {
+    const input = '<p data-pm-slice="1 1 []" data-meta="somevalue">Text</p>';
+    const result = cleanMsOfficeHtmlEnhanced(input);
+    expect(result).not.toContain('data-pm-slice');
+    expect(result).not.toContain('data-meta');
+    expect(result).toContain('Text');
+  });
+
+  it('preserves styled spans while stripping data attrs', () => {
+    const input = '<span style="color:red" data-custom="x">Hello</span>';
+    const result = cleanMsOfficeHtmlEnhanced(input);
+    expect(result).toContain('style="color:red"');
+    expect(result).not.toContain('data-custom');
+    expect(result).toContain('Hello');
+  });
+
+  it('handles combined Google Docs + Office garbage', () => {
+    const input = '<meta charset="utf-8"><b id="docs-internal-guid-xyz" class="MsoNormal" data-docs-delta="1"><span>Text</span></b>';
+    const result = cleanMsOfficeHtmlEnhanced(input);
+    expect(result).not.toContain('meta');
+    expect(result).not.toContain('docs-internal-guid');
+    expect(result).not.toContain('data-docs-delta');
+    expect(result).toContain('Text');
+  });
+});
+
+// ─── 7. Table Operations with Colspan/Rowspan ───
+
+describe('table column operations with colspan', () => {
+  // Helper: compute logical column count from a table structure
+  function getLogicalColCount(rows) {
+    let maxCols = 0;
+    for (const row of rows) {
+      let cols = 0;
+      for (const cell of row) {
+        cols += cell.colspan || 1;
+      }
+      if (cols > maxCols) maxCols = cols;
+    }
+    return maxCols;
+  }
+
+  it('counts logical columns correctly with colspan', () => {
+    // Row1: [A colspan=2] [B], Row2: [C] [D] [E]
+    const rows = [
+      [{ colspan: 2 }, { colspan: 1 }],
+      [{ colspan: 1 }, { colspan: 1 }, { colspan: 1 }],
+    ];
+    expect(getLogicalColCount(rows)).toBe(3);
+  });
+
+  it('counts logical columns with all merged row', () => {
+    const rows = [
+      [{ colspan: 4 }],
+      [{ colspan: 1 }, { colspan: 1 }, { colspan: 1 }, { colspan: 1 }],
+    ];
+    expect(getLogicalColCount(rows)).toBe(4);
+  });
+});
+
+// ─── 8. Split Cell Logic ───
+
+describe('splitCell logic', () => {
+  // Simulate split: given original colspan/rowspan, verify resulting cell count
+  function simulateSplit(colspan, rowspan, numRows) {
+    // After split: the original cell becomes 1x1,
+    // + (colspan-1) new cells in same row
+    // + colspan cells for each of (rowspan-1) subsequent rows
+    const newCellsInRow = colspan - 1;
+    const newCellsInOtherRows = (rowspan - 1) * colspan;
+    return { newCellsInRow, newCellsInOtherRows };
+  }
+
+  it('splits colspan=2 correctly', () => {
+    const result = simulateSplit(2, 1, 3);
+    expect(result.newCellsInRow).toBe(1);
+    expect(result.newCellsInOtherRows).toBe(0);
+  });
+
+  it('splits rowspan=2 correctly', () => {
+    const result = simulateSplit(1, 2, 3);
+    expect(result.newCellsInRow).toBe(0);
+    expect(result.newCellsInOtherRows).toBe(1);
+  });
+
+  it('splits colspan=3, rowspan=2 correctly', () => {
+    const result = simulateSplit(3, 2, 4);
+    expect(result.newCellsInRow).toBe(2); // 2 new cells in the same row
+    expect(result.newCellsInOtherRows).toBe(3); // 3 cells in the next row
+  });
+});
+
+// ─── 9. Regex Find with Whole Word ───
+
+describe('find/replace regex edge cases', () => {
+  function buildRegex(query, useRegex, wholeWord, matchCase) {
+    let pattern = query;
+    if (useRegex) {
+      if (wholeWord) {
+        if (!pattern.startsWith('\\b')) pattern = `\\b${pattern}`;
+        if (!pattern.endsWith('\\b')) pattern = `${pattern}\\b`;
+      }
+      try {
+        return new RegExp(pattern, matchCase ? 'g' : 'gi');
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  it('does not double-add \\b when user already provides it', () => {
+    const re = buildRegex('\\btest\\b', true, true, false);
+    expect(re).not.toBeNull();
+    expect(re.source).toBe('\\btest\\b');
+    // Should NOT be \\b\\btest\\b\\b
+    expect(re.source).not.toContain('\\b\\b');
+  });
+
+  it('adds \\b when user does not provide it', () => {
+    const re = buildRegex('test', true, true, false);
+    expect(re).not.toBeNull();
+    expect(re.source).toBe('\\btest\\b');
+  });
+
+  it('handles regex without whole word', () => {
+    const re = buildRegex('te.t', true, false, false);
+    expect(re).not.toBeNull();
+    expect(re.source).toBe('te.t');
+  });
+
+  it('returns null for invalid regex', () => {
+    const re = buildRegex('[invalid', true, false, false);
+    expect(re).toBeNull();
+  });
+
+  it('respects case sensitivity flag', () => {
+    const reSensitive = buildRegex('Test', true, false, true);
+    const reInsensitive = buildRegex('Test', true, false, false);
+    expect(reSensitive.flags).not.toContain('i');
+    expect(reInsensitive.flags).toContain('i');
+  });
+
+  it('handles zero-length regex matches without infinite loop', () => {
+    // Pattern that can match zero-length strings
+    const re = buildRegex('a?', true, false, false);
+    expect(re).not.toBeNull();
+    // Verify it doesn't produce infinite loop by testing exec
+    const text = 'abc';
+    const matches = [];
+    let m;
+    let safety = 0;
+    while ((m = re.exec(text)) !== null && safety < 100) {
+      if (m[0].length === 0) { re.lastIndex++; safety++; continue; }
+      matches.push(m[0]);
+      safety++;
+    }
+    expect(safety).toBeLessThan(100);
+  });
+});
+
+// ─── 10. Ruler Unit Conversion ───
+
+describe('ruler mm to px conversion', () => {
+  const MM_TO_PX = 96 / 25.4; // Accurate conversion factor
+
+  it('converts 25.4mm (1 inch) to 96px', () => {
+    expect(Math.round(25.4 * MM_TO_PX)).toBe(96);
+  });
+
+  it('converts 0mm to 0px', () => {
+    expect(0 * MM_TO_PX).toBe(0);
+  });
+
+  it('is more accurate than 3.78 approximation', () => {
+    // 25.4mm should be exactly 96px
+    const accurate = 25.4 * MM_TO_PX;
+    const approximate = 25.4 * 3.78;
+    expect(Math.abs(accurate - 96)).toBeLessThan(0.001);
+    expect(Math.abs(approximate - 96)).toBeGreaterThan(0.01); // 95.812 vs 96
+  });
+
+  it('roundtrip px→mm→px preserves value', () => {
+    const originalPx = 96;
+    const mm = originalPx / MM_TO_PX;
+    const backToPx = mm * MM_TO_PX;
+    expect(Math.round(backToPx)).toBe(originalPx);
+  });
+});
+
+// ─── 11. Page/Section Break ───
+
+describe('page and section breaks', () => {
+  it('page break HTML includes page-break-after CSS', () => {
+    const breakHtml = '<div class="doc-page-break" contenteditable="false" style="page-break-after:always">— Page Break —</div>';
+    expect(breakHtml).toContain('page-break-after:always');
+    expect(breakHtml).toContain('doc-page-break');
+  });
+
+  it('section break HTML includes page-break-before CSS', () => {
+    const breakHtml = '<div class="doc-section-break" contenteditable="false" style="page-break-before:always">— Section Break —</div>';
+    expect(breakHtml).toContain('page-break-before:always');
+    expect(breakHtml).toContain('doc-section-break');
+  });
+});
+
+// ─── 12. deleteTableCol with colspan ───
+
+describe('deleteTableCol with colspan (pure logic)', () => {
+  // Simulate the logic: given a grid and a logical column to delete
+  function simulateDeleteCol(grid, logicalCol) {
+    const result = [];
+    for (const row of grid) {
+      const newRow = [];
+      let col = 0;
+      for (const cell of row) {
+        const span = cell.colspan || 1;
+        if (col <= logicalCol && logicalCol < col + span) {
+          if (span > 1) {
+            // Shrink colspan
+            newRow.push({ ...cell, colspan: span - 1 });
+          }
+          // else: remove cell entirely
+        } else {
+          newRow.push({ ...cell });
+        }
+        col += span;
+      }
+      result.push(newRow);
+    }
+    return result;
+  }
+
+  it('removes simple column', () => {
+    const grid = [
+      [{ content: 'A' }, { content: 'B' }, { content: 'C' }],
+    ];
+    const result = simulateDeleteCol(grid, 1);
+    expect(result[0]).toHaveLength(2);
+    expect(result[0][0].content).toBe('A');
+    expect(result[0][1].content).toBe('C');
+  });
+
+  it('shrinks colspan when deleting inside merged cell', () => {
+    const grid = [
+      [{ content: 'Merged', colspan: 3 }],
+      [{ content: 'A' }, { content: 'B' }, { content: 'C' }],
+    ];
+    const result = simulateDeleteCol(grid, 1);
+    expect(result[0][0].colspan).toBe(2);
+    expect(result[1]).toHaveLength(2);
+  });
+});

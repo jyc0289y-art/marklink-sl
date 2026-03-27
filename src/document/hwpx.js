@@ -790,9 +790,19 @@ function parseTable(tblNode, binDataMap) {
         const cs = tcPr.getAttribute('colSpan') || tcPr.getAttribute('gridSpan') || '';
         if (cs && parseInt(cs, 10) > 1) colSpan = ` colspan="${parseInt(cs, 10)}"`;
 
-        // Row span
+        // Row span — check attribute and vMerge element (OOXML-style vertical merge)
         const rs = tcPr.getAttribute('rowSpan') || '';
         if (rs && parseInt(rs, 10) > 1) rowSpan = ` rowspan="${parseInt(rs, 10)}"`;
+
+        // Check for vMerge element (continue = consumed by previous restart cell)
+        const vMerge = findChild(tcPr, 'vMerge');
+        if (vMerge) {
+          const mergeVal = vMerge.getAttribute('val') || vMerge.textContent?.trim() || '';
+          if (mergeVal !== 'restart') {
+            // This cell is consumed by a vertical merge — skip it
+            continue;
+          }
+        }
 
         // Cell width
         const width = tcPr.getAttribute('width') || tcPr.getAttribute('cellWidth') || '';

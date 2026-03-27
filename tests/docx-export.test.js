@@ -278,3 +278,106 @@ describe('_extractParagraphFormatting', () => {
     }
   });
 });
+
+// ── Section break detection for DOCX export ──
+describe('DOCX export section/page break detection', () => {
+  // Replicate the detection logic from docx.js convertNode
+  function isBreakElement(tag, classList) {
+    if ((tag === 'div' && classList.includes('doc-page-break')) ||
+        (tag === 'div' && classList.includes('doc-section-break')) ||
+        (tag === 'hr' && classList.includes('page-break'))) {
+      return true;
+    }
+    return false;
+  }
+
+  it('detects page break div', () => {
+    expect(isBreakElement('div', ['doc-page-break'])).toBe(true);
+  });
+
+  it('detects section break div', () => {
+    expect(isBreakElement('div', ['doc-section-break'])).toBe(true);
+  });
+
+  it('detects page break hr', () => {
+    expect(isBreakElement('hr', ['page-break'])).toBe(true);
+  });
+
+  it('does not detect regular div as break', () => {
+    expect(isBreakElement('div', ['some-class'])).toBe(false);
+  });
+
+  it('does not detect regular hr as break', () => {
+    expect(isBreakElement('hr', [])).toBe(false);
+  });
+});
+
+// ── Image data URI parsing for export ──
+describe('DOCX export image handling', () => {
+  function parseDataUri(src) {
+    if (!src || !src.startsWith('data:')) return null;
+    const match = src.match(/^data:image\/([\w+.-]+);base64,(.+)$/);
+    if (!match) return null;
+    return { type: match[1], data: match[2] };
+  }
+
+  it('parses PNG data URI', () => {
+    const result = parseDataUri('data:image/png;base64,iVBORw0KGgo=');
+    expect(result).not.toBeNull();
+    expect(result.type).toBe('png');
+    expect(result.data).toBe('iVBORw0KGgo=');
+  });
+
+  it('parses JPEG data URI', () => {
+    const result = parseDataUri('data:image/jpeg;base64,/9j/4AAQ=');
+    expect(result).not.toBeNull();
+    expect(result.type).toBe('jpeg');
+  });
+
+  it('returns null for non-data URI', () => {
+    expect(parseDataUri('https://example.com/img.png')).toBeNull();
+  });
+
+  it('returns null for empty src', () => {
+    expect(parseDataUri('')).toBeNull();
+    expect(parseDataUri(null)).toBeNull();
+  });
+
+  it('returns null for invalid data URI format', () => {
+    expect(parseDataUri('data:text/plain;base64,abc')).toBeNull();
+  });
+});
+
+// ── Table cell colspan/rowspan preservation ──
+describe('DOCX export table merged cells', () => {
+  function extractCellAttrs(colspan, rowspan) {
+    const opts = {};
+    if (colspan > 1) opts.columnSpan = colspan;
+    if (rowspan > 1) opts.rowSpan = rowspan;
+    return opts;
+  }
+
+  it('preserves colspan', () => {
+    const opts = extractCellAttrs(3, 1);
+    expect(opts.columnSpan).toBe(3);
+    expect(opts.rowSpan).toBeUndefined();
+  });
+
+  it('preserves rowspan', () => {
+    const opts = extractCellAttrs(1, 2);
+    expect(opts.rowSpan).toBe(2);
+    expect(opts.columnSpan).toBeUndefined();
+  });
+
+  it('preserves both colspan and rowspan', () => {
+    const opts = extractCellAttrs(2, 3);
+    expect(opts.columnSpan).toBe(2);
+    expect(opts.rowSpan).toBe(3);
+  });
+
+  it('skips single span values', () => {
+    const opts = extractCellAttrs(1, 1);
+    expect(opts.columnSpan).toBeUndefined();
+    expect(opts.rowSpan).toBeUndefined();
+  });
+});

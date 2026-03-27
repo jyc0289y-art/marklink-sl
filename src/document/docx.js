@@ -924,7 +924,9 @@ async function convertNode(node) {
   }
 
   // Page break — <div class="doc-page-break"> or <hr class="page-break">
+  // Section break — <div class="doc-section-break">
   if ((tag === 'div' && node.classList?.contains('doc-page-break')) ||
+      (tag === 'div' && node.classList?.contains('doc-section-break')) ||
       (tag === 'hr' && node.classList?.contains('page-break'))) {
     return [new Paragraph({ children: [new PageBreak()] })];
   }

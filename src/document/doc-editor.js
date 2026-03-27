@@ -88,35 +88,35 @@ export function initDocEditor() {
   });
 
   // Document Outline toggle
-  document.getElementById('doc-outline-toggle')?.addEventListener('click', toggleDocOutline);
-  document.getElementById('doc-outline-close')?.addEventListener('click', toggleDocOutline);
+  _addHandler(document.getElementById('doc-outline-toggle'), 'click', toggleDocOutline);
+  _addHandler(document.getElementById('doc-outline-close'), 'click', toggleDocOutline);
 
   // Insert Date/Time
-  document.getElementById('doc-insert-datetime')?.addEventListener('click', () => showDateTimePicker());
+  _addHandler(document.getElementById('doc-insert-datetime'), 'click', () => showDateTimePicker());
 
   // Comments
-  document.getElementById('doc-insert-comment')?.addEventListener('click', () => addComment());
+  _addHandler(document.getElementById('doc-insert-comment'), 'click', () => addComment());
 
   // Page Break
-  document.getElementById('doc-insert-pagebreak')?.addEventListener('click', () => insertPageBreak());
+  _addHandler(document.getElementById('doc-insert-pagebreak'), 'click', () => insertPageBreak());
 
   // Equation Editor
-  document.getElementById('doc-insert-equation')?.addEventListener('click', () => showEquationEditor());
+  _addHandler(document.getElementById('doc-insert-equation'), 'click', () => showEquationEditor());
 
   // Track Changes
-  document.getElementById('doc-track-changes')?.addEventListener('click', toggleTrackChanges);
+  _addHandler(document.getElementById('doc-track-changes'), 'click', toggleTrackChanges);
 
   // Bookmarks
-  document.getElementById('doc-insert-bookmark')?.addEventListener('click', () => insertBookmark());
+  _addHandler(document.getElementById('doc-insert-bookmark'), 'click', () => insertBookmark());
 
   // Document Compare
-  document.getElementById('doc-compare')?.addEventListener('click', () => showDocCompare());
+  _addHandler(document.getElementById('doc-compare'), 'click', () => showDocCompare());
 
   // Focus Mode
-  document.getElementById('doc-focus-mode')?.addEventListener('click', () => toggleFocusMode());
+  _addHandler(document.getElementById('doc-focus-mode'), 'click', () => toggleFocusMode());
 
   // Reading Mode
-  document.getElementById('doc-reading-mode')?.addEventListener('click', () => toggleReadingMode());
+  _addHandler(document.getElementById('doc-reading-mode'), 'click', () => toggleReadingMode());
 
   // Undo / Redo buttons
   const undoBtn = document.getElementById('doc-undo');
@@ -625,6 +625,8 @@ export function initDocEditor() {
         .replace(/style="[^"]*mso[^"]*"/gi, '')
         .replace(/<o:p>.*?<\/o:p>/gi, '')
         .replace(/<!--.*?-->/gs, '')
+        .replace(/\s*id="docs-internal-guid-[^"]*"/gi, '')  // Google Docs internal IDs
+        .replace(/\s*data-[a-z-]+="[^"]*"/gi, '')           // data- attributes from external apps
         .replace(/<span(?:\s+(?!style\b)[a-z-]+=["'][^"']*["'])*\s*>(.*?)<\/span>/gi, '$1')   // Strip spans without style attr (preserve styled spans)
         .replace(/<\/?font[^>]*>/gi, '');
       document.execCommand('insertHTML', false, cleaned);
@@ -866,7 +868,30 @@ function insertTableRow(table, td, position) {
   if (!row) return;
   const colCount = getTableColCount(table);
   const newRow = document.createElement('tr');
+
+  // Check which logical columns are occupied by rowspan cells from other rows
+  const rows = Array.from(table.querySelectorAll('tr'));
+  const rowIdx = rows.indexOf(row);
+  const insertIdx = position === 'before' ? rowIdx : rowIdx + 1;
+  const occupiedCols = new Set();
+
+  for (let ri = 0; ri < insertIdx && ri < rows.length; ri++) {
+    let col = 0;
+    for (const cell of rows[ri].cells) {
+      const rs = cell.rowSpan || 1;
+      const cs = cell.colSpan || 1;
+      if (ri + rs > insertIdx) {
+        // This cell's rowspan extends past the insertion point
+        for (let c = col; c < col + cs; c++) occupiedCols.add(c);
+        // Extend its rowspan by 1 to accommodate the new row
+        cell.rowSpan = rs + 1;
+      }
+      col += cs;
+    }
+  }
+
   for (let i = 0; i < colCount; i++) {
+    if (occupiedCols.has(i)) continue; // skip columns covered by rowspan
     const cell = document.createElement('td');
     cell.style.cssText = 'border:1px solid var(--border-color);padding:8px 12px';
     cell.innerHTML = '&nbsp;';
@@ -877,11 +902,48 @@ function insertTableRow(table, td, position) {
 }
 
 function insertTableCol(table, td, position) {
-  const colIdx = Array.from(td.closest('tr').cells).indexOf(td);
+  // Compute the logical column index accounting for colspans
+  const tdRow = td.closest('tr');
+  let logicalCol = 0;
+  for (const cell of tdRow.cells) {
+    if (cell === td) break;
+    logicalCol += (cell.colSpan || 1);
+  }
+  // For 'after', the target logical column is the rightmost column of this cell
+  const targetLogical = position === 'before' ? logicalCol : logicalCol + (td.colSpan || 1) - 1;
+
   const rows = table.querySelectorAll('tr');
   rows.forEach(row => {
-    const refCell = row.cells[colIdx];
-    if (!refCell) return;
+    // Find the cell at the target logical column in this row
+    let col = 0;
+    let refCell = null;
+    for (const cell of row.cells) {
+      const span = cell.colSpan || 1;
+      if (col <= targetLogical && targetLogical < col + span) {
+        refCell = cell;
+        break;
+      }
+      col += span;
+    }
+    if (!refCell) {
+      // Target column is beyond this row — append at end
+      refCell = row.cells[row.cells.length - 1];
+      if (!refCell) return;
+    }
+    // If the refCell spans multiple columns and covers the target, expand its colspan
+    // instead of inserting a new cell (to maintain table structure)
+    if ((refCell.colSpan || 1) > 1) {
+      let refLogical = 0;
+      for (const cell of row.cells) {
+        if (cell === refCell) break;
+        refLogical += (cell.colSpan || 1);
+      }
+      if (refLogical < targetLogical && targetLogical < refLogical + (refCell.colSpan || 1)) {
+        // Target is inside a merged cell — just expand colspan
+        refCell.colSpan = (refCell.colSpan || 1) + 1;
+        return;
+      }
+    }
     const isHeader = refCell.tagName === 'TH';
     const cell = document.createElement(isHeader ? 'th' : 'td');
     cell.style.cssText = refCell.style.cssText;
@@ -894,15 +956,63 @@ function insertTableCol(table, td, position) {
 function deleteTableRow(table, td) {
   const row = td.closest('tr');
   if (!row || table.querySelectorAll('tr').length <= 1) return;
+  const rows = Array.from(table.querySelectorAll('tr'));
+  const rowIdx = rows.indexOf(row);
+
+  // Adjust rowspan for cells in prior rows that span into this row
+  for (let ri = 0; ri < rowIdx; ri++) {
+    for (const cell of rows[ri].cells) {
+      const rs = cell.rowSpan || 1;
+      if (ri + rs > rowIdx) {
+        cell.rowSpan = rs - 1;
+      }
+    }
+  }
+
+  // For cells in this row that have rowspan > 1, move them to the next row
+  const nextRow = rows[rowIdx + 1];
+  if (nextRow) {
+    for (const cell of Array.from(row.cells)) {
+      const rs = cell.rowSpan || 1;
+      if (rs > 1) {
+        cell.rowSpan = rs - 1;
+        // Insert at the beginning of the next row (approximate position)
+        nextRow.insertBefore(cell, nextRow.firstChild);
+      }
+    }
+  }
+
   row.remove();
 }
 
 function deleteTableCol(table, td) {
-  const colIdx = Array.from(td.closest('tr').cells).indexOf(td);
+  // Compute logical column index of the cell to delete
+  const tdRow = td.closest('tr');
+  let logicalCol = 0;
+  for (const cell of tdRow.cells) {
+    if (cell === td) break;
+    logicalCol += (cell.colSpan || 1);
+  }
+
+  // Don't delete if only one logical column remains
+  if (getTableColCount(table) <= 1) return;
+
   const rows = table.querySelectorAll('tr');
-  if (rows[0]?.cells.length <= 1) return;
   rows.forEach(row => {
-    if (row.cells[colIdx]) row.cells[colIdx].remove();
+    let col = 0;
+    for (const cell of Array.from(row.cells)) {
+      const span = cell.colSpan || 1;
+      if (col <= logicalCol && logicalCol < col + span) {
+        if (span > 1) {
+          // Merged cell spanning this column — shrink colspan
+          cell.colSpan = span - 1;
+        } else {
+          cell.remove();
+        }
+        break;
+      }
+      col += span;
+    }
   });
 }
 
@@ -1054,12 +1164,14 @@ function splitCell(td) {
   td.colSpan = 1;
   td.rowSpan = 1;
 
-  // Add extra columns in the same row
+  // Add extra columns in the same row (insert in order after td)
+  let lastInserted = td;
   for (let c = 1; c < colspan; c++) {
     const newCell = document.createElement(td.tagName);
     newCell.style.cssText = cellStyle;
     newCell.innerHTML = '&nbsp;';
-    td.after(newCell);
+    lastInserted.after(newCell);
+    lastInserted = newCell;
   }
 
   // Add cells in subsequent rows
@@ -1415,7 +1527,11 @@ function doFind() {
 
   if (findUseRegex) {
     let pattern = query;
-    if (findWholeWord) pattern = `\\b${pattern}\\b`;
+    if (findWholeWord) {
+      // Only add \b if the pattern doesn't already start/end with one
+      if (!pattern.startsWith('\\b')) pattern = `\\b${pattern}`;
+      if (!pattern.endsWith('\\b')) pattern = `${pattern}\\b`;
+    }
     let re;
     try { re = new RegExp(pattern, findMatchCase ? 'g' : 'gi'); } catch { updateFindCount(0, 0); return; }
     while ((node = walker.nextNode())) {
@@ -2303,8 +2419,8 @@ function renderRuler() {
   if (!ruler || !editorEl) return;
 
   const editorWidth = editorEl.offsetWidth;
-  const leftMarginPx = currentMargins.left * 3.78; // mm to px (approx)
-  const rightMarginPx = currentMargins.right * 3.78;
+  const leftMarginPx = currentMargins.left * (96 / 25.4); // mm to px (approx)
+  const rightMarginPx = currentMargins.right * (96 / 25.4);
   const contentWidth = editorWidth - leftMarginPx - rightMarginPx;
 
   // Match ruler width to the editor's CSS width (210mm) rather than offsetWidth
@@ -2352,7 +2468,7 @@ function renderRuler() {
       const rulerRect = ruler.getBoundingClientRect();
       const onMove = (ev) => {
         const newLeftPx = Math.max(0, Math.min(ev.clientX - rulerRect.left, rulerRect.width / 2));
-        currentMargins.left = Math.round(newLeftPx / 3.78 * 10) / 10; // px to mm
+        currentMargins.left = Math.round(newLeftPx / (96 / 25.4) * 10) / 10; // px to mm
         if (editorEl) editorEl.style.paddingLeft = currentMargins.left + 'mm';
         renderRuler();
       };
@@ -2371,7 +2487,7 @@ function renderRuler() {
       const rulerRect = ruler.getBoundingClientRect();
       const onMove = (ev) => {
         const newRightPx = Math.max(0, Math.min(rulerRect.right - ev.clientX, rulerRect.width / 2));
-        currentMargins.right = Math.round(newRightPx / 3.78 * 10) / 10; // px to mm
+        currentMargins.right = Math.round(newRightPx / (96 / 25.4) * 10) / 10; // px to mm
         if (editorEl) editorEl.style.paddingRight = currentMargins.right + 'mm';
         renderRuler();
       };

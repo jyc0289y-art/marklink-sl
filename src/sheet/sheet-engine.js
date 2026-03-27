@@ -516,9 +516,15 @@ export function sortByColumn(sheet, colIdx, ascending = true) {
   for (let i = 0; i < sheet.rows; i++) rowIndices.push(i);
 
   // Sort rows by the target column value
+  // Empty rows always go to the bottom regardless of sort direction (standard spreadsheet behavior)
   rowIndices.sort((a, b) => {
     const va = rowData[a]?.[colIdx]?.value ?? '';
     const vb = rowData[b]?.[colIdx]?.value ?? '';
+    const emptyA = va === '' || va == null;
+    const emptyB = vb === '' || vb == null;
+    if (emptyA && emptyB) return 0;
+    if (emptyA) return 1;  // empty rows to bottom
+    if (emptyB) return -1; // empty rows to bottom
     const na = Number(va), nb = Number(vb);
     const isNumA = !isNaN(na) && va !== '', isNumB = !isNaN(nb) && vb !== '';
     let cmp;
@@ -545,7 +551,7 @@ export function sortByColumn(sheet, colIdx, ascending = true) {
  * `rest` is everything after the closing paren (e.g. "+10" in "SUM(A1:A3)+10").
  */
 function parseTopLevelCall(expr) {
-  const nameMatch = expr.match(/^([A-Z]+)\(/);
+  const nameMatch = expr.match(/^([A-Z][A-Z0-9]*)\(/);
   if (!nameMatch) return null;
   const fn = nameMatch[1];
   let depth = 0;
@@ -1771,8 +1777,9 @@ function resolveRangeAsTable(sheet, rangeStr) {
     const row = [];
     for (let c = c1; c <= c2; c++) {
       const v = getDisplayValue(targetSheet, r, c);
+      if (v === '') { row.push(''); continue; }
       const num = Number(v);
-      row.push(isNaN(num) || v === '' ? v : num);
+      row.push(isNaN(num) ? v : num);
     }
     table.push(row);
   }
@@ -1788,7 +1795,7 @@ function resolveRangeAsTable(sheet, rangeStr) {
 function evalSimpleExpr(sheet, expr) {
   // If the expression contains a function call pattern, delegate to evalFormula
   // so nested calls like SUM(...), IF(...), etc. are handled properly
-  if (/^[A-Z]+\(/.test(expr.trim())) {
+  if (/^[A-Z][A-Z0-9]*\(/.test(expr.trim())) {
     return evalFormula(sheet, expr.trim());
   }
 
@@ -1942,17 +1949,24 @@ function resolveRange(sheet, rangeStr) {
       for (let r = r1; r <= r2; r++) {
         for (let c = c1; c <= c2; c++) {
           const v = getDisplayValue(targetSheet, r, c);
+          if (v === '') { values.push(''); continue; }
           const num = Number(v);
           values.push(isNaN(num) ? v : num);
         }
       }
     } else {
-      // Single cell
+      // Single cell reference
       const rc = refToRC(cleanRef);
-      if (!rc) continue;
-      const v = getDisplayValue(targetSheet, rc[0], rc[1]);
-      const num = Number(v);
-      values.push(isNaN(num) ? v : num);
+      if (rc) {
+        const v = getDisplayValue(targetSheet, rc[0], rc[1]);
+        if (v === '') { values.push(''); continue; }
+        const num = Number(v);
+        values.push(isNaN(num) ? v : num);
+      } else {
+        // Not a valid cell reference — try as literal number or expression
+        const evaluated = evalSimpleExpr(targetSheet, cleanRef);
+        if (evaluated !== '' && evaluated != null) values.push(evaluated);
+      }
     }
   }
   return values;

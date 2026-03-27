@@ -204,3 +204,108 @@ describe('HWPX unit conversions', () => {
     expect(hwpUnitToPx(1500)).toBe(20);
   });
 });
+
+// ── HWPX table vertical merge detection ──
+describe('HWPX table vMerge handling', () => {
+  // Replicate the vMerge detection logic from hwpx.js parseTable
+  function shouldSkipCell(vMergeVal) {
+    // 'restart' = this cell starts a new vertical merge group
+    // '' or 'continue' = this cell is consumed by a previous restart
+    if (vMergeVal === 'restart') return false;
+    if (vMergeVal === '' || vMergeVal === 'continue') return true;
+    return true; // default: skip (consumed by previous)
+  }
+
+  it('does not skip restart cells', () => {
+    expect(shouldSkipCell('restart')).toBe(false);
+  });
+
+  it('skips continue cells', () => {
+    expect(shouldSkipCell('continue')).toBe(true);
+  });
+
+  it('skips cells with empty vMerge value', () => {
+    expect(shouldSkipCell('')).toBe(true);
+  });
+});
+
+// ── Korean text encoding edge cases ──
+describe('HWPX Korean text handling', () => {
+  it('escapeXML preserves Korean characters', () => {
+    expect(escapeXML('안녕하세요')).toBe('안녕하세요');
+    expect(escapeXML('한글 & 영어')).toBe('한글 &amp; 영어');
+  });
+
+  it('handles mixed Korean and special chars', () => {
+    expect(escapeXML('가격: <100원>')).toBe('가격: &lt;100원&gt;');
+  });
+
+  it('handles Korean quotes', () => {
+    expect(escapeXML('"한국어" 테스트')).toBe('&quot;한국어&quot; 테스트');
+  });
+});
+
+// ── HWPX heading level detection edge cases ──
+describe('getHeadingLevel edge cases', () => {
+  it('detects heading0 (zero) as out of range → default 2', () => {
+    // 0 is in range 0, which is < 1, so it falls to default 2
+    expect(getHeadingLevel('heading0')).toBe(2);
+  });
+
+  it('detects 제목 with Korean numbers', () => {
+    // '제목' without any digits → heading 1
+    expect(getHeadingLevel('제목 스타일')).toBe(1);
+  });
+
+  it('handles mixed case Title styles', () => {
+    expect(getHeadingLevel('TITLE')).toBe(1);
+    expect(getHeadingLevel('Title1')).toBe(1);
+  });
+
+  it('handles heading6 at boundary', () => {
+    expect(getHeadingLevel('heading6')).toBe(6);
+  });
+});
+
+// ── HWPX list detection edge cases ──
+describe('getListInfoFromStyle edge cases', () => {
+  it('detects 번호목록 as ul (목록 matched first)', () => {
+    // '번호목록' contains both '번호' and '목록'
+    // Since '목록' is checked in the 'ul' branch, it matches ul first
+    const result = getListInfoFromStyle('번호목록');
+    expect(result).toEqual({ type: 'ul' });
+  });
+
+  it('handles empty string', () => {
+    expect(getListInfoFromStyle('')).toBeNull();
+  });
+
+  it('handles uppercase English', () => {
+    expect(getListInfoFromStyle('BULLET')).toEqual({ type: 'ul' });
+    expect(getListInfoFromStyle('NUMBERED')).toEqual({ type: 'ol' });
+  });
+});
+
+// ── HWPX color normalization edge cases ──
+describe('normalizeHwpxColor edge cases', () => {
+  it('handles lowercase hex', () => {
+    expect(normalizeHwpxColor('ff0000')).toBe('ff0000');
+  });
+
+  it('handles mixed case', () => {
+    expect(normalizeHwpxColor('Ff00aB')).toBe('Ff00aB');
+  });
+
+  it('handles 0x prefix case insensitive', () => {
+    expect(normalizeHwpxColor('0XFF0000')).toBe('FF0000');
+  });
+
+  it('handles very short hex (1-2 chars)', () => {
+    expect(normalizeHwpxColor('F')).toBe('00000F');
+    expect(normalizeHwpxColor('FF')).toBe('0000FF');
+  });
+
+  it('handles 8-digit hex (RGBA) by truncating', () => {
+    expect(normalizeHwpxColor('FF00FF80')).toBe('FF00FF');
+  });
+});

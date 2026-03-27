@@ -489,6 +489,8 @@ function getDpr() {
  * This ensures large PDFs (100+ pages) don't render everything upfront.
  */
 async function renderAllPages() {
+  // Zero-out old canvases to release GPU memory before removal
+  pagesEl.querySelectorAll('canvas').forEach(c => { c.width = 0; c.height = 0; });
   pagesEl.innerHTML = '';
   renderedPages = new Set();
 
@@ -830,11 +832,81 @@ function scrollToPage(num) {
 
 async function setZoom(newScale) {
   if (!pdfDoc) return;
+  const oldScale = scale;
   scale = Math.max(0.25, Math.min(5, newScale));
+  if (scale === oldScale) return; // no change
   updatePageInfo();
+
+  // Zero-out old canvases to release GPU memory before re-render
+  if (pagesEl) {
+    pagesEl.querySelectorAll('canvas').forEach(c => { c.width = 0; c.height = 0; });
+  }
+
+  // Rescale annotation positions for the new zoom level
+  rescaleAnnotations(oldScale, scale);
+
   // Re-render at new resolution (not just CSS-scaled) for crisp zoom
   renderedPages = new Set();
   await renderAllPages();
+}
+
+/**
+ * Rescale annotation coordinates when zoom changes.
+ * Annotations store CSS pixel positions, which must be adjusted
+ * proportionally when the zoom level changes.
+ */
+function rescaleAnnotations(oldScale, newScale) {
+  if (oldScale === 0 || newScale === 0) return;
+  const ratio = newScale / oldScale;
+
+  for (const pageNum of Object.keys(pageAnnotations)) {
+    const annots = pageAnnotations[pageNum];
+    if (!annots) continue;
+    for (const a of annots) {
+      if (a.x !== undefined) a.x *= ratio;
+      if (a.y !== undefined) a.y *= ratio;
+      if (a.w !== undefined) a.w *= ratio;
+      if (a.h !== undefined) a.h *= ratio;
+      if (a.points) {
+        for (const pt of a.points) {
+          pt.x *= ratio;
+          pt.y *= ratio;
+        }
+      }
+    }
+  }
+
+  // Rescale stamp placements
+  for (const pageNum of Object.keys(stampPlacements)) {
+    const stamps = stampPlacements[pageNum];
+    if (!stamps) continue;
+    for (const st of stamps) {
+      st.x *= ratio;
+      st.y *= ratio;
+    }
+  }
+
+  // Rescale signature placements
+  for (const pageNum of Object.keys(signaturePlacements)) {
+    const sigs = signaturePlacements[pageNum];
+    if (!sigs) continue;
+    for (const sig of sigs) {
+      sig.x *= ratio;
+      sig.y *= ratio;
+    }
+  }
+
+  // Rescale redaction rects
+  for (const pageNum of Object.keys(redactionRects)) {
+    const rects = redactionRects[pageNum];
+    if (!rects) continue;
+    for (const r of rects) {
+      r.x *= ratio;
+      r.y *= ratio;
+      r.w *= ratio;
+      r.h *= ratio;
+    }
+  }
 }
 
 async function fitWidth() {
@@ -842,9 +914,10 @@ async function fitWidth() {
   const page = await pdfDoc.getPage(1);
   const viewport = page.getViewport({ scale: 1 });
   const containerWidth = containerEl.clientWidth - 48;
-  scale = containerWidth / viewport.width;
+  scale = Math.max(0.25, Math.min(5, containerWidth / viewport.width));
   updatePageInfo();
   await renderAllPages();
+  await renderThumbnails();
 }
 
 async function fitPage() {
@@ -855,17 +928,18 @@ async function fitPage() {
   const containerHeight = containerEl.clientHeight - 48;
   const scaleW = containerWidth / viewport.width;
   const scaleH = containerHeight / viewport.height;
-  scale = Math.min(scaleW, scaleH);
+  scale = Math.max(0.25, Math.min(5, Math.min(scaleW, scaleH)));
   updatePageInfo();
   await renderAllPages();
+  await renderThumbnails();
 }
 
 // ─── Print ──────────────────────────────────────────────────
 async function printPdf() {
   if (!pdfDoc) { alert('Open a PDF first.'); return; }
 
-  // Render all pages at 150dpi for print quality
-  const printScale = 1.5;
+  // Render all pages at 300 DPI for print quality (PDF base is 72pt, so scale = 300/72 ≈ 4.17)
+  const printScale = 300 / 72;
   const printWindow = window.open('', '_blank');
   if (!printWindow) { alert('Pop-up blocked. Please allow pop-ups to print.'); return; }
 
@@ -1532,8 +1606,17 @@ async function performSearch(query) {
     }
   }
 
-  // Sort matches by page order
-  searchMatches.sort((a, b) => a.pageNum - b.pageNum || a.spanIndex - b.spanIndex);
+  // Sort matches by page order (visible order, not raw page number)
+  const pageOrderMap = {};
+  pageOrder.forEach((id, idx) => {
+    const pn = pageIdToNum(id);
+    if (pn) pageOrderMap[pn] = idx;
+  });
+  searchMatches.sort((a, b) => {
+    const orderA = pageOrderMap[a.pageNum] ?? a.pageNum;
+    const orderB = pageOrderMap[b.pageNum] ?? b.pageNum;
+    return orderA - orderB || a.spanIndex - b.spanIndex;
+  });
 
   if (infoEl) infoEl.textContent = searchMatches.length ? `${searchMatches.length} found` : 'No results';
 
@@ -1606,10 +1689,22 @@ async function detectAndRenderFormFields(wrapper, page, viewport, pageNum) {
 
     if (formAnnots.length === 0) return;
 
-    for (const annot of formAnnots) {
+    // Sort form fields by vertical then horizontal position for natural tab order
+    const sortedAnnots = formAnnots.map(annot => {
       const rect = annot.rect;
-      const [x1, y1] = pdfjsLib.Util.transform(viewport.transform, [rect[0], rect[1]]);
-      const [x2, y2] = pdfjsLib.Util.transform(viewport.transform, [rect[2], rect[3]]);
+      const [x1, y1] = pdfjsLib.Util.applyTransform([rect[0], rect[1]], viewport.transform);
+      const [x2, y2] = pdfjsLib.Util.applyTransform([rect[2], rect[3]], viewport.transform);
+      return { annot, x1, y1, x2, y2, top: Math.min(y1, y2), left: Math.min(x1, x2) };
+    });
+    sortedAnnots.sort((a, b) => {
+      // Group by row (within 10px tolerance), then sort by left position
+      const rowDiff = Math.abs(a.top - b.top);
+      if (rowDiff < 10) return a.left - b.left;
+      return a.top - b.top;
+    });
+
+    let tabIdx = 1;
+    for (const { annot, x1, y1, x2, y2 } of sortedAnnots) {
 
       const left = Math.min(x1, x2);
       const top = Math.min(y1, y2);
@@ -1676,6 +1771,10 @@ async function detectAndRenderFormFields(wrapper, page, viewport, pageNum) {
         select.addEventListener('change', () => { formFieldValues[fieldId] = select.value; persistAnnotationsToStorage(); });
         fieldWrap.appendChild(select);
       }
+
+      // Set tabIndex for natural tab order based on position
+      const inputEl = fieldWrap.querySelector('input, textarea, select');
+      if (inputEl) inputEl.tabIndex = tabIdx++;
 
       wrapper.appendChild(fieldWrap);
     }
@@ -2317,9 +2416,14 @@ const addCustomBookmark = () => {
   const title = prompt('Bookmark title:', `Page ${currentPage}`);
   if (!title) return;
 
+  // Store original page number (not visible index) so bookmark navigation works
+  // after page deletions/reordering
+  const id = pageOrder[currentPage - 1];
+  const origPageNum = pageIdToNum(id) || currentPage;
+
   pdfBookmarks.push({
     title,
-    pageNum: currentPage,
+    pageNum: origPageNum,
     depth: 0,
     isCustom: true,
     children: []
@@ -2446,10 +2550,10 @@ const parsePageRanges = (rangeStr, maxPages) => {
   const parts = rangeStr.split(',');
   for (const part of parts) {
     const trimmed = part.trim();
-    if (trimmed.includes('-')) {
-      const [startStr, endStr] = trimmed.split('-');
-      const start = Math.max(1, parseInt(startStr, 10) || 1);
-      const end = Math.min(maxPages, parseInt(endStr, 10) || maxPages);
+    const rangeMatch = trimmed.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (rangeMatch) {
+      const start = Math.max(1, parseInt(rangeMatch[1], 10));
+      const end = Math.min(maxPages, parseInt(rangeMatch[2], 10));
       for (let i = start; i <= end; i++) pages.add(i);
     } else {
       const p = parseInt(trimmed, 10);
