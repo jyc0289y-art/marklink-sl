@@ -2,7 +2,11 @@
 
 import { getCurrentTab } from './tabs.js';
 import { t } from './i18n.js';
-import { addComment } from '../collab/comments.js';
+// Lazy-load collab module to avoid pulling it into the main bundle
+const lazyAddComment = async () => {
+  const { addComment } = await import('../collab/comments.js');
+  addComment();
+};
 
 let activeMenu = null;
 
@@ -197,7 +201,7 @@ export const initContextMenus = () => {
           input.click();
         }},
         { divider: true },
-        { label: 'Add Comment', icon: '\ud83d\udcac', action: () => addComment(),
+        { label: 'Add Comment', icon: '\ud83d\udcac', action: () => lazyAddComment(),
           disabled: !window.getSelection()?.toString().trim() },
       ]);
     });

@@ -75,3 +75,8 @@
 | P9.27wc | Draw Editor Deep Audit & Bugfix | 2026-03-27 | 없음 | 진행중 |
 | P9.28wc | Sheet Formula Engine Correctness Hardening | 2026-03-27 | 없음 | 진행중 |
 | P9.25wc | Error Handling & Edge Case Audit | 2026-03-27 | 없음 | 진행중 |
+| P9.29wc | XLSX Export Quality Enhancement | 2026-03-27 | 없음 | 진행중 |
+| P9.30wc | Doc Editor Interaction Quality Audit | 2026-03-27 | 없음 | 진행중 |
+| P9.31wc | Bundle Optimization & Performance | 2026-03-27 | 없음 | 진행중 |
+| P9.32wc | Integration Test Coverage Expansion | 2026-03-27 | 없음 | 진행중 |
+| P9.33wc | CAD Editor Interaction Quality Audit | 2026-03-27 | 없음 | 진행중 |

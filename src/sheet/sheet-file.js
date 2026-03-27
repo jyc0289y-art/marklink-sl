@@ -328,6 +328,25 @@ async function importFile(file) {
             if (style.numFmt) {
               setCellFormat(sheetData, r, c, 'numFormat', style.numFmt);
             }
+            // Borders
+            if (style.border) {
+              if (style.border.top) {
+                const css = xlsxBorderToCss(style.border.top);
+                if (css) setCellFormat(sheetData, r, c, 'borderTop', css);
+              }
+              if (style.border.bottom) {
+                const css = xlsxBorderToCss(style.border.bottom);
+                if (css) setCellFormat(sheetData, r, c, 'borderBottom', css);
+              }
+              if (style.border.left) {
+                const css = xlsxBorderToCss(style.border.left);
+                if (css) setCellFormat(sheetData, r, c, 'borderLeft', css);
+              }
+              if (style.border.right) {
+                const css = xlsxBorderToCss(style.border.right);
+                if (css) setCellFormat(sheetData, r, c, 'borderRight', css);
+              }
+            }
           }
 
           // Number format from cell.z (SheetJS stores format string here)
@@ -422,6 +441,30 @@ async function importFile(file) {
         }
       }
 
+      // 10. Conditional formatting — SheetJS stores as ws['!condfmt']
+      if (ws['!condfmt'] && ws['!condfmt'].length) {
+        for (const cfRule of ws['!condfmt']) {
+          const cf = {};
+          cf.range = cfRule.ref || '';
+          cf.type = cfRule.type || 'cellIs';
+          if (cfRule.operator) cf.operator = cfRule.operator;
+          if (cfRule.formula && cfRule.formula.length > 0) {
+            cf.value = cfRule.formula[0];
+            if (cfRule.formula.length > 1) cf.value2 = cfRule.formula[1];
+          }
+          // Extract style
+          if (cfRule.style) {
+            if (cfRule.style.font?.color) {
+              cf.color = extractColor(cfRule.style.font.color) || '';
+            }
+            if (cfRule.style.fill?.fgColor) {
+              cf.bgColor = extractColor(cfRule.style.fill.fgColor) || '';
+            }
+          }
+          sheetData.condFormats.push(cf);
+        }
+      }
+
       recalcAll(sheetData);
       newSheets.push(sheetData);
     }
@@ -501,7 +544,42 @@ function parseDelimited(text, delimiter = ',') {
 }
 
 /**
- * Export sheets to XLSX workbook with formulas, styles, merges, and column widths
+ * Convert internal CSS border string (e.g. '1px solid #000') to SheetJS border object.
+ * Returns { style: 'thin'|'medium'|'thick', color: { rgb: 'RRGGBB' } } or null.
+ */
+function cssBorderToXlsx(cssStr) {
+  if (!cssStr) return null;
+  const parts = cssStr.trim().split(/\s+/);
+  // Expected: "1px solid #000000" or "2px solid #000"
+  const widthStr = parts[0] || '';
+  const colorStr = parts[2] || '#000000';
+  const width = parseFloat(widthStr) || 1;
+  let style = 'thin';
+  if (width >= 2.5) style = 'thick';
+  else if (width >= 1.5) style = 'medium';
+  // Normalize color
+  let rgb = colorStr.replace('#', '');
+  if (rgb.length === 3) rgb = rgb[0] + rgb[0] + rgb[1] + rgb[1] + rgb[2] + rgb[2];
+  return { style, color: { rgb: rgb.toUpperCase() } };
+}
+
+/**
+ * Convert SheetJS border object { style, color } to internal CSS border string.
+ */
+function xlsxBorderToCss(borderObj) {
+  if (!borderObj || !borderObj.style) return null;
+  const styleMap = { thin: '1px', medium: '2px', thick: '3px', hair: '1px',
+    dotted: '1px', dashed: '1px', dashDot: '1px', dashDotDot: '1px',
+    double: '3px', mediumDashed: '2px', mediumDashDot: '2px',
+    mediumDashDotDot: '2px', slantDashDot: '2px' };
+  const width = styleMap[borderObj.style] || '1px';
+  const color = borderObj.color ? extractColor(borderObj.color) || '#000000' : '#000000';
+  return `${width} solid ${color}`;
+}
+
+/**
+ * Export sheets to XLSX workbook with formulas, styles, merges, column widths,
+ * borders, freeze panes, data validation, and proper value types.
  */
 async function exportToWorkbook() {
   const XLSX = await getXLSX();
@@ -509,7 +587,8 @@ async function exportToWorkbook() {
   const sheetsData = getSheetsData();
 
   sheetsData.forEach((sheet, idx) => {
-    // First pass: build AOA for structure, then overlay cell details
+    // Build AOA using raw computed values (not display-formatted strings)
+    // to avoid corrupting numbers that have currency/percentage formats
     let maxR = 0, maxC = 0;
     for (const key of Object.keys(sheet.cells)) {
       const [r, c] = key.split(',').map(Number);
@@ -521,16 +600,19 @@ async function exportToWorkbook() {
     for (let r = 0; r <= maxR; r++) {
       const row = [];
       for (let c = 0; c <= maxC; c++) {
-        const val = getDisplayValue(sheet, r, c);
-        const num = Number(val);
-        row.push(val === '' ? null : (isNaN(num) ? val : num));
+        const cell = getCell(sheet, r, c);
+        if (!cell || cell.value == null || cell.value === '') {
+          row.push(null);
+        } else {
+          row.push(typeof cell.value === 'number' ? cell.value : String(cell.value));
+        }
       }
       aoa.push(row);
     }
 
     const ws = XLSX.utils.aoa_to_sheet(aoa.length ? aoa : [['']]);
 
-    // Second pass: overlay formulas and styles onto ws cells
+    // Overlay formulas, proper types, and styles onto ws cells
     for (const key of Object.keys(sheet.cells)) {
       const [r, c] = key.split(',').map(Number);
       const cellData = sheet.cells[key];
@@ -538,26 +620,38 @@ async function exportToWorkbook() {
       const addr = XLSX.utils.encode_cell({ r, c });
       if (!ws[addr]) ws[addr] = { t: 's', v: '' };
 
-      // Formulas: if raw starts with '=', write as formula
       const raw = cellData.raw || '';
+      const val = cellData.value;
+
+      // Formulas: if raw starts with '=', write as formula
       if (raw.startsWith('=')) {
         ws[addr].f = raw.substring(1);
-        // Keep the computed value
-        const val = cellData.value;
+        // Keep the computed value with proper type
         if (typeof val === 'number') {
           ws[addr].t = 'n';
+          ws[addr].v = val;
+        } else if (typeof val === 'boolean') {
+          ws[addr].t = 'b';
           ws[addr].v = val;
         } else if (val != null) {
           ws[addr].t = 's';
           ws[addr].v = String(val);
         }
       } else {
-        // Non-formula cells: ensure numeric values (including dates stored as
-        // serial numbers) are written as numbers, not display strings from AOA
-        const val = cellData.value;
+        // Non-formula cells: set proper type
         if (typeof val === 'number') {
           ws[addr].t = 'n';
           ws[addr].v = val;
+        } else if (typeof val === 'boolean') {
+          ws[addr].t = 'b';
+          ws[addr].v = val;
+        } else if (raw === 'TRUE' || raw === 'FALSE') {
+          // Boolean roundtrip: stored as string "TRUE"/"FALSE" on import
+          ws[addr].t = 'b';
+          ws[addr].v = raw === 'TRUE';
+        } else if (val != null && String(val) !== '') {
+          ws[addr].t = 's';
+          ws[addr].v = String(val);
         }
       }
 
@@ -565,6 +659,7 @@ async function exportToWorkbook() {
       const fmt = cellData.format;
       if (fmt && Object.keys(fmt).length > 0) {
         const style = {};
+
         // Font
         const font = {};
         if (fmt.bold) font.bold = true;
@@ -573,21 +668,44 @@ async function exportToWorkbook() {
         if (fmt.strikethrough) font.strike = true;
         if (fmt.fontSize) font.sz = fmt.fontSize;
         if (fmt.fontFamily) font.name = fmt.fontFamily;
-        if (fmt.color) font.color = { rgb: fmt.color.replace('#', '') };
+        if (fmt.color) font.color = { rgb: fmt.color.replace('#', '').toUpperCase() };
         if (Object.keys(font).length > 0) style.font = font;
+
         // Fill
         if (fmt.bg) {
           style.fill = {
             patternType: 'solid',
-            fgColor: { rgb: fmt.bg.replace('#', '') },
+            fgColor: { rgb: fmt.bg.replace('#', '').toUpperCase() },
           };
         }
+
         // Alignment
         const alignment = {};
         if (fmt.align) alignment.horizontal = fmt.align;
         if (fmt.valign) alignment.vertical = fmt.valign;
         if (fmt.wrap) alignment.wrapText = true;
         if (Object.keys(alignment).length > 0) style.alignment = alignment;
+
+        // Borders
+        const border = {};
+        if (fmt.borderTop) {
+          const b = cssBorderToXlsx(fmt.borderTop);
+          if (b) border.top = b;
+        }
+        if (fmt.borderBottom) {
+          const b = cssBorderToXlsx(fmt.borderBottom);
+          if (b) border.bottom = b;
+        }
+        if (fmt.borderLeft) {
+          const b = cssBorderToXlsx(fmt.borderLeft);
+          if (b) border.left = b;
+        }
+        if (fmt.borderRight) {
+          const b = cssBorderToXlsx(fmt.borderRight);
+          if (b) border.right = b;
+        }
+        if (Object.keys(border).length > 0) style.border = border;
+
         // Number format
         if (fmt.numFormat) style.numFmt = fmt.numFormat;
 
@@ -606,8 +724,8 @@ async function exportToWorkbook() {
     // Column widths
     if (sheet.colWidths) {
       const cols = [];
-      for (const [idx, wpx] of Object.entries(sheet.colWidths)) {
-        const i = Number(idx);
+      for (const [colIdx, wpx] of Object.entries(sheet.colWidths)) {
+        const i = Number(colIdx);
         while (cols.length <= i) cols.push({});
         cols[i] = { wpx };
       }
@@ -617,8 +735,8 @@ async function exportToWorkbook() {
     // Row heights
     if (sheet.rowHeights) {
       const rows = [];
-      for (const [idx, hpx] of Object.entries(sheet.rowHeights)) {
-        const i = Number(idx);
+      for (const [rowIdx, hpx] of Object.entries(sheet.rowHeights)) {
+        const i = Number(rowIdx);
         while (rows.length <= i) rows.push({});
         rows[i] = { hpx };
       }
@@ -644,14 +762,14 @@ async function exportToWorkbook() {
       const dvList = [];
       // Group validations by identical rules to produce merged sqref ranges
       const ruleMap = new Map();
-      for (const [key, rule] of Object.entries(sheet.validations)) {
-        const [r, c] = key.split(',').map(Number);
+      for (const [dvKey, rule] of Object.entries(sheet.validations)) {
+        const [dvR, dvC] = dvKey.split(',').map(Number);
         const ruleKey = JSON.stringify(rule);
         if (!ruleMap.has(ruleKey)) ruleMap.set(ruleKey, { rule, cells: [] });
-        ruleMap.get(ruleKey).cells.push({ r, c });
+        ruleMap.get(ruleKey).cells.push({ r: dvR, c: dvC });
       }
       for (const { rule, cells } of ruleMap.values()) {
-        const sqref = cells.map(({ r, c }) => XLSX.utils.encode_cell({ r, c })).join(' ');
+        const sqref = cells.map(({ r: dvR, c: dvC }) => XLSX.utils.encode_cell({ r: dvR, c: dvC })).join(' ');
         const dv = { sqref };
         if (rule.type === 'list') {
           dv.type = 'list';
@@ -675,6 +793,26 @@ async function exportToWorkbook() {
         dvList.push(dv);
       }
       if (dvList.length > 0) ws['!dataValidation'] = dvList;
+    }
+
+    // Conditional formatting — export rules for roundtrip
+    if (sheet.condFormats && sheet.condFormats.length > 0) {
+      const cfRules = [];
+      for (const cf of sheet.condFormats) {
+        const cfRule = {};
+        cfRule.ref = cf.range || '';
+        cfRule.type = cf.type || 'cellIs';
+        if (cf.operator) cfRule.operator = cf.operator;
+        if (cf.value != null) cfRule.formula = [String(cf.value)];
+        if (cf.value2 != null) cfRule.formula = [String(cf.value), String(cf.value2)];
+        // Style
+        const cfStyle = {};
+        if (cf.color) cfStyle.font = { color: { rgb: cf.color.replace('#', '').toUpperCase() } };
+        if (cf.bgColor) cfStyle.fill = { fgColor: { rgb: cf.bgColor.replace('#', '').toUpperCase() } };
+        if (Object.keys(cfStyle).length > 0) cfRule.style = cfStyle;
+        cfRules.push(cfRule);
+      }
+      if (cfRules.length > 0) ws['!condfmt'] = cfRules;
     }
 
     const sheetName = sheet.name || `Sheet${idx + 1}`;

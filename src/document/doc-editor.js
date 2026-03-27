@@ -71,7 +71,7 @@ export function initDocEditor() {
   const debouncedWordCount = () => { clearTimeout(wordCountTimer); wordCountTimer = setTimeout(() => updateWordCount(), 300); };
   let outlineTimer;
   const debouncedOutline = () => { clearTimeout(outlineTimer); outlineTimer = setTimeout(() => { updateDocOutline(); updateDocOutlineNav(); }, 500); };
-  editorEl.addEventListener('input', () => {
+  _addHandler(editorEl, 'input', () => {
     dirty = true;
     debouncedWordCount();
     if (outlineVisible) debouncedOutline();
@@ -79,7 +79,7 @@ export function initDocEditor() {
   });
 
   // Image resize handles
-  editorEl.addEventListener('click', (e) => {
+  _addHandler(editorEl, 'click', (e) => {
     if (e.target.tagName === 'IMG') {
       showImageResizeHandles(e.target);
     } else {
@@ -475,7 +475,7 @@ export function initDocEditor() {
   document.getElementById('doc-comments-sidebar-close')?.addEventListener('click', () => toggleCommentsPanel());
 
   // Keyboard shortcuts within doc editor
-  editorEl.addEventListener('keydown', (e) => {
+  _addHandler(editorEl, 'keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey) {
       switch (e.key.toLowerCase()) {
         case 'b': e.preventDefault(); document.execCommand('bold'); break;
@@ -490,12 +490,23 @@ export function initDocEditor() {
       e.preventDefault();
       document.execCommand('redo');
     }
+    // Ctrl+Y = Redo (Windows standard)
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'y') {
+      e.preventDefault();
+      document.execCommand('redo');
+    }
     // Paste as plain text (Ctrl+Shift+V)
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'v') {
       e.preventDefault();
       navigator.clipboard.readText().then(text => {
-        document.execCommand('insertText', false, text);
-      }).catch(() => {});
+        if (text) {
+          editorEl.focus();
+          document.execCommand('insertText', false, text);
+          dirty = true;
+        }
+      }).catch(() => {
+        // Fallback: listen for the native paste event
+      });
     }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'h') {
       e.preventDefault();
@@ -506,10 +517,78 @@ export function initDocEditor() {
       e.preventDefault();
       toggleReadingMode();
     }
+    // Tab / Shift+Tab in tables: move between cells
+    if (e.key === 'Tab') {
+      const sel = window.getSelection();
+      const node = sel?.anchorNode;
+      const cell = node?.nodeType === 3 ? node.parentElement?.closest('td, th') : node?.closest?.('td, th');
+      if (cell && editorEl.contains(cell)) {
+        e.preventDefault();
+        const row = cell.closest('tr');
+        const table = cell.closest('table');
+        if (!row || !table) return;
+        const cells = Array.from(row.cells);
+        const cellIdx = cells.indexOf(cell);
+        let nextCell = null;
+        if (e.shiftKey) {
+          // Move to previous cell
+          if (cellIdx > 0) {
+            nextCell = cells[cellIdx - 1];
+          } else {
+            // Previous row, last cell
+            const prevRow = row.previousElementSibling;
+            if (prevRow && prevRow.cells.length > 0) {
+              nextCell = prevRow.cells[prevRow.cells.length - 1];
+            }
+          }
+        } else {
+          // Move to next cell
+          if (cellIdx < cells.length - 1) {
+            nextCell = cells[cellIdx + 1];
+          } else {
+            // Next row, first cell — or add a new row
+            let nextRow = row.nextElementSibling;
+            if (!nextRow) {
+              // Auto-add a new row when Tab from the last cell
+              nextRow = document.createElement('tr');
+              for (let i = 0; i < cells.length; i++) {
+                const newCell = document.createElement('td');
+                newCell.style.cssText = 'border:1px solid var(--border-color);padding:8px 12px';
+                newCell.innerHTML = '&nbsp;';
+                nextRow.appendChild(newCell);
+              }
+              (table.querySelector('tbody') || table).appendChild(nextRow);
+              dirty = true;
+            }
+            if (nextRow.cells.length > 0) {
+              nextCell = nextRow.cells[0];
+            }
+          }
+        }
+        if (nextCell) {
+          const range = document.createRange();
+          range.selectNodeContents(nextCell);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      }
+    }
+    // Delete/Backspace on selected image
+    if ((e.key === 'Backspace' || e.key === 'Delete') && activeResizeImg) {
+      e.preventDefault();
+      const wrap = activeResizeImg.closest('.doc-img-resize-wrap');
+      if (wrap) {
+        wrap.remove();
+      } else {
+        activeResizeImg.remove();
+      }
+      activeResizeImg = null;
+      dirty = true;
+    }
   });
 
   // Smart paste: handle images from clipboard and clean external HTML
-  editorEl.addEventListener('paste', (e) => {
+  _addHandler(editorEl, 'paste', (e) => {
     // Check for image paste from clipboard (screenshot, copy image, etc.)
     const items = e.clipboardData?.items;
     if (items) {
@@ -546,7 +625,8 @@ export function initDocEditor() {
         .replace(/style="[^"]*mso[^"]*"/gi, '')
         .replace(/<o:p>.*?<\/o:p>/gi, '')
         .replace(/<!--.*?-->/gs, '')
-        .replace(/<\/?span[^>]*>/gi, '')
+        .replace(/<span\s*>/gi, '')   // Only strip empty spans (no attributes)
+        .replace(/<\/span>/gi, '')
         .replace(/<\/?font[^>]*>/gi, '');
       document.execCommand('insertHTML', false, cleaned);
     }
@@ -596,7 +676,7 @@ export function initDocEditor() {
   setTimeout(() => initPageBreakIndicators(), 200);
 
   // Table context toolbar
-  editorEl.addEventListener('click', (e) => {
+  _addHandler(editorEl, 'click', (e) => {
     const td = e.target.closest('td, th');
     const table = td?.closest('table');
     if (table && editorEl.contains(table)) {
@@ -644,7 +724,7 @@ export function initDocEditor() {
     sel.collapseToEnd();
     dirty = true;
   };
-  editorEl.addEventListener('keydown', autoCorrectHandler);
+  _addHandler(editorEl, 'keydown', autoCorrectHandler);
 }
 
 /**
@@ -1038,13 +1118,21 @@ function updateFindCount(current, total) {
 
 function doReplace() {
   if (!replaceInput || highlightedNodes.length === 0) return;
-  const current = highlightedNodes.find(n => n.classList.contains('doc-find-current'));
+  const currentIdx = highlightedNodes.findIndex(n => n.classList.contains('doc-find-current'));
+  const current = currentIdx >= 0 ? highlightedNodes[currentIdx] : null;
   if (current) {
+    // Remove from tracked array first so clearHighlights() won't try to unwrap it
+    highlightedNodes.splice(currentIdx, 1);
     current.replaceWith(document.createTextNode(replaceInput.value));
     editorEl?.normalize();
     dirty = true;
   }
-  highlightedNodes = highlightedNodes.filter(n => n !== current);
+  // Adjust findCurrentIndex to stay in bounds after removal
+  if (currentIdx >= 0 && highlightedNodes.length > 0) {
+    findCurrentIndex = currentIdx >= highlightedNodes.length ? 0 : currentIdx;
+  } else {
+    findCurrentIndex = 0;
+  }
   doFind();
 }
 
@@ -1272,12 +1360,13 @@ function showTableInsertDialog(onInsert) {
 }
 
 function buildTable(rows, cols) {
-  let html = '<table><thead><tr>';
-  for (let c = 0; c < cols; c++) html += `<th>Header ${c + 1}</th>`;
+  const cellStyle = 'border:1px solid var(--border-color);padding:8px 12px';
+  let html = '<table style="width:100%;border-collapse:collapse;margin:8px 0"><thead><tr>';
+  for (let c = 0; c < cols; c++) html += `<th style="${cellStyle};font-weight:600;background:rgba(0,0,0,0.05)">Header ${c + 1}</th>`;
   html += '</tr></thead><tbody>';
   for (let r = 0; r < rows - 1; r++) {
     html += '<tr>';
-    for (let c = 0; c < cols; c++) html += '<td>&nbsp;</td>';
+    for (let c = 0; c < cols; c++) html += `<td style="${cellStyle}">&nbsp;</td>`;
     html += '</tr>';
   }
   html += '</tbody></table><p>&nbsp;</p>';
@@ -1846,6 +1935,10 @@ function renderRuler() {
   html += `<div class="ruler-margin-left" style="position:absolute;left:0;top:0;width:${leftMarginPx}px;height:100%;background:var(--border-color);opacity:0.3"></div>`;
   // Right margin indicator
   html += `<div class="ruler-margin-right" style="position:absolute;right:0;top:0;width:${rightMarginPx}px;height:100%;background:var(--border-color);opacity:0.3"></div>`;
+  // Draggable left margin handle
+  html += `<div class="ruler-handle ruler-handle-left" style="position:absolute;left:${leftMarginPx - 4}px;top:0;width:8px;height:100%;cursor:col-resize;z-index:10" title="Drag to adjust left margin"></div>`;
+  // Draggable right margin handle
+  html += `<div class="ruler-handle ruler-handle-right" style="position:absolute;right:${rightMarginPx - 4}px;top:0;width:8px;height:100%;cursor:col-resize;z-index:10" title="Drag to adjust right margin"></div>`;
 
   for (let cm = 0; cm <= totalCm; cm++) {
     const x = cm * cmPx;
@@ -1862,6 +1955,48 @@ function renderRuler() {
   }
 
   ruler.innerHTML = html;
+
+  // Attach drag handlers to ruler margin handles
+  const leftHandle = ruler.querySelector('.ruler-handle-left');
+  const rightHandle = ruler.querySelector('.ruler-handle-right');
+
+  if (leftHandle) {
+    leftHandle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const rulerRect = ruler.getBoundingClientRect();
+      const onMove = (ev) => {
+        const newLeftPx = Math.max(0, Math.min(ev.clientX - rulerRect.left, rulerRect.width / 2));
+        currentMargins.left = Math.round(newLeftPx / 3.78 * 10) / 10; // px to mm
+        if (editorEl) editorEl.style.paddingLeft = currentMargins.left + 'mm';
+        renderRuler();
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
+  if (rightHandle) {
+    rightHandle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const rulerRect = ruler.getBoundingClientRect();
+      const onMove = (ev) => {
+        const newRightPx = Math.max(0, Math.min(rulerRect.right - ev.clientX, rulerRect.width / 2));
+        currentMargins.right = Math.round(newRightPx / 3.78 * 10) / 10; // px to mm
+        if (editorEl) editorEl.style.paddingRight = currentMargins.right + 'mm';
+        renderRuler();
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
 }
 
 // ─── Columns Layout ─────────────────────────────────────────
@@ -3703,7 +3838,7 @@ function showDateTimePicker() {
   dlg.innerHTML = html;
   document.body.appendChild(dlg);
 
-  const editorEl = document.getElementById('doc-editor');
+  // Use module-level editorEl (do not shadow with a local const)
 
   dlg.querySelector('#dt-close').onclick = () => dlg.remove();
   dlg.querySelectorAll('.dt-fmt-btn').forEach(btn => {
@@ -3741,7 +3876,6 @@ let focusModeActive = false;
 let focusModeOverlay = null;
 
 function toggleFocusMode() {
-  const editorEl = document.getElementById('doc-editor');
   if (!editorEl) return;
 
   focusModeActive = !focusModeActive;
@@ -3821,7 +3955,6 @@ let readingModeActive = false;
 let readingModeOverlay = null;
 
 function toggleReadingMode() {
-  const editorEl = document.getElementById('doc-editor');
   if (!editorEl) return;
 
   readingModeActive = !readingModeActive;

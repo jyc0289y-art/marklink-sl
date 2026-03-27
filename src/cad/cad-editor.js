@@ -860,12 +860,25 @@ function booleanOperation(op) {
     return;
   }
 
-  // Simple approach: show a dialog to pick second object
-  const otherObjects = sceneObjects.filter((o) => o !== selectedObject);
-  if (otherObjects.length === 0) return;
-
-  // For now, use the closest non-selected object
-  const second = otherObjects[0];
+  // Use multi-selection or find closest non-selected object
+  let second = null;
+  if (multiSelection.length >= 2) {
+    second = multiSelection.find((o) => o !== selectedObject) || null;
+  }
+  if (!second) {
+    const otherObjects = sceneObjects.filter((o) => o !== selectedObject);
+    if (otherObjects.length === 0) return;
+    if (otherObjects.length === 1) {
+      second = otherObjects[0];
+    } else {
+      let minDist = Infinity;
+      for (const o of otherObjects) {
+        const d = selectedObject.position.distanceTo(o.position);
+        if (d < minDist) { minDist = d; second = o; }
+      }
+    }
+  }
+  if (!second) return;
 
   // CSG operations require a library — we'll use a simplified merge/subtract approach
   // using Three.js geometry manipulation
@@ -1262,8 +1275,12 @@ function handleSketchMouseDown(e) {
   }
 
   if (sketchTool === 'line') {
-    sketchTempPoints.push(pos);
-    sketchDrawing = true;
+    if (!sketchDrawing || sketchTempPoints.length === 0) {
+      // Start a new line chain — set first point
+      sketchTempPoints = [pos];
+      sketchDrawing = true;
+    }
+    // If already in chain mode, mouseDown is ignored (mouseUp will add the endpoint)
   } else if (sketchTool === 'circle') {
     sketchTempPoints = [pos];
     sketchDrawing = true;
@@ -1271,8 +1288,11 @@ function handleSketchMouseDown(e) {
     sketchTempPoints = [pos];
     sketchDrawing = true;
   } else if (sketchTool === 'arc') {
-    sketchTempPoints.push(pos);
-    sketchDrawing = true;
+    if (!sketchDrawing) {
+      sketchTempPoints = [pos];
+      sketchDrawing = true;
+    }
+    // Subsequent points are collected on mouseUp
   } else if (sketchTool === 'polygon') {
     sketchTempPoints = [pos];
     sketchDrawing = true;
@@ -1291,16 +1311,33 @@ function handleSketchMouseUp(e) {
   const pos = screenToSketchCoords(e.clientX, e.clientY);
 
   if (sketchTool === 'line') {
+    // Push the mouseUp position as the line endpoint
+    sketchTempPoints.push(pos);
     if (sketchTempPoints.length >= 2) {
-      // Commit line segment
-      sketchEntityIdCounter++;
+      // Commit line segment from the previous point to this point
       const p1 = sketchTempPoints[sketchTempPoints.length - 2];
       const p2 = sketchTempPoints[sketchTempPoints.length - 1];
       if (Math.abs(p1.x - p2.x) > 0.01 || Math.abs(p1.y - p2.y) > 0.01) {
+        sketchEntityIdCounter++;
         sketchEntities.push({ type: 'line', points: [p1, p2], id: sketchEntityIdCounter });
         applyAutoConstraints(sketchEntities[sketchEntities.length - 1]);
       }
       // Keep last point as start of next line for chain drawing
+      // Remove all points except the last one (chain start)
+      sketchTempPoints = [sketchTempPoints[sketchTempPoints.length - 1]];
+    }
+  } else if (sketchTool === 'arc') {
+    // Arc needs 3 points: start, midpoint, end
+    sketchTempPoints.push(pos);
+    if (sketchTempPoints.length >= 3) {
+      sketchEntityIdCounter++;
+      sketchEntities.push({
+        type: 'arc',
+        points: [sketchTempPoints[0], sketchTempPoints[1], sketchTempPoints[2]],
+        id: sketchEntityIdCounter,
+      });
+      sketchTempPoints = [];
+      sketchDrawing = false;
     }
   } else if (sketchTool === 'circle') {
     const center = sketchTempPoints[0];
@@ -2149,7 +2186,19 @@ function revolveShape() {
 }
 
 /* ===================== Export ===================== */
+/** Dispose all children in an export scene (free cloned geometries/materials) */
+function disposeExportScene(exportScene) {
+  exportScene.traverse((child) => {
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
+      else child.material.dispose();
+    }
+  });
+}
+
 function exportSTL() {
+  if (sceneObjects.length === 0) { updateStatusBar('No objects to export'); return; }
   const exporter = new STLExporter();
   const exportScene = new THREE.Scene();
   sceneObjects.forEach((o) => {
@@ -2157,11 +2206,12 @@ function exportSTL() {
   });
   const result = exporter.parse(exportScene, { binary: true });
   downloadBlob(new Blob([result], { type: 'application/octet-stream' }), 'model.stl');
-  // Return objects back
+  disposeExportScene(exportScene);
   updateStatusBar('Exported STL');
 }
 
 function exportOBJ() {
+  if (sceneObjects.length === 0) { updateStatusBar('No objects to export'); return; }
   const exporter = new OBJExporter();
   const exportScene = new THREE.Scene();
   sceneObjects.forEach((o) => {
@@ -2169,10 +2219,12 @@ function exportOBJ() {
   });
   const result = exporter.parse(exportScene);
   downloadBlob(new Blob([result], { type: 'text/plain' }), 'model.obj');
+  disposeExportScene(exportScene);
   updateStatusBar('Exported OBJ');
 }
 
 function exportGLTF() {
+  if (sceneObjects.length === 0) { updateStatusBar('No objects to export'); return; }
   const exporter = new GLTFExporter();
   const exportScene = new THREE.Scene();
   sceneObjects.forEach((o) => {
@@ -2183,9 +2235,11 @@ function exportGLTF() {
     (gltf) => {
       const output = JSON.stringify(gltf, null, 2);
       downloadBlob(new Blob([output], { type: 'application/json' }), 'model.gltf');
+      disposeExportScene(exportScene);
       updateStatusBar('Exported GLTF');
     },
     (error) => {
+      disposeExportScene(exportScene);
       updateStatusBar(`Export error: ${error.message}`);
     },
     {}
@@ -3657,17 +3711,12 @@ function updateClippingPlane() {
   clippingPlane.normal.copy(normals[a] || normals.y);
   clippingPlane.constant = -p * f;
 
-  // Update helper
+  // Update helper — orient PlaneGeometry (default normal +Z) to match clipping axis
   if (clippingHelper) {
     clippingHelper.position.set(a === 'x' ? p : 0, a === 'y' ? p : 0, a === 'z' ? p : 0);
-    clippingHelper.rotation.set(
-      a === 'z' ? Math.PI / 2 : (a === 'y' ? 0 : 0),
-      0,
-      a === 'x' ? Math.PI / 2 : 0
-    );
-    if (a === 'x') { clippingHelper.rotation.set(0, Math.PI / 2, 0); }
-    if (a === 'y') { clippingHelper.rotation.set(Math.PI / 2, 0, 0); }
-    if (a === 'z') { clippingHelper.rotation.set(0, 0, 0); }
+    if (a === 'x') { clippingHelper.rotation.set(0, Math.PI / 2, 0); }       // face +X
+    else if (a === 'y') { clippingHelper.rotation.set(Math.PI / 2, 0, 0); }  // face +Y (horizontal)
+    else { clippingHelper.rotation.set(0, 0, 0); }                           // face +Z (default)
   }
 }
 
@@ -4088,9 +4137,28 @@ function booleanOperationOCCT(op) {
     return;
   }
 
-  const otherObjects = sceneObjects.filter((o) => o !== selectedObject);
-  if (otherObjects.length === 0) return;
-  const second = otherObjects[0];
+  // Use multi-selection if 2 objects are selected, otherwise find closest non-selected object
+  let second = null;
+  if (multiSelection.length >= 2) {
+    // Use the first multi-selected object that isn't the primary selection
+    second = multiSelection.find((o) => o !== selectedObject) || null;
+  }
+  if (!second) {
+    // Fallback: use the nearest non-selected object (by distance)
+    const otherObjects = sceneObjects.filter((o) => o !== selectedObject);
+    if (otherObjects.length === 0) return;
+    if (otherObjects.length === 1) {
+      second = otherObjects[0];
+    } else {
+      // Pick the closest object to the selected one
+      let minDist = Infinity;
+      for (const o of otherObjects) {
+        const d = selectedObject.position.distanceTo(o.position);
+        if (d < minDist) { minDist = d; second = o; }
+      }
+    }
+  }
+  if (!second) return;
 
   // Check if both have B-Rep data
   const shapeA = occtShapes.get(selectedObject.uuid);
@@ -4134,9 +4202,15 @@ function booleanOperationOCCT(op) {
   mesh.userData.isCADObject = true;
   mesh.userData.isBRep = true;
 
-  // Remove originals
+  // Remove originals — free OCCT WASM memory for input shapes
+  OCCT.deleteShape(shapeA);
+  OCCT.deleteShape(shapeB);
   occtShapes.delete(selectedObject.uuid);
   occtShapes.delete(second.uuid);
+  if (selectedObject.geometry) selectedObject.geometry.dispose();
+  if (selectedObject.material) selectedObject.material.dispose();
+  if (second.geometry) second.geometry.dispose();
+  if (second.material) second.material.dispose();
   scene.remove(selectedObject);
   scene.remove(second);
   sceneObjects = sceneObjects.filter((o) => o !== selectedObject && o !== second);
@@ -4194,8 +4268,11 @@ function executeFilletFromDialog() {
   mesh.userData.isCADObject = true;
   mesh.userData.isBRep = true;
 
-  // Replace old
+  // Replace old — free OCCT WASM memory for input shape
+  OCCT.deleteShape(shape);
   occtShapes.delete(selectedObject.uuid);
+  if (selectedObject.geometry) selectedObject.geometry.dispose();
+  if (selectedObject.material) selectedObject.material.dispose();
   scene.remove(selectedObject);
   sceneObjects = sceneObjects.filter((o) => o !== selectedObject);
 
@@ -4251,7 +4328,10 @@ function executeChamferFromDialog() {
   mesh.userData.isCADObject = true;
   mesh.userData.isBRep = true;
 
+  OCCT.deleteShape(shape);
   occtShapes.delete(selectedObject.uuid);
+  if (selectedObject.geometry) selectedObject.geometry.dispose();
+  if (selectedObject.material) selectedObject.material.dispose();
   scene.remove(selectedObject);
   sceneObjects = sceneObjects.filter((o) => o !== selectedObject);
 
@@ -4309,7 +4389,10 @@ function executeShellFromDialog() {
   mesh.userData.isCADObject = true;
   mesh.userData.isBRep = true;
 
+  OCCT.deleteShape(shape);
   occtShapes.delete(selectedObject.uuid);
+  if (selectedObject.geometry) selectedObject.geometry.dispose();
+  if (selectedObject.material) selectedObject.material.dispose();
   scene.remove(selectedObject);
   sceneObjects = sceneObjects.filter((o) => o !== selectedObject);
 

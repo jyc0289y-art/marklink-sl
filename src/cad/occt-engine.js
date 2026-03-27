@@ -407,14 +407,16 @@ export const extrudeShape = (profile, direction, distance, symmetric = false) =>
   try {
     // First make a face from wire if it's a wire
     let face = profile;
+    let faceMakerRef = null; // keep alive until extrude is done
     if (profile.ShapeType && profile.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_WIRE) {
-      const faceMaker = new oc.BRepBuilderAPI_MakeFace_15(profile, true);
-      if (!faceMaker.IsDone()) {
-        faceMaker.delete();
+      faceMakerRef = new oc.BRepBuilderAPI_MakeFace_15(profile, true);
+      if (!faceMakerRef.IsDone()) {
+        faceMakerRef.delete();
         return null;
       }
-      face = faceMaker.Face();
-      faceMaker.delete();
+      face = faceMakerRef.Face();
+      // Do NOT delete faceMakerRef here — Face() returns a reference owned by the maker.
+      // Deleting the maker invalidates the face. We delete it after extrusion below.
     }
 
     const vec = new oc.gp_Vec_4(
@@ -447,8 +449,11 @@ export const extrudeShape = (profile, direction, distance, symmetric = false) =>
     }
 
     vec.delete();
+    // Now safe to delete the face maker — result is a deep copy inside MakePrism
+    if (faceMakerRef) faceMakerRef.delete();
     return result;
   } catch (e) {
+    if (faceMakerRef) try { faceMakerRef.delete(); } catch { /* ignore */ }
     console.error('[OCCT] extrudeShape error:', e);
     return null;
   }
@@ -463,13 +468,14 @@ export const extrudeShape = (profile, direction, distance, symmetric = false) =>
  */
 export const revolveShape = (profile, axis, angleDeg = 360) => {
   if (!oc || !profile) return null;
+  let faceMakerRef = null;
   try {
     let face = profile;
     if (profile.ShapeType && profile.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_WIRE) {
-      const faceMaker = new oc.BRepBuilderAPI_MakeFace_15(profile, true);
-      if (!faceMaker.IsDone()) { faceMaker.delete(); return null; }
-      face = faceMaker.Face();
-      faceMaker.delete();
+      faceMakerRef = new oc.BRepBuilderAPI_MakeFace_15(profile, true);
+      if (!faceMakerRef.IsDone()) { faceMakerRef.delete(); return null; }
+      face = faceMakerRef.Face();
+      // Keep faceMakerRef alive — Face() returns a reference owned by the maker
     }
 
     const origin = new oc.gp_Pnt_3(axis.origin.x, axis.origin.y, axis.origin.z);
@@ -484,8 +490,10 @@ export const revolveShape = (profile, axis, angleDeg = 360) => {
     dir.delete();
     ax1.delete();
     revolve.delete();
+    if (faceMakerRef) faceMakerRef.delete();
     return result;
   } catch (e) {
+    if (faceMakerRef) try { faceMakerRef.delete(); } catch { /* ignore */ }
     console.error('[OCCT] revolveShape error:', e);
     return null;
   }

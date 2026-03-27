@@ -63,7 +63,9 @@ const saveSlideAsPptx = async () => { const m = await loadSlideFile(); return m.
 const openPdf = async () => { const m = await loadPdfViewer(); return m.openPdf(); };
 const openPhotoFile = async () => { const m = await loadPhotoEditor(); return m.openPhotoFile(); };
 
-import { initAiChat, setContextProviders, enterAiFullscreen, exitAiFullscreen } from './ai/ai-chat.js';
+// AI modules — lazy-loaded (heavy: ollama-client, ai-chat, ai-cowork)
+let _aiChatMod = null;
+const loadAiChat = () => _aiChatMod || (_aiChatMod = import('./ai/ai-chat.js'));
 import { initI18n, setLang, getLang, showLanguagePicker, onLangChange, t } from './ui/i18n.js';
 import { autoTrapModal } from './utils/focus-trap.js';
 import { initAdBanners } from './ui/ad-banner.js';
@@ -71,7 +73,8 @@ import { initAdBanners } from './ui/ad-banner.js';
 // import { initCadEditor } from './cad/cad-editor.js';
 // import { initDrawEditor } from './draw/draw-editor.js';
 import { initSnippetLibrary, initZenMode, updateEnhancedStatusBar, initShortcutOverlay, initMarkdownKeyboardShortcuts, initAutocomplete, initFocusMode, initTableEditor, initVersionSnapshots, initExportHtml, initFloatingToc, updateFloatingToc, initWordGoal, updateWordGoalDisplay, updateReadingTimeEstimate, initMarkdownLint, updateMarkdownLint, getMarkdownStats } from './editor/md-enhance.js';
-import { initDocAiContextMenu, initSheetAi, initSlideAi, initMarkdownAi, initPdfAi, initPhotoAi } from './ai/ai-cowork.js';
+let _aiCoworkMod = null;
+const loadAiCowork = () => _aiCoworkMod || (_aiCoworkMod = import('./ai/ai-cowork.js'));
 import { initTutorial } from './ui/tutorial.js';
 import { initThemeCustomizer } from './ui/theme-customizer.js';
 import { initTabSync, broadcastThemeChange, broadcastLangChange, broadcastFileEvent, markFileEditing } from './ui/tab-sync.js';
@@ -86,9 +89,19 @@ import { initEnhancedStatusBar } from './ui/status-bar-enhanced.js';
 import { initOfflineManager } from './ui/offline-manager.js';
 import { initMobile } from './ui/mobile.js';
 import { escapeHtml, sanitizeAiResponse, sanitizeFileName, sanitizeUrlParam } from './utils/sanitize.js';
-import { initCommentSystem, addComment, openCommentsPanel } from './collab/comments.js';
-import { initVersionSnapshots as initCollabVersionSnapshots, saveVersion, showVersionList } from './collab/versions.js';
-import { initShareLink, shareAsLink } from './collab/share-link.js';
+// Collab modules — lazy-loaded (not needed at startup)
+let _collabLoaded = false;
+let _commentsMod = null, _versionsMod = null, _shareMod = null;
+const loadCollab = async () => {
+  if (_collabLoaded) return { comments: _commentsMod, versions: _versionsMod, share: _shareMod };
+  [_commentsMod, _versionsMod, _shareMod] = await Promise.all([
+    import('./collab/comments.js'),
+    import('./collab/versions.js'),
+    import('./collab/share-link.js'),
+  ]);
+  _collabLoaded = true;
+  return { comments: _commentsMod, versions: _versionsMod, share: _shareMod };
+};
 
 // Default welcome content
 const WELCOME_MD = `# Welcome to OfficeLink SL ✦
@@ -628,8 +641,8 @@ export async function initApp() {
     }
 
     // AI fullscreen mode
-    if (tab === 'ai') enterAiFullscreen();
-    else if (prevTab === 'ai') exitAiFullscreen();
+    if (tab === 'ai') loadAiChat().then(m => m.enterAiFullscreen());
+    else if (prevTab === 'ai') loadAiChat().then(m => m.exitAiFullscreen());
 
     // URL routing — update URL without reload
     const url = new URL(window.location);
@@ -656,49 +669,54 @@ export async function initApp() {
     }
   });
 
-  // 18. AI Chat (Local LLM)
-  initAiChat();
-
-  // 18b. AI Co-work — deep AI integration in each editor
-  initDocAiContextMenu();
-  initSheetAi();
-  initSlideAi();
-  initMarkdownAi(
-    () => getContent(),
-    (text) => { setContent(text); },
-    (text) => { updatePreviewImmediate(text); }
-  );
-  initPdfAi(() => getPdfText());
-  initPhotoAi();
+  // 18. AI Chat + AI Co-work — deferred to avoid blocking startup
+  // These are initialized after first paint via requestIdleCallback
+  const initAiDeferred = async () => {
+    const [aiChat, aiCowork] = await Promise.all([loadAiChat(), loadAiCowork()]);
+    aiChat.initAiChat();
+    aiCowork.initDocAiContextMenu();
+    aiCowork.initSheetAi();
+    aiCowork.initSlideAi();
+    aiCowork.initMarkdownAi(
+      () => getContent(),
+      (text) => { setContent(text); },
+      (text) => { updatePreviewImmediate(text); }
+    );
+    aiCowork.initPdfAi(() => getPdfText());
+    aiCowork.initPhotoAi();
+    aiChat.setContextProviders({
+      getDocContent: () => getDocContent(),
+      getSheetText: async () => {
+        try { return JSON.stringify(await getSheetsData()); }
+        catch { return ''; }
+      },
+      getMarkdownContent: () => getContent(),
+      getPdfText: () => getPdfText(),
+      getPdfImages: () => getPdfPageImages(),
+      insertContent: (text) => {
+        const tab = getCurrentTab();
+        if (tab === 'document') {
+          const docEl = document.getElementById('doc-editor');
+          if (docEl) {
+            docEl.focus();
+            document.execCommand('insertHTML', false, text.replace(/\n/g, '<br>'));
+          }
+        } else {
+          const content = getContent();
+          setContent(content + '\n\n' + text);
+          updatePreviewImmediate(getContent());
+        }
+      },
+    });
+  };
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(() => initAiDeferred());
+  } else {
+    setTimeout(() => initAiDeferred(), 200);
+  }
 
   // 19. Ad Banners (PC only, non-intrusive)
   initAdBanners();
-  setContextProviders({
-    getDocContent: () => getDocContent(),
-    getSheetText: async () => {
-      try { return JSON.stringify(await getSheetsData()); }
-      catch { return ''; }
-    },
-    getMarkdownContent: () => getContent(),
-    getPdfText: () => getPdfText(),
-    getPdfImages: () => getPdfPageImages(),
-    insertContent: (text) => {
-      const tab = getCurrentTab();
-      if (tab === 'document') {
-        // Insert at cursor in document editor
-        const docEl = document.getElementById('doc-editor');
-        if (docEl) {
-          docEl.focus();
-          document.execCommand('insertHTML', false, text.replace(/\n/g, '<br>'));
-        }
-      } else {
-        // Insert at cursor in markdown editor
-        const content = getContent();
-        setContent(content + '\n\n' + text);
-        updatePreviewImmediate(getContent());
-      }
-    },
-  });
 
   // 19. Fullscreen toggle (polished — hides all chrome)
   const fullscreenBtn = document.getElementById('btn-fullscreen');
@@ -839,10 +857,22 @@ export async function initApp() {
   // 23b. Offline/Online indicator + file caching + background sync
   initOfflineManager();
 
-  // 23c. Collaboration preparation — comments, version snapshots, share link
-  initCommentSystem();
-  initCollabVersionSnapshots();
-  initShareLink();
+  // 23c. Collaboration preparation — deferred (not needed at startup)
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(async () => {
+      const { comments, versions, share } = await loadCollab();
+      comments.initCommentSystem();
+      versions.initVersionSnapshots();
+      share.initShareLink();
+    });
+  } else {
+    setTimeout(async () => {
+      const { comments, versions, share } = await loadCollab();
+      comments.initCommentSystem();
+      versions.initVersionSnapshots();
+      share.initShareLink();
+    }, 300);
+  }
 
   // Listen for content restore events from version snapshots / share link
   document.addEventListener('officelink-restore-content', (e) => {
@@ -989,7 +1019,7 @@ function showExportMenu(anchorBtn) {
     { label: '📄 Export as PDF', action: () => { trackExport('pdf'); exportPDF(getContent(), getCurrentFileName()); toastSuccess('PDF exported'); } },
     { label: '🌐 Export as HTML', action: () => { trackExport('html'); exportHTML(getContent(), getCurrentFileName()); toastSuccess('HTML exported'); } },
     { label: '📋 Copy as Rich Text', action: () => { trackExport('richtext'); copyAsRichText(getContent()); toastSuccess('Copied as rich text'); } },
-    { label: '🔗 Share as Link', action: () => shareAsLink() },
+    { label: '🔗 Share as Link', action: async () => { const { share } = await loadCollab(); share.shareAsLink(); } },
   ];
 
   items.forEach(({ label, action }) => {
