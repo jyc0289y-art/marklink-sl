@@ -175,15 +175,30 @@ const showConflictWarning = (fileName) => {
 
   const warning = document.createElement('div');
   warning.className = 'tab-sync-conflict-warning';
-  warning.innerHTML = `
-    <div class="conflict-icon">&#9888;</div>
-    <div class="conflict-text">
-      <strong>File Conflict</strong>
-      <span>"${fileName}" is being edited in another tab</span>
-    </div>
-    <button class="conflict-dismiss" aria-label="Dismiss">&#10005;</button>
-  `;
-  warning.querySelector('.conflict-dismiss').addEventListener('click', () => warning.remove());
+
+  const icon = document.createElement('div');
+  icon.className = 'conflict-icon';
+  icon.innerHTML = '&#9888;';
+
+  const text = document.createElement('div');
+  text.className = 'conflict-text';
+  const strong = document.createElement('strong');
+  strong.textContent = 'File Conflict';
+  const span = document.createElement('span');
+  // Use textContent to prevent XSS via malicious filenames
+  span.textContent = `"${fileName}" is being edited in another tab`;
+  text.appendChild(strong);
+  text.appendChild(span);
+
+  const dismiss = document.createElement('button');
+  dismiss.className = 'conflict-dismiss';
+  dismiss.setAttribute('aria-label', 'Dismiss');
+  dismiss.innerHTML = '&#10005;';
+  dismiss.addEventListener('click', () => warning.remove());
+
+  warning.appendChild(icon);
+  warning.appendChild(text);
+  warning.appendChild(dismiss);
   document.body.appendChild(warning);
 
   setTimeout(() => warning.remove(), 8000);

@@ -1870,6 +1870,7 @@ function buildOutline(markdownText) {
 
   const lines = markdownText.split('\n');
   const headings = [];
+  const outlineIdCounts = {};
 
   let inCodeBlock = false;
   for (const line of lines) {
@@ -1882,10 +1883,21 @@ function buildOutline(markdownText) {
     const match = line.match(/^(#{1,6})\s+(.+)/);
     if (match) {
       const level = match[1].length;
-      const text = match[2].replace(/[#*_`\[\]]/g, '').trim();
+      const text = match[2]
+        .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')  // ![alt](url) -> alt (must be before link regex)
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')   // [text](url) -> text
+        .replace(/[#*_`\[\]]/g, '')                 // strip remaining markdown chars
+        .trim();
       if (text) {
-        const id = 'heading-' + text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
-        headings.push({ level, text, id });
+        let baseId = 'heading-' + text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+        // Disambiguate duplicate IDs (must match renderer.js logic)
+        if (outlineIdCounts[baseId] === undefined) {
+          outlineIdCounts[baseId] = 0;
+        } else {
+          outlineIdCounts[baseId]++;
+          baseId = baseId + '-' + outlineIdCounts[baseId];
+        }
+        headings.push({ level, text, id: baseId });
       }
     }
   }

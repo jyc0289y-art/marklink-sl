@@ -47,15 +47,20 @@ export function sanitizeUrlParam(value) {
 export function sanitizeFileName(name) {
   if (typeof name !== 'string') return '';
   let safe = name
-    // Remove null bytes
-    .replace(/\0/g, '')
+    // Remove null bytes and zero-width characters
+    .replace(/[\0\u200B-\u200F\uFEFF]/g, '')
+    // Normalize Unicode (NFKC) to collapse fullwidth/compatibility chars
+    // e.g., fullwidth '../' (\uFF0E\uFF0E\uFF0F) → '../'
+    .normalize('NFKC')
     // Remove path separators entirely to prevent traversal
     .replace(/[/\\]/g, '_')
     // Remove path traversal patterns (redundant after above, but defense-in-depth)
     .replace(/\.\.\//g, '')
     .replace(/\.\.\\/g, '')
     // Remove leading dots (hidden files) - keep one dot for extensions
-    .replace(/^\.+/, '');
+    .replace(/^\.+/, '')
+    // Remove Windows reserved device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+    .replace(/^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\..*)?$/i, '_$1$2');
   // Truncate excessively long filenames (255 bytes is typical FS limit)
   if (safe.length > 255) safe = safe.substring(0, 255);
   // Escape HTML entities for display
@@ -133,18 +138,31 @@ export function sanitizeUrl(url) {
   if (typeof url !== 'string') return '';
   const trimmed = url.trim();
   if (!trimmed) return '';
-  // Decode any URL encoding to catch obfuscated protocols
-  let decoded;
-  try {
-    decoded = decodeURIComponent(trimmed);
-  } catch {
-    decoded = trimmed;
+  // Iteratively decode URL encoding to catch double/triple-encoded bypasses
+  let decoded = trimmed;
+  let prev;
+  for (let i = 0; i < 5; i++) {
+    prev = decoded;
+    try {
+      decoded = decodeURIComponent(decoded);
+    } catch {
+      break;
+    }
+    if (decoded === prev) break;
   }
-  // Strip null bytes, tabs, newlines used to bypass protocol checks
-  decoded = decoded.replace(/[\x00-\x1f\x7f]/g, '').trim();
+  // Strip null bytes, control chars, and zero-width characters used to bypass protocol checks
+  decoded = decoded.replace(/[\x00-\x1f\x7f\u200B-\u200F\uFEFF]/g, '').trim();
   // Block dangerous protocols
   const lower = decoded.toLowerCase();
-  if (/^\s*(javascript|vbscript|data\s*:\s*text\/html)\s*:/i.test(lower)) {
+  if (/^\s*(javascript|vbscript)\s*:/i.test(lower)) {
+    return '';
+  }
+  // Block data: URIs (all MIME types — data:text/html, data:text/javascript, data:image/svg+xml, etc.)
+  if (/^\s*data\s*:/i.test(lower)) {
+    return '';
+  }
+  // Block blob: URIs (can reference executable content)
+  if (/^\s*blob\s*:/i.test(lower)) {
     return '';
   }
   // Allow only safe protocols or relative URLs
@@ -169,16 +187,22 @@ export function sanitizeImportedHtml(html) {
   safe = safe.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
   // Remove noscript
   safe = safe.replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '');
-  // Remove all event handler attributes (on*)
+  // Remove SVG elements and ALL their content (can contain script/event handlers inside)
+  safe = safe.replace(/<svg\b[\s\S]*?<\/svg>/gi, '');
+  safe = safe.replace(/<svg\b[^>]*\/>/gi, '');
+  // Remove MathML elements and ALL their content (can contain XSS vectors)
+  safe = safe.replace(/<math\b[\s\S]*?<\/math>/gi, '');
+  safe = safe.replace(/<math\b[^>]*\/>/gi, '');
+  // Remove all event handler attributes (on*) — handles newlines between attr name and =
   safe = safe.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, '');
-  // Remove javascript:/vbscript:/data:text/html in href/src/action/background/formaction
+  // Remove javascript:/vbscript:/data: in href/src/action/background/formaction
   safe = safe.replace(/(href|src|action|background|formaction|dynsrc|lowsrc)\s*=\s*["']?\s*(javascript|vbscript)\s*:/gi, '$1="');
-  safe = safe.replace(/(href|src)\s*=\s*["']?\s*data\s*:\s*text\/html/gi, '$1="');
-  // Remove dangerous tags entirely
-  safe = safe.replace(/<\s*\/?\s*(script|iframe|object|embed|form|base|meta|link|applet|svg|math)\b[^>]*>/gi, '');
-  // Remove style attributes containing expression(), url(javascript:), -moz-binding
-  safe = safe.replace(/style\s*=\s*"[^"]*(?:expression|url\s*\(\s*javascript|-moz-binding)[^"]*"/gi, '');
-  safe = safe.replace(/style\s*=\s*'[^']*(?:expression|url\s*\(\s*javascript|-moz-binding)[^']*'/gi, '');
+  safe = safe.replace(/(href|src)\s*=\s*["']?\s*data\s*:/gi, '$1="');
+  // Remove dangerous tags entirely (tags only, content preserved for non-container tags)
+  safe = safe.replace(/<\s*\/?\s*(script|iframe|object|embed|form|base|meta|link|applet|body|html)\b[^>]*>/gi, '');
+  // Remove style attributes containing expression(), url(javascript:), -moz-binding, behavior
+  safe = safe.replace(/style\s*=\s*"[^"]*(?:expression|url\s*\(\s*javascript|-moz-binding|behavior\s*:)[^"]*"/gi, '');
+  safe = safe.replace(/style\s*=\s*'[^']*(?:expression|url\s*\(\s*javascript|-moz-binding|behavior\s*:)[^']*'/gi, '');
   return safe;
 }
 

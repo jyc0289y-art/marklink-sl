@@ -1861,7 +1861,7 @@ function copySelection() {
       const cell = getCell(sheet, r, c);
       row.push({
         raw: getRawValue(sheet, r, c),
-        format: cell?.format ? { ...cell.format } : null,
+        format: cell?.format ? JSON.parse(JSON.stringify(cell.format)) : null,
       });
       textCols.push(getDisplayValue(sheet, r, c));
     }
@@ -1959,9 +1959,10 @@ function pasteFromInternal() {
 function adjustFormulaReferences(raw, dr, dc) {
   if (!raw || !raw.startsWith('=')) return raw;
   // Adjust cell references: A1 → shifted by dr rows and dc cols
-  return raw.replace(/\$?([A-Z]+)\$?(\d+)/g, (match, col, row) => {
-    const isAbsCol = match.startsWith('$');
-    const isAbsRow = match.includes('$' + row);
+  // Match optional $ before col letters and optional $ before row digits
+  return raw.replace(/(\$?)([A-Z]+)(\$?)(\d+)/g, (match, dollarCol, col, dollarRow, row) => {
+    const isAbsCol = dollarCol === '$';
+    const isAbsRow = dollarRow === '$';
     if (isAbsCol && isAbsRow) return match; // $A$1 — absolute, no shift
 
     let newCol = col;
@@ -5294,6 +5295,7 @@ function toggleMergeCells() {
 
   // Check if top-left cell already has a merge span (unmerge)
   if (topCell?.format?.mergeSpan) {
+    saveUndoState();
     const ms = topCell.format.mergeSpan;
     // Clear merge from all cells in the range
     for (let r = r1; r < r1 + ms.rows; r++) {
@@ -7935,7 +7937,7 @@ export function setSheetsData(newSheets) {
   updateSelection();
 }
 
-/** Save per-sheet UI state (freeze, condFormats, validations) back to the sheet data model */
+/** Save per-sheet UI state (freeze, condFormats, validations, notes, etc.) back to the sheet data model */
 function _saveSheetState() {
   const sheet = sheets[activeSheetIdx];
   if (!sheet) return;
@@ -7943,6 +7945,12 @@ function _saveSheetState() {
   sheet.freezeCols = freezeCols;
   sheet.condFormats = condFormats;
   sheet.validations = validations;
+  sheet.cellNotes = cellNotes;
+  sheet.cellHyperlinks = cellHyperlinks;
+  sheet.cellComments = cellComments;
+  sheet.hiddenRows = [...hiddenRows];
+  sheet.hiddenCols = [...hiddenCols];
+  sheet.rowGroups = rowGroups;
 }
 
 /** Load per-sheet UI state from the sheet data model into module-level vars */
@@ -7953,6 +7961,12 @@ function _loadSheetState() {
   freezeCols = sheet.freezeCols || 0;
   condFormats = sheet.condFormats || [];
   validations = sheet.validations || {};
+  cellNotes = sheet.cellNotes || {};
+  cellHyperlinks = sheet.cellHyperlinks || {};
+  cellComments = sheet.cellComments || {};
+  hiddenRows = new Set(sheet.hiddenRows || []);
+  hiddenCols = new Set(sheet.hiddenCols || []);
+  rowGroups = sheet.rowGroups || [];
 }
 
 /* ==================== Destroy / Cleanup ==================== */
@@ -7972,18 +7986,61 @@ export function destroySheetEditor() {
   // Clear DOM
   if (gridEl) gridEl.innerHTML = '';
 
-  // Remove dynamic overlays
+  // Remove autocomplete dropdown from DOM
+  if (acEl) { acEl.remove(); acEl = null; }
+  acIndex = -1;
+  acTarget = null;
+
+  // Remove dynamic overlays (complete list)
   document.querySelectorAll(
     '.sheet-find-bar, .sheet-chart-dialog, .sheet-cf-dialog, ' +
     '.sheet-validation-dialog, .sheet-sort-dialog, .sheet-slicer-panel, ' +
-    '.sheet-comment-popover, .sheet-named-range-dialog'
+    '.sheet-comment-popover, .sheet-named-range-dialog, ' +
+    '.sheet-ctx-menu, .sheet-filter-dropdown, .sheet-dv-dropdown, ' +
+    '.sheet-note-tooltip, .sheet-tab-context-menu, .sheet-freeze-dialog, ' +
+    '.sheet-cond-dialog, .sheet-dv-dialog, .sheet-comment-panel, ' +
+    '.dv-notification, .dv-input-tooltip, .modal-overlay'
   ).forEach((el) => el.remove());
 
   // Reset state
   undoStack = [];
   redoStack = [];
+  clipboard = null;
+  cellNotes = {};
+  cellHyperlinks = {};
+  cellComments = {};
+  validations = {};
+  condFormats = [];
+  hiddenRows = new Set();
+  hiddenCols = new Set();
+  rowGroups = [];
+  filterRow = -1;
+  filterValues = {};
+  isEditing = false;
+  isDragging = false;
+  isFilling = false;
+  isFormulaMode = false;
+  formulaEditTarget = null;
+  _vsScrollBound = false;
+  _vsLastStart = -1;
+  _vsLastEnd = -1;
+  _cachedVisibleRows = null;
   gridEl = null;
   cellRefEl = null;
   formulaBarEl = null;
   containerEl = null;
 }
+
+// Test-only exports for internal functions
+export const _testOnly = {
+  adjustFormulaReferences,
+  _saveSheetState,
+  _loadSheetState,
+  getState: () => ({
+    sheets, activeSheetIdx, cellNotes, cellHyperlinks, cellComments,
+    hiddenRows, hiddenCols, rowGroups, condFormats, validations,
+    freezeRows, freezeCols, clipboard, undoStack, redoStack,
+    isEditing, isDragging, isFilling, _vsScrollBound, acEl,
+    filterRow, filterValues,
+  }),
+};

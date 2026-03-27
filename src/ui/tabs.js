@@ -160,7 +160,12 @@ export const confirmTabClose = (tabName, opts = {}) => {
     overlay.appendChild(card);
     document.body.appendChild(overlay);
 
+    const onKey = (e) => {
+      if (e.key === 'Escape') cleanup('cancel');
+    };
+
     const cleanup = (action) => {
+      document.removeEventListener('keydown', onKey);
       overlay.remove();
       resolve(action);
     };
@@ -178,9 +183,6 @@ export const confirmTabClose = (tabName, opts = {}) => {
       if (e.target === overlay) cleanup('cancel');
     });
 
-    const onKey = (e) => {
-      if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); cleanup('cancel'); }
-    };
     document.addEventListener('keydown', onKey);
   });
 };
@@ -263,8 +265,17 @@ export function markTabReady(tabName) {
   if (overlay) overlay.remove();
 }
 
+/**
+ * Register a listener for tab changes. Returns an unsubscribe function.
+ * @param {Function} fn - Callback receiving (newTab, prevTab)
+ * @returns {Function} Unsubscribe function to remove the listener
+ */
 export function onTabChange(fn) {
   listeners.push(fn);
+  return () => {
+    const idx = listeners.indexOf(fn);
+    if (idx >= 0) listeners.splice(idx, 1);
+  };
 }
 
 /**

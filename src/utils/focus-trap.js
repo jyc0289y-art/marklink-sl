@@ -24,7 +24,11 @@ export function activateFocusTrap(modal) {
     const focusable = [...modal.querySelectorAll(FOCUSABLE)].filter(
       el => el.offsetParent !== null // visible only
     );
-    if (focusable.length === 0) return;
+    if (focusable.length === 0) {
+      // No focusable elements — prevent Tab from escaping the modal
+      e.preventDefault();
+      return;
+    }
 
     const first = focusable[0];
     const last = focusable[focusable.length - 1];

@@ -469,7 +469,8 @@ const renderStorageTab = (container) => {
         const data = JSON.parse(text);
         let count = 0;
         Object.entries(data).forEach(([key, value]) => {
-          if (key.startsWith('marklink-') || key.startsWith('officelink-')) {
+          if ((key.startsWith('marklink-') || key.startsWith('officelink-'))
+              && typeof key === 'string' && typeof value === 'string') {
             localStorage.setItem(key, value);
             count++;
           }
@@ -536,10 +537,22 @@ const renderPluginsTab = (container) => {
 
     const info = document.createElement('div');
     info.style.cssText = 'flex:1;';
-    info.innerHTML = `
-      <div style="font-weight:600;font-size:13px;color:var(--text-primary,#fff);">${name} <span style="font-size:11px;opacity:0.5;">v${version}</span></div>
-      ${description ? `<div style="font-size:11px;opacity:0.6;margin-top:2px;">${description}</div>` : ''}
-    `;
+    // Use textContent to prevent XSS from plugin metadata
+    const nameDiv = document.createElement('div');
+    nameDiv.style.cssText = 'font-weight:600;font-size:13px;color:var(--text-primary,#fff);';
+    const nameText = document.createTextNode(`${name} `);
+    const versionSpan = document.createElement('span');
+    versionSpan.style.cssText = 'font-size:11px;opacity:0.5;';
+    versionSpan.textContent = `v${version}`;
+    nameDiv.appendChild(nameText);
+    nameDiv.appendChild(versionSpan);
+    info.appendChild(nameDiv);
+    if (description) {
+      const descDiv = document.createElement('div');
+      descDiv.style.cssText = 'font-size:11px;opacity:0.6;margin-top:2px;';
+      descDiv.textContent = description;
+      info.appendChild(descDiv);
+    }
     pluginRow.appendChild(info);
 
     const toggle = createToggle(enabled, (val) => {

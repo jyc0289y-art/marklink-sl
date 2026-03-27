@@ -92,3 +92,6 @@
 | P9.42wc | Final Quality Gate Check | 2026-03-27 | 없음 | 진행중 |
 | P9.43wc | Keyboard Shortcut Conflict Audit & Fix | 2026-03-27 | 없음 | 진행중 |
 | P9.44wc | Memory Leak Audit & Fix | 2026-03-27 | 없음 | 진행중 |
+| P9.45wc | Sheet Print/Page Layout & Rendering Quality | 2026-03-27 | 없음 | 진행중 |
+| P9.46wc | Doc Editor Table Features Audit & Enhancement | 2026-03-27 | 없음 | 진행중 |
+| P9.47wc | Markdown Export & Advanced Features Audit | 2026-03-27 | 없음 | 진행중 |

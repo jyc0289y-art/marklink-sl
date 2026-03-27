@@ -83,9 +83,9 @@ function createRenderer() {
           return `<pre class="hljs code-block-wrapper"><code>${hljs.highlight(str, { language: lang }).value}</code></pre>`;
         } catch (_) { /* ignore */ }
       }
-      // Mermaid blocks — don't highlight, pass through
+      // Mermaid blocks — must start with <pre to prevent markdown-it double-wrapping
       if (lang === 'mermaid') {
-        return `<div class="mermaid">${md.utils.escapeHtml(str)}</div>`;
+        return `<pre style="display:none" data-mermaid-source></pre><div class="mermaid">${md.utils.escapeHtml(str)}</div>`;
       }
       return `<pre class="hljs code-block-wrapper"><code>${md.utils.escapeHtml(str)}</code></pre>`;
     },
@@ -104,14 +104,25 @@ function createRenderer() {
   // Emoji shortcodes: :smile: -> emoji character
   md.use(emojiPlugin);
 
-  // Add heading anchors for TOC navigation
+  // Add heading anchors for TOC navigation (with duplicate ID disambiguation)
   const originalHeadingOpen = md.renderer.rules.heading_open;
   md.renderer.rules.heading_open = (tokens, idx, options, env, self) => {
+    // Reset counter map on each full render (env is a fresh object per render call)
+    if (!env._headingIdCounts) {
+      env._headingIdCounts = {};
+    }
     const token = tokens[idx];
     const contentToken = tokens[idx + 1];
     const text = contentToken?.children?.reduce((acc, t) => acc + (t.content || ''), '') || '';
-    const id = 'heading-' + text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
-    token.attrSet('id', id);
+    let baseId = 'heading-' + text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+    // Disambiguate duplicate headings
+    if (env._headingIdCounts[baseId] === undefined) {
+      env._headingIdCounts[baseId] = 0;
+    } else {
+      env._headingIdCounts[baseId]++;
+      baseId = baseId + '-' + env._headingIdCounts[baseId];
+    }
+    token.attrSet('id', baseId);
     if (originalHeadingOpen) {
       return originalHeadingOpen(tokens, idx, options, env, self);
     }
@@ -135,18 +146,25 @@ function createRenderer() {
   };
 
   // TOC: Replace [TOC] marker with auto-generated table of contents
-  // This is done as a core rule that processes the token stream
-  md.core.ruler.after('normalize', 'toc_replace', (state) => {
+  // Must run after 'inline' phase so heading content tokens have children populated
+  md.core.ruler.after('inline', 'toc_replace', (state) => {
     const tokens = state.tokens;
     const headings = [];
-    // First pass: collect headings
+    const tocIdCounts = {};
+    // First pass: collect headings (with duplicate ID disambiguation matching heading_open rule)
     for (let i = 0; i < tokens.length; i++) {
       if (tokens[i].type === 'heading_open') {
         const level = parseInt(tokens[i].tag.slice(1));
         const contentToken = tokens[i + 1];
         const text = contentToken?.children?.reduce((acc, t) => acc + (t.content || ''), '') || '';
-        const id = 'heading-' + text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
-        headings.push({ level, text, id });
+        let baseId = 'heading-' + text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+        if (tocIdCounts[baseId] === undefined) {
+          tocIdCounts[baseId] = 0;
+        } else {
+          tocIdCounts[baseId]++;
+          baseId = baseId + '-' + tocIdCounts[baseId];
+        }
+        headings.push({ level, text, id: baseId });
       }
     }
     if (headings.length === 0) return;

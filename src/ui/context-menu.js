@@ -9,11 +9,16 @@ const lazyAddComment = async () => {
 };
 
 let activeMenu = null;
+let activeMenuCleanup = null;
 
 /**
  * Close any open context menu
  */
 export const closeContextMenu = () => {
+  if (activeMenuCleanup) {
+    activeMenuCleanup();
+    activeMenuCleanup = null;
+  }
   if (activeMenu) {
     activeMenu.remove();
     activeMenu = null;
@@ -151,6 +156,12 @@ const showMenu = (e, items) => {
       document.removeEventListener('mousedown', closeHandler);
       document.removeEventListener('keydown', keyNavHandler);
     }
+  };
+
+  // Store cleanup function so closeContextMenu() can remove these listeners
+  activeMenuCleanup = () => {
+    document.removeEventListener('mousedown', closeHandler);
+    document.removeEventListener('keydown', keyNavHandler);
   };
 
   setTimeout(() => {

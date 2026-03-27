@@ -156,10 +156,22 @@ const openLightbox = (src, alt) => {
     img.style.transform = `scale(${scale})`;
   };
 
+  // ESC to close (defined early so closeLightbox can reference it)
+  const keyHandler = (e) => {
+    if (e.key === 'Escape') {
+      closeLightbox();
+    }
+  };
+
+  const closeLightbox = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', keyHandler);
+  };
+
   // Click overlay to dismiss
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) {
-      overlay.remove();
+      closeLightbox();
     }
   });
 
@@ -171,13 +183,6 @@ const openLightbox = (src, alt) => {
     applyTransform();
   }, { passive: false });
 
-  // ESC to close
-  const keyHandler = (e) => {
-    if (e.key === 'Escape') {
-      overlay.remove();
-      document.removeEventListener('keydown', keyHandler);
-    }
-  };
   document.addEventListener('keydown', keyHandler);
 
   overlay.appendChild(img);
