@@ -262,6 +262,7 @@
   resize: vertical;
   font-size: 12px;
   outline: none;
+  color: #333;
 }
 
 /* Search input */
@@ -852,4 +853,36 @@
 
 .pdf-container.pdf-mode-sepia .pdf-page-wrapper {
   box-shadow: 0 2px 8px rgba(120, 90, 40, 0.2);
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+  .pdf-toolbar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    min-height: 34px;
+  }
+  .pdf-toolbar::-webkit-scrollbar { display: none; }
+  .pdf-toolbar .toolbar-btn {
+    flex-shrink: 0;
+    min-height: 44px;
+  }
+  .pdf-thumb-sidebar {
+    display: none;
+  }
+  .pdf-bookmark-sidebar {
+    display: none;
+  }
+  .pdf-container {
+    padding: 8px;
+    gap: 8px;
+  }
+  .pdf-search-input {
+    width: 100px;
+  }
+  .pdf-modal {
+    width: 95vw;
+  }
 }

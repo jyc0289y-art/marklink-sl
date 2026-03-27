@@ -1400,6 +1400,22 @@ function updateSelection() {
   if (fontSizeEl) fontSizeEl.value = fmt.fontSize || '';
   if (numFmtEl) numFmtEl.value = fmt.numFormat || '';
 
+  // Show data validation input message (tooltip) if present
+  document.querySelector('.dv-input-tooltip')?.remove();
+  const dvKey = `${selectedRow},${selectedCol}`;
+  const dvRule = validations[dvKey];
+  if (dvRule?.inputMessage && td) {
+    const tip = document.createElement('div');
+    tip.className = 'dv-input-tooltip';
+    tip.style.cssText = 'position:absolute;padding:6px 10px;background:#fffde7;color:#5d4037;border:1px solid #fdd835;border-radius:4px;font-size:11px;z-index:1000;max-width:220px;box-shadow:0 2px 6px rgba(0,0,0,0.1);pointer-events:none;white-space:pre-wrap';
+    tip.textContent = dvRule.inputMessage;
+    td.style.position = 'relative';
+    tip.style.position = 'absolute';
+    tip.style.top = '-30px';
+    tip.style.left = '0';
+    td.appendChild(tip);
+  }
+
   // Update status bar
   updateStatusBar();
 }
@@ -1715,6 +1731,7 @@ function commitEdit(asArrayFormula = false) {
   if (td) td.classList.remove('editing');
   clearFormulaRefHighlights();
   renderGrid();
+  refreshChartWidgets();
   updateSelection();
   hideAutocomplete();
 }
@@ -2132,9 +2149,11 @@ function applyFreezeStyles() {
 
 function sortColumn(ascending) {
   const sheet = getSheet();
+  saveUndoState();
   sortByColumn(sheet, selectedCol, ascending);
   recalcAll(sheet);
   renderGrid();
+  refreshChartWidgets();
   updateSelection();
 }
 
@@ -3316,6 +3335,10 @@ function showDataValidationDialog(r, c) {
           <input type="text" id="dv-max" style="${inputStyle}" value="${current.max ?? ''}">
         </div>
         <div style="margin-bottom:12px">
+          <label style="font-size:12px;color:var(--text-secondary)">Input message (tooltip shown on cell select)</label>
+          <input type="text" id="dv-input-msg" style="${inputStyle}" placeholder="e.g. Select a value from the list" value="${current.inputMessage || ''}">
+        </div>
+        <div style="margin-bottom:12px">
           <label style="font-size:12px;color:var(--text-secondary)">Error message (optional)</label>
           <input type="text" id="dv-error" style="${inputStyle}" placeholder="Custom error message" value="${current.errorMessage || ''}">
         </div>
@@ -3371,8 +3394,9 @@ function showDataValidationDialog(r, c) {
     const type = typeEl.value;
     const { r1, r2, c1, c2 } = getSelectionRange();
     const errorMessage = dialog.querySelector('#dv-error').value.trim() || undefined;
+    const inputMessage = dialog.querySelector('#dv-input-msg').value.trim() || undefined;
     const severity = dialog.querySelector('#dv-severity').value || 'error';
-    let rule = { type, errorMessage, severity };
+    let rule = { type, errorMessage, inputMessage, severity };
 
     if (type === 'custom') {
       const formula = dialog.querySelector('#dv-formula').value.trim();
@@ -3535,15 +3559,15 @@ function insertSparkline() {
 
   // Show sparkline type/target dialog
   const dlg = document.createElement('div');
-  dlg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:8px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.2);z-index:10000;min-width:280px;font-size:14px;';
+  dlg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-primary);color:var(--text-primary);border-radius:8px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.2);z-index:10000;min-width:280px;font-size:14px;';
   dlg.innerHTML = `
     <h3 style="margin:0 0 16px">Insert Sparkline</h3>
     <label>Type:</label>
     <div style="display:flex;gap:8px;margin:8px 0 16px">
-      <button class="sl-type-btn" data-type="line" style="flex:1;padding:8px;border:2px solid #3b82f6;border-radius:6px;cursor:pointer;background:#e8f0fe">━━ Line</button>
-      <button class="sl-type-btn" data-type="bar" style="flex:1;padding:8px;border:2px solid #ddd;border-radius:6px;cursor:pointer;background:#fff">▐▐ Bar</button>
-      <button class="sl-type-btn" data-type="area" style="flex:1;padding:8px;border:2px solid #ddd;border-radius:6px;cursor:pointer;background:#fff">▓▓ Area</button>
-      <button class="sl-type-btn" data-type="column" style="flex:1;padding:8px;border:2px solid #ddd;border-radius:6px;cursor:pointer;background:#fff">║║ Column</button>
+      <button class="sl-type-btn" data-type="line" style="flex:1;padding:8px;border:2px solid var(--accent-color);border-radius:6px;cursor:pointer;background:var(--hover-bg)">━━ Line</button>
+      <button class="sl-type-btn" data-type="bar" style="flex:1;padding:8px;border:2px solid var(--border-color);border-radius:6px;cursor:pointer;background:var(--bg-primary)">▐▐ Bar</button>
+      <button class="sl-type-btn" data-type="area" style="flex:1;padding:8px;border:2px solid var(--border-color);border-radius:6px;cursor:pointer;background:var(--bg-primary)">▓▓ Area</button>
+      <button class="sl-type-btn" data-type="column" style="flex:1;padding:8px;border:2px solid var(--border-color);border-radius:6px;cursor:pointer;background:var(--bg-primary)">║║ Column</button>
     </div>
     <label>Place at cell:</label>
     <input id="sl-target" value="${colToLetter(c2 + 1)}${r1 + 1}" style="width:80px;padding:6px;margin:4px 8px;border:1px solid #ccc;border-radius:4px;">
@@ -3557,8 +3581,8 @@ function insertSparkline() {
   let sparkType = 'line';
   dlg.querySelectorAll('.sl-type-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      dlg.querySelectorAll('.sl-type-btn').forEach(b => { b.style.borderColor = '#ddd'; b.style.background = '#fff'; });
-      btn.style.borderColor = '#3b82f6'; btn.style.background = '#e8f0fe';
+      dlg.querySelectorAll('.sl-type-btn').forEach(b => { b.style.borderColor = 'var(--border-color)'; b.style.background = 'var(--bg-primary)'; });
+      btn.style.borderColor = 'var(--accent-color)'; btn.style.background = 'var(--hover-bg)';
       sparkType = btn.dataset.type;
     });
   });
@@ -4186,9 +4210,9 @@ function showChartDialog() {
 
   dlg.querySelector('#chart-cancel').onclick = () => dlg.remove();
   dlg.querySelector('#chart-insert').onclick = () => {
-    chartCounter++;
     const chartConfig = {
       dataRows: JSON.parse(JSON.stringify(dataRows)),
+      sourceRange: { r1, c1, r2, c2, sheetIdx: activeSheetIdx },
       type: typeEl.value,
       title: titleEl.value,
       titleFontSize: parseInt(titleFsEl.value) || 14,
@@ -4297,6 +4321,32 @@ function insertChartWidget(config, left = 40, top = 40, width = 480, height = 34
     }
   });
   ro.observe(chartDiv);
+}
+
+/** Refresh all chart widgets by re-reading data from their source ranges */
+function refreshChartWidgets() {
+  const chartWidgets = containerEl?.querySelectorAll('.sheet-chart-container');
+  if (!chartWidgets) return;
+  chartWidgets.forEach(chartDiv => {
+    const config = chartDiv._chartConfig;
+    if (!config?.sourceRange) return;
+    const { r1, c1, r2, c2, sheetIdx } = config.sourceRange;
+    const srcSheet = sheets[sheetIdx ?? activeSheetIdx];
+    if (!srcSheet) return;
+    const newData = [];
+    for (let r = r1; r <= r2; r++) {
+      const row = [];
+      for (let c = c1; c <= c2; c++) {
+        row.push(getDisplayValue(srcSheet, r, c));
+      }
+      newData.push(row);
+    }
+    config.dataRows = newData;
+    const canvasEl = chartDiv.querySelector('canvas');
+    if (canvasEl) {
+      renderChartToCanvas(canvasEl, config.dataRows, config.type, config.title, config.showLegend, config.firstRowLabels, config.firstColLabels, config.trendline, config.xLabel, config.yLabel, config.showGridlines, config.colorTheme, config.titleFontSize || 14, config.legendPosition || 'bottom');
+    }
+  });
 }
 
 function editChart(chartDiv) {
@@ -5153,6 +5203,7 @@ function applyConditionalFormatting() {
   for (const cf of condFormats) {
     const { r1, c1, r2, c2 } = cf.range;
     const cfg = cf.config;
+    if (!cfg) continue; // Old-format condFormats (without .config) are handled by getCondFmtStyle in renderGrid
 
     // Gather values
     const vals = [];
@@ -5668,14 +5719,16 @@ function multiLevelSort(levels, hasHeader) {
     return 0;
   });
 
-  // Write sorted data back
+  // Write sorted data back — clear existing then write new
   for (let r = 0; r < rowData.length; r++) {
     const tr = startRow + r;
     for (let c = 0; c < sheet.cols; c++) {
+      const key = `${tr},${c}`;
       const cellData = rowData[r][c];
-      if (cellData) {
-        const key = `${tr},${c}`;
+      if (cellData && (cellData.raw || cellData.value || (cellData.format && Object.keys(cellData.format).length > 0))) {
         sheet.cells[key] = cellData;
+      } else {
+        delete sheet.cells[key];
       }
     }
   }
@@ -6668,7 +6721,8 @@ function initSheetFindReplace() {
 
 function applyIconSets() {
   const sheet = getSheet();
-  const iconCFs = condFormats.filter(cf => cf.type === 'icon_set');
+  // Only handle old-format icon_set entries (those without .config — new-format ones are handled by applyConditionalFormatting)
+  const iconCFs = condFormats.filter(cf => cf.type === 'icon_set' && !cf.config);
   if (iconCFs.length === 0) return;
 
   const iconSets = {

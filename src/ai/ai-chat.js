@@ -9,7 +9,7 @@ import {
   measureLatency, getServerVersion, getModelInfo, streamChat
 } from './ollama-client.js';
 import { t } from '../ui/i18n.js';
-import { escapeHtml as _escapeHtml, sanitizeAiResponse } from '../utils/sanitize.js';
+import { escapeHtml as _escapeHtml, sanitizeAiResponse, sanitizeUrl } from '../utils/sanitize.js';
 import { downloadBlob } from '../utils/download.js';
 
 let panelEl, chatListEl, chatInputEl, modelSelectEl, statusDotEl;
@@ -982,8 +982,12 @@ function renderMarkdown(text) {
   // Horizontal rule
   html = html.replace(/^---$/gm, '<hr class="ai-md-hr">');
 
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="ai-md-link">$1</a>');
+  // Links — sanitize href to block javascript: and other dangerous protocols
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
+    const safeUrl = sanitizeUrl(url);
+    if (!safeUrl) return text; // strip link, keep text
+    return `<a href="${safeUrl}" target="_blank" rel="noopener" class="ai-md-link">${text}</a>`;
+  });
 
   // Unordered list items (- or *)
   html = html.replace(/^[\s]*[-*]\s+(.+)$/gm, '<li class="ai-md-li">$1</li>');
@@ -1180,10 +1184,13 @@ async function insertContext(type) {
   if (type === 'document' && contextProviders.getDocContent) {
     content = contextProviders.getDocContent();
     if (content) {
-      // Strip HTML tags for clean text
-      const tmp = document.createElement('div');
-      tmp.innerHTML = content;
-      content = tmp.textContent || tmp.innerText;
+      // Strip HTML tags for clean text using DOMParser (safer than innerHTML on live document)
+      try {
+        const doc = new DOMParser().parseFromString(content, 'text/html');
+        content = doc.body?.textContent || '';
+      } catch {
+        content = content.replace(/<[^>]*>/g, '');
+      }
     }
   } else if (type === 'sheet' && contextProviders.getSheetText) {
     content = contextProviders.getSheetText();

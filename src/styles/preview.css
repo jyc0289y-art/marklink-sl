@@ -450,3 +450,38 @@
   cursor: pointer;
   accent-color: var(--accent-color, var(--brand-color, #0071e3));
 }
+
+/* ===== Print Styles ===== */
+@media print {
+  .markdown-body {
+    color: #000;
+    font-size: 12pt;
+    max-width: 100%;
+  }
+  .markdown-body pre {
+    border: 1px solid #ccc;
+    background: #f8f8f8 !important;
+  }
+  .markdown-body code {
+    background: #f4f4f4 !important;
+    color: #333 !important;
+  }
+  .markdown-body a {
+    color: #000;
+    text-decoration: underline;
+  }
+  .markdown-body a::after {
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+    color: #666;
+  }
+  .markdown-body img {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
+  .lightbox-overlay,
+  .code-copy-btn,
+  .heading-anchor {
+    display: none !important;
+  }
+}

@@ -1122,3 +1122,24 @@ body .status-bar {
     max-height: 50vh;
   }
 }
+
+/* ===== Print Styles ===== */
+@media print {
+  .md-toolbar,
+  .md-outline-panel,
+  .md-stats-bar,
+  .md-word-goal-bar,
+  .md-floating-toc,
+  .md-lint-panel,
+  .md-shortcut-overlay,
+  .md-snippet-panel,
+  .md-autocomplete {
+    display: none !important;
+  }
+  .editor-container .cm-editor {
+    font-size: 12pt;
+  }
+  .editor-container .cm-gutters {
+    display: none !important;
+  }
+}

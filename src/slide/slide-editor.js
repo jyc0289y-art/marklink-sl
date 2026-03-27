@@ -110,6 +110,7 @@ function bindEvents() {
   // Delete slide
   document.getElementById('slide-del')?.addEventListener('click', () => {
     if (slides.length <= 1) return;
+    saveCurrentSlide(); // Save current edits before deletion
     slides.splice(activeSlideIdx, 1);
     if (activeSlideIdx >= slides.length) activeSlideIdx = slides.length - 1;
     renderPanel();
@@ -708,14 +709,16 @@ function startPresentation() {
     const transDur = slide.transitionDuration || 0.5;
     const transEasing = slide.transitionEasing || 'ease';
     if (fx) {
+      // Apply content first while in "from" state (invisible/off-screen)
+      // to avoid flashing old content during transition
       slideEl.style.transition = 'none';
       Object.assign(slideEl.style, fx.from);
+      applyContent();
       void slideEl.offsetWidth; // force reflow
       slideEl.style.transition = `all ${transDur}s ${transEasing}`;
-      setTimeout(() => {
-        applyContent();
+      requestAnimationFrame(() => {
         Object.assign(slideEl.style, fx.to);
-      }, 50);
+      });
     } else {
       slideEl.style.transition = 'none';
       applyContent();
@@ -894,7 +897,8 @@ function startPresentation() {
   function updatePresNotes(idx) {
     const notes = slides[idx]?.notes || '';
     if (notes) {
-      notesPanel.textContent = notes;
+      // Notes may contain HTML (from rich notes editor), render safely
+      notesPanel.innerHTML = notes;
     } else {
       notesPanel.innerHTML = '<em style="color:rgba(255,255,255,0.4)">No notes for this slide</em>';
     }
@@ -1964,6 +1968,7 @@ function insertSVGShape(shape) {
 
   const svg = svgMap[shape] || svgMap.rect;
   const html = `<div style="display:inline-block;margin:8px;cursor:move" contenteditable="false">${svg}</div>`;
+  pushSlideUndo();
   canvasEl.focus();
   document.execCommand('insertHTML', false, html);
   slides[activeSlideIdx].content = getCleanCanvasContent();
@@ -1994,7 +1999,7 @@ function showGradientBgPicker() {
 
   const dlg = document.createElement('div');
   dlg.className = 'gradient-bg-dialog';
-  dlg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:10px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.25);z-index:10000;width:420px;max-height:80vh;overflow-y:auto;font-size:14px;color:#333;';
+  dlg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-primary);border-radius:10px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.25);z-index:10000;width:420px;max-height:80vh;overflow-y:auto;font-size:14px;color:var(--text-primary);';
 
   dlg.innerHTML = `
     <h3 style="margin:0 0 16px;font-size:18px">Slide Background</h3>
@@ -2464,6 +2469,54 @@ function launchTimerOverlay(totalSecs, warnSecs) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   FEATURE: Canvas Zoom (Ctrl+scroll, Ctrl+0 to reset, Ctrl++ / Ctrl+-)
+   ═══════════════════════════════════════════════════════════════ */
+
+let _canvasZoom = 1;
+
+function initCanvasZoom() {
+  if (!canvasEl) return;
+  const wrapper = canvasEl.parentElement;
+  if (!wrapper) return;
+
+  // Ctrl + scroll to zoom
+  wrapper.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.05 : 0.05;
+    _canvasZoom = Math.max(0.25, Math.min(3, _canvasZoom + delta));
+    applyCanvasZoom();
+  }, { passive: false });
+
+  // Keyboard: Ctrl+0 = reset, Ctrl+= / Ctrl+- = zoom
+  document.addEventListener('keydown', (e) => {
+    const slideView = document.getElementById('view-slide');
+    if (!slideView?.classList.contains('active')) return;
+    if (!(e.metaKey || e.ctrlKey)) return;
+
+    if (e.key === '0') {
+      e.preventDefault();
+      _canvasZoom = 1;
+      applyCanvasZoom();
+    } else if (e.key === '=' || e.key === '+') {
+      e.preventDefault();
+      _canvasZoom = Math.min(3, _canvasZoom + 0.1);
+      applyCanvasZoom();
+    } else if (e.key === '-') {
+      e.preventDefault();
+      _canvasZoom = Math.max(0.25, _canvasZoom - 0.1);
+      applyCanvasZoom();
+    }
+  });
+}
+
+function applyCanvasZoom() {
+  if (!canvasEl) return;
+  canvasEl.style.transform = _canvasZoom === 1 ? '' : `scale(${_canvasZoom})`;
+  canvasEl.style.transformOrigin = 'center top';
+}
+
+/* ═══════════════════════════════════════════════════════════════
    FEATURE 1: Object Selection, Resize Handles, Rotate
    ═══════════════════════════════════════════════════════════════ */
 
@@ -2471,6 +2524,53 @@ let slideSelectedObjects = [];
 let slideIsResizing = false;
 let slideIsRotating = false;
 let slideIsDragging = false;
+let _slideClipboard = []; // Copy/paste buffer for shapes
+
+/* ─── Undo/Redo for slide content ─── */
+const _slideUndoStack = []; // { idx, content }[]
+const _slideRedoStack = [];
+const SLIDE_UNDO_MAX = 30;
+
+/** Push current state onto undo stack before a destructive operation */
+function pushSlideUndo() {
+  _slideUndoStack.push({
+    idx: activeSlideIdx,
+    content: slides[activeSlideIdx]?.content || '',
+  });
+  if (_slideUndoStack.length > SLIDE_UNDO_MAX) _slideUndoStack.shift();
+  _slideRedoStack.length = 0; // clear redo on new action
+}
+
+/** Undo last slide content change */
+function slideUndo() {
+  if (_slideUndoStack.length === 0) return;
+  const state = _slideUndoStack.pop();
+  // Save current state for redo
+  _slideRedoStack.push({
+    idx: activeSlideIdx,
+    content: slides[activeSlideIdx]?.content || '',
+  });
+  slides[state.idx].content = state.content;
+  if (state.idx === activeSlideIdx) {
+    canvasEl.innerHTML = state.content;
+  }
+  updateThumb(state.idx);
+}
+
+/** Redo last undone slide content change */
+function slideRedo() {
+  if (_slideRedoStack.length === 0) return;
+  const state = _slideRedoStack.pop();
+  _slideUndoStack.push({
+    idx: activeSlideIdx,
+    content: slides[activeSlideIdx]?.content || '',
+  });
+  slides[state.idx].content = state.content;
+  if (state.idx === activeSlideIdx) {
+    canvasEl.innerHTML = state.content;
+  }
+  updateThumb(state.idx);
+}
 
 function initObjectSelection() {
   if (!canvasEl) return;
@@ -2709,6 +2809,7 @@ function getRotationDeg(el) {
 
 function groupSelectedObjects() {
   if (slideSelectedObjects.length < 2) return;
+  pushSlideUndo();
 
   const group = document.createElement('div');
   group.className = 'slide-obj-group';
@@ -2735,6 +2836,7 @@ function groupSelectedObjects() {
 }
 
 function ungroupSelectedObjects() {
+  pushSlideUndo();
   slideSelectedObjects.forEach(obj => {
     if (!obj.classList.contains('slide-obj-group')) return;
     const parent = obj.parentElement;
@@ -3067,6 +3169,7 @@ export function initSlideEditorEnhanced() {
   initTextFormatBar();
   initRichNotes();
   initEnhancedDragging();
+  initCanvasZoom();
 
   // Group/Ungroup buttons
   document.getElementById('slide-obj-group')?.addEventListener('click', () => groupSelectedObjects());
@@ -3122,6 +3225,18 @@ export function initSlideEditorEnhanced() {
     const slideView = document.getElementById('view-slide');
     if (!slideView?.classList.contains('active')) return;
 
+    // Ctrl/Cmd + Z = undo
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      slideUndo();
+    }
+    // Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y = redo
+    if (((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') ||
+        ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'y')) {
+      e.preventDefault();
+      slideRedo();
+    }
+
     // Ctrl/Cmd + G = group
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'g') {
       e.preventDefault();
@@ -3132,12 +3247,110 @@ export function initSlideEditorEnhanced() {
       e.preventDefault();
       ungroupSelectedObjects();
     }
-    // Delete selected objects
+    // Delete selected objects — only when NOT editing text inside canvas
     if (e.key === 'Delete' || e.key === 'Backspace') {
-      if (slideSelectedObjects.length > 0 && document.activeElement !== canvasEl) {
+      const sel = window.getSelection();
+      const isEditingText = canvasEl && canvasEl.contains(document.activeElement) &&
+        sel && sel.type !== 'None' && !sel.isCollapsed === false;
+      // Allow delete if shapes are selected AND user is not actively typing in the canvas
+      // (i.e., the canvas doesn't have a text cursor / collapsed selection inside it)
+      const isTextCursorInCanvas = canvasEl && canvasEl.contains(document.activeElement) &&
+        sel && sel.rangeCount > 0 && sel.isCollapsed;
+      if (slideSelectedObjects.length > 0 && !isTextCursorInCanvas) {
         e.preventDefault();
+        pushSlideUndo();
         slideSelectedObjects.forEach((obj) => obj.remove());
         slideSelectedObjects = [];
+        slides[activeSlideIdx].content = getCleanCanvasContent();
+        updateThumb(activeSlideIdx);
+      }
+    }
+
+    // Arrow keys nudge selected objects
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && slideSelectedObjects.length > 0) {
+      // Don't nudge if user is editing text
+      const sel = window.getSelection();
+      const isTextCursorInCanvas = canvasEl && canvasEl.contains(document.activeElement) &&
+        sel && sel.rangeCount > 0 && sel.isCollapsed;
+      if (!isTextCursorInCanvas) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        const dx = e.key === 'ArrowRight' ? step : e.key === 'ArrowLeft' ? -step : 0;
+        const dy = e.key === 'ArrowDown' ? step : e.key === 'ArrowUp' ? -step : 0;
+        slideSelectedObjects.forEach(obj => {
+          const cs = window.getComputedStyle(obj);
+          const ml = parseInt(cs.marginLeft) || 0;
+          const mt = parseInt(cs.marginTop) || 0;
+          obj.style.marginLeft = (ml + dx) + 'px';
+          obj.style.marginTop = (mt + dy) + 'px';
+        });
+        slides[activeSlideIdx].content = getCleanCanvasContent();
+        updateThumb(activeSlideIdx);
+      }
+    }
+
+    // Ctrl/Cmd + A = select all shapes
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+      const sel = window.getSelection();
+      const isTextCursorInCanvas = canvasEl && canvasEl.contains(document.activeElement) &&
+        sel && sel.rangeCount > 0 && sel.isCollapsed;
+      if (!isTextCursorInCanvas && canvasEl) {
+        e.preventDefault();
+        clearObjectSelection();
+        const children = Array.from(canvasEl.children).filter(c =>
+          !c.classList.contains('slide-grid-overlay') &&
+          !c.classList.contains('slide-grid-overlay-dots')
+        );
+        if (children.length > 0) {
+          slideSelectedObjects = children;
+          if (children.length === 1) {
+            children[0].classList.add('slide-obj-selected');
+            addResizeHandles(children[0]);
+          } else {
+            children.forEach(c => c.classList.add('slide-obj-multi-selected'));
+          }
+        }
+      }
+    }
+
+    // Ctrl/Cmd + C = copy selected shapes
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'c') {
+      if (slideSelectedObjects.length > 0) {
+        _slideClipboard = slideSelectedObjects.map(obj => {
+          const clone = obj.cloneNode(true);
+          clone.querySelectorAll('.slide-resize-handle, .slide-rotate-handle').forEach(h => h.remove());
+          clone.classList.remove('slide-obj-selected', 'slide-obj-multi-selected');
+          return clone.outerHTML;
+        });
+      }
+    }
+
+    // Ctrl/Cmd + V = paste copied shapes
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'v') {
+      if (_slideClipboard.length > 0 && canvasEl && document.activeElement !== canvasEl) {
+        e.preventDefault();
+        pushSlideUndo();
+        clearObjectSelection();
+        _slideClipboard.forEach(html => {
+          const wrapper = document.createElement('div');
+          wrapper.innerHTML = html;
+          const el = wrapper.firstElementChild;
+          if (el) {
+            // Offset pasted shapes slightly to show they're copies
+            const ml = parseInt(el.style.marginLeft) || 0;
+            const mt = parseInt(el.style.marginTop) || 0;
+            el.style.marginLeft = (ml + 15) + 'px';
+            el.style.marginTop = (mt + 15) + 'px';
+            canvasEl.appendChild(el);
+            slideSelectedObjects.push(el);
+          }
+        });
+        if (slideSelectedObjects.length === 1) {
+          slideSelectedObjects[0].classList.add('slide-obj-selected');
+          addResizeHandles(slideSelectedObjects[0]);
+        } else if (slideSelectedObjects.length > 1) {
+          slideSelectedObjects.forEach(o => o.classList.add('slide-obj-multi-selected'));
+        }
         slides[activeSlideIdx].content = getCleanCanvasContent();
         updateThumb(activeSlideIdx);
       }
@@ -4899,4 +5112,9 @@ export function destroySlideEditor() {
   notesEl = null;
   themeSelect = null;
   transitionSelect = null;
+  _canvasZoom = 1;
+  slideSelectedObjects = [];
+  _slideClipboard = [];
+  _slideUndoStack.length = 0;
+  _slideRedoStack.length = 0;
 }

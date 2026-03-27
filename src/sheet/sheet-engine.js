@@ -1851,7 +1851,9 @@ function evalSimpleExpr(sheet, expr) {
   resolved = resolved.replace(/(?<![<>!=])=(?!=)/g, '==');
 
   // Safe eval of arithmetic (only numbers, operators, strings, booleans)
-  if (/^[\d\s+\-*/().,"<>=!|%?:]+$/.test(resolved)) {
+  // Additional safety: block dangerous patterns even if they pass the char regex
+  if (/^[\d\s+\-*/().,"<>=!|%?:]+$/.test(resolved) &&
+      !/\b(eval|Function|constructor|prototype|__proto__|import|require|window|document|globalThis)\b/i.test(resolved)) {
     try {
       return Function(`"use strict"; return (${resolved})`)();
     } catch {

@@ -82,7 +82,7 @@
   width: 280px;
   overflow-y: auto;
   border-left: 1px solid var(--border-color);
-  background: var(--bg-color);
+  background: var(--bg-primary);
   flex-shrink: 0;
   padding: 0;
 }
@@ -99,7 +99,7 @@
   padding: 10px 12px;
   background: none;
   border: none;
-  color: var(--text-color);
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -183,8 +183,8 @@
   font-size: 12px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  background: var(--bg-color);
-  color: var(--text-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
   cursor: pointer;
   text-align: left;
   transition: background 0.15s;
@@ -234,7 +234,7 @@
   font-weight: 500;
 }
 .photo-info-value {
-  color: var(--text-color, #ccc);
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -347,7 +347,7 @@
   justify-content: center;
 }
 .photo-filters-grid {
-  background: var(--bg-color);
+  background: var(--bg-primary);
   border-radius: 12px;
   padding: 20px;
   max-width: 600px;
@@ -395,7 +395,7 @@
   justify-content: center;
 }
 .photo-gif-panel {
-  background: var(--bg-color);
+  background: var(--bg-primary);
   border-radius: 12px;
   padding: 20px;
   max-width: 500px;
@@ -438,8 +438,8 @@
   padding: 4px 8px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  background: var(--bg-color);
-  color: var(--text-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-size: 12px;
 }
 .gif-preview {
@@ -499,7 +499,7 @@
   justify-content: center;
 }
 .photo-batch-panel {
-  background: var(--bg-color);
+  background: var(--bg-primary);
   border-radius: 12px;
   padding: 20px;
   max-width: 600px;
@@ -545,7 +545,7 @@
   justify-content: center;
 }
 .photo-resize-panel {
-  background: var(--bg-color);
+  background: var(--bg-primary);
   border-radius: 12px;
   padding: 20px;
   max-width: 400px;
@@ -567,8 +567,8 @@
   padding: 6px 8px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  background: var(--bg-color);
-  color: var(--text-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 /* ===== Color Splash Buttons ===== */
@@ -640,7 +640,7 @@
   justify-content: center;
 }
 .photo-perspective-panel {
-  background: var(--bg-color);
+  background: var(--bg-primary);
   border-radius: 12px;
   padding: 20px;
   max-width: 700px;
@@ -703,7 +703,7 @@
   justify-content: center;
 }
 .photo-watermark-panel {
-  background: var(--bg-color);
+  background: var(--bg-primary);
   border-radius: 12px;
   padding: 20px;
   max-width: 500px;
@@ -729,8 +729,8 @@
   padding: 6px 8px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  background: var(--bg-color);
-  color: var(--text-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-size: 12px;
 }
 .watermark-pos-grid {
@@ -808,7 +808,7 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 11px;
-  background: var(--bg-color);
+  background: var(--bg-primary);
   transition: background 0.15s, border-color 0.15s;
   user-select: none;
 }
@@ -817,7 +817,7 @@
 }
 .photo-layer-item.active {
   border-color: var(--brand-color);
-  background: color-mix(in srgb, var(--brand-color) 10%, var(--bg-color));
+  background: color-mix(in srgb, var(--brand-color) 10%, var(--bg-primary));
 }
 .photo-layer-item.dragging {
   opacity: 0.5;
@@ -857,7 +857,7 @@
   cursor: text;
 }
 .photo-layer-name.editing {
-  background: var(--bg-color);
+  background: var(--bg-primary);
   border: 1px solid var(--brand-color);
   border-radius: 3px;
   padding: 1px 4px;
@@ -894,13 +894,13 @@
   cursor: pointer;
   border-radius: 4px;
   transition: background 0.15s;
-  color: var(--text-color);
+  color: var(--text-primary);
 }
 .photo-history-item:hover {
   background: var(--hover-bg);
 }
 .photo-history-item.active {
-  background: color-mix(in srgb, var(--brand-color) 15%, var(--bg-color));
+  background: color-mix(in srgb, var(--brand-color) 15%, var(--bg-primary));
   font-weight: 600;
 }
 .photo-history-item.future {

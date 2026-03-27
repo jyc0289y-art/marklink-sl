@@ -252,7 +252,7 @@
   table-layout: auto;
 }
 .doc-editor td, .doc-editor th {
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-color, #ccc);
   padding: 8px;
   min-width: 40px;
   text-align: left;
@@ -260,17 +260,10 @@
   line-height: 1.5;
 }
 .doc-editor th {
-  background: #f5f5f5;
+  background: var(--pane-header-bg, #f5f5f5);
   font-weight: 600;
 }
-/* Dark mode table overrides */
-[data-theme="dark"] .doc-editor td,
-[data-theme="dark"] .doc-editor th {
-  border-color: var(--border-color, #444);
-}
-[data-theme="dark"] .doc-editor th {
-  background: var(--pane-header-bg, #2a2a2a);
-}
+/* Dark mode table overrides — now using CSS variables above, kept for specificity */
 .doc-editor caption {
   caption-side: top;
   font-size: 0.9em;
@@ -919,9 +912,12 @@ mark.doc-find-highlight.doc-find-current {
   font-family: -apple-system, sans-serif;
 }
 .vdiff-same { color: var(--text-primary); }
-.vdiff-addition { background: rgba(34, 197, 94, 0.15); color: #166534; }
-.vdiff-deletion { background: rgba(239, 68, 68, 0.15); color: #991b1b; text-decoration: line-through; }
+.vdiff-addition { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+.vdiff-deletion { background: rgba(239, 68, 68, 0.15); color: #ef4444; text-decoration: line-through; }
 .vdiff-modification { background: rgba(234, 179, 8, 0.12); color: var(--text-primary); }
+/* Light mode: darken diff colors for readability */
+[data-theme="light"] .vdiff-addition { color: #166534; }
+[data-theme="light"] .vdiff-deletion { color: #991b1b; }
 .vdiff-empty { background: var(--sidebar-bg); color: transparent; min-height: 22px; }
 .vdiff-word-add { background: rgba(34, 197, 94, 0.3); padding: 0 2px; border-radius: 2px; font-weight: 600; }
 .vdiff-word-del { background: rgba(239, 68, 68, 0.3); padding: 0 2px; border-radius: 2px; text-decoration: line-through; }

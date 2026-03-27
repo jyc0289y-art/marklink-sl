@@ -454,6 +454,66 @@ const injectPwaStyles = () => {
   document.head.appendChild(style);
 };
 
+/* ===================== Update Banner ===================== */
+
+const showUpdateBanner = (newWorker) => {
+  const existing = document.querySelector('.pwa-update-banner');
+  if (existing) return;
+
+  const banner = document.createElement('div');
+  banner.className = 'pwa-update-banner';
+  banner.innerHTML = `
+    <div class="pwa-update-content">
+      <span class="pwa-update-text">A new version is available.</span>
+      <button class="pwa-update-btn">Update now</button>
+      <button class="pwa-update-dismiss">&times;</button>
+    </div>
+  `;
+
+  // Inject update banner styles
+  if (!document.getElementById('pwa-update-styles')) {
+    const style = document.createElement('style');
+    style.id = 'pwa-update-styles';
+    style.textContent = `
+      .pwa-update-banner {
+        position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+        z-index: 10001; max-width: 400px; width: calc(100% - 32px);
+        animation: pwaFadeIn 0.3s ease-out;
+      }
+      .pwa-update-content {
+        display: flex; align-items: center; gap: 12px;
+        padding: 10px 16px; border-radius: 10px;
+        background: #1e293b; color: #f1f5f9;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        font-size: 13px;
+      }
+      .pwa-update-text { flex: 1; }
+      .pwa-update-btn {
+        padding: 6px 14px; border: none; border-radius: 6px;
+        background: #0071e3; color: #fff; font-size: 12px; font-weight: 700;
+        cursor: pointer; white-space: nowrap;
+      }
+      .pwa-update-btn:hover { background: #0060c0; }
+      .pwa-update-dismiss {
+        background: none; border: none; color: #94a3b8;
+        font-size: 18px; cursor: pointer; padding: 0 2px;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  document.body.appendChild(banner);
+
+  banner.querySelector('.pwa-update-btn').addEventListener('click', () => {
+    newWorker.postMessage('skipWaiting');
+    banner.remove();
+  });
+
+  banner.querySelector('.pwa-update-dismiss').addEventListener('click', () => {
+    banner.remove();
+  });
+};
+
 /* ===================== Init ===================== */
 
 export const initPwaInstallEnhanced = () => {
@@ -461,9 +521,33 @@ export const initPwaInstallEnhanced = () => {
 
   const info = detectPlatform();
 
-  // Register service worker
+  // Register service worker with update detection
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js').then((reg) => {
+      // Check for updates periodically (every 60 minutes)
+      setInterval(() => reg.update(), 60 * 60 * 1000);
+
+      // Detect waiting worker (new version available)
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            // New version available — show update banner
+            showUpdateBanner(newWorker);
+          }
+        });
+      });
+    }).catch(() => {});
+
+    // Handle controller change (after skipWaiting) — reload to activate new SW
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
+    });
   }
 
   const installBtn = document.getElementById('btn-install');

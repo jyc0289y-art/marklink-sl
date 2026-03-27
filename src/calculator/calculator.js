@@ -309,6 +309,8 @@ function evalExpression(expr) {
     .replace(/\)\s*(\d)/g, ')*$1')
     .replace(/\)\s*\(/g, ')*(');
   if (!/^[\d\s+\-*/().%]+$/i.test(clean)) return null;
+  // Extra safety: block any identifier-like tokens that shouldn't be in arithmetic
+  if (/\b(eval|Function|constructor|prototype|__proto__|import|require|window|document|globalThis|fetch)\b/i.test(clean)) return null;
   return Function(`"use strict"; return (${clean})`)();
 }
 

@@ -1109,3 +1109,18 @@ kbd {
   border-radius: 3px;
   margin-bottom: 2px;
 }
+
+/* ===== Print Styles ===== */
+@media print {
+  .ai-panel,
+  .ai-setup-modal,
+  .ai-fullscreen-layout .ai-full-sidebar,
+  .ai-input-area,
+  .ai-bottom-actions,
+  .ai-context-btns,
+  .ai-msg-edit-btn,
+  .ai-stop-btn,
+  .ai-offline-indicator {
+    display: none !important;
+  }
+}

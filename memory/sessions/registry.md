@@ -80,3 +80,8 @@
 | P9.31wc | Bundle Optimization & Performance | 2026-03-27 | 없음 | 진행중 |
 | P9.32wc | Integration Test Coverage Expansion | 2026-03-27 | 없음 | 진행중 |
 | P9.33wc | CAD Editor Interaction Quality Audit | 2026-03-27 | 없음 | 진행중 |
+| P9.34wc | PWA & Offline Capabilities Audit | 2026-03-27 | 없음 | 진행중 |
+| P9.35wc | Security Audit — XSS, Injection, CSP Hardening | 2026-03-27 | 없음 | 진행중 |
+| P9.35wc | CSS Quality & Responsive Design Audit | 2026-03-27 | 없음 | 진행중 |
+| P9.36wc | Sheet Chart & CF & Validation & Sort Audit | 2026-03-27 | 없음 | 진행중 |
+| P9.37wc | Slide Editor Interaction Quality Audit | 2026-03-27 | 없음 | 진행중 |

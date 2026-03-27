@@ -7,6 +7,7 @@
 import { setDocContent, getDocContent, markDocClean } from './doc-editor.js';
 import { generateTimestampFilename } from '../export/filename-utils.js';
 import { downloadBlob } from '../utils/download.js';
+import { sanitizeImportedHtml } from '../utils/sanitize.js';
 
 let _mammoth = null;
 let _JSZip = null;
@@ -46,8 +47,9 @@ export async function importDocx(file) {
       ],
       includeDefaultStyleMap: true,
     });
-    const html = result.value || '';
-    if (html && html.trim().length > 0 && !looksLikeGarbage(html)) {
+    const rawHtml = result.value || '';
+    if (rawHtml && rawHtml.trim().length > 0 && !looksLikeGarbage(rawHtml)) {
+      const html = sanitizeImportedHtml(rawHtml);
       setDocContent(html);
       markDocClean();
       return { name: file.name, content: html };
@@ -58,7 +60,8 @@ export async function importDocx(file) {
 
   // Fallback: manually extract from word/document.xml inside the ZIP
   try {
-    const html = await extractDocxWithJSZip(arrayBuffer);
+    const rawHtml = await extractDocxWithJSZip(arrayBuffer);
+    const html = sanitizeImportedHtml(rawHtml);
     setDocContent(html);
     markDocClean();
     return { name: file.name, content: html };

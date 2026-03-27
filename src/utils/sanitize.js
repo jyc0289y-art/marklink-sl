@@ -46,15 +46,20 @@ export function sanitizeUrlParam(value) {
  */
 export function sanitizeFileName(name) {
   if (typeof name !== 'string') return '';
-  return name
+  let safe = name
     // Remove null bytes
     .replace(/\0/g, '')
-    // Remove path traversal
+    // Remove path separators entirely to prevent traversal
+    .replace(/[/\\]/g, '_')
+    // Remove path traversal patterns (redundant after above, but defense-in-depth)
     .replace(/\.\.\//g, '')
     .replace(/\.\.\\/g, '')
     // Remove leading dots (hidden files) - keep one dot for extensions
-    .replace(/^\.+/, '')
-    // Escape HTML entities for display
+    .replace(/^\.+/, '');
+  // Truncate excessively long filenames (255 bytes is typical FS limit)
+  if (safe.length > 255) safe = safe.substring(0, 255);
+  // Escape HTML entities for display
+  return safe
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -115,4 +120,85 @@ export function sanitizeTemplateContent(html) {
  */
 export function createSafeTextNode(text) {
   return document.createTextNode(typeof text === 'string' ? text : String(text));
+}
+
+/**
+ * Sanitize a URL for use in href/src attributes.
+ * Only allows http:, https:, mailto:, and tel: protocols.
+ * Blocks javascript:, data:text/html, vbscript:, and other dangerous schemes.
+ * @param {string} url - Raw URL string
+ * @returns {string} Sanitized URL, or empty string if dangerous
+ */
+export function sanitizeUrl(url) {
+  if (typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  // Decode any URL encoding to catch obfuscated protocols
+  let decoded;
+  try {
+    decoded = decodeURIComponent(trimmed);
+  } catch {
+    decoded = trimmed;
+  }
+  // Strip null bytes, tabs, newlines used to bypass protocol checks
+  decoded = decoded.replace(/[\x00-\x1f\x7f]/g, '').trim();
+  // Block dangerous protocols
+  const lower = decoded.toLowerCase();
+  if (/^\s*(javascript|vbscript|data\s*:\s*text\/html)\s*:/i.test(lower)) {
+    return '';
+  }
+  // Allow only safe protocols or relative URLs
+  if (/^(https?:|mailto:|tel:|#|\/|\.)/.test(lower) || !/^[a-z]+:/i.test(lower)) {
+    return trimmed;
+  }
+  return '';
+}
+
+/**
+ * Sanitize imported document HTML (from DOCX, HWPX, PPTX etc.)
+ * Strips all executable content while preserving document formatting.
+ * More aggressive than sanitizeAiResponse since imported docs should never
+ * contain scripts or event handlers.
+ * @param {string} html - Raw HTML from document import
+ * @returns {string} Sanitized HTML safe for innerHTML insertion
+ */
+export function sanitizeImportedHtml(html) {
+  if (typeof html !== 'string') return '';
+  let safe = html;
+  // Remove script tags and their content
+  safe = safe.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  // Remove noscript
+  safe = safe.replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '');
+  // Remove all event handler attributes (on*)
+  safe = safe.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, '');
+  // Remove javascript:/vbscript:/data:text/html in href/src/action/background/formaction
+  safe = safe.replace(/(href|src|action|background|formaction|dynsrc|lowsrc)\s*=\s*["']?\s*(javascript|vbscript)\s*:/gi, '$1="');
+  safe = safe.replace(/(href|src)\s*=\s*["']?\s*data\s*:\s*text\/html/gi, '$1="');
+  // Remove dangerous tags entirely
+  safe = safe.replace(/<\s*\/?\s*(script|iframe|object|embed|form|base|meta|link|applet|svg|math)\b[^>]*>/gi, '');
+  // Remove style attributes containing expression(), url(javascript:), -moz-binding
+  safe = safe.replace(/style\s*=\s*"[^"]*(?:expression|url\s*\(\s*javascript|-moz-binding)[^"]*"/gi, '');
+  safe = safe.replace(/style\s*=\s*'[^']*(?:expression|url\s*\(\s*javascript|-moz-binding)[^']*'/gi, '');
+  return safe;
+}
+
+/**
+ * Validate formula expression for safe evaluation with new Function().
+ * Returns true only if the expression contains safe arithmetic/string tokens.
+ * Blocks property access, function calls (except Math.*), and dangerous patterns.
+ * @param {string} expr - The resolved expression string
+ * @returns {boolean} True if safe to evaluate
+ */
+export function isFormulaExprSafe(expr) {
+  if (typeof expr !== 'string') return false;
+  // Block obvious dangerous patterns
+  if (/\b(eval|Function|constructor|prototype|__proto__|import|require|fetch|XMLHttpRequest|document|window|globalThis|self|top|parent)\b/i.test(expr)) {
+    return false;
+  }
+  // Block property access chains that could reach dangerous objects
+  if (/\[['"`]/.test(expr)) return false; // bracket notation string access
+  // Block template literals
+  if (/`/.test(expr)) return false;
+  // Allow only: numbers, operators, parens, dots (decimal), commas, spaces, comparison ops, quotes (for string literals), ternary
+  return /^[\d\s+\-*/().,"'<>=!|%?:&^~]+$/.test(expr);
 }

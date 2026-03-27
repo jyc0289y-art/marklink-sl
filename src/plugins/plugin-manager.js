@@ -5,6 +5,7 @@ import { toastSuccess, toastError, toastInfo } from '../ui/toast.js';
 import { getCurrentTab, onTabChange } from '../ui/tabs.js';
 import { getContent, setContent } from '../editor/editor.js';
 import { t } from '../ui/i18n.js';
+import { sanitizeImportedHtml, escapeHtml } from '../utils/sanitize.js';
 
 // ── Plugin Registry ──
 const plugins = new Map();        // id → { plugin, enabled, initialized }
@@ -53,7 +54,8 @@ const createPluginAPI = (pluginId) => ({
     if (tabName === 'markdown') setContent(content);
     else if (tabName === 'document') {
       const docEl = document.getElementById('doc-editor');
-      if (docEl) docEl.innerHTML = content;
+      // Sanitize plugin-provided HTML to prevent XSS
+      if (docEl) docEl.innerHTML = sanitizeImportedHtml(content);
     }
   },
 
@@ -91,7 +93,8 @@ const renderToolbarButton = (tabName, icon, title, onClick, pluginId) => {
   btn.dataset.pluginId = pluginId;
   btn.dataset.tabName = tabName;
   btn.title = title;
-  btn.innerHTML = icon;
+  // Only allow safe SVG or emoji icons — escape to prevent XSS via plugin icons
+  btn.textContent = icon;
   btn.addEventListener('click', onClick);
   toolbar.appendChild(btn);
 };

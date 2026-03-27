@@ -1004,8 +1004,9 @@ function parseInlineStyle(styleStr) {
  * Returns { shapesXml, images: [{ rId, ext, mime, base64 }] }
  */
 function htmlToOoxmlShapes(htmlStr, slideIndex) {
-  const div = document.createElement('div');
-  div.innerHTML = htmlStr || '';
+  // Use DOMParser for safer HTML parsing (no script execution in detached context)
+  const parsed = new DOMParser().parseFromString(`<div>${htmlStr || ''}</div>`, 'text/html');
+  const div = parsed.body.firstChild || parsed.body;
 
   const shapes = [];
   const images = [];

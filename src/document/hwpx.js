@@ -5,7 +5,7 @@ import JSZip from 'jszip';
 import { setDocContent, getDocContent, markDocClean } from './doc-editor.js';
 import { generateTimestampFilename } from '../export/filename-utils.js';
 import { downloadBlob } from '../utils/download.js';
-import { escapeHtml } from '../utils/sanitize.js';
+import { escapeHtml, sanitizeImportedHtml } from '../utils/sanitize.js';
 
 /**
  * Detect binary HWP (OLE compound file) by magic bytes D0 CF 11 E0
@@ -200,9 +200,10 @@ export async function importHwpx(file) {
     html += '</div>';
   }
 
-  setDocContent(html || '<p>(Empty document)</p>');
+  const safeHtml = sanitizeImportedHtml(html || '<p>(Empty document)</p>');
+  setDocContent(safeHtml);
   markDocClean();
-  return { name: file.name, content: html };
+  return { name: file.name, content: safeHtml };
 }
 
 /**
