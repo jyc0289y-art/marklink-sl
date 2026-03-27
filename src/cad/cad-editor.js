@@ -190,29 +190,38 @@ export function destroyCadEditor() {
   // 5. Dispose orbit controls
   if (orbitControls) { orbitControls.dispose(); orbitControls = null; }
 
-  // 6. Dispose all scene objects (geometry + materials)
+  // 6. Dispose all scene objects (geometry + materials + textures)
   sceneObjects.forEach((obj) => {
     if (obj.geometry) obj.geometry.dispose();
     if (obj.material) {
-      if (Array.isArray(obj.material)) {
-        obj.material.forEach((m) => m.dispose());
-      } else {
-        obj.material.dispose();
-      }
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      mats.forEach((m) => {
+        if (m.map) m.map.dispose();
+        m.dispose();
+      });
     }
   });
   sceneObjects = [];
 
-  // 7. Dispose grid, axes, and remaining scene children
+  // 7. Dispose grid, axes, and remaining scene children (including textures)
   if (scene) {
+    // Dispose background texture if present
+    if (scene.background && scene.background.isTexture) {
+      scene.background.dispose();
+    }
     scene.traverse((child) => {
       if (child.geometry) child.geometry.dispose();
       if (child.material) {
-        if (Array.isArray(child.material)) {
-          child.material.forEach((m) => m.dispose());
-        } else {
-          child.material.dispose();
-        }
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.forEach((m) => {
+          // Dispose textures referenced by the material
+          if (m.map) m.map.dispose();
+          if (m.normalMap) m.normalMap.dispose();
+          if (m.roughnessMap) m.roughnessMap.dispose();
+          if (m.metalnessMap) m.metalnessMap.dispose();
+          if (m.envMap) m.envMap.dispose();
+          m.dispose();
+        });
       }
     });
     scene.clear();

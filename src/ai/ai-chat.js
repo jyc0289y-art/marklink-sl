@@ -1959,6 +1959,39 @@ function exitAiFullscreen() {
   fullChatAreaEl.innerHTML = '';
 }
 
+/* ==================== Destroy / Cleanup ==================== */
+
+/**
+ * Destroy AI chat panel: clear all intervals, abort pending requests,
+ * and reset state. Call when tearing down the AI chat view.
+ */
+export function destroyAiChat() {
+  // Clear intervals
+  if (healthCheckInterval) { clearInterval(healthCheckInterval); healthCheckInterval = null; }
+  if (connectionRetryInterval) { clearInterval(connectionRetryInterval); connectionRetryInterval = null; }
+
+  // Abort pending request
+  if (currentAbortController) {
+    try { currentAbortController.abort(); } catch { /* ignore */ }
+    currentAbortController = null;
+  }
+
+  // Reset state
+  isSending = false;
+  pendingImages = [];
+  offlineQueue = [];
+  history = [];
+  panelEl = null;
+  chatListEl = null;
+  chatInputEl = null;
+  modelSelectEl = null;
+  statusDotEl = null;
+  fullChatAreaEl = null;
+  fullStatusDotEl = null;
+  fullStatusTextEl = null;
+  fullModelSelectEl = null;
+}
+
 // Export for external use
 export {
   togglePanel as toggleAiPanel, showSessionsModal,

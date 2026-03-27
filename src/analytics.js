@@ -3,6 +3,10 @@
 
 const isDev = () => location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 
+// --- Memory leak prevention: tracked intervals/observers ---
+let _analyticsMemoryInterval = null;
+let _analyticsLongTaskObserver = null;
+
 // ---- Consent Management ----
 
 const CONSENT_KEY = 'officelink-analytics-consent';
@@ -230,20 +234,21 @@ export const initPerfMonitoring = () => {
     };
     // Log memory after startup settles, then periodically
     setTimeout(logMemory, 5000);
-    setInterval(logMemory, 60000);
+    if (_analyticsMemoryInterval) clearInterval(_analyticsMemoryInterval);
+    _analyticsMemoryInterval = setInterval(logMemory, 60000);
   }
 
   // Long tasks detection (>50ms)
   if (typeof PerformanceObserver !== 'undefined') {
     try {
-      const longTaskObserver = new PerformanceObserver((list) => {
+      _analyticsLongTaskObserver = new PerformanceObserver((list) => {
         list.getEntries().forEach((entry) => {
           if (entry.duration > 100) {
             perfLog('long_task', entry.duration);
           }
         });
       });
-      longTaskObserver.observe({ type: 'longtask', buffered: true });
+      _analyticsLongTaskObserver.observe({ type: 'longtask', buffered: true });
     } catch { /* not supported in all browsers */ }
   }
 

@@ -4091,7 +4091,14 @@ export function destroyPhotoEditor() {
     document.querySelectorAll(sel).forEach((el) => el.remove());
   });
 
-  // 6. Reset state
+  // 6. Revoke any GIF blob URLs to prevent memory leaks
+  const gifPreview = document.querySelector('.photo-gif-modal .gif-preview, #gif-preview');
+  if (gifPreview && gifPreview._gifBlobUrl) {
+    URL.revokeObjectURL(gifPreview._gifBlobUrl);
+    gifPreview._gifBlobUrl = null;
+  }
+
+  // 7. Reset state
   currentParams = cloneParams(DEFAULT_PARAMS);
   history = [cloneParams(DEFAULT_PARAMS)];
   historyIndex = 0;

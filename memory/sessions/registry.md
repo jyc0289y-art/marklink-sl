@@ -89,3 +89,6 @@
 | P9.39wc | Settings & Preferences System Audit | 2026-03-27 | 없음 | 진행중 |
 | P9.40wc | Analytics, Privacy & Third-Party Audit | 2026-03-27 | 없음 | 진행중 |
 | P9.41wc | File Manager Audit & Bugfix | 2026-03-27 | 없음 | 진행중 |
+| P9.42wc | Final Quality Gate Check | 2026-03-27 | 없음 | 진행중 |
+| P9.43wc | Keyboard Shortcut Conflict Audit & Fix | 2026-03-27 | 없음 | 진행중 |
+| P9.44wc | Memory Leak Audit & Fix | 2026-03-27 | 없음 | 진행중 |

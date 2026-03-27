@@ -451,7 +451,8 @@ function bindEvents() {
 
   // Keyboard shortcuts
   const _onKeyDown = (e) => {
-    if (document.querySelector('#view-draw:not(.active)')) return;
+    const drawView = document.getElementById('view-draw');
+    if (!drawView || !drawView.classList.contains('active')) return;
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
     handleKeyDown(e);
   };
@@ -1998,7 +1999,9 @@ export function destroyDrawEditor() {
   resizeHandle = null;
   shapeStart = null;
 
-  // Clear canvas references
+  // Zero out canvases to release GPU memory before clearing references
+  if (canvas) { canvas.width = 0; canvas.height = 0; }
+  if (overlayCanvas) { overlayCanvas.width = 0; overlayCanvas.height = 0; }
   canvas = null;
   ctx = null;
   overlayCanvas = null;

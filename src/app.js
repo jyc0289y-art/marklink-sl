@@ -1,4 +1,8 @@
 // OfficeLink SL — App Controller
+// --- Memory leak prevention: tracked intervals ---
+let _appAutoSaveInterval = null;
+let _appVersionInterval = null;
+
 import { createEditor, onChange, getContent, setContent, wrapSelection } from './editor/editor.js';
 import { initPreview, updatePreview, updatePreviewImmediate, initBidirectionalScrollSync, initPreviewToolbar, setSourceAccessors } from './preview/preview.js';
 import { registerAllPlugins } from './preview/plugins.js';
@@ -1545,7 +1549,8 @@ function initAutoSave() {
   onChange(() => { setTabDirty('markdown', true); });
 
   // Save periodically (every 30 seconds)
-  setInterval(() => {
+  if (_appAutoSaveInterval) clearInterval(_appAutoSaveInterval);
+  _appAutoSaveInterval = setInterval(() => {
     try {
       showAutoSaveIndicator('saving');
       const state = {
@@ -1581,7 +1586,8 @@ function initVersionHistory() {
   document.getElementById('btn-version-history')?.addEventListener('click', showVersionHistory);
 
   // Auto-snapshot every 5 minutes (separate from auto-save)
-  setInterval(() => {
+  if (_appVersionInterval) clearInterval(_appVersionInterval);
+  _appVersionInterval = setInterval(() => {
     saveVersionSnapshot('auto');
   }, 300000);
 }

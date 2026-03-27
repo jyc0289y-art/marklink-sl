@@ -422,9 +422,9 @@ export const initPerfDashboard = () => {
   lastFrameTime = performance.now();
   animFrameId = requestAnimationFrame(trackFPS);
 
-  // Register Ctrl+Shift+P shortcut
+  // Register Alt+Shift+P shortcut (changed from Ctrl+Shift+P to avoid browser conflict)
   document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
+    if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'p') {
       e.preventDefault();
       showPerfDashboard();
     }

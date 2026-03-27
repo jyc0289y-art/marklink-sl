@@ -193,6 +193,9 @@ export const listenThemeSync = () => {
   } catch { /* BroadcastChannel not supported */ }
 };
 
+// --- Memory leak prevention: tracked observer ---
+let _themeObserver = null;
+
 /**
  * Initialize theme customizer
  */
@@ -202,13 +205,24 @@ export const initThemeCustomizer = () => {
   listenThemeSync();
 
   // Re-apply editor bg when theme toggles (dark/light switch)
-  const observer = new MutationObserver(() => {
+  if (_themeObserver) _themeObserver.disconnect();
+  _themeObserver = new MutationObserver(() => {
     applyEditorBackground();
   });
-  observer.observe(document.documentElement, {
+  _themeObserver.observe(document.documentElement, {
     attributes: true,
     attributeFilter: ['data-theme'],
   });
+};
+
+/**
+ * Destroy: disconnect the theme MutationObserver.
+ */
+export const destroyThemeCustomizer = () => {
+  if (_themeObserver) {
+    _themeObserver.disconnect();
+    _themeObserver = null;
+  }
 };
 
 /**

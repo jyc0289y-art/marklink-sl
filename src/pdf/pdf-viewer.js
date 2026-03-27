@@ -3007,9 +3007,21 @@ export function destroyPdfViewer() {
   scale = 1.0;
   currentName = '';
 
-  // Clear rendered content
-  if (pagesEl) pagesEl.innerHTML = '';
-  if (thumbListEl) thumbListEl.innerHTML = '';
+  // Clear rendered content — zero out canvases to release GPU memory before removal
+  if (pagesEl) {
+    pagesEl.querySelectorAll('canvas').forEach((c) => {
+      c.width = 0;
+      c.height = 0;
+    });
+    pagesEl.innerHTML = '';
+  }
+  if (thumbListEl) {
+    thumbListEl.querySelectorAll('canvas').forEach((c) => {
+      c.width = 0;
+      c.height = 0;
+    });
+    thumbListEl.innerHTML = '';
+  }
 
   // Null out DOM references
   pagesEl = null;

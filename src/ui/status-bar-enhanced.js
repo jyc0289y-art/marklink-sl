@@ -328,3 +328,13 @@ export const initEnhancedStatusBar = () => {
 export const refreshStatusBar = () => {
   updateEnhancedStatusBar();
 };
+
+/**
+ * Destroy: clear the update interval to prevent memory leaks.
+ */
+export const destroyStatusBar = () => {
+  if (updateTimer) {
+    clearInterval(updateTimer);
+    updateTimer = null;
+  }
+};

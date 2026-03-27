@@ -84,6 +84,13 @@ const MAX_UNDO = 100;
 // DOM refs
 let gridEl, cellRefEl, formulaBarEl, containerEl;
 
+// --- Memory leak prevention: tracked document-level listeners ---
+const _sheetDocListeners = [];
+function _trackDocListener(event, handler, options) {
+  document.addEventListener(event, handler, options);
+  _sheetDocListeners.push({ event, handler, options });
+}
+
 export function initSheetEditor() {
   gridEl = document.getElementById('sheet-grid');
   cellRefEl = document.getElementById('sheet-cell-ref');
@@ -624,7 +631,7 @@ function bindEvents() {
     }
   });
 
-  document.addEventListener('mouseup', (e) => {
+  _trackDocListener('mouseup', (e) => {
     if (isFilling) {
       // Execute fill
       const td = document.elementFromPoint(e.clientX, e.clientY)?.closest('td[data-row]');
@@ -634,7 +641,7 @@ function bindEvents() {
         executeFill(r, c);
       }
       isFilling = false;
-      gridEl.querySelectorAll('.fill-preview').forEach(el => el.classList.remove('fill-preview'));
+      gridEl?.querySelectorAll('.fill-preview').forEach(el => el.classList.remove('fill-preview'));
     }
     isDragging = false;
   });
@@ -742,7 +749,7 @@ function bindEvents() {
   });
 
   // Keyboard navigation
-  document.addEventListener('keydown', (e) => {
+  _trackDocListener('keydown', (e) => {
     const sheetView = document.getElementById('view-sheet');
     if (!sheetView || !sheetView.classList.contains('active')) return;
     if (document.activeElement === formulaBarEl) return;
@@ -4000,7 +4007,7 @@ function initResize() {
     }
   });
 
-  document.addEventListener('mousemove', (e) => {
+  _trackDocListener('mousemove', (e) => {
     if (isResizingCol) {
       const diff = e.clientX - resizeStartX;
       const newWidth = Math.max(30, resizeStartWidth + diff);
@@ -4037,7 +4044,7 @@ function initResize() {
     }
   });
 
-  document.addEventListener('mouseup', () => {
+  _trackDocListener('mouseup', () => {
     if (isResizingCol || isResizingRow) {
       isResizingCol = false;
       isResizingRow = false;
@@ -7679,4 +7686,37 @@ function _loadSheetState() {
   freezeCols = sheet.freezeCols || 0;
   condFormats = sheet.condFormats || [];
   validations = sheet.validations || {};
+}
+
+/* ==================== Destroy / Cleanup ==================== */
+
+/**
+ * Destroy the sheet editor: remove document-level event listeners,
+ * disconnect observers, clear DOM state, and reset module-level variables.
+ * Should be called when completely tearing down the sheet view.
+ */
+export function destroySheetEditor() {
+  // Remove tracked document-level listeners
+  for (const entry of _sheetDocListeners) {
+    document.removeEventListener(entry.event, entry.handler, entry.options);
+  }
+  _sheetDocListeners.length = 0;
+
+  // Clear DOM
+  if (gridEl) gridEl.innerHTML = '';
+
+  // Remove dynamic overlays
+  document.querySelectorAll(
+    '.sheet-find-bar, .sheet-chart-dialog, .sheet-cf-dialog, ' +
+    '.sheet-validation-dialog, .sheet-sort-dialog, .sheet-slicer-panel, ' +
+    '.sheet-comment-popover, .sheet-named-range-dialog'
+  ).forEach((el) => el.remove());
+
+  // Reset state
+  undoStack = [];
+  redoStack = [];
+  gridEl = null;
+  cellRefEl = null;
+  formulaBarEl = null;
+  containerEl = null;
 }

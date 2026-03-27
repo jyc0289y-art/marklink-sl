@@ -245,15 +245,25 @@ export const showShortcutsHelpPanel = () => {
   const extraShortcuts = [
     { label: 'Switch to tab N',    keys: `${modSymbol} ${altSymbol} 1-9`, category: 'Navigation' },
     { label: 'Close modal / Exit zen', keys: 'Esc',                      category: 'General' },
+    { label: 'Perf Dashboard',     keys: `${altSymbol} ${shiftSymbol} P`, category: 'General' },
     { label: 'Copy / Cut / Paste', keys: `${modSymbol} C/X/V`,           category: 'Editor',  contextNote: 'Sheet' },
     { label: 'Edit cell',          keys: 'F2',                           category: 'Editor',  contextNote: 'Sheet' },
     { label: 'Edit cell / Confirm', keys: 'Enter',                      category: 'Editor',  contextNote: 'Sheet' },
     { label: 'Move to next cell',  keys: 'Tab',                         category: 'Editor',  contextNote: 'Sheet' },
     { label: 'Clear cell',         keys: 'Del',                         category: 'Editor',  contextNote: 'Sheet' },
+    { label: 'Flash Fill',         keys: `${modSymbol} E`,              category: 'Editor',  contextNote: 'Sheet' },
     { label: 'Start presentation', keys: 'F5',                          category: 'Editor',  contextNote: 'Slide' },
     { label: 'Duplicate slide',    keys: `${modSymbol} ${shiftSymbol} D`, category: 'Editor', contextNote: 'Slide' },
+    { label: 'Group / Ungroup',    keys: `${modSymbol} G / ${modSymbol} ${shiftSymbol} G`, category: 'Editor', contextNote: 'Slide, Draw' },
     { label: 'Navigate slides',    keys: '\u2190 \u2192',               category: 'Editor',  contextNote: 'Slide' },
     { label: 'Exit presentation',  keys: 'Esc',                         category: 'Editor',  contextNote: 'Slide' },
+    { label: 'Zen Mode',           keys: `${altSymbol} Z`,              category: 'Editor',  contextNote: 'Markdown' },
+    { label: 'Focus Mode',         keys: `${modSymbol} ${shiftSymbol} F`, category: 'Editor', contextNote: 'Markdown' },
+    { label: 'Floating TOC',       keys: `${modSymbol} ${shiftSymbol} T`, category: 'Editor', contextNote: 'Markdown' },
+    { label: 'Insert Link',        keys: `${modSymbol} K`,              category: 'Editor',  contextNote: 'Markdown' },
+    { label: 'Headings H1-H6',     keys: `${modSymbol} 1-6`,            category: 'Editor',  contextNote: 'Markdown' },
+    { label: 'Reading Mode',       keys: `${modSymbol} ${shiftSymbol} R`, category: 'Editor', contextNote: 'Document' },
+    { label: 'Find & Replace',     keys: `${modSymbol} H`,              category: 'Editor',  contextNote: 'Document' },
   ];
 
   // Build categorized list from registry

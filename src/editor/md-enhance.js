@@ -241,9 +241,12 @@ export function initZenMode() {
     btn.addEventListener('click', () => toggleZenMode());
   }
 
-  // Keyboard shortcut: Ctrl+Shift+Z
+  // Keyboard shortcut: Alt+Z (changed from Ctrl+Shift+Z to avoid conflict with global Redo)
   document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Z') {
+    // Only activate on markdown tab
+    const tab = document.querySelector('.tab-item.active')?.dataset?.tab;
+    if (tab && tab !== 'markdown') return;
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
       e.preventDefault();
       toggleZenMode();
     }
@@ -411,7 +414,8 @@ const SHORTCUT_MAP = [
   { keys: 'Ctrl/⌘ + O', action: 'Open File' },
   { keys: 'Ctrl/⌘ + P', action: 'Print' },
   { keys: 'Ctrl/⌘ + Shift + V', action: 'Toggle Preview Only' },
-  { keys: 'Ctrl/⌘ + Shift + Z', action: 'Zen/Focus Mode' },
+  { keys: 'Alt + Z', action: 'Zen Mode' },
+  { keys: 'Ctrl/⌘ + Shift + F', action: 'Focus Mode' },
   { keys: 'Ctrl/⌘ + /', action: 'Show Shortcuts' },
   { keys: 'Ctrl/⌘ + F', action: 'Find & Replace' },
   { keys: 'Esc', action: 'Close popup / Exit Zen' },
@@ -420,12 +424,10 @@ const SHORTCUT_MAP = [
 let shortcutOverlayEl = null;
 
 export function initShortcutOverlay() {
-  document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === '/') {
-      e.preventDefault();
-      toggleShortcutOverlay();
-    }
-  });
+  // Note: Ctrl+/ is handled globally by shortcuts.js (showShortcuts).
+  // This overlay is triggered only via button click, not keyboard,
+  // to avoid duplicate handling of Ctrl+/.
+  // The global shortcut help panel already covers all shortcuts.
 
   const btn = document.getElementById('btn-shortcuts');
   if (btn) {
@@ -800,6 +802,9 @@ export function initFocusMode() {
   if (btn) btn.addEventListener('click', () => toggleFocusMode());
 
   document.addEventListener('keydown', (e) => {
+    // Only activate on markdown tab
+    const tab = document.querySelector('.tab-item.active')?.dataset?.tab;
+    if (tab && tab !== 'markdown') return;
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
       e.preventDefault();
       toggleFocusMode();
@@ -1206,10 +1211,14 @@ export function initFloatingToc() {
     btn.addEventListener('click', () => toggleFloatingToc());
   }
 
-  // Keyboard shortcut: Ctrl+Shift+T
+  // Keyboard shortcut: Ctrl+Shift+T (only on markdown tab)
   document.addEventListener('keydown', (e) => {
+    // Only activate on markdown tab to avoid conflict with browser reopen-tab
+    const tab = document.querySelector('.tab-item.active')?.dataset?.tab;
+    if (tab && tab !== 'markdown') return;
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'T') {
       e.preventDefault();
+      e.stopPropagation();
       toggleFloatingToc();
     }
   });
@@ -1663,3 +1672,18 @@ const renderLintPanel = (issues) => {
     });
   });
 };
+
+/* ==================== Destroy / Cleanup ==================== */
+
+/**
+ * Destroy markdown enhancements: stop focus tracking interval,
+ * remove floating UI elements. Call when tearing down the markdown editor.
+ */
+export function destroyMdEnhance() {
+  stopFocusTracking();
+  // Remove floating overlays
+  document.querySelectorAll(
+    '.md-snippet-panel, .zen-mode-overlay, .shortcut-overlay-panel, ' +
+    '.md-floating-toc, .md-word-goal-bar, .md-lint-panel, .autocomplete-panel'
+  ).forEach((el) => el.remove());
+}

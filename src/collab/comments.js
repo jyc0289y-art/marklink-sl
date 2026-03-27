@@ -3,6 +3,9 @@
 
 import { toastSuccess, toastInfo, toastError } from '../ui/toast.js';
 
+// --- Memory leak prevention: tracked observer ---
+let _commentsFileObserver = null;
+
 // ─── Constants ───────────────────────────────────────────────
 const DB_NAME = 'officelink-comments';
 const DB_VERSION = 1;
@@ -810,14 +813,15 @@ export const initCommentSystem = async () => {
   // Reload comments when file changes (file-name element changes)
   const fileNameEl = document.getElementById('file-name');
   if (fileNameEl) {
-    const observer = new MutationObserver(async () => {
+    if (_commentsFileObserver) _commentsFileObserver.disconnect();
+    _commentsFileObserver = new MutationObserver(async () => {
       try {
         comments = await dbGetAll(getDocumentId());
       } catch {
         comments = [];
       }
     });
-    observer.observe(fileNameEl, { childList: true, characterData: true, subtree: true });
+    _commentsFileObserver.observe(fileNameEl, { childList: true, characterData: true, subtree: true });
   }
 };
 
@@ -835,3 +839,13 @@ export const openCommentsPanel = () => renderCommentsPanel();
  * Get all comments for the current document
  */
 export const getComments = () => comments.filter((c) => c.documentId === getDocumentId());
+
+/**
+ * Destroy: disconnect the file-change MutationObserver to prevent leaks.
+ */
+export const destroyComments = () => {
+  if (_commentsFileObserver) {
+    _commentsFileObserver.disconnect();
+    _commentsFileObserver = null;
+  }
+};
