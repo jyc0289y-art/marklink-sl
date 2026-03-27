@@ -656,6 +656,10 @@ export const TRANSLATIONS = {
     en: 'Auto Filter', ko: '자동 필터', ja: 'オートフィルター', zh: '自动筛选',
     es: 'Autofiltro', fr: 'Filtre automatique', de: 'AutoFilter',
   },
+  'sheet.templates': {
+    en: 'Sheet Templates', ko: '시트 템플릿', ja: 'シートテンプレート', zh: '表格模板',
+    es: 'Plantillas de hoja', fr: 'Modèles de feuille', de: 'Tabellenvorlagen',
+  },
   'sheet.find': {
     en: 'Find in sheet...', ko: '시트에서 찾기...', ja: 'シート内検索...', zh: '在表中查找...',
     es: 'Buscar en hoja...', fr: 'Rechercher dans la feuille...', de: 'In Tabelle suchen...',
@@ -721,6 +725,10 @@ export const TRANSLATIONS = {
   'slide.present': {
     en: 'Present', ko: '발표', ja: 'プレゼンテーション', zh: '演示',
     es: 'Presentar', fr: 'Présenter', de: 'Präsentieren',
+  },
+  'slide.templates': {
+    en: 'Slide Templates', ko: '슬라이드 템플릿', ja: 'スライドテンプレート', zh: '幻灯片模板',
+    es: 'Plantillas de diapositiva', fr: 'Modèles de diapositive', de: 'Folienvorlagen',
   },
   'slide.speakerNotes': {
     en: 'Speaker Notes', ko: '발표자 노트', ja: '発表者ノート', zh: '演讲者备注',

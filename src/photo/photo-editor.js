@@ -2487,7 +2487,7 @@ function exportImage() {
       <h3>Export Image</h3>
       <div class="resize-row">
         <label>Format</label>
-        <select id="export-format" style="flex:1;padding:6px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-color);color:var(--text-color)">
+        <select id="export-format" style="flex:1;padding:6px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)">
           <option value="png">PNG (lossless)</option>
           <option value="jpeg">JPEG</option>
           <option value="webp">WebP</option>

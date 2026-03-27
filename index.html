@@ -1077,7 +1077,6 @@
         <button class="toolbar-btn" id="photo-flip-h" data-i18n-title="photo.flipH" title="Flip Horizontal">↔</button>
         <button class="toolbar-btn" id="photo-flip-v" data-i18n-title="photo.flipV" title="Flip Vertical">↕</button>
         <div class="toolbar-divider"></div>
-        <div class="toolbar-divider"></div>
         <button class="toolbar-btn" id="photo-crop" data-i18n-title="photo.crop" title="Crop">✂ Crop</button>
         <button class="toolbar-btn" id="photo-resize" data-i18n-title="photo.resize" title="Resize">⤢ Resize</button>
         <button class="toolbar-btn" id="photo-text" data-i18n-title="photo.textOverlay" title="Text Overlay">T Text</button>
@@ -1185,7 +1184,7 @@
                 </div>
                 <div class="photo-layer-blend-row">
                   <label class="photo-slider-label">Blend</label>
-                  <select id="photo-layer-blend-mode" style="flex:1;padding:3px 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-color);color:var(--text-color);font-size:11px">
+                  <select id="photo-layer-blend-mode" style="flex:1;padding:3px 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:11px">
                     <option value="normal">Normal</option>
                     <option value="multiply">Multiply</option>
                     <option value="screen">Screen</option>
@@ -1786,6 +1785,16 @@
               <div class="calc-adv-result" id="calc-date-weekday-result"></div>
             </div>
             <div class="calc-date-panel" id="calc-date-business">
+              <div class="calc-finance-form">
+                <label>Start Date:<input type="date" id="calc-date-biz-start" /></label>
+                <label>End Date:<input type="date" id="calc-date-biz-end" /></label>
+              </div>
+              <button class="calc-adv-btn calc-adv-primary" id="calc-date-biz-btn">Calculate Business Days</button>
+              <div class="calc-adv-result" id="calc-date-biz-result"></div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Panel: 3D Surface Plot -->
       <div class="calc-panel" id="calc-panel-surface3d">
@@ -1961,16 +1970,6 @@
                 <div class="calc-adv-result-label">Result</div>
                 <div id="calc-nt-mod-content" style="font-family:monospace;font-size:16px;line-height:1.8;"></div>
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
-              <div class="calc-finance-form">
-                <label>Start Date:<input type="date" id="calc-date-biz-start" /></label>
-                <label>End Date:<input type="date" id="calc-date-biz-end" /></label>
-              </div>
-              <button class="calc-adv-btn calc-adv-primary" id="calc-date-biz-btn">Calculate Business Days</button>
-              <div class="calc-adv-result" id="calc-date-biz-result"></div>
             </div>
           </div>
         </div>
