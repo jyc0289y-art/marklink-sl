@@ -16,9 +16,8 @@ export default defineConfig({
         manualChunks(id) {
           // === Vendor splitting: separate heavy libs for better caching ===
 
-          // Mermaid ecosystem — split core from diagram plugins + cytoscape
-          if (id.includes('node_modules/cytoscape')) return 'vendor-cytoscape';
-          if (id.includes('node_modules/mermaid')) return 'vendor-mermaid';
+          // Mermaid ecosystem — cytoscape is a mermaid-only dependency, merge into one chunk
+          if (id.includes('node_modules/cytoscape') || id.includes('node_modules/mermaid')) return 'vendor-mermaid';
 
           // KaTeX math rendering
           if (id.includes('node_modules/katex') || id.includes('node_modules/@mdit/plugin-katex')) return 'vendor-katex';

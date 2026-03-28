@@ -95,4 +95,7 @@
 | P9.45wc | Sheet Print/Page Layout & Rendering Quality | 2026-03-27 | 없음 | 진행중 |
 | P9.46wc | Doc Editor Table Features Audit & Enhancement | 2026-03-27 | 없음 | 진행중 |
 | P9.47wc | Markdown Export & Advanced Features Audit | 2026-03-27 | 없음 | 진행중 |
-| P11.46wc | (작업 미정) | 2026-03-27 | P11.44wc | 진행중 |
+| P11.46wc | 바이너리 HWP/DOC/PPT/XLS 파일 열기 지원 | 2026-03-28 | P11.44wc | 종료 |
+| P11.47wc | 레거시 포맷 호환성 심화 + 전체 임포트 감사 | 2026-03-28 | P11.46wc | 종료 |
+| P11.48wc | 자율개발병렬모드 3차 메가세션 (5라운드, 2026테스트) | 2026-03-28 | P11.47wc | 종료 |
+| P11.49wc | Bundle Lazy-Load Optimization (Mermaid/CM-Langs) | 2026-03-28 | P11.48wc | 진행중 |

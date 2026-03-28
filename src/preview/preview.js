@@ -1,6 +1,6 @@
 // OfficeLink SL — Preview Pane Controller
 import { render } from './renderer.js';
-import { escapeHtml } from '../utils/sanitize.js';
+import { escapeHtml, sanitizeHtmlStrict } from '../utils/sanitize.js';
 import { t as i18nT } from '../ui/i18n.js';
 
 let previewElement = null;
@@ -65,7 +65,7 @@ export function updatePreview(markdownText) {
   updateTimer = setTimeout(() => {
     if (!previewElement) return;
     const html = render(markdownText);
-    previewElement.innerHTML = html;
+    previewElement.innerHTML = sanitizeHtmlStrict(html);
 
     // Post-render enhancements
     postRenderEnhance();
@@ -79,7 +79,7 @@ export function updatePreview(markdownText) {
 export function updatePreviewImmediate(markdownText) {
   if (!previewElement) return;
   const html = render(markdownText);
-  previewElement.innerHTML = html;
+  previewElement.innerHTML = sanitizeHtmlStrict(html);
   postRenderEnhance();
   renderMermaidBlocks();
 }
@@ -671,7 +671,7 @@ export function startMarkdownPresentation() {
  */
 export function splitIntoSlides(html) {
   const container = document.createElement('div');
-  container.innerHTML = html;
+  container.innerHTML = sanitizeHtmlStrict(html);
 
   const children = Array.from(container.childNodes);
   const slides = [];

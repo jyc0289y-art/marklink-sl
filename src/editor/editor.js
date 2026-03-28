@@ -2,12 +2,13 @@
 import { EditorView, basicSetup } from 'codemirror';
 import { EditorState, Compartment } from '@codemirror/state';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
-import { languages } from '@codemirror/language-data';
 import { lightTheme, darkTheme } from './theme.js';
 import { getExtensions } from './extensions.js';
 
 // Theme compartment for dynamic switching
 const themeCompartment = new Compartment();
+// Language compartment for lazy-loading code fence language support
+const langCompartment = new Compartment();
 
 let editorView = null;
 
@@ -22,14 +23,12 @@ let onChangeCallback = null;
  * @returns {EditorView}
  */
 export function createEditor(container, initialContent = '', isDark = false) {
+  // Start with markdown support but no code fence languages (loads ~538 kB less)
   const state = EditorState.create({
     doc: initialContent,
     extensions: [
       basicSetup,
-      markdown({
-        base: markdownLanguage,
-        codeLanguages: languages,
-      }),
+      langCompartment.of(markdown({ base: markdownLanguage })),
       themeCompartment.of(isDark ? darkTheme : lightTheme),
       ...getExtensions(),
       EditorView.updateListener.of((update) => {
@@ -99,6 +98,19 @@ export function createEditor(container, initialContent = '', isDark = false) {
         return;
       }
     }
+  });
+
+  // Lazy-load code fence language support (~538 kB) after editor is interactive
+  import('@codemirror/language-data').then(({ languages }) => {
+    if (editorView) {
+      editorView.dispatch({
+        effects: langCompartment.reconfigure(
+          markdown({ base: markdownLanguage, codeLanguages: languages })
+        ),
+      });
+    }
+  }).catch(() => {
+    // Language data failed to load — editor works fine without code fence highlighting
   });
 
   return editorView;

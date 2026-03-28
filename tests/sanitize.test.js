@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import {
   escapeHtml,
@@ -8,6 +9,8 @@ import {
   sanitizeTemplateContent,
   sanitizeUrl,
   sanitizeImportedHtml,
+  sanitizeHtml,
+  sanitizeHtmlStrict,
   isFormulaExprSafe,
 } from '../src/utils/sanitize.js';
 
@@ -547,5 +550,229 @@ describe('isFormulaExprSafe', () => {
 
   it('allows ternary operator', () => {
     expect(isFormulaExprSafe('1 > 0 ? 1 : 0')).toBe(true);
+  });
+});
+
+// ─── 13. sanitizeHtml — DOMPurify-based HTML sanitization ───
+
+describe('sanitizeHtml (DOMPurify)', () => {
+  it('removes <script> tags and their content', () => {
+    const result = sanitizeHtml('<p>Hello</p><script>alert("xss")</script><p>World</p>');
+    expect(result).not.toContain('<script');
+    expect(result).not.toContain('alert');
+    expect(result).toContain('<p>Hello</p>');
+    expect(result).toContain('<p>World</p>');
+  });
+
+  it('removes event handlers: onclick, onerror, onload', () => {
+    const result = sanitizeHtml('<div onclick="alert(1)">test</div>');
+    expect(result).not.toMatch(/onclick/i);
+    const result2 = sanitizeHtml('<img src="x" onerror="alert(1)">');
+    expect(result2).not.toMatch(/onerror/i);
+    const result3 = sanitizeHtml('<body onload="alert(1)">');
+    expect(result3).not.toMatch(/onload/i);
+  });
+
+  it('removes javascript: protocol in href', () => {
+    const result = sanitizeHtml('<a href="javascript:alert(1)">click</a>');
+    expect(result).not.toMatch(/javascript\s*:/i);
+  });
+
+  it('removes iframe tags', () => {
+    const result = sanitizeHtml('<iframe src="evil.html"></iframe>');
+    expect(result).not.toMatch(/<iframe/i);
+  });
+
+  it('removes object and embed tags', () => {
+    const result = sanitizeHtml('<object data="x"></object><embed src="y">');
+    expect(result).not.toMatch(/<object/i);
+    expect(result).not.toMatch(/<embed/i);
+  });
+
+  it('preserves safe formatting elements', () => {
+    const input = '<p>Hello <strong>bold</strong> <em>italic</em></p><ul><li>item</li></ul>';
+    const result = sanitizeHtml(input);
+    expect(result).toContain('<p>');
+    expect(result).toContain('<strong>');
+    expect(result).toContain('<em>');
+    expect(result).toContain('<li>');
+  });
+
+  it('preserves table elements', () => {
+    const input = '<table><thead><tr><th>Header</th></tr></thead><tbody><tr><td>Cell</td></tr></tbody></table>';
+    const result = sanitizeHtml(input);
+    expect(result).toContain('<table>');
+    expect(result).toContain('<th>');
+    expect(result).toContain('<td>');
+  });
+
+  it('preserves images with safe src', () => {
+    const result = sanitizeHtml('<img src="https://example.com/img.png" alt="photo">');
+    expect(result).toContain('<img');
+    expect(result).toContain('src="https://example.com/img.png"');
+    expect(result).toContain('alt="photo"');
+  });
+
+  it('preserves links with safe href', () => {
+    const result = sanitizeHtml('<a href="https://example.com" target="_blank">Link</a>');
+    expect(result).toContain('<a');
+    expect(result).toContain('href="https://example.com"');
+  });
+
+  it('preserves style attributes for editor formatting', () => {
+    const result = sanitizeHtml('<div style="color:red;font-size:16px">Styled</div>');
+    expect(result).toContain('style=');
+    expect(result).toContain('Styled');
+  });
+
+  it('preserves data-* attributes', () => {
+    const result = sanitizeHtml('<div data-id="123" data-type="note">Content</div>');
+    expect(result).toContain('data-id="123"');
+  });
+
+  it('returns empty string for non-string input', () => {
+    expect(sanitizeHtml(null)).toBe('');
+    expect(sanitizeHtml(undefined)).toBe('');
+    expect(sanitizeHtml(42)).toBe('');
+  });
+
+  it('handles empty string', () => {
+    expect(sanitizeHtml('')).toBe('');
+  });
+
+  it('removes SVG with embedded scripts', () => {
+    const result = sanitizeHtml('<svg><script>alert(1)</script></svg>');
+    expect(result).not.toContain('<script');
+    expect(result).not.toContain('alert');
+  });
+
+  it('removes meta tags', () => {
+    const result = sanitizeHtml('<meta http-equiv="refresh" content="0;url=evil">');
+    expect(result).not.toMatch(/<meta/i);
+  });
+
+  it('removes base tags', () => {
+    const result = sanitizeHtml('<base href="https://evil.com">');
+    expect(result).not.toMatch(/<base/i);
+  });
+});
+
+// ─── 14. sanitizeHtmlStrict — Strict mode (no form elements, no style tags) ───
+
+describe('sanitizeHtmlStrict', () => {
+  it('removes <script> tags', () => {
+    const result = sanitizeHtmlStrict('<script>alert(1)</script><p>Safe</p>');
+    expect(result).not.toContain('<script');
+    expect(result).toContain('<p>Safe</p>');
+  });
+
+  it('removes form elements', () => {
+    const result = sanitizeHtmlStrict('<form action="evil"><input type="text"><button>Submit</button></form>');
+    expect(result).not.toMatch(/<form/i);
+    expect(result).not.toMatch(/<input/i);
+    expect(result).not.toMatch(/<button/i);
+  });
+
+  it('removes style tags', () => {
+    const result = sanitizeHtmlStrict('<style>body{display:none}</style><p>Content</p>');
+    expect(result).not.toMatch(/<style/i);
+    expect(result).toContain('<p>Content</p>');
+  });
+
+  it('preserves formatting elements', () => {
+    const input = '<h1>Title</h1><p><strong>Bold</strong> and <em>italic</em></p><code>code</code>';
+    const result = sanitizeHtmlStrict(input);
+    expect(result).toContain('<h1>');
+    expect(result).toContain('<strong>');
+    expect(result).toContain('<em>');
+    expect(result).toContain('<code>');
+  });
+
+  it('preserves code blocks', () => {
+    const input = '<pre><code class="language-js">const x = 1;</code></pre>';
+    const result = sanitizeHtmlStrict(input);
+    expect(result).toContain('<pre>');
+    expect(result).toContain('<code');
+  });
+
+  it('removes event handlers', () => {
+    const result = sanitizeHtmlStrict('<div onmouseover="alert(1)">hover</div>');
+    expect(result).not.toMatch(/onmouseover/i);
+  });
+
+  it('returns empty string for non-string input', () => {
+    expect(sanitizeHtmlStrict(null)).toBe('');
+    expect(sanitizeHtmlStrict(undefined)).toBe('');
+  });
+});
+
+// ─── 15. sanitizeImportedHtml — now backed by DOMPurify ───
+
+describe('sanitizeImportedHtml — DOMPurify integration', () => {
+  it('removes script tags via DOMPurify', () => {
+    const result = sanitizeImportedHtml('<p>Content</p><script>alert(1)</script>');
+    expect(result).not.toContain('<script');
+    expect(result).toContain('<p>Content</p>');
+  });
+
+  it('removes event handlers via DOMPurify', () => {
+    const result = sanitizeImportedHtml('<img src="x" onerror="alert(1)">');
+    expect(result).not.toMatch(/onerror/i);
+  });
+
+  it('preserves tables from imported documents', () => {
+    const html = '<table><tr><td style="border:1px solid #ccc">Data</td></tr></table>';
+    const result = sanitizeImportedHtml(html);
+    expect(result).toContain('<table>');
+    expect(result).toContain('<td');
+    expect(result).toContain('Data');
+  });
+
+  it('preserves headings and paragraphs from imported documents', () => {
+    const html = '<h1>Title</h1><p>Paragraph text with <strong>bold</strong></p>';
+    const result = sanitizeImportedHtml(html);
+    expect(result).toContain('<h1>');
+    expect(result).toContain('<strong>');
+  });
+
+  it('strips null bytes before DOMPurify processing', () => {
+    const html = '<div>hel\x00lo</div>';
+    const result = sanitizeImportedHtml(html);
+    expect(result).not.toContain('\x00');
+    expect(result).toContain('hello');
+  });
+
+  it('handles null byte split script tags', () => {
+    const html = '<scr\x00ipt>alert(1)</scr\x00ipt>';
+    const result = sanitizeImportedHtml(html);
+    expect(result).not.toMatch(/alert/);
+  });
+});
+
+// ─── 16. sanitizeAiResponse — now backed by DOMPurify strict ───
+
+describe('sanitizeAiResponse — DOMPurify strict integration', () => {
+  it('removes scripts via DOMPurify', () => {
+    const result = sanitizeAiResponse('<p>Hello</p><script>alert(1)</script>');
+    expect(result).not.toContain('<script');
+    expect(result).toContain('<p>Hello</p>');
+  });
+
+  it('removes form elements', () => {
+    const result = sanitizeAiResponse('<form action="evil"><input type="text"></form>');
+    expect(result).not.toMatch(/<form/i);
+    expect(result).not.toMatch(/<input/i);
+  });
+
+  it('preserves formatting', () => {
+    const result = sanitizeAiResponse('<p><strong>Bold</strong> <em>italic</em></p>');
+    expect(result).toContain('<strong>');
+    expect(result).toContain('<em>');
+  });
+
+  it('removes iframe tags', () => {
+    const result = sanitizeAiResponse('<iframe src="evil"></iframe><p>safe</p>');
+    expect(result).not.toMatch(/<iframe/i);
+    expect(result).toContain('<p>safe</p>');
   });
 });

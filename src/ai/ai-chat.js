@@ -9,7 +9,7 @@ import {
   measureLatency, getServerVersion, getModelInfo, streamChat
 } from './ollama-client.js';
 import { t } from '../ui/i18n.js';
-import { escapeHtml, sanitizeAiResponse, sanitizeUrl } from '../utils/sanitize.js';
+import { escapeHtml, sanitizeAiResponse, sanitizeUrl, sanitizeHtmlStrict } from '../utils/sanitize.js';
 import { downloadBlob } from '../utils/download.js';
 
 let panelEl, chatListEl, chatInputEl, modelSelectEl, statusDotEl;
@@ -928,7 +928,7 @@ const startEditMessage = (msgEl, historyIdx) => {
 function addAiMessage(text) {
   const div = document.createElement('div');
   div.className = 'ai-msg ai-msg-ai';
-  div.innerHTML = renderMarkdown(text);
+  div.innerHTML = sanitizeHtmlStrict(renderMarkdown(text));
   attachCodeCopyListeners(div);
   chatListEl?.appendChild(div);
   scrollToBottom();
@@ -1124,7 +1124,7 @@ async function sendMessage() {
 
     const flushRender = () => {
       if (pendingRenderFull) {
-        streamDiv.innerHTML = renderMarkdown(pendingRenderFull);
+        streamDiv.innerHTML = sanitizeHtmlStrict(renderMarkdown(pendingRenderFull));
         attachCodeCopyListeners(streamDiv);
         streamDiv.classList.remove('streaming');
         scrollToBottom();
@@ -1147,7 +1147,7 @@ async function sendMessage() {
     // Final render to ensure last tokens are displayed
     if (renderRAF) { cancelAnimationFrame(renderRAF); renderRAF = null; }
     if (result.content) {
-      streamDiv.innerHTML = renderMarkdown(result.content);
+      streamDiv.innerHTML = sanitizeHtmlStrict(renderMarkdown(result.content));
       attachCodeCopyListeners(streamDiv);
     }
 
@@ -1158,7 +1158,7 @@ async function sendMessage() {
       // User stopped generation
       if (result.content) {
         // Final render of partial content (onToken may not have fired for all tokens)
-        streamDiv.innerHTML = renderMarkdown(result.content);
+        streamDiv.innerHTML = sanitizeHtmlStrict(renderMarkdown(result.content));
         attachCodeCopyListeners(streamDiv);
         history.push({ role: 'assistant', content: result.content });
         const stoppedEl = document.createElement('div');

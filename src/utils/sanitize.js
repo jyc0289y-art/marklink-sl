@@ -5,6 +5,123 @@
  * @module utils/sanitize
  */
 
+import DOMPurify from 'dompurify';
+
+// ─── Dangerous CSS patterns (IE/legacy XSS vectors) ─────────────
+const DANGEROUS_CSS_RE = /expression\s*\(|javascript\s*:|(?:^|;)\s*-moz-binding\s*:|(?:^|;)\s*behavior\s*:/i;
+
+/**
+ * Initialize DOMPurify hooks (lazy — only when DOMPurify.addHook is available).
+ * In non-DOM environments (Node.js without jsdom), DOMPurify exports a factory
+ * function rather than an initialized instance, so addHook is not available.
+ */
+let _hooksInstalled = false;
+function ensureHooks() {
+  if (_hooksInstalled || typeof DOMPurify.addHook !== 'function') return;
+  _hooksInstalled = true;
+
+  // Hook: sanitize style attribute values — remove CSS expressions, -moz-binding, behavior:
+  DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+    if (data.attrName === 'style' && data.attrValue) {
+      if (DANGEROUS_CSS_RE.test(data.attrValue)) {
+        data.attrValue = '';
+      }
+    }
+  });
+
+  // Hook: enforce data: URI whitelist for src/href attributes.
+  // Only data:image/ (non-SVG) is allowed.
+  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+    ['src', 'href'].forEach((attr) => {
+      if (node.hasAttribute(attr)) {
+        const val = node.getAttribute(attr) || '';
+        if (/^\s*data\s*:/i.test(val) && !/^\s*data:image\/(?!svg\b)[a-z]+/i.test(val)) {
+          node.removeAttribute(attr);
+        }
+      }
+    });
+  });
+}
+
+/**
+ * DOMPurify configuration for rich HTML content (editors, imports, previews).
+ * Allows formatting elements needed by document/slide/markdown editors
+ * while blocking scripts, event handlers, and dangerous elements.
+ */
+const DOMPURIFY_CONFIG = {
+  ALLOWED_TAGS: [
+    // Block-level
+    'p', 'div', 'span', 'br', 'hr',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'blockquote', 'pre', 'code',
+    // Lists
+    'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+    // Tables
+    'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'colgroup', 'col',
+    // Inline formatting
+    'strong', 'b', 'em', 'i', 'u', 's', 'del', 'ins', 'sub', 'sup', 'mark',
+    'small', 'big', 'abbr', 'cite', 'dfn', 'kbd', 'samp', 'var', 'q',
+    // Media
+    'img', 'figure', 'figcaption', 'picture', 'source', 'video', 'audio',
+    // Links
+    'a',
+    // Sections
+    'section', 'article', 'aside', 'header', 'footer', 'nav', 'main',
+    'details', 'summary',
+    // Ruby (for CJK)
+    'ruby', 'rt', 'rp',
+    // Others
+    'label', 'input', 'select', 'option', 'textarea', 'button',
+    'style', 'wbr',
+  ],
+  ALLOWED_ATTR: [
+    'style', 'class', 'id', 'title', 'alt', 'src', 'href', 'target', 'rel',
+    'width', 'height', 'colspan', 'rowspan', 'scope', 'headers',
+    'align', 'valign', 'border', 'cellpadding', 'cellspacing',
+    'data-*', 'role', 'aria-*', 'tabindex', 'lang', 'dir',
+    'type', 'value', 'name', 'placeholder', 'checked', 'disabled', 'readonly',
+    'open', 'start', 'reversed',
+    'controls', 'autoplay', 'loop', 'muted', 'preload', 'poster',
+    'loading', 'decoding', 'srcset', 'sizes',
+  ],
+  ALLOW_DATA_ATTR: true,
+  ALLOW_UNKNOWN_PROTOCOLS: false,
+  // Allow http(s), mailto, tel, hash, data:image (non-SVG), and relative URIs
+  // DOMPurify uses this as a whitelist — only matching URIs are kept
+  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|[#/.]|data:image\/(?!svg\b)[a-z]+[;,])/i,
+};
+
+/**
+ * Sanitize rich HTML content using DOMPurify.
+ * Use this for any user-provided or imported HTML that will be inserted into the DOM.
+ * Allows formatting elements needed by editors while blocking XSS vectors.
+ * @param {string} html - Raw HTML string
+ * @returns {string} Sanitized HTML safe for innerHTML insertion
+ */
+export function sanitizeHtml(html) {
+  if (typeof html !== 'string') return '';
+  ensureHooks();
+  return DOMPurify.sanitize(html, DOMPURIFY_CONFIG);
+}
+
+/**
+ * Sanitize HTML with a stricter config (no style tags, no form elements).
+ * Use this for markdown preview output and AI-generated content.
+ * @param {string} html - Raw HTML string
+ * @returns {string} Sanitized HTML
+ */
+export function sanitizeHtmlStrict(html) {
+  if (typeof html !== 'string') return '';
+  ensureHooks();
+  return DOMPurify.sanitize(html, {
+    ...DOMPURIFY_CONFIG,
+    ALLOWED_TAGS: DOMPURIFY_CONFIG.ALLOWED_TAGS.filter(
+      (tag) => !['style', 'input', 'select', 'option', 'textarea', 'button', 'label'].includes(tag)
+    ),
+    FORBID_TAGS: ['style', 'form', 'input', 'select', 'textarea', 'button'],
+  });
+}
+
 /**
  * Escape HTML special characters to prevent XSS.
  * Converts &, <, >, ", ' to their HTML entity equivalents.
@@ -84,28 +201,15 @@ export function sanitizeStorageValue(value) {
 
 /**
  * Sanitize AI/LLM response text that will be inserted into the DOM.
- * Allows basic formatting but strips dangerous HTML.
+ * Uses DOMPurify strict mode (no form elements, no style tags).
  * @param {string} html - Raw HTML from AI response
  * @returns {string} Sanitized HTML
  */
 export function sanitizeAiResponse(html) {
   if (typeof html !== 'string') return '';
-  // Strip null bytes and control chars that can bypass regex filters
+  // Pre-clean: strip null bytes and control chars
   let safe = html.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-  // Remove script tags and their content
-  safe = safe.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  // Remove event handlers (onclick, onerror, onload, etc.)
-  safe = safe.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, '');
-  // Remove javascript: protocol in href/src/action attributes
-  safe = safe.replace(/(href|src|action)\s*=\s*["']?\s*javascript\s*:/gi, '$1="');
-  // Remove data: URIs for text/html (potential XSS vector)
-  safe = safe.replace(/(href|src)\s*=\s*["']?\s*data\s*:\s*text\/html/gi, '$1="');
-  // Remove iframe, object, embed, form tags
-  safe = safe.replace(/<\s*\/?\s*(iframe|object|embed|form|base|meta|link)\b[^>]*>/gi, '');
-  // Remove style attributes containing expression() or url() with javascript
-  safe = safe.replace(/style\s*=\s*"[^"]*expression\s*\([^"]*"/gi, '');
-  safe = safe.replace(/style\s*=\s*"[^"]*javascript\s*:[^"]*"/gi, '');
-  return safe;
+  return sanitizeHtmlStrict(safe);
 }
 
 /**
@@ -180,39 +284,17 @@ export function sanitizeUrl(url) {
 
 /**
  * Sanitize imported document HTML (from DOCX, HWPX, PPTX etc.)
- * Strips all executable content while preserving document formatting.
- * More aggressive than sanitizeAiResponse since imported docs should never
- * contain scripts or event handlers.
+ * Uses DOMPurify as the primary sanitization layer, with regex pre-cleaning
+ * for null bytes and control chars that could bypass DOM parsing.
  * @param {string} html - Raw HTML from document import
  * @returns {string} Sanitized HTML safe for innerHTML insertion
  */
 export function sanitizeImportedHtml(html) {
   if (typeof html !== 'string') return '';
-  let safe = html;
-  // Strip null bytes and control chars that can bypass subsequent regex filters
-  safe = safe.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-  // Remove script tags and their content
-  safe = safe.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  // Remove noscript
-  safe = safe.replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '');
-  // Remove SVG elements and ALL their content (can contain script/event handlers inside)
-  safe = safe.replace(/<svg\b[\s\S]*?<\/svg>/gi, '');
-  safe = safe.replace(/<svg\b[^>]*\/>/gi, '');
-  // Remove MathML elements and ALL their content (can contain XSS vectors)
-  safe = safe.replace(/<math\b[\s\S]*?<\/math>/gi, '');
-  safe = safe.replace(/<math\b[^>]*\/>/gi, '');
-  // Remove all event handler attributes (on*) — handles newlines between attr name and =
-  safe = safe.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, '');
-  // Remove javascript:/vbscript:/data: in href/src/action/background/formaction
-  safe = safe.replace(/(href|src|action|background|formaction|dynsrc|lowsrc)\s*=\s*["']?\s*(javascript|vbscript)\s*:/gi, '$1="');
-  // Block data: URIs in href/src — except data:image/ (non-SVG) for embedded images
-  safe = safe.replace(/(href|src)\s*=\s*["']?\s*data\s*:\s*(?!image\/(?!svg))/gi, '$1="');
-  // Remove dangerous tags entirely (tags only, content preserved for non-container tags)
-  safe = safe.replace(/<\s*\/?\s*(script|iframe|object|embed|form|base|meta|link|applet|body|html)\b[^>]*>/gi, '');
-  // Remove style attributes containing expression(), url(javascript:), -moz-binding, behavior
-  safe = safe.replace(/style\s*=\s*"[^"]*(?:expression|url\s*\(\s*javascript|-moz-binding|behavior\s*:)[^"]*"/gi, '');
-  safe = safe.replace(/style\s*=\s*'[^']*(?:expression|url\s*\(\s*javascript|-moz-binding|behavior\s*:)[^']*'/gi, '');
-  return safe;
+  // Pre-clean: strip null bytes and control chars that can bypass DOM parsers
+  let safe = html.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  // Use DOMPurify for robust HTML sanitization
+  return sanitizeHtml(safe);
 }
 
 /**

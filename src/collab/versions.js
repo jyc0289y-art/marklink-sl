@@ -2,6 +2,7 @@
 // Named snapshots stored in IndexedDB with side-by-side diff comparison.
 
 import { toastSuccess, toastInfo, toastError } from '../ui/toast.js';
+import { sanitizeHtml } from '../utils/sanitize.js';
 
 // ─── Constants ───────────────────────────────────────────────
 const DB_NAME = 'officelink-versions';
@@ -140,7 +141,7 @@ const computeDiff = (textA, textB) => {
 // For HTML content, extract text for diffing
 const htmlToText = (html) => {
   const div = document.createElement('div');
-  div.innerHTML = html;
+  div.innerHTML = sanitizeHtml(html);
   return div.innerText || div.textContent || '';
 };
 
@@ -591,7 +592,7 @@ const showVersionListDialog = async () => {
     } else {
       previewEl.style.whiteSpace = '';
       previewEl.style.fontFamily = '';
-      previewEl.innerHTML = snap.content;
+      previewEl.innerHTML = sanitizeHtml(snap.content);
     }
   };
 
@@ -676,7 +677,7 @@ const showVersionListDialog = async () => {
     const tab = getActiveTab();
     if (tab === 'document') {
       const docEditor = document.getElementById('doc-editor');
-      if (docEditor) docEditor.innerHTML = snap.content;
+      if (docEditor) docEditor.innerHTML = sanitizeHtml(snap.content);
     } else if (tab === 'markdown') {
       // Dispatch to CM6 editor
       const editorContainer = document.getElementById('editor-container');
