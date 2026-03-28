@@ -102,3 +102,6 @@
 | P11.50wc | Editor Registry Refactor (app.js if/else cleanup) | 2026-03-28 | P11.49wc | 진행중 |
 | P11.51wc | Photo Editor Module Split (4183→5 modules) | 2026-03-28 | P11.50wc | 진행중 |
 | P11.52wc | Slide Editor Module Split (5141→6 modules) | 2026-03-28 | P11.51wc | 진행중 |
+| P11.53wc | Test Coverage Expansion (6 files, 324 tests) | 2026-03-28 | P11.52wc | 진행중 |
+| P11.54wc | PDF Viewer Module Split (3373→7 modules) | 2026-03-28 | P11.52wc | 진행중 |
+| P11.55wc | Calculator Module Split (3470→7 modules) | 2026-03-28 | P11.52wc | 종료 |
