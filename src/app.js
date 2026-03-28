@@ -86,7 +86,10 @@ import { showSettings, initSettings } from './ui/settings.js';
 import { initPwaInstallEnhanced } from './ui/pwa-install.js';
 import { initErrorBoundary, safeSetItem } from './ui/error-boundary.js';
 import { initTemplates } from './ui/templates.js';
-import { initPluginSystem, notifyFileSave } from './plugins/plugin-manager.js';
+// Plugin system — lazy-loaded (not needed at startup)
+let _pluginMod = null;
+const loadPluginSystem = () => _pluginMod || (_pluginMod = import('./plugins/plugin-manager.js'));
+const notifyFileSave = async (filename) => { const m = await loadPluginSystem(); m.notifyFileSave(filename); };
 import { initPerfDashboard } from './ui/perf-dashboard.js';
 import { initShortcutCustomizer } from './ui/shortcut-customizer.js';
 import { initEnhancedStatusBar } from './ui/status-bar-enhanced.js';
@@ -921,8 +924,26 @@ export async function initApp() {
     settingsBtn.addEventListener('click', () => showSettings());
   }
 
-  // 22d. Plugin System (word counter, pomodoro, clipboard history)
-  initPluginSystem();
+  // 22d. Plugin System (word counter, pomodoro, clipboard history) — deferred lazy load
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(async () => {
+      try {
+        const m = await loadPluginSystem();
+        m.initPluginSystem();
+      } catch (e) {
+        console.warn('[lazy-init] Plugin system init skipped:', e.message);
+      }
+    });
+  } else {
+    setTimeout(async () => {
+      try {
+        const m = await loadPluginSystem();
+        m.initPluginSystem();
+      } catch (e) {
+        console.warn('[lazy-init] Plugin system init skipped:', e.message);
+      }
+    }, 250);
+  }
 
   // 22e. Performance Dashboard (Ctrl+Shift+P)
   initPerfDashboard();

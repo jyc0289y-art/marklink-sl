@@ -1,5 +1,5 @@
 // OfficeLink SL — markdown-it Plugin Registration (async plugins)
-// Synchronous plugins (task-lists, footnote, emoji) are registered in renderer.js.
+// Synchronous plugins (task-lists, footnote, deflist, abbr, emoji) are registered in renderer.js.
 // Only async/heavy plugins (KaTeX) are registered here.
 
 /**
@@ -25,7 +25,7 @@ export async function registerKaTeX(md) {
 
 /**
  * Register all async plugins.
- * Task lists, footnotes, and emoji are already registered synchronously in renderer.js.
+ * Task lists, footnotes, definition lists, abbreviations, and emoji are already registered synchronously in renderer.js.
  */
 export async function registerAllPlugins(md) {
   await registerKaTeX(md);

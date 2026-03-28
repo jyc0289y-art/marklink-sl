@@ -113,6 +113,17 @@ const _buildSheetHTML = () => {
   // Remove inputs
   table.querySelectorAll('input').forEach((el) => el.remove());
 
+  // Move frozen rows into <thead> for repeat-on-every-page printing
+  const frozenRows = table.querySelectorAll('tr.sheet-frozen-row');
+  if (frozenRows.length > 0) {
+    let thead = table.querySelector('thead');
+    if (!thead) {
+      thead = document.createElement('thead');
+      table.insertBefore(thead, table.firstChild);
+    }
+    frozenRows.forEach((row) => thead.appendChild(row));
+  }
+
   return `<div class="print-sheet-wrap">${table.outerHTML}</div>`;
 };
 
@@ -306,6 +317,9 @@ const _executePrint = (content, tab, title) => {
     table { width: 100%; border-collapse: collapse; font-size: 11px; }
     th, td { border: 1px solid #bbb; padding: 4px 6px; text-align: left; }
     th { background: #f0f0f0; font-weight: 600; }
+    thead { display: table-header-group; }
+    thead tr.sheet-frozen-row td { font-weight: 600; background: #f7f8fa; border-bottom: 2px solid #999; }
+    @media print { thead { display: table-header-group; } tr { page-break-inside: avoid; } }
   ` : '';
 
   printWindow.document.write(`<!DOCTYPE html>

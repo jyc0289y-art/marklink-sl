@@ -3516,6 +3516,122 @@ function printSheet() {
 }
 
 /**
+ * Build the print CSS string for the sheet print window.
+ * Pure function — no DOM access, fully testable.
+ * @param {object} opts - Print options
+ * @returns {string} CSS string
+ */
+function buildPrintCSS(opts) {
+  const { pageW, pageH, marginMM, showGridlines, showHeaders, repeatHeader, scaleCSS } = opts;
+  const gridBorder = showGridlines ? '1px solid #ccc' : '1px solid transparent';
+
+  return `
+    @page { size: ${pageW}mm ${pageH}mm; margin: ${marginMM}mm; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: ${marginMM}mm; color: #000; }
+    table { border-collapse: collapse; ${scaleCSS.includes('width:100%') ? 'width:100%;' : ''} }
+    th, td { border: ${gridBorder}; padding: 4px 8px; font-size: 12px; vertical-align: middle; }
+    th { background: ${showHeaders ? '#f0f0f2' : 'transparent'}; font-weight: 600; font-size: 11px; color: #555; text-align: center; }
+    ${!showHeaders ? 'th { display: none; } td:first-child { border-left: ' + gridBorder + '; }' : ''}
+    thead { display: table-header-group; }
+    thead .print-header-row td { background: #f7f8fa; border-bottom: 2px solid #999; }
+    .page-header { text-align: center; font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #333; }
+    .page-footer { position: fixed; bottom: ${marginMM}mm; left: ${marginMM}mm; right: ${marginMM}mm; text-align: center; font-size: 10px; color: #888; }
+    ${scaleCSS}
+    @media print {
+      body { margin: 0; }
+      .no-print { display: none !important; }
+      thead { display: table-header-group; }
+      tfoot { display: table-footer-group; }
+      tr { page-break-inside: avoid; }
+    }
+    @media screen {
+      body { max-width: ${pageW}mm; margin: 20px auto; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,.15); background: #fff; }
+      .print-toolbar { position: sticky; top: 0; background: #f5f5f7; padding: 10px 16px; margin: -20px -20px 20px; border-bottom: 1px solid #ddd; display: flex; gap: 8px; align-items: center; z-index: 10; }
+      .print-toolbar button { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+      .print-toolbar .btn-print { background: #3b82f6; color: #fff; }
+      .print-toolbar .btn-close { background: #e5e7eb; color: #333; }
+    }
+  `;
+}
+
+/**
+ * Build the <table> HTML for sheet print output.
+ * Pure function — accepts data, no direct DOM/global access, fully testable.
+ * @param {object} sheet - Sheet data with cells, freezeRows, etc.
+ * @param {object} opts - Print options: printR1, printR2, printC1, printC2, showHeaders, repeatHeader, showFormatting, hiddenRows, hiddenCols
+ * @param {function} getCellFn - (sheet, r, c) => cell
+ * @param {function} getDisplayFn - (sheet, r, c) => displayValue
+ * @param {function} getColWidthFn - (c) => px width
+ * @param {function} escapeFn - (str) => escaped HTML
+ * @param {function} colToLetterFn - (c) => "A", "B", etc.
+ * @param {function} printCellStyleFn - (cell) => inline CSS string
+ * @returns {string} HTML table string
+ */
+function buildPrintTableHTML(sheet, opts, getCellFn, getDisplayFn, getColWidthFn, escapeFn, colToLetterFn, printCellStyleFn) {
+  const { printR1, printR2, printC1, printC2, showHeaders, repeatHeader, showFormatting, hiddenRows, hiddenCols } = opts;
+
+  // Determine how many data rows go into <thead> for repeat-on-every-page
+  const frozenDataRows = repeatHeader ? (sheet.freezeRows > 0 ? sheet.freezeRows : 1) : 0;
+
+  let html = '<table>';
+
+  // --- <thead> ---
+  html += '<thead>';
+  if (showHeaders) {
+    html += '<tr>';
+    html += '<th></th>';
+    for (let c = printC1; c <= printC2; c++) {
+      if (hiddenCols.has(c)) continue;
+      const w = getColWidthFn(c);
+      html += `<th style="min-width:${w}px">${colToLetterFn(c)}</th>`;
+    }
+    html += '</tr>';
+  }
+
+  // Frozen data rows in thead (repeat on every printed page)
+  for (let r = printR1; r < printR1 + frozenDataRows && r <= printR2; r++) {
+    if (hiddenRows.has(r)) continue;
+    html += '<tr class="print-header-row">';
+    if (showHeaders) html += `<th>${r + 1}</th>`;
+    for (let c = printC1; c <= printC2; c++) {
+      if (hiddenCols.has(c)) continue;
+      const cell = getCellFn(sheet, r, c);
+      if (cell?.format?.merged) continue;
+      const val = getDisplayFn(sheet, r, c);
+      const style = showFormatting ? printCellStyleFn(cell) : (typeof cell?.value === 'number' ? 'text-align:right' : '');
+      const mergeSpan = cell?.format?.mergeSpan;
+      const spanAttrs = mergeSpan ? ` rowspan="${mergeSpan.rows}" colspan="${mergeSpan.cols}"` : '';
+      html += `<td style="font-weight:600;${style}"${spanAttrs}>${escapeFn(String(val))}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</thead><tbody>';
+
+  // Remaining data rows
+  const bodyStartRow = printR1 + frozenDataRows;
+  for (let r = bodyStartRow; r <= printR2; r++) {
+    if (hiddenRows.has(r)) continue;
+    html += '<tr>';
+    if (showHeaders) html += `<th>${r + 1}</th>`;
+    for (let c = printC1; c <= printC2; c++) {
+      if (hiddenCols.has(c)) continue;
+      const cell = getCellFn(sheet, r, c);
+      if (cell?.format?.merged) continue;
+      const val = getDisplayFn(sheet, r, c);
+      const style = showFormatting ? printCellStyleFn(cell) : (typeof cell?.value === 'number' ? 'text-align:right' : '');
+      const mergeSpan = cell?.format?.mergeSpan;
+      const spanAttrs = mergeSpan ? ` rowspan="${mergeSpan.rows}" colspan="${mergeSpan.cols}"` : '';
+      html += `<td style="${style}"${spanAttrs}>${escapeFn(String(val))}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+
+  return html;
+}
+
+/**
  * Build inline style string for a cell suitable for print output.
  * Mirrors cellStyle() but outputs only print-relevant CSS (no display:none for merged).
  */
@@ -3644,7 +3760,7 @@ function showPrintPreviewDialog() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
         <div>
           <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Header (top of page)</label>
-          <input type="text" id="pp-header" placeholder="e.g. Sheet Report" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:13px;box-sizing:border-box">
+          <input type="text" id="pp-header" value="${escapeHtml(getSheetName(activeSheetIdx))}" placeholder="e.g. Sheet Report" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);font-size:13px;box-sizing:border-box">
         </div>
         <div>
           <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Footer (bottom of page)</label>
@@ -3717,38 +3833,12 @@ function executePrint(sheet, opts) {
     if (pct !== 100) scaleCSS = `table { transform: scale(${pct / 100}); transform-origin: top left; }`;
   }
 
-  const gridBorder = showGridlines ? '1px solid #ccc' : '1px solid transparent';
-
   const win = window.open('', '_blank');
   if (!win) { alert('Popup blocked — please allow popups for print.'); return; }
 
-  let html = `<!DOCTYPE html><html><head><title>Print Sheet</title><style>
-    @page {
-      size: ${pageW}mm ${pageH}mm;
-      margin: ${marginMM}mm;
-    }
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: ${marginMM}mm; color: #000; }
-    table { border-collapse: collapse; ${scale === 'fit-width' || scale === 'fit-page' ? 'width:100%;' : ''} }
-    th, td { border: ${gridBorder}; padding: 4px 8px; font-size: 12px; vertical-align: middle; }
-    th { background: ${showHeaders ? '#f0f0f2' : 'transparent'}; font-weight: 600; font-size: 11px; color: #555; text-align: center; }
-    ${!showHeaders ? 'th { display: none; } td:first-child { border-left: ' + gridBorder + '; }' : ''}
-    thead { ${repeatHeader ? 'display: table-header-group;' : ''} }
-    .page-header { text-align: center; font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #333; }
-    .page-footer { position: fixed; bottom: ${marginMM}mm; left: ${marginMM}mm; right: ${marginMM}mm; text-align: center; font-size: 10px; color: #888; }
-    ${scaleCSS}
-    @media print {
-      body { margin: 0; }
-      .no-print { display: none !important; }
-    }
-    @media screen {
-      body { max-width: ${pageW}mm; margin: 20px auto; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,.15); background: #fff; }
-      .print-toolbar { position: sticky; top: 0; background: #f5f5f7; padding: 10px 16px; margin: -20px -20px 20px; border-bottom: 1px solid #ddd; display: flex; gap: 8px; align-items: center; z-index: 10; }
-      .print-toolbar button { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
-      .print-toolbar .btn-print { background: #3b82f6; color: #fff; }
-      .print-toolbar .btn-close { background: #e5e7eb; color: #333; }
-    }
-  </style></head><body>`;
+  const cssStr = buildPrintCSS({ pageW, pageH, marginMM, showGridlines, showHeaders, repeatHeader, scaleCSS });
+
+  let html = `<!DOCTYPE html><html><head><title>Print Sheet</title><style>${cssStr}</style></head><body>`;
 
   // Screen-only preview toolbar
   html += `<div class="print-toolbar no-print">
@@ -3761,36 +3851,11 @@ function executePrint(sheet, opts) {
     html += `<div class="page-header">${escapeHtml(headerText)}</div>`;
   }
 
-  html += '<table>';
-
-  // Table header
-  html += '<thead><tr>';
-  if (showHeaders) html += '<th></th>';
-  for (let c = printC1; c <= printC2; c++) {
-    if (hiddenCols.has(c)) continue;
-    const w = getColWidth(c);
-    html += `<th style="min-width:${w}px">${colToLetter(c)}</th>`;
-  }
-  html += '</tr></thead><tbody>';
-
-  // Data rows
-  for (let r = printR1; r <= printR2; r++) {
-    if (hiddenRows.has(r)) continue;
-    html += '<tr>';
-    if (showHeaders) html += `<th>${r + 1}</th>`;
-    for (let c = printC1; c <= printC2; c++) {
-      if (hiddenCols.has(c)) continue;
-      const cell = getCell(sheet, r, c);
-      if (cell?.format?.merged) continue;
-      const val = getDisplayValue(sheet, r, c);
-      const style = showFormatting ? printCellStyle(cell) : (typeof cell?.value === 'number' ? 'text-align:right' : '');
-      const mergeSpan = cell?.format?.mergeSpan;
-      const spanAttrs = mergeSpan ? ` rowspan="${mergeSpan.rows}" colspan="${mergeSpan.cols}"` : '';
-      html += `<td style="${style}"${spanAttrs}>${escapeHtml(String(val))}</td>`;
-    }
-    html += '</tr>';
-  }
-  html += '</tbody></table>';
+  // Build table using pure function
+  html += buildPrintTableHTML(sheet,
+    { printR1, printR2, printC1, printC2, showHeaders, repeatHeader, showFormatting, hiddenRows, hiddenCols },
+    getCell, getDisplayValue, getColWidth, escapeHtml, colToLetter, printCellStyle
+  );
 
   if (footerText) {
     html += `<div class="page-footer">${escapeHtml(footerText).replace(/\{page\}/g, '<span class="page-num"></span>')}</div>`;
@@ -8038,6 +8103,9 @@ export const _testOnly = {
   adjustFormulaReferences,
   _saveSheetState,
   _loadSheetState,
+  buildPrintTableHTML,
+  buildPrintCSS,
+  printCellStyle,
   getState: () => ({
     sheets, activeSheetIdx, cellNotes, cellHyperlinks, cellComments,
     hiddenRows, hiddenCols, rowGroups, condFormats, validations,

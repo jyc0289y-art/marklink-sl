@@ -2,6 +2,8 @@
 import MarkdownIt from 'markdown-it';
 import taskListPlugin from 'markdown-it-task-lists';
 import footnotePlugin from 'markdown-it-footnote';
+import deflistPlugin from 'markdown-it-deflist';
+import abbrPlugin from 'markdown-it-abbr';
 import { full as emojiPlugin } from 'markdown-it-emoji';
 // Import highlight.js CORE (no languages) + register only common languages
 // Full bundle is ~900KB; core + 20 languages ≈ 150KB
@@ -110,6 +112,12 @@ function createRenderer() {
 
   // Footnotes: [^1] references and [^1]: definitions
   md.use(footnotePlugin);
+
+  // Definition lists: Term\n: Definition
+  md.use(deflistPlugin);
+
+  // Abbreviations: *[HTML]: Hyper Text Markup Language
+  md.use(abbrPlugin);
 
   // Emoji shortcodes: :smile: -> emoji character
   md.use(emojiPlugin);

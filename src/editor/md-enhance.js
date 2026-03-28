@@ -43,6 +43,10 @@ const BUILTIN_SNIPPETS = [
   { name: 'Checklist', category: 'Structure', icon: '☑', text: '- [ ] Task 1\n- [ ] Task 2\n- [x] Completed task\n' },
   // Footnote
   { name: 'Footnote', category: 'Structure', icon: '📌', text: 'Text with footnote[^1].\n\n[^1]: Footnote content.\n' },
+  // Definition List
+  { name: 'Definition List', category: 'Structure', icon: '📖', text: 'Term 1\n:   Definition 1\n\nTerm 2\n:   Definition 2\n' },
+  // Abbreviation
+  { name: 'Abbreviation', category: 'Structure', icon: '🔤', text: 'This text uses HTML and CSS.\n\n*[HTML]: Hyper Text Markup Language\n*[CSS]: Cascading Style Sheets\n' },
 ];
 
 const STORAGE_KEY = 'marklink-custom-snippets';

@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import MarkdownIt from 'markdown-it';
 import taskListPlugin from 'markdown-it-task-lists';
 import footnotePlugin from 'markdown-it-footnote';
+import deflistPlugin from 'markdown-it-deflist';
+import abbrPlugin from 'markdown-it-abbr';
 import { full as emojiPlugin } from 'markdown-it-emoji';
 import { generateHeadingId } from '../src/preview/renderer.js';
 
@@ -31,6 +33,8 @@ function createTestRenderer() {
   md.enable('strikethrough');
   md.use(taskListPlugin, { enabled: true, label: true });
   md.use(footnotePlugin);
+  md.use(deflistPlugin);
+  md.use(abbrPlugin);
   md.use(emojiPlugin);
 
   // Heading anchors with duplicate ID disambiguation
@@ -372,6 +376,132 @@ describe('Markdown Renderer', () => {
     it('renders footnote references and definitions', () => {
       const result = md.render('Text with footnote[^1].\n\n[^1]: This is the footnote.');
       expect(result).toContain('footnote');
+    });
+
+    it('renders footnote reference as superscript link', () => {
+      const result = md.render('Text with footnote[^1].\n\n[^1]: This is the footnote.');
+      expect(result).toContain('footnote-ref');
+      expect(result).toContain('sup');
+    });
+
+    it('renders footnote section at bottom', () => {
+      const result = md.render('First[^1] and second[^2].\n\n[^1]: Note one.\n[^2]: Note two.');
+      expect(result).toContain('footnotes');
+      expect(result).toContain('Note one');
+      expect(result).toContain('Note two');
+    });
+
+    it('renders backref link in footnote', () => {
+      const result = md.render('Text[^1].\n\n[^1]: The footnote.');
+      expect(result).toContain('footnote-backref');
+    });
+
+    it('handles multiple references to the same footnote', () => {
+      const result = md.render('First ref[^1]. Second ref[^1].\n\n[^1]: Shared footnote.');
+      expect(result).toContain('Shared footnote');
+    });
+
+    it('handles footnote with named label', () => {
+      const result = md.render('Text[^note].\n\n[^note]: Named footnote.');
+      expect(result).toContain('Named footnote');
+    });
+
+    it('handles empty footnote definition gracefully', () => {
+      const result = md.render('Text[^1].\n\n[^1]: ');
+      // Should render without error
+      expect(result).toContain('footnote-ref');
+    });
+  });
+
+  // ─── Definition Lists ───
+
+  describe('Definition Lists', () => {
+    it('renders basic definition list', () => {
+      const input = 'Term 1\n:   Definition 1\n';
+      const result = md.render(input);
+      expect(result).toContain('<dl>');
+      expect(result).toContain('<dt>');
+      expect(result).toContain('<dd>');
+      expect(result).toContain('Term 1');
+      expect(result).toContain('Definition 1');
+    });
+
+    it('renders multiple terms with definitions', () => {
+      const input = 'Term 1\n:   Definition 1\n\nTerm 2\n:   Definition 2\n';
+      const result = md.render(input);
+      expect(result).toContain('Term 1');
+      expect(result).toContain('Definition 1');
+      expect(result).toContain('Term 2');
+      expect(result).toContain('Definition 2');
+    });
+
+    it('renders term with multiple definitions', () => {
+      const input = 'Term\n:   Definition A\n:   Definition B\n';
+      const result = md.render(input);
+      const ddCount = (result.match(/<dd>/g) || []).length;
+      expect(ddCount).toBeGreaterThanOrEqual(2);
+    });
+
+    it('handles empty definition gracefully', () => {
+      const input = 'Term\n:   \n';
+      const result = md.render(input);
+      // Should not crash
+      expect(result).toBeDefined();
+    });
+
+    it('renders definition with inline formatting', () => {
+      const input = 'Term\n:   **Bold** and *italic* definition\n';
+      const result = md.render(input);
+      expect(result).toContain('<strong>Bold</strong>');
+      expect(result).toContain('<em>italic</em>');
+    });
+
+    it('does not render regular paragraph as definition list', () => {
+      const input = 'Just a regular paragraph.\n\nAnother paragraph.\n';
+      const result = md.render(input);
+      expect(result).not.toContain('<dl>');
+      expect(result).not.toContain('<dt>');
+    });
+  });
+
+  // ─── Abbreviations ───
+
+  describe('Abbreviations', () => {
+    it('renders abbreviation with title tooltip', () => {
+      const input = 'This is HTML content.\n\n*[HTML]: Hyper Text Markup Language\n';
+      const result = md.render(input);
+      expect(result).toContain('<abbr');
+      expect(result).toContain('title="Hyper Text Markup Language"');
+      expect(result).toContain('HTML');
+    });
+
+    it('renders multiple abbreviations', () => {
+      const input = 'Use HTML and CSS.\n\n*[HTML]: Hyper Text Markup Language\n*[CSS]: Cascading Style Sheets\n';
+      const result = md.render(input);
+      expect(result).toContain('title="Hyper Text Markup Language"');
+      expect(result).toContain('title="Cascading Style Sheets"');
+    });
+
+    it('does not affect text without abbreviation definitions', () => {
+      const input = 'Plain text without any abbreviations.\n';
+      const result = md.render(input);
+      expect(result).not.toContain('<abbr');
+    });
+
+    it('replaces all occurrences of the abbreviation', () => {
+      const input = 'HTML is great. I love HTML.\n\n*[HTML]: Hyper Text Markup Language\n';
+      const result = md.render(input);
+      const abbrCount = (result.match(/<abbr/g) || []).length;
+      expect(abbrCount).toBe(2);
+    });
+
+    it('handles abbreviation in code blocks (should NOT replace)', () => {
+      const input = '`HTML` is code.\n\n*[HTML]: Hyper Text Markup Language\n';
+      const result = md.render(input);
+      // Inside inline code, abbreviation should not be replaced
+      // The one outside code may be replaced if present
+      const codeContent = result.match(/<code>(.*?)<\/code>/)?.[1] || '';
+      expect(codeContent).not.toContain('<abbr');
     });
   });
 

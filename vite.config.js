@@ -54,6 +54,7 @@ export default defineConfig({
           if (id.includes('/document/')) return 'editor-doc';
           if (id.includes('/draw/')) return 'editor-draw';
           if (id.includes('/cad/')) return 'editor-cad';
+          if (id.includes('/plugins/')) return 'editor-plugins';
           if (id.includes('/ai/')) return 'editor-ai';
         },
       },
