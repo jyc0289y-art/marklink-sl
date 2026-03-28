@@ -430,6 +430,40 @@ async function extractDocxWithJSZip(arrayBuffer) {
    */
   const IMG_PLACEHOLDER = '<span style="display:inline-block;padding:8px;background:#f0f0f0;border:1px dashed #ccc;color:#999">[Image]</span>';
 
+  /**
+   * Convert EMU (English Metric Units) to pixels: 1 inch = 914400 EMU = 96 px
+   */
+  const emuToPx = (emu) => Math.round((parseInt(emu, 10) || 0) / 914400 * 96);
+
+  /**
+   * Extract image dimensions from wp:extent element (EMU units)
+   * Looks in wp:inline or wp:anchor parent of the drawing
+   */
+  const extractImageDimensions = (drawingNode) => {
+    // wp:extent is a child of wp:inline or wp:anchor
+    const inlineOrAnchor = queryFirst(drawingNode, 'inline') || queryFirst(drawingNode, 'anchor');
+    if (!inlineOrAnchor) return null;
+    const extent = queryFirst(inlineOrAnchor, 'extent');
+    if (!extent) return null;
+    const cx = extent.getAttribute('cx');
+    const cy = extent.getAttribute('cy');
+    if (!cx && !cy) return null;
+    const widthPx = cx ? emuToPx(cx) : 0;
+    const heightPx = cy ? emuToPx(cy) : 0;
+    return { width: widthPx, height: heightPx };
+  };
+
+  /**
+   * Build style + dimension attributes for an <img> tag
+   */
+  const buildImgAttrs = (dims) => {
+    if (!dims || (!dims.width && !dims.height)) return ' style="max-width:100%"';
+    const parts = [];
+    if (dims.width) parts.push(`width="${dims.width}"`);
+    if (dims.height) parts.push(`height="${dims.height}"`);
+    return ` ${parts.join(' ')} style="max-width:100%;height:auto"`;
+  };
+
   const processDrawing = async (drawingNode) => {
     // Find the blip element that holds the image reference
     const blip = queryFirst(drawingNode, 'blip');
@@ -443,25 +477,59 @@ async function extractDocxWithJSZip(arrayBuffer) {
     const imageFile = zip.file(fullPath);
     if (!imageFile) return IMG_PLACEHOLDER;
 
+    // Extract dimensions from wp:extent (EMU units)
+    const dims = extractImageDimensions(drawingNode);
+
     try {
       const imgData = await imageFile.async('base64');
       const ext = fullPath.split('.').pop().toLowerCase();
       const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml', tiff: 'image/tiff', emf: 'image/x-emf', wmf: 'image/x-wmf' };
       const mime = mimeMap[ext] || 'image/png';
-      return `<img src="data:${mime};base64,${imgData}" style="max-width:100%">`;
+      const imgAttrs = buildImgAttrs(dims);
+      return `<img src="data:${mime};base64,${imgData}"${imgAttrs}>`;
     } catch {
       return IMG_PLACEHOLDER;
     }
   };
 
   /**
-   * Process a w:pict element (legacy image format)
+   * Extract VML image dimensions from v:shape style attribute
+   * VML uses CSS-like style: "width:120pt;height:80pt" or "width:2in;height:1.5in"
+   */
+  const extractVmlDimensions = (pictNode) => {
+    // Look for v:shape or v:rect that contains style with width/height
+    const shape = queryFirst(pictNode, 'shape') || queryFirst(pictNode, 'rect');
+    if (!shape) return null;
+    const style = shape.getAttribute('style') || '';
+    const widthMatch = style.match(/width:\s*([\d.]+)(pt|in|px|cm)/);
+    const heightMatch = style.match(/height:\s*([\d.]+)(pt|in|px|cm)/);
+    if (!widthMatch && !heightMatch) return null;
+
+    const convertToPx = (val, unit) => {
+      const num = parseFloat(val);
+      if (unit === 'px') return Math.round(num);
+      if (unit === 'pt') return Math.round(num * 96 / 72);
+      if (unit === 'in') return Math.round(num * 96);
+      if (unit === 'cm') return Math.round(num * 96 / 2.54);
+      return Math.round(num);
+    };
+
+    return {
+      width: widthMatch ? convertToPx(widthMatch[1], widthMatch[2]) : 0,
+      height: heightMatch ? convertToPx(heightMatch[1], heightMatch[2]) : 0,
+    };
+  };
+
+  /**
+   * Process a w:pict element (VML legacy image format, Word 2003 compat)
+   * VML images use <v:imagedata r:id="rIdN"/> inside <v:shape>
    */
   const processPict = async (pictNode) => {
-    // Look for v:imagedata inside pict
+    // Look for v:imagedata inside pict (may be nested in v:shape)
     const imagedata = queryFirst(pictNode, 'imagedata');
     if (!imagedata) return IMG_PLACEHOLDER;
-    const rId = imagedata.getAttribute('r:id') || imagedata.getAttribute('id') || '';
+    // VML uses r:id or o:relid for relationship reference
+    const rId = imagedata.getAttribute('r:id') || imagedata.getAttribute('o:relid') || '';
     if (!rId || !relsMap[rId]) return IMG_PLACEHOLDER;
 
     const imagePath = relsMap[rId];
@@ -469,15 +537,33 @@ async function extractDocxWithJSZip(arrayBuffer) {
     const imageFile = zip.file(fullPath);
     if (!imageFile) return IMG_PLACEHOLDER;
 
+    // Extract VML dimensions from v:shape style
+    const dims = extractVmlDimensions(pictNode);
+
     try {
       const imgData = await imageFile.async('base64');
       const ext = fullPath.split('.').pop().toLowerCase();
-      const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp' };
+      const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml', emf: 'image/x-emf', wmf: 'image/x-wmf' };
       const mime = mimeMap[ext] || 'image/png';
-      return `<img src="data:${mime};base64,${imgData}" style="max-width:100%">`;
+      const imgAttrs = buildImgAttrs(dims);
+      return `<img src="data:${mime};base64,${imgData}"${imgAttrs}>`;
     } catch {
       return IMG_PLACEHOLDER;
     }
+  };
+
+  /**
+   * Process a w:object element (OLE objects that may contain embedded images)
+   * These often wrap VML shapes with imagedata, similar to w:pict
+   */
+  const processObject = async (objectNode) => {
+    // w:object can contain v:shape > v:imagedata, same as w:pict
+    const imagedata = queryFirst(objectNode, 'imagedata');
+    if (imagedata) {
+      // Delegate to processPict logic — w:object wraps VML the same way
+      return processPict(objectNode);
+    }
+    return IMG_PLACEHOLDER;
   };
 
   /**
@@ -497,6 +583,10 @@ async function extractDocxWithJSZip(arrayBuffer) {
         if (pict) {
           content += await processPict(pict);
         }
+        const obj = queryFirst(child, 'object');
+        if (obj) {
+          content += await processObject(obj);
+        }
         // Always process run text (even if it also contained images)
         content += processRun(child);
       } else if (ln === 'hyperlink') {
@@ -505,6 +595,8 @@ async function extractDocxWithJSZip(arrayBuffer) {
         content += await processDrawing(child);
       } else if (ln === 'pict') {
         content += await processPict(child);
+      } else if (ln === 'object') {
+        content += await processObject(child);
       } else if (ln === 'smartTag') {
         // Process runs inside smart tags
         const innerRuns = queryAll(child, 'r');

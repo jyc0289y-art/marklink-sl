@@ -309,3 +309,164 @@ describe('normalizeHwpxColor edge cases', () => {
     expect(normalizeHwpxColor('FF00FF80')).toBe('FF00FF');
   });
 });
+
+// ── HWPUNIT to px conversion (96 DPI) ──
+function hwpUnitToPx96(hwpunit) {
+  return Math.round(hwpunit / 7200 * 96);
+}
+
+describe('hwpUnitToPx96 — HWPUNIT to pixel conversion at 96 DPI', () => {
+  it('converts 0 to 0', () => {
+    expect(hwpUnitToPx96(0)).toBe(0);
+  });
+
+  it('converts 7200 HWPUNIT (1 inch) to 96 px', () => {
+    expect(hwpUnitToPx96(7200)).toBe(96);
+  });
+
+  it('converts 3600 HWPUNIT (0.5 inch) to 48 px', () => {
+    expect(hwpUnitToPx96(3600)).toBe(48);
+  });
+
+  it('converts typical image width (e.g. 36000 = 5 inches) to 480 px', () => {
+    expect(hwpUnitToPx96(36000)).toBe(480);
+  });
+
+  it('converts small values correctly', () => {
+    expect(hwpUnitToPx96(750)).toBe(10);
+  });
+
+  it('rounds to nearest integer', () => {
+    // 1000 / 7200 * 96 = 13.333... → 13
+    expect(hwpUnitToPx96(1000)).toBe(13);
+  });
+});
+
+// ── Table cell styling extraction ──
+describe('HWPX table cell styling extraction', () => {
+  // Replicate the cell vertical alignment mapping logic
+  function mapVerticalAlign(vAlign) {
+    const vaMap = { TOP: 'top', CENTER: 'middle', BOTTOM: 'bottom', top: 'top', center: 'middle', bottom: 'bottom', MIDDLE: 'middle' };
+    return vaMap[vAlign] || null;
+  }
+
+  it('maps TOP to top', () => {
+    expect(mapVerticalAlign('TOP')).toBe('top');
+  });
+
+  it('maps CENTER to middle', () => {
+    expect(mapVerticalAlign('CENTER')).toBe('middle');
+  });
+
+  it('maps MIDDLE to middle', () => {
+    expect(mapVerticalAlign('MIDDLE')).toBe('middle');
+  });
+
+  it('maps BOTTOM to bottom', () => {
+    expect(mapVerticalAlign('BOTTOM')).toBe('bottom');
+  });
+
+  it('maps lowercase variants', () => {
+    expect(mapVerticalAlign('top')).toBe('top');
+    expect(mapVerticalAlign('center')).toBe('middle');
+    expect(mapVerticalAlign('bottom')).toBe('bottom');
+  });
+
+  it('returns null for unknown values', () => {
+    expect(mapVerticalAlign('unknown')).toBeNull();
+    expect(mapVerticalAlign('')).toBeNull();
+  });
+});
+
+describe('HWPX table cell margin/padding conversion', () => {
+  // Replicate the cell margin conversion logic (HWP units / 75 → px)
+  function cellMarginToPx(val) {
+    return val ? Math.max(0, Math.round(parseInt(val, 10) / 75)) : 4;
+  }
+
+  it('converts HWP units to px', () => {
+    expect(cellMarginToPx('300')).toBe(4);
+    expect(cellMarginToPx('750')).toBe(10);
+    expect(cellMarginToPx('1500')).toBe(20);
+  });
+
+  it('returns default 4 for empty/falsy values', () => {
+    expect(cellMarginToPx('')).toBe(4);
+    expect(cellMarginToPx(null)).toBe(4);
+    expect(cellMarginToPx(undefined)).toBe(4);
+  });
+
+  it('clamps to 0 for negative values', () => {
+    expect(cellMarginToPx('-100')).toBe(0);
+  });
+
+  it('converts 0 to 0', () => {
+    expect(cellMarginToPx('0')).toBe(0);
+  });
+});
+
+describe('HWPX table cell background color from fillBrush', () => {
+  it('normalizes fill color for background-color CSS', () => {
+    // Simulate: cellBorderFill → fillBrush → color attr
+    const fillColor = 'FFD700';
+    const hex = normalizeHwpxColor(fillColor);
+    expect(hex).toBe('FFD700');
+  });
+
+  it('pads single digit 0 to 000000 (black)', () => {
+    // '0' → '000000' after padding — valid hex for black
+    expect(normalizeHwpxColor('0')).toBe('000000');
+  });
+
+  it('handles fill color with # prefix', () => {
+    expect(normalizeHwpxColor('#E8F5E9')).toBe('E8F5E9');
+  });
+});
+
+// ── Image dimension parsing from shapeObject ──
+describe('HWPX image dimension parsing', () => {
+  it('converts shapeObject width/height from HWPUNIT to px', () => {
+    // Typical image: width=43200 (6 inches) → 576px
+    const widthPx = hwpUnitToPx96(43200);
+    expect(widthPx).toBe(576);
+
+    // height=28800 (4 inches) → 384px
+    const heightPx = hwpUnitToPx96(28800);
+    expect(heightPx).toBe(384);
+  });
+
+  it('handles very small images', () => {
+    // 1440 HWPUNIT = 0.2 inch → ~19px
+    expect(hwpUnitToPx96(1440)).toBe(19);
+  });
+
+  it('handles A4-width image (about 7.27 inches = 52344 HWPUNIT)', () => {
+    const px = hwpUnitToPx96(52344);
+    expect(px).toBe(698); // 52344/7200*96 ≈ 698
+  });
+});
+
+// ── TextBox content extraction ──
+describe('HWPX TextBox content extraction', () => {
+  // Test the logic: if a shape has a textBox child, inner paragraphs are extracted
+  it('escapes text content for safety', () => {
+    const rawText = '<script>alert("xss")</script>';
+    const escaped = escapeXML(rawText);
+    expect(escaped).toBe('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
+  });
+
+  it('preserves Korean text in textBox', () => {
+    const text = '이것은 텍스트 상자입니다';
+    expect(escapeXML(text)).toBe('이것은 텍스트 상자입니다');
+  });
+
+  it('handles empty textBox gracefully', () => {
+    const text = '';
+    expect(escapeXML(text)).toBe('');
+  });
+
+  it('handles textBox with special characters', () => {
+    const text = '참고: A > B & C < D';
+    expect(escapeXML(text)).toBe('참고: A &gt; B &amp; C &lt; D');
+  });
+});

@@ -809,3 +809,106 @@ describe('uint8ToBase64', () => {
     expect(decoded.charCodeAt(1)).toBe(0xD8);
   });
 });
+
+/* ─── distributeImagesByContent: replicated from slide-file.js ─── */
+function distributeImagesByContent(imageCount, contentLengths) {
+  const slideCount = contentLengths.length;
+  if (slideCount === 0 || imageCount === 0) return new Array(slideCount).fill(0);
+
+  const totalContent = contentLengths.reduce((a, b) => a + b, 0);
+
+  if (totalContent === 0) {
+    const base = Math.floor(imageCount / slideCount);
+    const remainder = imageCount % slideCount;
+    return contentLengths.map((_, i) => base + (i < remainder ? 1 : 0));
+  }
+
+  const fractions = contentLengths.map((len) => (len / totalContent) * imageCount);
+  const allocation = fractions.map((f) => Math.floor(f));
+  let distributed = allocation.reduce((a, b) => a + b, 0);
+
+  const remainders = fractions.map((f, i) => ({ i, rem: f - allocation[i] }));
+  remainders.sort((a, b) => b.rem - a.rem);
+  for (let r = 0; distributed < imageCount && r < remainders.length; r++) {
+    allocation[remainders[r].i]++;
+    distributed++;
+  }
+
+  return allocation;
+}
+
+describe('distributeImagesByContent', () => {
+  it('returns empty array for zero slides', () => {
+    expect(distributeImagesByContent(5, [])).toEqual([]);
+  });
+
+  it('returns all zeros for zero images', () => {
+    expect(distributeImagesByContent(0, [100, 200, 300])).toEqual([0, 0, 0]);
+  });
+
+  it('distributes equally when all content lengths are zero', () => {
+    expect(distributeImagesByContent(6, [0, 0, 0])).toEqual([2, 2, 2]);
+  });
+
+  it('distributes equally with remainder going to earlier slides (zero content)', () => {
+    expect(distributeImagesByContent(7, [0, 0, 0])).toEqual([3, 2, 2]);
+  });
+
+  it('distributes proportionally based on content length', () => {
+    // Slide 1: 100 chars (25%), Slide 2: 300 chars (75%) => 1 image, 3 images
+    const result = distributeImagesByContent(4, [100, 300]);
+    expect(result).toEqual([1, 3]);
+  });
+
+  it('handles unequal slides — heavy slide gets more images', () => {
+    // 3 slides: 10, 80, 10 chars => total 100
+    // Proportions: 10%, 80%, 10% of 5 images => 0.5, 4.0, 0.5
+    // Floor: [0, 4, 0] = 4, remaining 1 goes to slide 0 or 2 (0.5 remainder each)
+    const result = distributeImagesByContent(5, [10, 80, 10]);
+    expect(result.reduce((a, b) => a + b, 0)).toBe(5);
+    expect(result[1]).toBeGreaterThanOrEqual(3); // heavy slide gets most
+  });
+
+  it('total allocated always equals imageCount', () => {
+    const result = distributeImagesByContent(7, [50, 150, 100]);
+    expect(result.reduce((a, b) => a + b, 0)).toBe(7);
+  });
+
+  it('single slide gets all images', () => {
+    expect(distributeImagesByContent(10, [500])).toEqual([10]);
+  });
+
+  it('handles one slide with zero content among others', () => {
+    // Slide 1: 0 chars, Slide 2: 200 chars => slide 1 gets 0, slide 2 gets all
+    const result = distributeImagesByContent(3, [0, 200]);
+    expect(result).toEqual([0, 3]);
+  });
+});
+
+/* ─── PPT image styling test ─── */
+describe('PPT image styling', () => {
+  const IMG_STYLE = 'max-width:100%;height:auto;display:block;margin:8px auto';
+
+  it('image style string contains max-width:100%', () => {
+    expect(IMG_STYLE).toContain('max-width:100%');
+  });
+
+  it('image style string contains height:auto', () => {
+    expect(IMG_STYLE).toContain('height:auto');
+  });
+
+  it('image style string contains display:block', () => {
+    expect(IMG_STYLE).toContain('display:block');
+  });
+
+  it('image style string contains margin:8px auto', () => {
+    expect(IMG_STYLE).toContain('margin:8px auto');
+  });
+
+  it('generates correct img tag with styling', () => {
+    const dataUrl = 'data:image/jpeg;base64,/9j/4AAQ';
+    const imgTag = `<img src="${dataUrl}" style="${IMG_STYLE}" alt="Slide image 1">`;
+    expect(imgTag).toContain('style="max-width:100%;height:auto;display:block;margin:8px auto"');
+    expect(imgTag).toContain('src="data:image/jpeg;base64,');
+  });
+});

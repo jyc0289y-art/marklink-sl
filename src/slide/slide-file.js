@@ -303,6 +303,45 @@ function collectSlideTexts(records) {
 }
 
 /**
+ * Distribute images across slides proportionally based on text content length.
+ * Slides with more text content receive more images. If all slides have equal
+ * (or zero) content, images are distributed equally with remainders going to
+ * earlier slides.
+ *
+ * @param {number} imageCount - Total number of images to distribute
+ * @param {number[]} contentLengths - Array of text content lengths per slide
+ * @returns {number[]} Array of image counts per slide
+ */
+function distributeImagesByContent(imageCount, contentLengths) {
+  const slideCount = contentLengths.length;
+  if (slideCount === 0 || imageCount === 0) return new Array(slideCount).fill(0);
+
+  const totalContent = contentLengths.reduce((a, b) => a + b, 0);
+
+  // If all slides have zero content, distribute equally
+  if (totalContent === 0) {
+    const base = Math.floor(imageCount / slideCount);
+    const remainder = imageCount % slideCount;
+    return contentLengths.map((_, i) => base + (i < remainder ? 1 : 0));
+  }
+
+  // Proportional distribution: allocate fractional shares, then round
+  const fractions = contentLengths.map((len) => (len / totalContent) * imageCount);
+  const allocation = fractions.map((f) => Math.floor(f));
+  let distributed = allocation.reduce((a, b) => a + b, 0);
+
+  // Distribute remaining images by largest fractional remainder
+  const remainders = fractions.map((f, i) => ({ i, rem: f - allocation[i] }));
+  remainders.sort((a, b) => b.rem - a.rem);
+  for (let r = 0; distributed < imageCount && r < remainders.length; r++) {
+    allocation[remainders[r].i]++;
+    distributed++;
+  }
+
+  return allocation;
+}
+
+/**
  * Import a legacy .ppt file (binary OLE2 format).
  * Uses proper record-tree parsing for accurate slide boundaries.
  */
@@ -331,9 +370,13 @@ async function importPptLegacy(file) {
       const picturesStream = ole.streams['Pictures'];
       const pptImages = parsePptPictures(picturesStream);
 
-      // Distribute images across slides (round-robin if we can't map precisely)
-      const slideCount = slideGroups.filter(g => g.texts.length > 0).length;
-      const imagesPerSlide = slideCount > 0 ? Math.ceil(pptImages.length / slideCount) : 0;
+      // Distribute images proportionally based on text content length per slide.
+      // Slides with more text content are assumed to have more associated images.
+      const nonEmptyGroups = slideGroups.filter((g) => g.texts.length > 0);
+      const slideContentLengths = nonEmptyGroups.map((g) =>
+        g.texts.reduce((sum, t) => sum + t.text.length, 0)
+      );
+      const imageAllocation = distributeImagesByContent(pptImages.length, slideContentLengths);
 
       let slideIdx = 0;
       for (const group of slideGroups) {
@@ -347,12 +390,11 @@ async function importPptLegacy(file) {
 
         // Append images allocated to this slide
         let imageContent = '';
-        if (pptImages.length > 0 && imagesPerSlide > 0) {
-          const startImg = slideIdx * imagesPerSlide;
-          const endImg = Math.min(startImg + imagesPerSlide, pptImages.length);
-          for (let i = startImg; i < endImg; i++) {
-            imageContent += `<div style="text-align:center;margin:8px 0"><img src="${pptImages[i].dataUrl}" style="max-width:80%;max-height:300px;object-fit:contain" alt="Slide image ${i + 1}"></div>`;
-          }
+        const allocatedCount = imageAllocation[slideIdx] || 0;
+        const startImg = imageAllocation.slice(0, slideIdx).reduce((a, b) => a + b, 0);
+        const endImg = Math.min(startImg + allocatedCount, pptImages.length);
+        for (let i = startImg; i < endImg; i++) {
+          imageContent += `<div style="text-align:center;margin:8px 0"><img src="${pptImages[i].dataUrl}" style="max-width:100%;height:auto;display:block;margin:8px auto" alt="Slide image ${i + 1}"></div>`;
         }
 
         slides.push({

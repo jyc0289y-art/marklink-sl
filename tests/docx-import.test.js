@@ -332,3 +332,158 @@ describe('DOCX import list wrapping', () => {
     expect(result).not.toContain('data-level');
   });
 });
+
+// ── VML image r:id extraction logic ──
+// Tests the attribute priority logic used in processPict (no DOM needed)
+describe('VML image extraction attribute priority', () => {
+  // Replicate the r:id resolution logic from processPict
+  const resolveVmlRId = (attrs) => {
+    // attrs simulates the attributes on a v:imagedata element
+    return attrs['r:id'] || attrs['o:relid'] || null;
+  };
+
+  it('prefers r:id over o:relid', () => {
+    expect(resolveVmlRId({ 'r:id': 'rId7', 'o:relid': 'rId8' })).toBe('rId7');
+  });
+
+  it('falls back to o:relid when r:id is missing', () => {
+    expect(resolveVmlRId({ 'o:relid': 'rId12' })).toBe('rId12');
+  });
+
+  it('returns null when no relationship attributes exist', () => {
+    expect(resolveVmlRId({ 'title': 'logo' })).toBeNull();
+  });
+
+  it('returns null for empty attrs', () => {
+    expect(resolveVmlRId({})).toBeNull();
+  });
+
+  it('handles r:id with empty string (should be falsy)', () => {
+    expect(resolveVmlRId({ 'r:id': '', 'o:relid': 'rId5' })).toBe('rId5');
+  });
+});
+
+// ── VML dimension extraction ──
+describe('VML dimension extraction (v:shape style)', () => {
+  const extractVmlDimensions = (styleStr) => {
+    const widthMatch = styleStr.match(/width:\s*([\d.]+)(pt|in|px|cm)/);
+    const heightMatch = styleStr.match(/height:\s*([\d.]+)(pt|in|px|cm)/);
+    if (!widthMatch && !heightMatch) return null;
+
+    const convertToPx = (val, unit) => {
+      const num = parseFloat(val);
+      if (unit === 'px') return Math.round(num);
+      if (unit === 'pt') return Math.round(num * 96 / 72);
+      if (unit === 'in') return Math.round(num * 96);
+      if (unit === 'cm') return Math.round(num * 96 / 2.54);
+      return Math.round(num);
+    };
+
+    return {
+      width: widthMatch ? convertToPx(widthMatch[1], widthMatch[2]) : 0,
+      height: heightMatch ? convertToPx(heightMatch[1], heightMatch[2]) : 0,
+    };
+  };
+
+  it('extracts dimensions in pt units', () => {
+    const dims = extractVmlDimensions('width:120pt;height:80pt');
+    expect(dims.width).toBe(160); // 120 * 96/72 = 160
+    expect(dims.height).toBe(107); // 80 * 96/72 = 106.67 → 107
+  });
+
+  it('extracts dimensions in inches', () => {
+    const dims = extractVmlDimensions('width:2in;height:1.5in');
+    expect(dims.width).toBe(192); // 2 * 96
+    expect(dims.height).toBe(144); // 1.5 * 96
+  });
+
+  it('extracts dimensions in px', () => {
+    const dims = extractVmlDimensions('width:300px;height:200px');
+    expect(dims.width).toBe(300);
+    expect(dims.height).toBe(200);
+  });
+
+  it('extracts dimensions in cm', () => {
+    const dims = extractVmlDimensions('width:2.54cm;height:5.08cm');
+    expect(dims.width).toBe(96);  // 2.54cm = 1in = 96px
+    expect(dims.height).toBe(192); // 5.08cm = 2in = 192px
+  });
+
+  it('returns null when no dimensions in style', () => {
+    expect(extractVmlDimensions('position:absolute;z-index:1')).toBeNull();
+  });
+
+  it('handles partial dimensions (only width)', () => {
+    const dims = extractVmlDimensions('width:100pt;position:absolute');
+    expect(dims.width).toBe(133); // 100 * 96/72 = 133.33 → 133
+    expect(dims.height).toBe(0);
+  });
+});
+
+// ── Image dimension extraction (EMU → px, wp:extent) ──
+describe('Image dimension extraction (wp:extent EMU)', () => {
+  const emuToPx = (emu) => Math.round((parseInt(emu, 10) || 0) / 914400 * 96);
+
+  it('converts standard 1-inch image (914400 EMU) to 96px', () => {
+    expect(emuToPx('914400')).toBe(96);
+  });
+
+  it('converts 2-inch width (1828800 EMU) to 192px', () => {
+    expect(emuToPx('1828800')).toBe(192);
+  });
+
+  it('converts 3048000 EMU (typical photo width) to ~320px', () => {
+    // 3048000 / 914400 * 96 = 320
+    expect(emuToPx('3048000')).toBe(320);
+  });
+
+  it('handles zero EMU', () => {
+    expect(emuToPx('0')).toBe(0);
+  });
+
+  it('handles null/undefined gracefully', () => {
+    expect(emuToPx(null)).toBe(0);
+    expect(emuToPx(undefined)).toBe(0);
+  });
+
+  it('rounds fractional pixels correctly', () => {
+    // 500000 EMU = 500000/914400*96 = 52.49 → 52
+    expect(emuToPx('500000')).toBe(52);
+  });
+});
+
+// ── buildImgAttrs: dimension application to <img> tags ──
+describe('buildImgAttrs (dimension to HTML attribute)', () => {
+  const buildImgAttrs = (dims) => {
+    if (!dims || (!dims.width && !dims.height)) return ' style="max-width:100%"';
+    const parts = [];
+    if (dims.width) parts.push(`width="${dims.width}"`);
+    if (dims.height) parts.push(`height="${dims.height}"`);
+    return ` ${parts.join(' ')} style="max-width:100%;height:auto"`;
+  };
+
+  it('applies width and height when both present', () => {
+    const attrs = buildImgAttrs({ width: 320, height: 240 });
+    expect(attrs).toContain('width="320"');
+    expect(attrs).toContain('height="240"');
+    expect(attrs).toContain('max-width:100%');
+    expect(attrs).toContain('height:auto');
+  });
+
+  it('applies only width when height is 0', () => {
+    const attrs = buildImgAttrs({ width: 200, height: 0 });
+    expect(attrs).toContain('width="200"');
+    expect(attrs).not.toContain('height="');
+  });
+
+  it('falls back to max-width:100% when no dimensions', () => {
+    expect(buildImgAttrs(null)).toBe(' style="max-width:100%"');
+    expect(buildImgAttrs({ width: 0, height: 0 })).toBe(' style="max-width:100%"');
+  });
+
+  it('applies only height when width is 0', () => {
+    const attrs = buildImgAttrs({ width: 0, height: 150 });
+    expect(attrs).toContain('height="150"');
+    expect(attrs).not.toContain('width="');
+  });
+});

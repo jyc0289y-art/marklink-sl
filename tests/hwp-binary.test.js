@@ -945,6 +945,222 @@ describe('DOC applySprm full sprm ID handling', () => {
   });
 });
 
+/* ========== DOC applySprm extended formatting (font, sup/sub, highlight, caps) ========== */
+
+describe('DOC applySprm extended formatting', () => {
+  const DOC_HIGHLIGHT_COLORS = [
+    null, '#000000', '#0000FF', '#00FFFF', '#00FF00', '#FF00FF',
+    '#FF0000', '#FFFF00', '#FFFFFF', '#000080', '#008080',
+    '#008000', '#800080', '#800000', '#808000', '#808080', '#C0C0C0',
+  ];
+
+  const applySprm = (sprmId, val, fmt) => {
+    const DOC_ICO_COLORS = [
+      null, '#000000', '#0000FF', '#00FFFF', '#00FF00', '#FF00FF',
+      '#FF0000', '#FFFF00', '#FFFFFF', '#000080', '#008080',
+      '#008000', '#800080', '#800000', '#808000', '#808080', '#C0C0C0',
+    ];
+    switch (sprmId) {
+      case 0x0835: if (val) fmt.bold = true; break;
+      case 0x0836: if (val) fmt.italic = true; break;
+      case 0x0837: if (val) fmt.strikethrough = true; break;
+      case 0x2A3E: if (val > 0) fmt.underline = true; break;
+      case 0x4A43: if (val > 0) fmt.fontSize = val / 2; break;
+      case 0x2A42:
+        if (val > 0 && val < DOC_ICO_COLORS.length && DOC_ICO_COLORS[val]) fmt.color = DOC_ICO_COLORS[val];
+        break;
+      case 0x6870: {
+        const r = val & 0xFF;
+        const g = (val >> 8) & 0xFF;
+        const b = (val >> 16) & 0xFF;
+        fmt.color = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+        break;
+      }
+      case 0x4A4F: if (val >= 0) fmt.fontIdx = val; break;
+      case 0x2A48:
+        if (val === 1) fmt.superscript = true;
+        else if (val === 2) fmt.subscript = true;
+        break;
+      case 0x2A0C:
+        if (val > 0 && val < DOC_HIGHLIGHT_COLORS.length && DOC_HIGHLIGHT_COLORS[val]) fmt.highlight = DOC_HIGHLIGHT_COLORS[val];
+        break;
+      case 0x083D: if (val) fmt.allCaps = true; break;
+    }
+  };
+
+  const makeFmt = () => ({
+    bold: false, italic: false, underline: false, strikethrough: false,
+    fontSize: null, color: null, fontIdx: null, superscript: false,
+    subscript: false, highlight: null, allCaps: false,
+  });
+
+  it('sprmCRgFtc0 (0x4A4F) sets fontIdx', () => {
+    const fmt = makeFmt();
+    applySprm(0x4A4F, 3, fmt);
+    expect(fmt.fontIdx).toBe(3);
+  });
+
+  it('sprmCRgFtc0 index 0 sets fontIdx to 0', () => {
+    const fmt = makeFmt();
+    applySprm(0x4A4F, 0, fmt);
+    expect(fmt.fontIdx).toBe(0);
+  });
+
+  it('sprmCIss (0x2A48) value 1 sets superscript', () => {
+    const fmt = makeFmt();
+    applySprm(0x2A48, 1, fmt);
+    expect(fmt.superscript).toBe(true);
+    expect(fmt.subscript).toBe(false);
+  });
+
+  it('sprmCIss (0x2A48) value 2 sets subscript', () => {
+    const fmt = makeFmt();
+    applySprm(0x2A48, 2, fmt);
+    expect(fmt.subscript).toBe(true);
+    expect(fmt.superscript).toBe(false);
+  });
+
+  it('sprmCIss (0x2A48) value 0 leaves both false', () => {
+    const fmt = makeFmt();
+    applySprm(0x2A48, 0, fmt);
+    expect(fmt.superscript).toBe(false);
+    expect(fmt.subscript).toBe(false);
+  });
+
+  it('sprmCHighlight (0x2A0C) sets highlight color', () => {
+    const fmt = makeFmt();
+    applySprm(0x2A0C, 7, fmt); // 7 = yellow
+    expect(fmt.highlight).toBe('#FFFF00');
+  });
+
+  it('sprmCHighlight (0x2A0C) index 0 means no highlight', () => {
+    const fmt = makeFmt();
+    applySprm(0x2A0C, 0, fmt);
+    expect(fmt.highlight).toBeNull();
+  });
+
+  it('sprmCHighlight (0x2A0C) index 1 = black', () => {
+    const fmt = makeFmt();
+    applySprm(0x2A0C, 1, fmt);
+    expect(fmt.highlight).toBe('#000000');
+  });
+
+  it('sprmCHighlight (0x2A0C) out-of-range index ignored', () => {
+    const fmt = makeFmt();
+    applySprm(0x2A0C, 99, fmt);
+    expect(fmt.highlight).toBeNull();
+  });
+
+  it('sprmCFCaps (0x083D) sets allCaps', () => {
+    const fmt = makeFmt();
+    applySprm(0x083D, 1, fmt);
+    expect(fmt.allCaps).toBe(true);
+  });
+
+  it('sprmCFCaps (0x083D) value 0 does not set allCaps', () => {
+    const fmt = makeFmt();
+    applySprm(0x083D, 0, fmt);
+    expect(fmt.allCaps).toBe(false);
+  });
+
+  it('all extended sprms accumulate together', () => {
+    const fmt = makeFmt();
+    applySprm(0x0835, 1, fmt); // bold
+    applySprm(0x4A4F, 2, fmt); // fontIdx=2
+    applySprm(0x2A48, 1, fmt); // superscript
+    applySprm(0x2A0C, 7, fmt); // yellow highlight
+    applySprm(0x083D, 1, fmt); // allCaps
+    expect(fmt.bold).toBe(true);
+    expect(fmt.fontIdx).toBe(2);
+    expect(fmt.superscript).toBe(true);
+    expect(fmt.highlight).toBe('#FFFF00');
+    expect(fmt.allCaps).toBe(true);
+  });
+});
+
+/* ========== DOC HTML extended formatting tag generation ========== */
+
+describe('DOC HTML extended formatting tag generation', () => {
+  const applyFormatting = (text, fmt) => {
+    const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    let escapedText = esc(text);
+    const styles = [];
+    if (fmt.fontSize) styles.push(`font-size:${fmt.fontSize}pt`);
+    if (fmt.color) styles.push(`color:${fmt.color}`);
+    if (fmt.fontIdx !== null && fmt.fontIdx !== undefined) {
+      styles.push(`font-family:${fmt.fontIdx % 2 === 0 ? 'serif' : 'sans-serif'}`);
+    }
+    if (fmt.highlight) styles.push(`background-color:${fmt.highlight}`);
+    if (fmt.allCaps) styles.push('text-transform:uppercase');
+    if (styles.length > 0) {
+      escapedText = `<span style="${styles.join(';')}">${escapedText}</span>`;
+    }
+    if (fmt.bold) escapedText = `<b>${escapedText}</b>`;
+    if (fmt.italic) escapedText = `<i>${escapedText}</i>`;
+    if (fmt.underline) escapedText = `<u>${escapedText}</u>`;
+    if (fmt.strikethrough) escapedText = `<s>${escapedText}</s>`;
+    if (fmt.superscript) escapedText = `<sup>${escapedText}</sup>`;
+    if (fmt.subscript) escapedText = `<sub>${escapedText}</sub>`;
+    return escapedText;
+  };
+
+  const baseFmt = () => ({
+    bold: false, italic: false, underline: false, strikethrough: false,
+    fontSize: null, color: null, fontIdx: null, superscript: false,
+    subscript: false, highlight: null, allCaps: false,
+  });
+
+  it('wraps superscript text in <sup> tags', () => {
+    const fmt = { ...baseFmt(), superscript: true };
+    expect(applyFormatting('x2', fmt)).toBe('<sup>x2</sup>');
+  });
+
+  it('wraps subscript text in <sub> tags', () => {
+    const fmt = { ...baseFmt(), subscript: true };
+    expect(applyFormatting('H2O', fmt)).toBe('<sub>H2O</sub>');
+  });
+
+  it('applies highlight as background-color style', () => {
+    const fmt = { ...baseFmt(), highlight: '#FFFF00' };
+    expect(applyFormatting('hi', fmt)).toBe('<span style="background-color:#FFFF00">hi</span>');
+  });
+
+  it('applies allCaps as text-transform:uppercase style', () => {
+    const fmt = { ...baseFmt(), allCaps: true };
+    expect(applyFormatting('hello', fmt)).toBe('<span style="text-transform:uppercase">hello</span>');
+  });
+
+  it('applies fontIdx even (serif) font-family', () => {
+    const fmt = { ...baseFmt(), fontIdx: 0 };
+    expect(applyFormatting('text', fmt)).toBe('<span style="font-family:serif">text</span>');
+  });
+
+  it('applies fontIdx odd (sans-serif) font-family', () => {
+    const fmt = { ...baseFmt(), fontIdx: 1 };
+    expect(applyFormatting('text', fmt)).toBe('<span style="font-family:sans-serif">text</span>');
+  });
+
+  it('combines highlight + allCaps + fontIdx in one span', () => {
+    const fmt = { ...baseFmt(), fontIdx: 3, highlight: '#FF0000', allCaps: true };
+    const result = applyFormatting('word', fmt);
+    expect(result).toBe('<span style="font-family:sans-serif;background-color:#FF0000;text-transform:uppercase">word</span>');
+  });
+
+  it('applies bold + superscript together', () => {
+    const fmt = { ...baseFmt(), bold: true, superscript: true };
+    expect(applyFormatting('n', fmt)).toBe('<sup><b>n</b></sup>');
+  });
+
+  it('applies all extended formatting together', () => {
+    const fmt = {
+      ...baseFmt(), bold: true, italic: true, fontSize: 14, color: '#FF0000',
+      fontIdx: 2, highlight: '#FFFF00', allCaps: true, superscript: true,
+    };
+    const result = applyFormatting('X', fmt);
+    expect(result).toBe('<sup><i><b><span style="font-size:14pt;color:#FF0000;font-family:serif;background-color:#FFFF00;text-transform:uppercase">X</span></b></i></sup>');
+  });
+});
+
 /* ========== DOC HTML formatting tag generation ========== */
 
 describe('DOC HTML formatting tag generation', () => {

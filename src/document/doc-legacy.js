@@ -163,10 +163,16 @@ function extractTextWithFormatting(wordDocStream, wdView, tableStream, startOff,
 
           if (pieceText) {
             let escapedText = esc(pieceText);
-            // Apply inline styles (font-size, color)
+            // Apply inline styles (font-size, color, font-family, highlight, all-caps)
             const styles = [];
             if (fmt.fontSize) styles.push(`font-size:${fmt.fontSize}pt`);
             if (fmt.color) styles.push(`color:${fmt.color}`);
+            if (fmt.fontIdx !== null && fmt.fontIdx !== undefined) {
+              // Even indices → serif, odd indices → sans-serif (heuristic without font table)
+              styles.push(`font-family:${fmt.fontIdx % 2 === 0 ? 'serif' : 'sans-serif'}`);
+            }
+            if (fmt.highlight) styles.push(`background-color:${fmt.highlight}`);
+            if (fmt.allCaps) styles.push('text-transform:uppercase');
             if (styles.length > 0) {
               escapedText = `<span style="${styles.join(';')}">${escapedText}</span>`;
             }
@@ -174,6 +180,8 @@ function extractTextWithFormatting(wordDocStream, wdView, tableStream, startOff,
             if (fmt.italic) escapedText = `<i>${escapedText}</i>`;
             if (fmt.underline) escapedText = `<u>${escapedText}</u>`;
             if (fmt.strikethrough) escapedText = `<s>${escapedText}</s>`;
+            if (fmt.superscript) escapedText = `<sup>${escapedText}</sup>`;
+            if (fmt.subscript) escapedText = `<sub>${escapedText}</sub>`;
             htmlParts.push(escapedText);
           }
         }
@@ -191,6 +199,30 @@ function extractTextWithFormatting(wordDocStream, wdView, tableStream, startOff,
   }
   return null;
 }
+
+/**
+ * Highlight color table (sprmCHighlight values 0-16).
+ * Maps highlight index to CSS background-color string.
+ */
+const DOC_HIGHLIGHT_COLORS = [
+  null,       // 0 = none
+  '#000000',  // 1 = black
+  '#0000FF',  // 2 = blue
+  '#00FFFF',  // 3 = cyan
+  '#00FF00',  // 4 = green
+  '#FF00FF',  // 5 = magenta
+  '#FF0000',  // 6 = red
+  '#FFFF00',  // 7 = yellow
+  '#FFFFFF',  // 8 = white
+  '#000080',  // 9 = dark blue
+  '#008080',  // 10 = dark cyan
+  '#008000',  // 11 = dark green
+  '#800080',  // 12 = dark magenta
+  '#800000',  // 13 = dark red
+  '#808000',  // 14 = dark yellow
+  '#808080',  // 15 = dark gray
+  '#C0C0C0',  // 16 = light gray
+];
 
 /**
  * DOC color index table (sprmCIco values 0-16).
@@ -251,6 +283,21 @@ function applySprm(sprmId, val, fmt) {
       fmt.color = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
       break;
     }
+    case 0x4A4F: // sprmCRgFtc0 — font-family index
+      if (val >= 0) fmt.fontIdx = val;
+      break;
+    case 0x2A48: // sprmCIss — superscript/subscript (0=normal, 1=super, 2=sub)
+      if (val === 1) fmt.superscript = true;
+      else if (val === 2) fmt.subscript = true;
+      break;
+    case 0x2A0C: // sprmCHighlight — highlight color index
+      if (val > 0 && val < DOC_HIGHLIGHT_COLORS.length && DOC_HIGHLIGHT_COLORS[val]) {
+        fmt.highlight = DOC_HIGHLIGHT_COLORS[val];
+      }
+      break;
+    case 0x083D: // sprmCFCaps — all caps
+      if (val) fmt.allCaps = true;
+      break;
   }
 }
 
@@ -262,7 +309,11 @@ function applySprm(sprmId, val, fmt) {
  * @returns {{ bold:boolean, italic:boolean, underline:boolean, strikethrough:boolean, fontSize:number|null, color:string|null }}
  */
 function parsePRMFormatting(prm, tableStream) {
-  const fmt = { bold: false, italic: false, underline: false, strikethrough: false, fontSize: null, color: null };
+  const fmt = {
+    bold: false, italic: false, underline: false, strikethrough: false,
+    fontSize: null, color: null, fontIdx: null, superscript: false,
+    subscript: false, highlight: null, allCaps: false,
+  };
   if (prm === 0) return fmt;
 
   if ((prm & 0x01) === 0) {
@@ -282,6 +333,15 @@ function parsePRMFormatting(prm, tableStream) {
     if (isprm === 5 && val > 0 && val < DOC_ICO_COLORS.length && DOC_ICO_COLORS[val]) {
       fmt.color = DOC_ICO_COLORS[val];
     }
+    // Index 6 = superscript/subscript in simple PRM
+    if (isprm === 6 && val === 1) fmt.superscript = true;
+    if (isprm === 6 && val === 2) fmt.subscript = true;
+    // Index 7 = highlight color in simple PRM
+    if (isprm === 7 && val > 0 && val < DOC_HIGHLIGHT_COLORS.length && DOC_HIGHLIGHT_COLORS[val]) {
+      fmt.highlight = DOC_HIGHLIGHT_COLORS[val];
+    }
+    // Index 8 = all caps in simple PRM
+    if (isprm === 8 && val) fmt.allCaps = true;
   } else {
     // Complex PRM: bit 0 = 1, igrpprl = (prm >> 1) & 0x7FFF points to grpprl in table stream
     if (!tableStream) return fmt;
@@ -325,7 +385,7 @@ function parsePRMFormatting(prm, tableStream) {
 }
 
 // Export for testing
-export { parsePRMFormatting, applySprm, DOC_ICO_COLORS };
+export { parsePRMFormatting, applySprm, DOC_ICO_COLORS, DOC_HIGHLIGHT_COLORS };
 
 /**
  * Extract plain text from WordDocument stream (simple documents).

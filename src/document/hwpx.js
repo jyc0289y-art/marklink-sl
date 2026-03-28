@@ -346,6 +346,14 @@ function processChildren(container, binDataMap, footnoteCollector = null, fontMa
         listType = null;
       }
       html += parseTable(node, binDataMap);
+    } else if (tag === 'shape') {
+      // Top-level shape element (textbox, annotation, callout)
+      if (listBuffer.length > 0) {
+        html += flushListBuffer(listBuffer, listType, binDataMap, fontMap);
+        listBuffer = [];
+        listType = null;
+      }
+      html += parseShape(node, binDataMap, footnoteCollector, fontMap);
     } else if (tag === 'sec' || tag === 'subDoc') {
       // Nested section — insert page break before new section
       if (listBuffer.length > 0) {
@@ -580,6 +588,8 @@ function parseRunsContent(pNode, binDataMap, footnoteCollector = null, fontMap =
       content += parseTable(child, binDataMap);
     } else if (tag === 'img' || tag === 'drawingObject' || tag === 'pic' || tag === 'drawing') {
       content += parseImage(child, binDataMap);
+    } else if (tag === 'shape') {
+      content += parseShape(child, binDataMap, footnoteCollector, fontMap);
     } else if (tag === 'fn' || tag === 'footnote') {
       // Task 6: Footnote
       if (footnoteCollector) {
@@ -703,6 +713,8 @@ function parseRun(runNode, binDataMap, footnoteCollector = null, fontMap = {}) {
       html += '<span style="display:inline-block;width:2em">&nbsp;</span>';
     } else if (tag === 'img' || tag === 'drawingObject' || tag === 'pic' || tag === 'drawing') {
       html += parseImage(child, binDataMap);
+    } else if (tag === 'shape') {
+      html += parseShape(child, binDataMap, footnoteCollector, fontMap);
     } else if (tag === 'markpenBegin' || tag === 'markpenEnd' ||
                tag === 'charPr' || tag === 'rPr' || tag === 'secPr') {
       // Skip metadata elements
@@ -847,14 +859,29 @@ function parseTable(tblNode, binDataMap) {
           else cellStyles.push(`padding:${toPx(padTop)}px ${toPx(padRight)}px ${toPx(padBottom)}px ${toPx(padLeft)}px`);
         }
 
-        // Vertical alignment
-        const vAlign = tcPr.getAttribute('verticalAlign') || tcPr.getAttribute('vAlign') || '';
+        // Vertical alignment — check multiple attribute names
+        const vAlign = tcPr.getAttribute('verticalAlign') || tcPr.getAttribute('vAlign') || tcPr.getAttribute('cellVAlign') || '';
         if (vAlign) {
-          const vaMap = { TOP: 'top', CENTER: 'middle', BOTTOM: 'bottom', top: 'top', center: 'middle', bottom: 'bottom' };
+          const vaMap = { TOP: 'top', CENTER: 'middle', BOTTOM: 'bottom', top: 'top', center: 'middle', bottom: 'bottom', MIDDLE: 'middle' };
           if (vaMap[vAlign]) {
-            const vaIdx = cellStyles.findIndex(s => s.startsWith('vertical-align:'));
+            const vaIdx = cellStyles.findIndex((s) => s.startsWith('vertical-align:'));
             if (vaIdx >= 0) cellStyles[vaIdx] = `vertical-align:${vaMap[vAlign]}`;
             else cellStyles.push(`vertical-align:${vaMap[vAlign]}`);
+          }
+        }
+
+        // Cell margin child element (<hp:cellMargin left="..." right="..." top="..." bottom="...">)
+        const cellMarginEl = findChild(tcPr, 'cellMargin') || findChild(tcPr, 'tcMar');
+        if (cellMarginEl) {
+          const cmLeft = cellMarginEl.getAttribute('left') || '';
+          const cmRight = cellMarginEl.getAttribute('right') || '';
+          const cmTop = cellMarginEl.getAttribute('top') || '';
+          const cmBottom = cellMarginEl.getAttribute('bottom') || '';
+          if (cmLeft || cmRight || cmTop || cmBottom) {
+            const toPx = (v) => v ? Math.max(0, Math.round(parseInt(v, 10) / 75)) : 4;
+            const padIdx = cellStyles.findIndex((s) => s.startsWith('padding:'));
+            if (padIdx >= 0) cellStyles[padIdx] = `padding:${toPx(cmTop)}px ${toPx(cmRight)}px ${toPx(cmBottom)}px ${toPx(cmLeft)}px`;
+            else cellStyles.push(`padding:${toPx(cmTop)}px ${toPx(cmRight)}px ${toPx(cmBottom)}px ${toPx(cmLeft)}px`);
           }
         }
 
@@ -967,19 +994,91 @@ function parseImage(imgNode, binDataMap) {
   }
 
   if (dataUrl) {
-    // Try to get dimensions
-    const width = imgNode.getAttribute('width') || imgNode.getAttribute('cx') || '';
-    const height = imgNode.getAttribute('height') || imgNode.getAttribute('cy') || '';
+    // Try to get dimensions from shapeObject (HWPUNIT: 1/7200 inch) or direct attrs
+    const shapeObj = findChild(imgNode, 'shapeObject') || findChild(imgNode, 'shapePr');
+    const widthRaw = shapeObj?.getAttribute('width') || imgNode.getAttribute('width') || imgNode.getAttribute('cx') || '';
+    const heightRaw = shapeObj?.getAttribute('height') || imgNode.getAttribute('height') || imgNode.getAttribute('cy') || '';
     let style = 'max-width:100%';
-    if (width && parseInt(width, 10) > 0) {
-      const wpx = Math.round(parseInt(width, 10) / 75);
+    if (widthRaw && parseInt(widthRaw, 10) > 0) {
+      // HWPUNIT to px: hwpunit / 7200 * 96
+      const wpx = hwpUnitToPx96(parseInt(widthRaw, 10));
       if (wpx > 0 && wpx < 2000) style += `;width:${wpx}px`;
+    }
+    if (heightRaw && parseInt(heightRaw, 10) > 0) {
+      const hpx = hwpUnitToPx96(parseInt(heightRaw, 10));
+      if (hpx > 0 && hpx < 2000) style += `;height:${hpx}px`;
     }
     return `<img src="${dataUrl}" style="${style}" alt="image">`;
   }
 
   // Fallback: placeholder
   return '<span style="display:inline-block;padding:8px;background:#f0f0f0;border:1px dashed #ccc;color:#999">[Image]</span>';
+}
+
+/**
+ * Convert HWPUNIT (1/7200 inch) to pixels at 96 DPI.
+ * Formula: px = hwpunit / 7200 * 96
+ */
+function hwpUnitToPx96(hwpunit) {
+  return Math.round(hwpunit / 7200 * 96);
+}
+
+/**
+ * Parse a shape element → HTML
+ * Handles: textBox (rendered as styled div), image shapes, and other shapes
+ */
+function parseShape(shapeNode, binDataMap, footnoteCollector = null, fontMap = {}) {
+  // Check for shapeObject to get dimensions
+  const shapeObj = findChild(shapeNode, 'shapeObject') || findChild(shapeNode, 'shapePr');
+  let widthPx = 0;
+  let heightPx = 0;
+  if (shapeObj) {
+    const w = shapeObj.getAttribute('width') || '';
+    const h = shapeObj.getAttribute('height') || '';
+    if (w && parseInt(w, 10) > 0) widthPx = hwpUnitToPx96(parseInt(w, 10));
+    if (h && parseInt(h, 10) > 0) heightPx = hwpUnitToPx96(parseInt(h, 10));
+  }
+
+  // Check for image inside shape (img element with binItemRef)
+  const imgChild = findChild(shapeNode, 'img') || findChild(shapeNode, 'pic') || findChild(shapeNode, 'drawingObject');
+  if (imgChild) {
+    return parseImage(shapeNode, binDataMap);
+  }
+
+  // Check for textBox — render inner paragraphs as a styled div
+  const textBox = findChild(shapeNode, 'textBox') || findChild(shapeNode, 'txtBox');
+  if (textBox) {
+    const boxStyles = [
+      'border:1px solid #ccc',
+      'padding:8px 12px',
+      'margin:8px 0',
+      'border-radius:4px',
+      'background-color:#fafafa',
+    ];
+    if (widthPx > 0 && widthPx < 2000) boxStyles.push(`width:${widthPx}px`);
+    if (heightPx > 0 && heightPx < 2000) boxStyles.push(`min-height:${heightPx}px`);
+
+    let inner = '';
+    // textBox contains paragraphs
+    inner += processChildren(textBox, binDataMap, footnoteCollector, fontMap);
+    // If no paragraphs found, fall back to text content
+    if (!inner.trim()) {
+      const text = textBox.textContent?.trim() || '';
+      if (text) inner = `<p>${escapeHTML(text)}</p>`;
+    }
+
+    if (inner.trim()) {
+      return `<div class="hwpx-textbox" style="${boxStyles.join(';')}">${inner}</div>\n`;
+    }
+  }
+
+  // Fallback: if shape has text content but no textBox, render as inline
+  const textContent = shapeNode.textContent?.trim() || '';
+  if (textContent) {
+    return `<span class="hwpx-shape">${escapeHTML(textContent)}</span>`;
+  }
+
+  return '';
 }
 
 // ──────────────────────────────────────────────
