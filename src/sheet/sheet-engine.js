@@ -18,6 +18,8 @@ export function createSheetData(rows = DEFAULT_ROWS, cols = DEFAULT_COLS, name) 
     freezeRows: 0,      // Frozen row count
     freezeCols: 0,      // Frozen column count
     namedRanges: {},     // Named ranges per sheet: name → "A1:B3"
+    colWidths: {},       // Column width overrides: colIndex → px
+    rowHeights: {},      // Row height overrides: rowIndex → px
   };
 }
 

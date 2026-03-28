@@ -90,8 +90,10 @@ export function sanitizeStorageValue(value) {
  */
 export function sanitizeAiResponse(html) {
   if (typeof html !== 'string') return '';
+  // Strip null bytes and control chars that can bypass regex filters
+  let safe = html.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
   // Remove script tags and their content
-  let safe = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  safe = safe.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
   // Remove event handlers (onclick, onerror, onload, etc.)
   safe = safe.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, '');
   // Remove javascript: protocol in href/src/action attributes
@@ -138,8 +140,9 @@ export function sanitizeUrl(url) {
   if (typeof url !== 'string') return '';
   const trimmed = url.trim();
   if (!trimmed) return '';
+  // Normalize Unicode (NFKC) to collapse fullwidth chars (e.g. ｊａｖａｓｃｒｉｐｔ： → javascript:)
+  let decoded = trimmed.normalize('NFKC');
   // Iteratively decode URL encoding to catch double/triple-encoded bypasses
-  let decoded = trimmed;
   let prev;
   for (let i = 0; i < 5; i++) {
     prev = decoded;
@@ -151,14 +154,17 @@ export function sanitizeUrl(url) {
     if (decoded === prev) break;
   }
   // Strip null bytes, control chars, and zero-width characters used to bypass protocol checks
-  decoded = decoded.replace(/[\x00-\x1f\x7f\u200B-\u200F\uFEFF]/g, '').trim();
+  decoded = decoded.replace(/[\x00-\x1f\x7f\u200B-\u200F\uFEFF\u00AD\u2060\u180E]/g, '').trim();
   // Block dangerous protocols
   const lower = decoded.toLowerCase();
-  if (/^\s*(javascript|vbscript)\s*:/i.test(lower)) {
+  if (/^\s*(javascript|vbscript|livescript|mocha)\s*:/i.test(lower)) {
     return '';
   }
-  // Block data: URIs (all MIME types — data:text/html, data:text/javascript, data:image/svg+xml, etc.)
+  // Block data: URIs — allow data:image/ (except SVG which can contain scripts)
   if (/^\s*data\s*:/i.test(lower)) {
+    if (/^\s*data\s*:\s*image\/(?!svg)/i.test(lower)) {
+      return trimmed; // Safe raster image data URIs (png, jpeg, gif, bmp, webp)
+    }
     return '';
   }
   // Block blob: URIs (can reference executable content)
@@ -183,6 +189,8 @@ export function sanitizeUrl(url) {
 export function sanitizeImportedHtml(html) {
   if (typeof html !== 'string') return '';
   let safe = html;
+  // Strip null bytes and control chars that can bypass subsequent regex filters
+  safe = safe.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
   // Remove script tags and their content
   safe = safe.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
   // Remove noscript
@@ -197,7 +205,8 @@ export function sanitizeImportedHtml(html) {
   safe = safe.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, '');
   // Remove javascript:/vbscript:/data: in href/src/action/background/formaction
   safe = safe.replace(/(href|src|action|background|formaction|dynsrc|lowsrc)\s*=\s*["']?\s*(javascript|vbscript)\s*:/gi, '$1="');
-  safe = safe.replace(/(href|src)\s*=\s*["']?\s*data\s*:/gi, '$1="');
+  // Block data: URIs in href/src — except data:image/ (non-SVG) for embedded images
+  safe = safe.replace(/(href|src)\s*=\s*["']?\s*data\s*:\s*(?!image\/(?!svg))/gi, '$1="');
   // Remove dangerous tags entirely (tags only, content preserved for non-container tags)
   safe = safe.replace(/<\s*\/?\s*(script|iframe|object|embed|form|base|meta|link|applet|body|html)\b[^>]*>/gi, '');
   // Remove style attributes containing expression(), url(javascript:), -moz-binding, behavior
@@ -215,14 +224,18 @@ export function sanitizeImportedHtml(html) {
  */
 export function isFormulaExprSafe(expr) {
   if (typeof expr !== 'string') return false;
-  // Block obvious dangerous patterns
-  if (/\b(eval|Function|constructor|prototype|__proto__|import|require|fetch|XMLHttpRequest|document|window|globalThis|self|top|parent)\b/i.test(expr)) {
+  // Block obvious dangerous patterns — includes object traversal keywords
+  if (/\b(eval|Function|constructor|prototype|__proto__|import|require|fetch|XMLHttpRequest|document|window|globalThis|self|top|parent|this|arguments|Proxy|Reflect|Symbol|async|await|yield|with|return|throw|new|delete|void|typeof|instanceof|class|extends|super|let|var|const|for|while|do|if|else|switch|case|break|continue|try|catch|finally|debugger|alert|confirm|prompt|setTimeout|setInterval|process|Buffer|Deno|Bun)\b/i.test(expr)) {
     return false;
   }
   // Block property access chains that could reach dangerous objects
   if (/\[['"`]/.test(expr)) return false; // bracket notation string access
   // Block template literals
   if (/`/.test(expr)) return false;
+  // Block assignment operators (=, +=, -=, etc.) but allow == and ===
+  if (/(?<!=)=(?!=)/.test(expr)) return false;
+  // Block arrow functions
+  if (/=>/.test(expr)) return false;
   // Allow only: numbers, operators, parens, dots (decimal), commas, spaces, comparison ops, quotes (for string literals), ternary
   return /^[\d\s+\-*/().,"'<>=!|%?:&^~]+$/.test(expr);
 }

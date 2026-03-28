@@ -596,6 +596,16 @@ function parseRunsContent(pNode, binDataMap, footnoteCollector = null, fontMap =
         footnoteCollector.notes.push({ num: fnNum, text: escapeHTML(fnText) });
         content += `<sup><a href="#fn-${fnNum}" style="color:#1565c0;text-decoration:none">${fnNum}</a></sup>`;
       }
+    } else if (tag === 'a') {
+      // Hyperlink element (<hp:a href="...">) — extract href and inner content
+      const href = child.getAttribute('href') || child.getAttribute('url') || '';
+      const innerContent = parseRunsContent(child, binDataMap, footnoteCollector, fontMap);
+      const linkText = innerContent || escapeHTML(child.textContent.trim()) || escapeHTML(href);
+      if (href) {
+        content += `<a href="${escapeHTML(href)}" target="_blank" rel="noopener">${linkText}</a>`;
+      } else {
+        content += linkText;
+      }
     }
   }
 

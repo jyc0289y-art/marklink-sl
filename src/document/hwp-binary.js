@@ -12,7 +12,7 @@ import { sanitizeImportedHtml } from '../utils/sanitize.js';
  * Parse an OLE2 (Compound File Binary Format) container.
  * Returns a map of stream names → Uint8Array data.
  */
-function parseOLE2(buffer) {
+export function parseOLE2(buffer) {
   const view = new DataView(buffer);
   const u8 = new Uint8Array(buffer);
 
@@ -351,8 +351,49 @@ function parseRecords(data) {
 function parseDocInfo(records) {
   const faceNames = [];
   const charShapes = [];
+  const paraShapes = [];
+  const binDataEntries = [];
 
   for (const rec of records) {
+    // Parse PARA_SHAPE records (paragraph formatting)
+    if (rec.tagId === HWPTAG.PARA_SHAPE) {
+      try {
+        const view = new DataView(rec.data.buffer, rec.data.byteOffset, rec.data.byteLength);
+        // Offset 0: uint32 — alignment (0=justify, 1=left, 2=right, 3=center, 4=distribute)
+        const align = rec.data.length >= 4 ? view.getUint32(0, true) : 0;
+        // Offset 8: int32 — left margin (HWP units: 1/7200 inch)
+        const marginLeft = rec.data.length >= 12 ? view.getInt32(8, true) : 0;
+        // Offset 12: int32 — right margin
+        const marginRight = rec.data.length >= 16 ? view.getInt32(12, true) : 0;
+        // Offset 16: int32 — indent
+        const indent = rec.data.length >= 20 ? view.getInt32(16, true) : 0;
+        // Offset 20: int32 — space before paragraph
+        const spaceBefore = rec.data.length >= 24 ? view.getInt32(20, true) : 0;
+        // Offset 24: int32 — space after paragraph
+        const spaceAfter = rec.data.length >= 28 ? view.getInt32(24, true) : 0;
+        // Offset 28: int32 — line spacing (value depends on type)
+        const lineSpacing = rec.data.length >= 32 ? view.getInt32(28, true) : 0;
+        paraShapes.push({
+          align, marginLeft, marginRight, indent,
+          spaceBefore, spaceAfter, lineSpacing,
+        });
+      } catch {
+        paraShapes.push({ align: 0, marginLeft: 0, marginRight: 0, indent: 0, spaceBefore: 0, spaceAfter: 0, lineSpacing: 0 });
+      }
+    }
+
+    // Parse BIN_DATA records (embedded binary data references)
+    if (rec.tagId === HWPTAG.BIN_DATA) {
+      try {
+        const view = new DataView(rec.data.buffer, rec.data.byteOffset, rec.data.byteLength);
+        const type = view.getUint16(0, true); // 0=LINK, 1=EMBEDDING, 2=STORAGE
+        const binId = view.getUint16(2, true); // Absolute BinData ID
+        binDataEntries.push({ type, binId });
+      } catch {
+        // skip
+      }
+    }
+
     if (rec.tagId === HWPTAG.FACE_NAME) {
       try {
         const view = new DataView(rec.data.buffer, rec.data.byteOffset, rec.data.byteLength);
@@ -407,7 +448,7 @@ function parseDocInfo(records) {
     }
   }
 
-  return { faceNames, charShapes };
+  return { faceNames, charShapes, paraShapes, binDataEntries };
 }
 
 /* ========== Body Text → HTML Converter ========== */
@@ -540,10 +581,87 @@ function applyCharShapes(text, charMappings, charShapes, escFn) {
   }).join('');
 }
 
+/** HWP unit → px (1/7200 inch → px at 96dpi) */
+function hwpUnitToPx(val) {
+  return Math.round(val * 96 / 7200);
+}
+
+/** Convert PARA_SHAPE alignment to CSS text-align */
+const ALIGN_MAP = ['justify', 'left', 'right', 'center', 'justify'];
+
+/** Build inline CSS string from a paraShape object */
+function paraShapeToCSS(ps) {
+  if (!ps) return '';
+  const styles = [];
+  if (ps.align > 0 && ps.align <= 4) styles.push(`text-align:${ALIGN_MAP[ps.align]}`);
+  if (ps.marginLeft > 0) styles.push(`margin-left:${hwpUnitToPx(ps.marginLeft)}px`);
+  if (ps.marginRight > 0) styles.push(`margin-right:${hwpUnitToPx(ps.marginRight)}px`);
+  if (ps.indent !== 0) styles.push(`text-indent:${hwpUnitToPx(ps.indent)}px`);
+  if (ps.spaceBefore > 0) styles.push(`margin-top:${hwpUnitToPx(ps.spaceBefore)}px`);
+  if (ps.spaceAfter > 0) styles.push(`margin-bottom:${hwpUnitToPx(ps.spaceAfter)}px`);
+  if (ps.lineSpacing > 0) {
+    const pct = ps.lineSpacing / 100;
+    if (pct > 0 && pct !== 1.6) styles.push(`line-height:${pct.toFixed(2)}`);
+  }
+  return styles.join(';');
+}
+
+/**
+ * Parse SHAPE_COMPONENT record (tag 76) to extract width, height, rotation, positioning.
+ * Structure: objAttr(4) + width(4) + height(4) + zOrder(2) + rotation(4) + xPos(4) + yPos(4) + ...
+ */
+function parseShapeComponent(data) {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const result = { widthPx: 0, heightPx: 0, rotationDeg: 0, posType: -1 };
+  if (data.length < 12) return result;
+
+  const widthHwp = view.getUint32(4, true);
+  const heightHwp = view.getUint32(8, true);
+  result.widthPx = hwpUnitToPx(widthHwp);
+  result.heightPx = hwpUnitToPx(heightHwp);
+
+  // Rotation: int32 at offset 14, stored as degrees × 100
+  if (data.length >= 18) {
+    const rotRaw = view.getInt32(14, true);
+    result.rotationDeg = Math.round(rotRaw / 100);
+  }
+
+  // Positioning type from objAttr bits 21-22 (textWrap mode)
+  if (data.length >= 4) {
+    const objAttr = view.getUint32(0, true);
+    const textWrap = (objAttr >> 21) & 0x3;
+    // 0 = inline, 1 = square wrap, 2 = tight wrap, 3 = behind/in-front
+    result.posType = textWrap;
+  }
+
+  return result;
+}
+
+/** Convert Uint8Array to base64 string */
+function uint8ToBase64(u8) {
+  let binary = '';
+  const len = u8.length;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(u8[i]);
+  }
+  return btoa(binary);
+}
+
+/** Detect MIME type from first few bytes of binary data */
+function detectImageMime(data) {
+  if (data.length < 4) return 'image/png';
+  if (data[0] === 0xFF && data[1] === 0xD8) return 'image/jpeg';
+  if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47) return 'image/png';
+  if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return 'image/gif';
+  if (data[0] === 0x42 && data[1] === 0x4D) return 'image/bmp';
+  if (data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46) return 'image/webp';
+  return 'image/png'; // fallback
+}
+
 /**
  * Convert body text records to HTML.
  */
-function bodyRecordsToHTML(records, docInfo) {
+function bodyRecordsToHTML(records, docInfo, binDataMap) {
   const html = [];
   let inTable = false;
   let tableRows = 0;
@@ -556,6 +674,10 @@ function bodyRecordsToHTML(records, docInfo) {
   let currentTableRowCount = 0;
   let currentTableColCount = 0;
   let cellIndex = 0;
+  // Cell merging support
+  let currentCellSpan = null; // { colAddr, rowAddr, colSpan, rowSpan }
+  let lastRowAddr = -1;
+  const mergedCells = new Set(); // "row,col" strings for cells consumed by merges
 
   // Simple escape
   const esc = (s) => s
@@ -589,31 +711,72 @@ function bodyRecordsToHTML(records, docInfo) {
 
     // Cell
     if (rec.tagId === HWPTAG.CELL && inTable) {
-      // If we have accumulated content from previous cell, push it
-      if (cellIndex > 0 && currentCellContent.length > 0) {
-        currentRowHTML.push(`<td style="border:1px solid #999;padding:4px 8px">${currentCellContent.join('')}</td>`);
+      // Flush previous cell content
+      if (cellIndex > 0) {
+        const content = currentCellContent.length > 0 ? currentCellContent.join('') : '';
+        const spanAttrs = [];
+        if (currentCellSpan) {
+          if (currentCellSpan.colSpan > 1) spanAttrs.push(` colspan="${currentCellSpan.colSpan}"`);
+          if (currentCellSpan.rowSpan > 1) spanAttrs.push(` rowspan="${currentCellSpan.rowSpan}"`);
+        }
+        currentRowHTML.push(`<td style="border:1px solid #999;padding:4px 8px"${spanAttrs.join('')}>${content}</td>`);
         currentCellContent = [];
-      } else if (cellIndex > 0) {
-        currentRowHTML.push('<td style="border:1px solid #999;padding:4px 8px"></td>');
+      }
+
+      // Parse cell record for merge info
+      try {
+        const cellView = new DataView(rec.data.buffer, rec.data.byteOffset, rec.data.byteLength);
+        const colAddr = rec.data.length >= 2 ? cellView.getUint16(0, true) : 0;
+        const rowAddr = rec.data.length >= 4 ? cellView.getUint16(2, true) : 0;
+        const colSpan = rec.data.length >= 6 ? cellView.getUint16(4, true) : 1;
+        const rowSpan = rec.data.length >= 8 ? cellView.getUint16(6, true) : 1;
+        currentCellSpan = { colAddr, rowAddr, colSpan, rowSpan };
+
+        // Register merged cells (skip secondary cells)
+        if (colSpan > 1 || rowSpan > 1) {
+          for (let mr = 0; mr < rowSpan; mr++) {
+            for (let mc = 0; mc < colSpan; mc++) {
+              if (mr === 0 && mc === 0) continue;
+              mergedCells.add(`${rowAddr + mr},${colAddr + mc}`);
+            }
+          }
+        }
+
+        // Detect row boundary by rowAddr change
+        if (lastRowAddr >= 0 && rowAddr !== lastRowAddr && currentRowHTML.length > 0) {
+          tableHTML.push(`<tr>${currentRowHTML.join('')}</tr>`);
+          currentRowHTML = [];
+          currentTableRowCount++;
+        }
+        lastRowAddr = rowAddr;
+      } catch {
+        currentCellSpan = null;
       }
 
       cellIndex++;
-
-      // Check if we need to start a new row
-      if (currentRowHTML.length >= currentTableColCount && currentTableColCount > 0) {
-        tableHTML.push(`<tr>${currentRowHTML.join('')}</tr>`);
-        currentRowHTML = [];
-        currentTableRowCount++;
-      }
       i++;
       continue;
     }
 
     // Paragraph
     if (rec.tagId === HWPTAG.PARA_HEADER) {
-      // Look ahead for PARA_TEXT and PARA_CHAR_SHAPE
+      // Parse paraShapeId from PARA_HEADER record
+      let paraShapeId = -1;
+      try {
+        if (rec.data.length >= 10) {
+          const phView = new DataView(rec.data.buffer, rec.data.byteOffset, rec.data.byteLength);
+          paraShapeId = phView.getUint16(8, true);
+        }
+      } catch { /* ignore */ }
+
+      // Look ahead for PARA_TEXT, PARA_CHAR_SHAPE, SHAPE_COMPONENT, and SHAPE_COMPONENT_PICTURE
       let paraText = '';
       let charMappings = null;
+      let pictureRefs = [];
+      // Track last SHAPE_COMPONENT properties for image positioning
+      let lastShapeProps = null;
+      // Map binItemId → shape properties for each picture
+      const pictureShapeMap = new Map();
       let j = i + 1;
       while (j < records.length && records[j].tagId !== HWPTAG.PARA_HEADER &&
              records[j].tagId !== HWPTAG.TABLE && records[j].tagId !== HWPTAG.CELL) {
@@ -623,8 +786,45 @@ function bodyRecordsToHTML(records, docInfo) {
         if (records[j].tagId === HWPTAG.PARA_CHAR_SHAPE) {
           charMappings = parseParaCharShape(records[j].data);
         }
+        // Parse SHAPE_COMPONENT (tag 76) for width/height/rotation/positioning
+        if (records[j].tagId === HWPTAG.SHAPE_COMPONENT && records[j].level > 1) {
+          try {
+            lastShapeProps = parseShapeComponent(records[j].data);
+          } catch { /* skip */ }
+        }
+        // Collect image references from SHAPE_COMPONENT_PICTURE
+        if (records[j].tagId === HWPTAG.SHAPE_COMPONENT_PICTURE && binDataMap) {
+          try {
+            const picView = new DataView(records[j].data.buffer, records[j].data.byteOffset, records[j].data.byteLength);
+            // SHAPE_COMPONENT_PICTURE: borderColor(4) + borderThickness(4) + borderProp(4) +
+            // ... brightness/contrast/effect(12) + binItemId(uint16) at offset 0 or varied offsets
+            // Try common offsets for binItemId
+            if (records[j].data.length >= 2) {
+              const binItemId = picView.getUint16(0, true);
+              if (binDataMap.has(binItemId)) {
+                pictureRefs.push(binItemId);
+                if (lastShapeProps) pictureShapeMap.set(binItemId, lastShapeProps);
+              }
+            }
+            // Also try offset 12 (after border props)
+            if (records[j].data.length >= 14) {
+              const binItemId2 = picView.getUint16(12, true);
+              if (!pictureRefs.includes(binItemId2) && binDataMap.has(binItemId2)) {
+                pictureRefs.push(binItemId2);
+                if (lastShapeProps) pictureShapeMap.set(binItemId2, lastShapeProps);
+              }
+            }
+          } catch { /* skip */ }
+        }
         j++;
       }
+
+      const paraStyle = paraShapeToCSS(
+        paraShapeId >= 0 && docInfo.paraShapes[paraShapeId]
+          ? docInfo.paraShapes[paraShapeId]
+          : null
+      );
+      const styleAttr = paraStyle ? ` style="${paraStyle}"` : '';
 
       if (paraText) {
         // Apply char shapes
@@ -641,7 +841,58 @@ function bodyRecordsToHTML(records, docInfo) {
         if (inTable) {
           currentCellContent.push(lines);
         } else {
-          html.push(`<p>${lines}</p>`);
+          html.push(`<p${styleAttr}>${lines}</p>`);
+        }
+      }
+
+      // Insert images after the paragraph with SHAPE_COMPONENT-based positioning
+      if (pictureRefs.length > 0 && binDataMap) {
+        for (const binId of pictureRefs) {
+          const dataUrl = binDataMap.get(binId);
+          if (dataUrl) {
+            const shape = pictureShapeMap.get(binId);
+            // Build img style from shape properties
+            const imgStyles = [];
+            let wrapperStyles = [];
+            if (shape && shape.widthPx > 0) {
+              imgStyles.push(`width:${shape.widthPx}px`);
+              if (shape.heightPx > 0) {
+                imgStyles.push(`height:${shape.heightPx}px`);
+              }
+              imgStyles.push('object-fit:contain');
+            } else {
+              // Fallback: no explicit size from shape
+              imgStyles.push('max-width:100%');
+              imgStyles.push('height:auto');
+            }
+            // Apply rotation via CSS transform
+            if (shape && shape.rotationDeg !== 0) {
+              imgStyles.push(`transform:rotate(${shape.rotationDeg}deg)`);
+            }
+            // Determine positioning based on posType
+            if (shape && shape.posType === 0) {
+              // Inline: treat like a character in text flow
+              wrapperStyles.push('display:inline');
+            } else if (shape && shape.posType === 1) {
+              // Absolute positioned relative to paragraph
+              wrapperStyles.push('position:relative');
+              wrapperStyles.push('text-align:center');
+            } else if (shape && shape.posType === 2) {
+              // Absolute positioned relative to page
+              wrapperStyles.push('position:relative');
+              wrapperStyles.push('text-align:center');
+            } else {
+              // Default: block centered
+              wrapperStyles.push('text-align:center');
+            }
+            const wrapTag = (shape && shape.posType === 0) ? 'span' : 'p';
+            const imgTag = `<${wrapTag} style="${wrapperStyles.join(';')}"><img src="${dataUrl}" style="${imgStyles.join(';')}"></${wrapTag}>`;
+            if (inTable) {
+              currentCellContent.push(imgTag);
+            } else {
+              html.push(imgTag);
+            }
+          }
         }
       }
 
@@ -654,8 +905,14 @@ function bodyRecordsToHTML(records, docInfo) {
 
   // Flush remaining table
   if (inTable) {
-    if (currentCellContent.length > 0) {
-      currentRowHTML.push(`<td style="border:1px solid #999;padding:4px 8px">${currentCellContent.join('')}</td>`);
+    if (currentCellContent.length > 0 || cellIndex > 0) {
+      const content = currentCellContent.length > 0 ? currentCellContent.join('') : '';
+      const spanAttrs = [];
+      if (currentCellSpan) {
+        if (currentCellSpan.colSpan > 1) spanAttrs.push(` colspan="${currentCellSpan.colSpan}"`);
+        if (currentCellSpan.rowSpan > 1) spanAttrs.push(` rowspan="${currentCellSpan.rowSpan}"`);
+      }
+      currentRowHTML.push(`<td style="border:1px solid #999;padding:4px 8px"${spanAttrs.join('')}>${content}</td>`);
       currentCellContent = [];
     }
     if (currentRowHTML.length > 0) {
@@ -742,7 +999,33 @@ export async function importHwpBinary(file) {
     }
   }
 
-  // 4. Find and parse BodyText sections
+  // 4. Build binDataMap from OLE2 streams (embedded images)
+  const binDataMap = new Map();
+  try {
+    for (const [name, data] of Object.entries(ole.streams)) {
+      // HWP stores embedded binaries as BIN0001.jpg, BIN0002.png, etc.
+      const match = name.match(/^BIN(\d+)\.\w+$/i);
+      if (match && data && data.length > 0) {
+        const binId = parseInt(match[1], 10);
+        let imgData = data;
+        // Some bindata streams are compressed
+        if (header.compressed && data.length > 2) {
+          try {
+            imgData = await zlibDecompress(data);
+          } catch {
+            imgData = data; // use raw
+          }
+        }
+        const mime = detectImageMime(imgData);
+        const b64 = uint8ToBase64(imgData);
+        binDataMap.set(binId, `data:${mime};base64,${b64}`);
+      }
+    }
+  } catch {
+    // Continue without images
+  }
+
+  // 5. Find and parse BodyText sections
   const sectionNames = Object.keys(ole.streams)
     .filter(n => /^Section\d+$/i.test(n))
     .sort((a, b) => {
@@ -773,7 +1056,7 @@ export async function importHwpBinary(file) {
 
     try {
       const records = parseRecords(decompressed);
-      const sectionHTML = bodyRecordsToHTML(records, docInfo);
+      const sectionHTML = bodyRecordsToHTML(records, docInfo, binDataMap);
       if (sectionHTML) allHTML.push(sectionHTML);
     } catch {
       // Skip unparseable sections

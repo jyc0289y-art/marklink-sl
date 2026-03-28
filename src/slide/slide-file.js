@@ -91,12 +91,220 @@ function importSlideContent(name, text) {
   }
 }
 
-/* ─── Legacy PPT Import (OLE2 Compound File — text extraction) ── */
+/* ─── Legacy PPT Import (OLE2 Compound File — record-tree parsing) ── */
+
+// PPT record type constants
+const PPT_REC = {
+  SLIDE_LIST_WITH_TEXT: 0x0FF0,
+  SLIDE_PERSIST_ATOM: 0x03F3,
+  TEXT_HEADER_ATOM: 0x0F9F,
+  TEXT_CHARS_ATOM: 0x0FA0,
+  TEXT_BYTES_ATOM: 0x0FA8,
+  STYLE_TEXT_PROP_ATOM: 0x0FA1,
+};
+
+// TextHeaderAtom text types
+const TEXT_TYPE = { TITLE: 0, BODY: 1, NOTES: 2, OTHER: 3, CENTER_BODY: 4, CENTER_TITLE: 5, HALF_BODY: 6, QUARTER_BODY: 7 };
+
+// OfficeArt picture record types → MIME type mapping
+const PPT_PIC_TYPE = {
+  0xF01A: 'image/x-emf',
+  0xF01B: 'image/x-wmf',
+  0xF01C: 'image/pict',
+  0xF01D: 'image/jpeg',
+  0xF01E: 'image/png',
+  0xF01F: 'image/bmp',
+  0xF029: 'image/tiff',
+};
+
+// Record types with two 16-byte MD4 hashes (32 bytes) instead of one (16 bytes)
+const PPT_PIC_DOUBLE_HASH = new Set([0xF01A, 0xF01B, 0xF01C]);
+
+/** Convert Uint8Array to base64 string */
+const uint8ToBase64 = (u8) => {
+  let binary = '';
+  for (let i = 0; i < u8.length; i++) {
+    binary += String.fromCharCode(u8[i]);
+  }
+  return btoa(binary);
+};
+
+/** Detect MIME type from first few bytes of binary image data */
+const detectImageMime = (data) => {
+  if (data.length < 4) return 'image/png';
+  if (data[0] === 0xFF && data[1] === 0xD8) return 'image/jpeg';
+  if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47) return 'image/png';
+  if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return 'image/gif';
+  if (data[0] === 0x42 && data[1] === 0x4D) return 'image/bmp';
+  return 'image/png'; // fallback
+};
+
+/**
+ * Parse the OLE2 "Pictures" stream to extract embedded images.
+ * Returns an array of { index, mime, dataUrl } objects.
+ *
+ * The Pictures stream contains a sequence of OfficeArt BLIP records:
+ *   recVer(4 bits) + recInstance(12 bits) + recType(2 bytes) + recLen(4 bytes) + data
+ *
+ * After the 8-byte record header:
+ *   - EMF/WMF/PICT (0xF01A-0xF01C): 16-byte MD4 hash + optional 16-byte hash2 + 1 extra byte + raw data
+ *   - JPEG/PNG/DIB/TIFF (0xF01D-0xF01F, 0xF029): 16-byte MD4 hash + 1 extra byte + raw data
+ *
+ * The recInstance field encodes whether there is a second hash (instance & 1 == 1 means two hashes for EMF/WMF/PICT).
+ */
+function parsePptPictures(picturesStream) {
+  const images = [];
+  if (!picturesStream || picturesStream.length < 8) return images;
+
+  const view = new DataView(picturesStream.buffer, picturesStream.byteOffset, picturesStream.byteLength);
+  let pos = 0;
+  let index = 0;
+
+  while (pos + 8 <= picturesStream.length) {
+    const verInst = view.getUint16(pos, true);
+    const recType = view.getUint16(pos + 2, true);
+    const recLen = view.getUint32(pos + 4, true);
+
+    if (recLen > 100000000 || pos + 8 + recLen > picturesStream.length) break;
+
+    const mime = PPT_PIC_TYPE[recType];
+    if (mime && recLen > 0) {
+      // Determine header bytes to skip within the record data
+      // Base: 16-byte MD4 hash + 1 extra byte = 17
+      // Double-hash types: +16 bytes if recInstance indicates second hash
+      const recInstance = (verInst >> 4) & 0xFFF;
+      let headerSkip = 17; // 16-byte hash + 1 tag byte
+      if (PPT_PIC_DOUBLE_HASH.has(recType)) {
+        // Double-hash types always have at least 16+16+1 = 33 for the dual-hash variant
+        // recInstance bit 0: 0 = compressed (one hash), 1 = uncompressed (two hashes)
+        headerSkip = (recInstance & 1) ? 33 : 17;
+      }
+
+      if (recLen > headerSkip) {
+        const imgData = picturesStream.slice(pos + 8 + headerSkip, pos + 8 + recLen);
+        if (imgData.length > 0) {
+          // Use magic-byte detection for actual MIME, falling back to record type
+          const detectedMime = detectImageMime(imgData);
+          const actualMime = (detectedMime !== 'image/png' || mime === 'image/png') ? detectedMime : mime;
+          const b64 = uint8ToBase64(imgData);
+          images.push({ index, mime: actualMime, dataUrl: `data:${actualMime};base64,${b64}` });
+        }
+      }
+      index++;
+    }
+
+    pos += 8 + recLen;
+  }
+
+  return images;
+}
+
+/**
+ * Parse PPT binary records from a stream.
+ * Each record: recVer(4 bits) + recInstance(12 bits) + recType(16 bits) + recLen(32 bits)
+ * Container records (recVer == 0xF) contain child records.
+ */
+function parsePptRecords(data, offset, length) {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const records = [];
+  let pos = offset;
+  const end = offset + length;
+  while (pos + 8 <= end && pos + 8 <= data.length) {
+    const verInst = view.getUint16(pos, true);
+    const recVer = verInst & 0xF;
+    const recInstance = (verInst >> 4) & 0xFFF;
+    const recType = view.getUint16(pos + 2, true);
+    const recLen = view.getUint32(pos + 4, true);
+    pos += 8;
+
+    if (recLen > 100000000 || pos + recLen > data.length) break; // sanity check
+
+    const isContainer = recVer === 0xF;
+    const rec = { recType, recInstance, recLen, offset: pos, isContainer };
+
+    if (isContainer && recLen > 0) {
+      rec.children = parsePptRecords(data, pos, recLen);
+    } else {
+      rec.data = data.slice(pos, pos + recLen);
+    }
+
+    records.push(rec);
+    pos += recLen;
+  }
+  return records;
+}
+
+/**
+ * Extract text from a TextCharsAtom or TextBytesAtom record.
+ */
+function extractPptText(rec, streamData) {
+  if (!rec.data || rec.data.length === 0) return '';
+  const view = new DataView(rec.data.buffer, rec.data.byteOffset, rec.data.byteLength);
+  let text = '';
+  if (rec.recType === PPT_REC.TEXT_CHARS_ATOM) {
+    // UTF-16LE
+    for (let i = 0; i + 1 < rec.data.length; i += 2) {
+      const ch = view.getUint16(i, true);
+      if (ch === 0x0D) text += '\n';
+      else if (ch >= 32 || ch === 9) text += String.fromCharCode(ch);
+    }
+  } else if (rec.recType === PPT_REC.TEXT_BYTES_ATOM) {
+    // Latin-1
+    for (let i = 0; i < rec.data.length; i++) {
+      const ch = rec.data[i];
+      if (ch === 0x0D) text += '\n';
+      else if (ch >= 32 || ch === 9) text += String.fromCharCode(ch);
+    }
+  }
+  return text.trim();
+}
+
+/**
+ * Collect text blocks from a SlideListWithText container.
+ * Groups by SlidePersistAtom boundaries.
+ */
+function collectSlideTexts(records) {
+  const slideGroups = [];
+  let currentGroup = null;
+
+  function walk(recs) {
+    for (const rec of recs) {
+      if (rec.recType === PPT_REC.SLIDE_PERSIST_ATOM) {
+        // New slide boundary
+        if (currentGroup) slideGroups.push(currentGroup);
+        currentGroup = { texts: [], notes: [] };
+      }
+
+      if (rec.recType === PPT_REC.TEXT_HEADER_ATOM && rec.data && rec.data.length >= 4) {
+        const textType = new DataView(rec.data.buffer, rec.data.byteOffset, rec.data.byteLength).getUint32(0, true);
+        if (currentGroup) currentGroup._lastTextType = textType;
+      }
+
+      if (rec.recType === PPT_REC.TEXT_CHARS_ATOM || rec.recType === PPT_REC.TEXT_BYTES_ATOM) {
+        const text = extractPptText(rec);
+        if (text && currentGroup) {
+          if (currentGroup._lastTextType === TEXT_TYPE.NOTES) {
+            currentGroup.notes.push(text);
+          } else {
+            currentGroup.texts.push({ text, type: currentGroup._lastTextType ?? TEXT_TYPE.OTHER });
+          }
+        }
+      }
+
+      if (rec.isContainer && rec.children) {
+        walk(rec.children);
+      }
+    }
+  }
+
+  walk(records);
+  if (currentGroup) slideGroups.push(currentGroup);
+  return slideGroups;
+}
 
 /**
  * Import a legacy .ppt file (binary OLE2 format).
- * Extracts text content from the PowerPoint Document stream.
- * Full formatting is not preserved, but text content is recovered.
+ * Uses proper record-tree parsing for accurate slide boundaries.
  */
 async function importPptLegacy(file) {
   const buffer = await file.arrayBuffer();
@@ -108,92 +316,121 @@ async function importPptLegacy(file) {
     return;
   }
 
-  // Extract text using UTF-16LE string scanning approach
-  // PPT binary format stores text as UTF-16LE in TextCharsAtom (0x0FA0) and
-  // TextBytesAtom (0x0FA8) records
-  const texts = [];
-  const view = new DataView(buffer);
+  // Try OLE2 + record-tree parsing first
+  let slides = [];
+  try {
+    const { parseOLE2 } = await import('../document/hwp-binary.js');
+    const ole = parseOLE2(buffer);
+    const pptStream = ole.streams['PowerPoint Document'];
 
-  for (let pos = 0; pos + 8 <= buffer.byteLength; pos += 1) {
-    // PPT record header: recVer(4) + recInstance(12) + recType(16) + recLen(32)
-    const recType = view.getUint16(pos + 2, true);
-    const recLen = view.getUint32(pos + 4, true);
+    if (pptStream && pptStream.length > 0) {
+      const records = parsePptRecords(pptStream, 0, pptStream.length);
+      const slideGroups = collectSlideTexts(records);
 
-    // TextCharsAtom (0x0FA0) — UTF-16LE text
-    if (recType === 0x0FA0 && recLen > 0 && recLen < 100000 && pos + 8 + recLen <= buffer.byteLength) {
-      let text = '';
-      for (let i = 0; i < recLen; i += 2) {
-        const ch = view.getUint16(pos + 8 + i, true);
-        if (ch === 0x0D) text += '\n';
-        else if (ch >= 32 || ch === 9) text += String.fromCharCode(ch);
+      // Extract images from the Pictures stream
+      const picturesStream = ole.streams['Pictures'];
+      const pptImages = parsePptPictures(picturesStream);
+
+      // Distribute images across slides (round-robin if we can't map precisely)
+      const slideCount = slideGroups.filter(g => g.texts.length > 0).length;
+      const imagesPerSlide = slideCount > 0 ? Math.ceil(pptImages.length / slideCount) : 0;
+
+      let slideIdx = 0;
+      for (const group of slideGroups) {
+        if (group.texts.length === 0) continue;
+        const textContent = group.texts.map((t) => {
+          if ((t.type === TEXT_TYPE.TITLE || t.type === TEXT_TYPE.CENTER_TITLE) && t.text.length < 120) {
+            return `<h2 style="margin:0 0 12px 0">${escapeHTML(t.text)}</h2>`;
+          }
+          return `<p style="margin:4px 0;white-space:pre-wrap">${escapeHTML(t.text)}</p>`;
+        }).join('');
+
+        // Append images allocated to this slide
+        let imageContent = '';
+        if (pptImages.length > 0 && imagesPerSlide > 0) {
+          const startImg = slideIdx * imagesPerSlide;
+          const endImg = Math.min(startImg + imagesPerSlide, pptImages.length);
+          for (let i = startImg; i < endImg; i++) {
+            imageContent += `<div style="text-align:center;margin:8px 0"><img src="${pptImages[i].dataUrl}" style="max-width:80%;max-height:300px;object-fit:contain" alt="Slide image ${i + 1}"></div>`;
+          }
+        }
+
+        slides.push({
+          content: textContent + imageContent,
+          notes: group.notes.map((n) => escapeHTML(n)).join('\n'),
+          style: 'background:#fff;color:#333',
+        });
+        slideIdx++;
       }
-      text = text.trim();
-      if (text.length > 0 && !texts.includes(text)) texts.push(text);
-      pos += 7 + recLen; // advance past this record
-      continue;
     }
-
-    // TextBytesAtom (0x0FA8) — Latin-1 text
-    if (recType === 0x0FA8 && recLen > 0 && recLen < 100000 && pos + 8 + recLen <= buffer.byteLength) {
-      let text = '';
-      for (let i = 0; i < recLen; i++) {
-        const ch = u8[pos + 8 + i];
-        if (ch === 0x0D) text += '\n';
-        else if (ch >= 32 || ch === 9) text += String.fromCharCode(ch);
-      }
-      text = text.trim();
-      if (text.length > 0 && !texts.includes(text)) texts.push(text);
-      pos += 7 + recLen;
-      continue;
-    }
+  } catch {
+    // Fall through to legacy byte-scan approach
   }
 
-  if (texts.length === 0) {
-    alert('PPT 파일에서 텍스트를 추출할 수 없습니다. PPTX 형식으로 다시 저장해 주세요.');
-    return;
-  }
+  // Fallback: byte-by-byte scan (original approach)
+  if (slides.length === 0) {
+    const texts = [];
+    const view = new DataView(buffer);
+    for (let pos = 0; pos + 8 <= buffer.byteLength; pos += 1) {
+      const recType = view.getUint16(pos + 2, true);
+      const recLen = view.getUint32(pos + 4, true);
 
-  // Group texts into slides (heuristic: split by larger text blocks)
-  // Each substantial text block becomes a slide
-  const slides = [];
-  let currentSlide = [];
-  for (const text of texts) {
-    currentSlide.push(text);
-    // If text looks like a title (short, no newlines) and we have content, start new slide
-    if (currentSlide.length >= 2) {
+      if (recType === 0x0FA0 && recLen > 0 && recLen < 100000 && pos + 8 + recLen <= buffer.byteLength) {
+        let text = '';
+        for (let i = 0; i < recLen; i += 2) {
+          const ch = view.getUint16(pos + 8 + i, true);
+          if (ch === 0x0D) text += '\n';
+          else if (ch >= 32 || ch === 9) text += String.fromCharCode(ch);
+        }
+        text = text.trim();
+        if (text.length > 0 && !texts.includes(text)) texts.push(text);
+        pos += 7 + recLen;
+        continue;
+      }
+
+      if (recType === 0x0FA8 && recLen > 0 && recLen < 100000 && pos + 8 + recLen <= buffer.byteLength) {
+        let text = '';
+        for (let i = 0; i < recLen; i++) {
+          const ch = u8[pos + 8 + i];
+          if (ch === 0x0D) text += '\n';
+          else if (ch >= 32 || ch === 9) text += String.fromCharCode(ch);
+        }
+        text = text.trim();
+        if (text.length > 0 && !texts.includes(text)) texts.push(text);
+        pos += 7 + recLen;
+        continue;
+      }
+    }
+
+    // Group texts into slides using heuristic
+    let currentSlide = [];
+    for (const text of texts) {
+      currentSlide.push(text);
+      if (currentSlide.length >= 2) {
+        const content = currentSlide.map(t => {
+          if (t.split('\n').length === 1 && t.length < 80) {
+            return `<h2 style="margin:0 0 12px 0">${escapeHTML(t)}</h2>`;
+          }
+          return `<p style="margin:4px 0;white-space:pre-wrap">${escapeHTML(t)}</p>`;
+        }).join('');
+        slides.push({ content, notes: '', style: 'background:#fff;color:#333' });
+        currentSlide = [];
+      }
+    }
+    if (currentSlide.length > 0) {
       const content = currentSlide.map(t => {
-        const lines = t.split('\n');
-        if (lines.length === 1 && t.length < 80) {
+        if (t.split('\n').length === 1 && t.length < 80) {
           return `<h2 style="margin:0 0 12px 0">${escapeHTML(t)}</h2>`;
         }
         return `<p style="margin:4px 0;white-space:pre-wrap">${escapeHTML(t)}</p>`;
       }).join('');
-      slides.push({
-        content,
-        notes: '',
-        style: 'background:#fff;color:#333',
-      });
-      currentSlide = [];
+      slides.push({ content, notes: '', style: 'background:#fff;color:#333' });
     }
-  }
-  // Flush remaining
-  if (currentSlide.length > 0) {
-    const content = currentSlide.map(t => {
-      const lines = t.split('\n');
-      if (lines.length === 1 && t.length < 80) {
-        return `<h2 style="margin:0 0 12px 0">${escapeHTML(t)}</h2>`;
-      }
-      return `<p style="margin:4px 0;white-space:pre-wrap">${escapeHTML(t)}</p>`;
-    }).join('');
-    slides.push({ content, notes: '', style: 'background:#fff;color:#333' });
   }
 
   if (slides.length === 0) {
-    slides.push({
-      content: '<p style="text-align:center;color:#888">No extractable content found in this PPT file.</p>',
-      notes: '',
-      style: 'background:#fff;color:#333',
-    });
+    alert('PPT 파일에서 텍스트를 추출할 수 없습니다. PPTX 형식으로 다시 저장해 주세요.');
+    return;
   }
 
   setSlidesData(slides);

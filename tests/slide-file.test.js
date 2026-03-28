@@ -505,3 +505,307 @@ describe('parseTable — nested table isolation (logic test)', () => {
     expect(directResult).toHaveLength(2); // CORRECT: only outer rows
   });
 });
+
+/* ─── PPT Pictures stream parsing ─── */
+
+// Replicate constants and functions from slide-file.js for testing
+const PPT_PIC_TYPE = {
+  0xF01A: 'image/x-emf',
+  0xF01B: 'image/x-wmf',
+  0xF01C: 'image/pict',
+  0xF01D: 'image/jpeg',
+  0xF01E: 'image/png',
+  0xF01F: 'image/bmp',
+  0xF029: 'image/tiff',
+};
+
+const PPT_PIC_DOUBLE_HASH = new Set([0xF01A, 0xF01B, 0xF01C]);
+
+const uint8ToBase64 = (u8) => {
+  let binary = '';
+  for (let i = 0; i < u8.length; i++) {
+    binary += String.fromCharCode(u8[i]);
+  }
+  return btoa(binary);
+};
+
+const detectImageMime = (data) => {
+  if (data.length < 4) return 'image/png';
+  if (data[0] === 0xFF && data[1] === 0xD8) return 'image/jpeg';
+  if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47) return 'image/png';
+  if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return 'image/gif';
+  if (data[0] === 0x42 && data[1] === 0x4D) return 'image/bmp';
+  return 'image/png';
+};
+
+function parsePptPictures(picturesStream) {
+  const images = [];
+  if (!picturesStream || picturesStream.length < 8) return images;
+
+  const view = new DataView(picturesStream.buffer, picturesStream.byteOffset, picturesStream.byteLength);
+  let pos = 0;
+  let index = 0;
+
+  while (pos + 8 <= picturesStream.length) {
+    const verInst = view.getUint16(pos, true);
+    const recType = view.getUint16(pos + 2, true);
+    const recLen = view.getUint32(pos + 4, true);
+
+    if (recLen > 100000000 || pos + 8 + recLen > picturesStream.length) break;
+
+    const mime = PPT_PIC_TYPE[recType];
+    if (mime && recLen > 0) {
+      const recInstance = (verInst >> 4) & 0xFFF;
+      let headerSkip = 17;
+      if (PPT_PIC_DOUBLE_HASH.has(recType)) {
+        headerSkip = (recInstance & 1) ? 33 : 17;
+      }
+
+      if (recLen > headerSkip) {
+        const imgData = picturesStream.slice(pos + 8 + headerSkip, pos + 8 + recLen);
+        if (imgData.length > 0) {
+          const detectedMime = detectImageMime(imgData);
+          const actualMime = (detectedMime !== 'image/png' || mime === 'image/png') ? detectedMime : mime;
+          const b64 = uint8ToBase64(imgData);
+          images.push({ index, mime: actualMime, dataUrl: `data:${actualMime};base64,${b64}` });
+        }
+      }
+      index++;
+    }
+
+    pos += 8 + recLen;
+  }
+
+  return images;
+}
+
+/**
+ * Build a fake Pictures stream with one BLIP record.
+ * recType: e.g. 0xF01D (JPEG), 0xF01E (PNG)
+ * fakeImageData: Uint8Array of fake image bytes (after hash+tag)
+ * recInstance: 12-bit value shifted into verInst
+ */
+function buildPicturesStream(records) {
+  // Calculate total size
+  let totalSize = 0;
+  for (const rec of records) {
+    const hashLen = PPT_PIC_DOUBLE_HASH.has(rec.recType) && (rec.recInstance & 1) ? 33 : 17;
+    totalSize += 8 + hashLen + rec.imageData.length;
+  }
+
+  const buf = new ArrayBuffer(totalSize);
+  const view = new DataView(buf);
+  const u8 = new Uint8Array(buf);
+  let pos = 0;
+
+  for (const rec of records) {
+    const recInstance = rec.recInstance || 0;
+    const verInst = (recInstance << 4) | 0x0; // recVer = 0
+    const hashLen = PPT_PIC_DOUBLE_HASH.has(rec.recType) && (recInstance & 1) ? 33 : 17;
+    const recLen = hashLen + rec.imageData.length;
+
+    view.setUint16(pos, verInst, true);
+    view.setUint16(pos + 2, rec.recType, true);
+    view.setUint32(pos + 4, recLen, true);
+    // Fill hash area with zeros (16 or 32 bytes + 1 tag byte)
+    // Then write the image data after the hash
+    u8.set(rec.imageData, pos + 8 + hashLen);
+    pos += 8 + recLen;
+  }
+
+  return new Uint8Array(buf);
+}
+
+describe('parsePptPictures', () => {
+  it('returns empty array for null/undefined input', () => {
+    expect(parsePptPictures(null)).toEqual([]);
+    expect(parsePptPictures(undefined)).toEqual([]);
+  });
+
+  it('returns empty array for too-small input', () => {
+    expect(parsePptPictures(new Uint8Array(4))).toEqual([]);
+  });
+
+  it('extracts a single JPEG image', () => {
+    // Fake JPEG: starts with FF D8
+    const fakeJpeg = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46]);
+    const stream = buildPicturesStream([
+      { recType: 0xF01D, recInstance: 0, imageData: fakeJpeg },
+    ]);
+
+    const images = parsePptPictures(stream);
+    expect(images).toHaveLength(1);
+    expect(images[0].index).toBe(0);
+    expect(images[0].mime).toBe('image/jpeg');
+    expect(images[0].dataUrl).toContain('data:image/jpeg;base64,');
+  });
+
+  it('extracts a single PNG image', () => {
+    const fakePng = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+    const stream = buildPicturesStream([
+      { recType: 0xF01E, recInstance: 0, imageData: fakePng },
+    ]);
+
+    const images = parsePptPictures(stream);
+    expect(images).toHaveLength(1);
+    expect(images[0].mime).toBe('image/png');
+    expect(images[0].dataUrl).toContain('data:image/png;base64,');
+  });
+
+  it('extracts multiple images sequentially', () => {
+    const fakeJpeg = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10]);
+    const fakePng = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+    const stream = buildPicturesStream([
+      { recType: 0xF01D, recInstance: 0, imageData: fakeJpeg },
+      { recType: 0xF01E, recInstance: 0, imageData: fakePng },
+    ]);
+
+    const images = parsePptPictures(stream);
+    expect(images).toHaveLength(2);
+    expect(images[0].index).toBe(0);
+    expect(images[0].mime).toBe('image/jpeg');
+    expect(images[1].index).toBe(1);
+    expect(images[1].mime).toBe('image/png');
+  });
+
+  it('handles EMF with double hash (recInstance bit 0 = 1)', () => {
+    const fakeEmfData = new Uint8Array(20).fill(0xAA);
+    const stream = buildPicturesStream([
+      { recType: 0xF01A, recInstance: 1, imageData: fakeEmfData },
+    ]);
+
+    const images = parsePptPictures(stream);
+    expect(images).toHaveLength(1);
+    expect(images[0].index).toBe(0);
+    // The raw data should be the fakeEmfData bytes
+    expect(images[0].dataUrl).toContain('base64,');
+  });
+
+  it('handles EMF with single hash (recInstance bit 0 = 0)', () => {
+    const fakeEmfData = new Uint8Array(20).fill(0xBB);
+    const stream = buildPicturesStream([
+      { recType: 0xF01A, recInstance: 0, imageData: fakeEmfData },
+    ]);
+
+    const images = parsePptPictures(stream);
+    expect(images).toHaveLength(1);
+  });
+
+  it('skips records with unknown recType', () => {
+    // Build a stream manually with an unknown record type
+    const buf = new ArrayBuffer(20);
+    const view = new DataView(buf);
+    const u8 = new Uint8Array(buf);
+    view.setUint16(0, 0, true); // verInst
+    view.setUint16(2, 0x1234, true); // unknown recType
+    view.setUint32(4, 12, true); // recLen
+    u8.fill(0xCC, 8, 20);
+
+    const images = parsePptPictures(new Uint8Array(buf));
+    expect(images).toHaveLength(0);
+  });
+
+  it('stops parsing on corrupted record (recLen exceeding stream)', () => {
+    const buf = new ArrayBuffer(16);
+    const view = new DataView(buf);
+    view.setUint16(0, 0, true);
+    view.setUint16(2, 0xF01D, true); // JPEG
+    view.setUint32(4, 999999, true); // recLen far exceeding buffer
+
+    const images = parsePptPictures(new Uint8Array(buf));
+    expect(images).toHaveLength(0);
+  });
+
+  it('detects BMP from magic bytes even if record type says DIB', () => {
+    // BMP magic: 0x42 0x4D
+    const fakeBmp = new Uint8Array([0x42, 0x4D, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    const stream = buildPicturesStream([
+      { recType: 0xF01F, recInstance: 0, imageData: fakeBmp },
+    ]);
+
+    const images = parsePptPictures(stream);
+    expect(images).toHaveLength(1);
+    expect(images[0].mime).toBe('image/bmp');
+  });
+
+  it('base64 encodes image data correctly', () => {
+    // Simple known data
+    const data = new Uint8Array([0xFF, 0xD8, 0x48, 0x65, 0x6C, 0x6C, 0x6F]); // FF D8 + "Hello"
+    const stream = buildPicturesStream([
+      { recType: 0xF01D, recInstance: 0, imageData: data },
+    ]);
+
+    const images = parsePptPictures(stream);
+    expect(images).toHaveLength(1);
+    // Verify the base64 decodes back to the original data
+    const b64Part = images[0].dataUrl.split(',')[1];
+    const decoded = atob(b64Part);
+    expect(decoded.length).toBe(data.length);
+    for (let i = 0; i < data.length; i++) {
+      expect(decoded.charCodeAt(i)).toBe(data[i]);
+    }
+  });
+});
+
+describe('PPT_PIC_TYPE mapping', () => {
+  it('maps all known OfficeArt BLIP record types', () => {
+    expect(PPT_PIC_TYPE[0xF01A]).toBe('image/x-emf');
+    expect(PPT_PIC_TYPE[0xF01B]).toBe('image/x-wmf');
+    expect(PPT_PIC_TYPE[0xF01C]).toBe('image/pict');
+    expect(PPT_PIC_TYPE[0xF01D]).toBe('image/jpeg');
+    expect(PPT_PIC_TYPE[0xF01E]).toBe('image/png');
+    expect(PPT_PIC_TYPE[0xF01F]).toBe('image/bmp');
+    expect(PPT_PIC_TYPE[0xF029]).toBe('image/tiff');
+  });
+
+  it('returns undefined for unknown record types', () => {
+    expect(PPT_PIC_TYPE[0x0000]).toBeUndefined();
+    expect(PPT_PIC_TYPE[0xFFFF]).toBeUndefined();
+  });
+});
+
+describe('detectImageMime', () => {
+  it('detects JPEG', () => {
+    expect(detectImageMime(new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0]))).toBe('image/jpeg');
+  });
+
+  it('detects PNG', () => {
+    expect(detectImageMime(new Uint8Array([0x89, 0x50, 0x4E, 0x47]))).toBe('image/png');
+  });
+
+  it('detects GIF', () => {
+    expect(detectImageMime(new Uint8Array([0x47, 0x49, 0x46, 0x38]))).toBe('image/gif');
+  });
+
+  it('detects BMP', () => {
+    expect(detectImageMime(new Uint8Array([0x42, 0x4D, 0x00, 0x00]))).toBe('image/bmp');
+  });
+
+  it('falls back to image/png for unknown data', () => {
+    expect(detectImageMime(new Uint8Array([0x00, 0x00, 0x00, 0x00]))).toBe('image/png');
+  });
+
+  it('falls back to image/png for short data', () => {
+    expect(detectImageMime(new Uint8Array([0xFF]))).toBe('image/png');
+  });
+});
+
+describe('uint8ToBase64', () => {
+  it('encodes empty array', () => {
+    expect(uint8ToBase64(new Uint8Array([]))).toBe('');
+  });
+
+  it('encodes simple bytes', () => {
+    // "Hello" = [72, 101, 108, 108, 111]
+    const result = uint8ToBase64(new Uint8Array([72, 101, 108, 108, 111]));
+    expect(atob(result)).toBe('Hello');
+  });
+
+  it('encodes binary data with high bytes', () => {
+    const data = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0]);
+    const result = uint8ToBase64(data);
+    const decoded = atob(result);
+    expect(decoded.charCodeAt(0)).toBe(0xFF);
+    expect(decoded.charCodeAt(1)).toBe(0xD8);
+  });
+});

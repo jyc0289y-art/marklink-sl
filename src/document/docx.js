@@ -428,18 +428,20 @@ async function extractDocxWithJSZip(arrayBuffer) {
   /**
    * Process drawing/picture elements to extract embedded images
    */
+  const IMG_PLACEHOLDER = '<span style="display:inline-block;padding:8px;background:#f0f0f0;border:1px dashed #ccc;color:#999">[Image]</span>';
+
   const processDrawing = async (drawingNode) => {
     // Find the blip element that holds the image reference
     const blip = queryFirst(drawingNode, 'blip');
-    if (!blip) return '';
+    if (!blip) return IMG_PLACEHOLDER;
     const embedId = blip.getAttribute('r:embed') || blip.getAttribute('embed') || '';
-    if (!embedId || !relsMap[embedId]) return '';
+    if (!embedId || !relsMap[embedId]) return IMG_PLACEHOLDER;
 
     const imagePath = relsMap[embedId];
     // Resolve relative path — rels targets are relative to word/
     const fullPath = imagePath.startsWith('/') ? imagePath.slice(1) : `word/${imagePath}`;
     const imageFile = zip.file(fullPath);
-    if (!imageFile) return '';
+    if (!imageFile) return IMG_PLACEHOLDER;
 
     try {
       const imgData = await imageFile.async('base64');
@@ -448,7 +450,7 @@ async function extractDocxWithJSZip(arrayBuffer) {
       const mime = mimeMap[ext] || 'image/png';
       return `<img src="data:${mime};base64,${imgData}" style="max-width:100%">`;
     } catch {
-      return '';
+      return IMG_PLACEHOLDER;
     }
   };
 
@@ -458,14 +460,14 @@ async function extractDocxWithJSZip(arrayBuffer) {
   const processPict = async (pictNode) => {
     // Look for v:imagedata inside pict
     const imagedata = queryFirst(pictNode, 'imagedata');
-    if (!imagedata) return '';
+    if (!imagedata) return IMG_PLACEHOLDER;
     const rId = imagedata.getAttribute('r:id') || imagedata.getAttribute('id') || '';
-    if (!rId || !relsMap[rId]) return '';
+    if (!rId || !relsMap[rId]) return IMG_PLACEHOLDER;
 
     const imagePath = relsMap[rId];
     const fullPath = imagePath.startsWith('/') ? imagePath.slice(1) : `word/${imagePath}`;
     const imageFile = zip.file(fullPath);
-    if (!imageFile) return '';
+    if (!imageFile) return IMG_PLACEHOLDER;
 
     try {
       const imgData = await imageFile.async('base64');
@@ -474,7 +476,7 @@ async function extractDocxWithJSZip(arrayBuffer) {
       const mime = mimeMap[ext] || 'image/png';
       return `<img src="data:${mime};base64,${imgData}" style="max-width:100%">`;
     } catch {
-      return '';
+      return IMG_PLACEHOLDER;
     }
   };
 

@@ -6,6 +6,9 @@ import {
   sanitizeStorageValue,
   sanitizeAiResponse,
   sanitizeTemplateContent,
+  sanitizeUrl,
+  sanitizeImportedHtml,
+  isFormulaExprSafe,
 } from '../src/utils/sanitize.js';
 
 // ─── 1. escapeHtml — XSS Prevention ───
@@ -231,5 +234,318 @@ describe('sanitizeTemplateContent', () => {
 
   it('returns empty string for non-string', () => {
     expect(sanitizeTemplateContent(42)).toBe('');
+  });
+});
+
+// ─── 7. sanitizeUrl — data:image/ URI allowlist ───
+
+describe('sanitizeUrl — data:image allowlist', () => {
+  it('allows data:image/png URIs', () => {
+    const url = 'data:image/png;base64,iVBORw0KGgo=';
+    expect(sanitizeUrl(url)).toBe(url);
+  });
+
+  it('allows data:image/jpeg URIs', () => {
+    const url = 'data:image/jpeg;base64,/9j/4AAQ=';
+    expect(sanitizeUrl(url)).toBe(url);
+  });
+
+  it('allows data:image/gif URIs', () => {
+    const url = 'data:image/gif;base64,R0lGODlh';
+    expect(sanitizeUrl(url)).toBe(url);
+  });
+
+  it('allows data:image/webp URIs', () => {
+    const url = 'data:image/webp;base64,UklGR';
+    expect(sanitizeUrl(url)).toBe(url);
+  });
+
+  it('blocks data:image/svg+xml (script injection risk)', () => {
+    expect(sanitizeUrl('data:image/svg+xml,<svg onload=alert(1)>')).toBe('');
+  });
+
+  it('blocks data:text/html', () => {
+    expect(sanitizeUrl('data:text/html,<script>alert(1)</script>')).toBe('');
+  });
+
+  it('blocks data:text/javascript', () => {
+    expect(sanitizeUrl('data:text/javascript,alert(1)')).toBe('');
+  });
+
+  it('blocks bare data: with no MIME', () => {
+    expect(sanitizeUrl('data:,alert(1)')).toBe('');
+  });
+
+  it('blocks data:application/octet-stream', () => {
+    expect(sanitizeUrl('data:application/octet-stream;base64,AA==')).toBe('');
+  });
+});
+
+// ─── 8. sanitizeImportedHtml — data:image/ preservation ───
+
+describe('sanitizeImportedHtml — data:image preservation', () => {
+  it('preserves img src with data:image/png', () => {
+    const html = '<img src="data:image/png;base64,iVBORw0KGgo=">';
+    const result = sanitizeImportedHtml(html);
+    expect(result).toContain('data:image/png;base64,');
+  });
+
+  it('preserves img src with data:image/jpeg', () => {
+    const html = '<img src="data:image/jpeg;base64,/9j/4AAQ=">';
+    const result = sanitizeImportedHtml(html);
+    expect(result).toContain('data:image/jpeg;base64,');
+  });
+
+  it('blocks img src with data:image/svg+xml', () => {
+    const html = '<img src="data:image/svg+xml,<svg onload=alert(1)>">';
+    const result = sanitizeImportedHtml(html);
+    expect(result).not.toContain('data:image/svg');
+  });
+
+  it('blocks img src with data:text/html', () => {
+    const html = '<img src="data:text/html,<script>alert(1)</script>">';
+    const result = sanitizeImportedHtml(html);
+    expect(result).not.toMatch(/data\s*:\s*text\/html/i);
+  });
+
+  it('blocks href with data:text/html', () => {
+    const html = '<a href="data:text/html,<script>alert(1)</script>">click</a>';
+    const result = sanitizeImportedHtml(html);
+    expect(result).not.toMatch(/data\s*:\s*text\/html/i);
+  });
+
+  it('blocks data:application/javascript in src', () => {
+    const html = '<img src="data:application/javascript,alert(1)">';
+    const result = sanitizeImportedHtml(html);
+    expect(result).not.toContain('data:application/javascript');
+  });
+});
+
+// ─── 9. sanitizeUrl — Unicode normalization & edge cases ───
+
+describe('sanitizeUrl — Unicode normalization bypass', () => {
+  it('blocks fullwidth javascript: (ｊａｖａｓｃｒｉｐｔ：)', () => {
+    expect(sanitizeUrl('\uFF4A\uFF41\uFF56\uFF41\uFF53\uFF43\uFF52\uFF49\uFF50\uFF54\uFF1Aalert(1)')).toBe('');
+  });
+
+  it('blocks javascript: with soft hyphen inserted (jav\u00ADascript:)', () => {
+    expect(sanitizeUrl('jav\u00ADascript:alert(1)')).toBe('');
+  });
+
+  it('blocks javascript: with zero-width joiner', () => {
+    expect(sanitizeUrl('java\u200Dscript:alert(1)')).toBe('');
+  });
+
+  it('blocks livescript: protocol', () => {
+    expect(sanitizeUrl('livescript:alert(1)')).toBe('');
+  });
+
+  it('blocks mocha: protocol', () => {
+    expect(sanitizeUrl('mocha:alert(1)')).toBe('');
+  });
+
+  it('blocks double-encoded javascript:', () => {
+    // %6A%61%76%61%73%63%72%69%70%74%3A = javascript:
+    expect(sanitizeUrl('%6A%61%76%61%73%63%72%69%70%74%3Aalert(1)')).toBe('');
+  });
+
+  it('blocks blob: URIs', () => {
+    expect(sanitizeUrl('blob:https://example.com/uuid')).toBe('');
+  });
+
+  it('allows normal https URLs', () => {
+    expect(sanitizeUrl('https://example.com/page?q=1')).toBe('https://example.com/page?q=1');
+  });
+
+  it('allows relative URLs', () => {
+    expect(sanitizeUrl('./path/to/file')).toBe('./path/to/file');
+  });
+
+  it('allows hash-only URLs', () => {
+    expect(sanitizeUrl('#section')).toBe('#section');
+  });
+});
+
+// ─── 10. sanitizeImportedHtml — null bytes & edge cases ───
+
+describe('sanitizeImportedHtml — null bytes & nested encoding', () => {
+  it('strips null bytes from HTML', () => {
+    const html = '<div>hel\x00lo</div>';
+    const result = sanitizeImportedHtml(html);
+    expect(result).not.toContain('\x00');
+    expect(result).toContain('hello');
+  });
+
+  it('strips control characters used to split keywords', () => {
+    const html = '<scr\x00ipt>alert(1)</script>';
+    const result = sanitizeImportedHtml(html);
+    expect(result).not.toMatch(/alert/);
+  });
+
+  it('removes SVG elements (script injection vector)', () => {
+    const html = '<svg><script>alert(1)</script></svg>';
+    const result = sanitizeImportedHtml(html);
+    expect(result).not.toMatch(/<svg/i);
+  });
+
+  it('removes MathML elements', () => {
+    const html = '<math><mrow><mi>x</mi></mrow></math>';
+    const result = sanitizeImportedHtml(html);
+    expect(result).not.toMatch(/<math/i);
+  });
+
+  it('removes applet tags', () => {
+    const html = '<applet code="evil.class"></applet>';
+    const result = sanitizeImportedHtml(html);
+    expect(result).not.toMatch(/<applet/i);
+  });
+
+  it('removes formaction attribute XSS vector', () => {
+    const html = '<button formaction="javascript:alert(1)">click</button>';
+    const result = sanitizeImportedHtml(html);
+    expect(result).not.toMatch(/javascript:/i);
+  });
+
+  it('removes style with -moz-binding', () => {
+    const html = '<div style="-moz-binding:url(evil)">test</div>';
+    const result = sanitizeImportedHtml(html);
+    expect(result).not.toMatch(/-moz-binding/i);
+  });
+
+  it('removes style with behavior:', () => {
+    const html = '<div style="behavior:url(evil.htc)">test</div>';
+    const result = sanitizeImportedHtml(html);
+    expect(result).not.toMatch(/behavior\s*:/i);
+  });
+});
+
+// ─── 11. sanitizeAiResponse — null byte edge cases ───
+
+describe('sanitizeAiResponse — null byte handling', () => {
+  it('strips null bytes that could split script tags', () => {
+    const html = '<scr\x00ipt>alert(1)</scr\x00ipt>';
+    const result = sanitizeAiResponse(html);
+    expect(result).not.toMatch(/alert/);
+  });
+
+  it('strips control characters from event handlers', () => {
+    const html = '<div on\x00click="alert(1)">test</div>';
+    const result = sanitizeAiResponse(html);
+    expect(result).not.toMatch(/onclick/i);
+  });
+});
+
+// ─── 12. isFormulaExprSafe — code execution prevention ───
+
+describe('isFormulaExprSafe', () => {
+  it('allows simple arithmetic', () => {
+    expect(isFormulaExprSafe('1 + 2 * 3')).toBe(true);
+  });
+
+  it('allows comparison operators', () => {
+    expect(isFormulaExprSafe('5 > 3')).toBe(true);
+    expect(isFormulaExprSafe('5 == 5')).toBe(true);
+  });
+
+  it('allows parenthesized expressions', () => {
+    expect(isFormulaExprSafe('(1 + 2) * 3')).toBe(true);
+  });
+
+  it('blocks eval()', () => {
+    expect(isFormulaExprSafe('eval("alert(1)")')).toBe(false);
+  });
+
+  it('blocks Function constructor', () => {
+    expect(isFormulaExprSafe('Function("alert(1)")()')).toBe(false);
+  });
+
+  it('blocks constructor access', () => {
+    expect(isFormulaExprSafe('"".constructor')).toBe(false);
+  });
+
+  it('blocks __proto__ access', () => {
+    expect(isFormulaExprSafe('({}).__proto__')).toBe(false);
+  });
+
+  it('blocks prototype access', () => {
+    expect(isFormulaExprSafe('Object.prototype')).toBe(false);
+  });
+
+  it('blocks window/document access', () => {
+    expect(isFormulaExprSafe('window.location')).toBe(false);
+    expect(isFormulaExprSafe('document.cookie')).toBe(false);
+  });
+
+  it('blocks template literals', () => {
+    expect(isFormulaExprSafe('`${alert(1)}`')).toBe(false);
+  });
+
+  it('blocks bracket notation string access', () => {
+    expect(isFormulaExprSafe('obj["constructor"]')).toBe(false);
+  });
+
+  it('blocks this keyword', () => {
+    expect(isFormulaExprSafe('this.constructor')).toBe(false);
+  });
+
+  it('blocks arguments keyword', () => {
+    expect(isFormulaExprSafe('arguments[0]')).toBe(false);
+  });
+
+  it('blocks import keyword', () => {
+    expect(isFormulaExprSafe('import("evil")')).toBe(false);
+  });
+
+  it('blocks globalThis', () => {
+    expect(isFormulaExprSafe('globalThis.eval')).toBe(false);
+  });
+
+  it('blocks fetch', () => {
+    expect(isFormulaExprSafe('fetch("https://evil.com")')).toBe(false);
+  });
+
+  it('blocks Proxy/Reflect/Symbol', () => {
+    expect(isFormulaExprSafe('Proxy')).toBe(false);
+    expect(isFormulaExprSafe('Reflect')).toBe(false);
+    expect(isFormulaExprSafe('Symbol')).toBe(false);
+  });
+
+  it('blocks assignment operators (single =)', () => {
+    expect(isFormulaExprSafe('x = 1')).toBe(false);
+  });
+
+  it('blocks arrow functions', () => {
+    expect(isFormulaExprSafe('() => alert(1)')).toBe(false);
+  });
+
+  it('blocks setTimeout/setInterval', () => {
+    expect(isFormulaExprSafe('setTimeout("alert(1)",0)')).toBe(false);
+    expect(isFormulaExprSafe('setInterval("alert(1)",0)')).toBe(false);
+  });
+
+  it('blocks alert/confirm/prompt', () => {
+    expect(isFormulaExprSafe('alert(1)')).toBe(false);
+    expect(isFormulaExprSafe('confirm(1)')).toBe(false);
+    expect(isFormulaExprSafe('prompt(1)')).toBe(false);
+  });
+
+  it('returns false for non-string input', () => {
+    expect(isFormulaExprSafe(null)).toBe(false);
+    expect(isFormulaExprSafe(undefined)).toBe(false);
+    expect(isFormulaExprSafe(42)).toBe(false);
+  });
+
+  it('blocks string literals with alphabetic content (no letter tokens allowed)', () => {
+    expect(isFormulaExprSafe('"hello"')).toBe(false);
+    expect(isFormulaExprSafe("'world'")).toBe(false);
+  });
+
+  it('allows quoted numeric strings', () => {
+    expect(isFormulaExprSafe('"123"')).toBe(true);
+    expect(isFormulaExprSafe("'456'")).toBe(true);
+  });
+
+  it('allows ternary operator', () => {
+    expect(isFormulaExprSafe('1 > 0 ? 1 : 0')).toBe(true);
   });
 });

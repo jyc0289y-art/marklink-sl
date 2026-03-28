@@ -28,6 +28,9 @@ const FILE_ICONS = {
   xlsx: { icon: '📊', label: 'Spreadsheet' },
   csv: { icon: '📊', label: 'CSV' },
   pptx: { icon: '📽️', label: 'Presentation' },
+  ppt: { icon: '📽️', label: 'Presentation' },
+  xls: { icon: '📊', label: 'Spreadsheet' },
+  tsv: { icon: '📊', label: 'CSV' },
 };
 
 /** Maximum file size for drag-and-drop (100 MB) */
@@ -324,8 +327,8 @@ const _processFile = async (file, onFileLoad) => {
     return;
   }
 
-  // PPTX / PPT / ODP -> switch to slide tab and import
-  if (name.match(/\.(pptx|ppt|odp)$/)) {
+  // PPTX / PPT -> switch to slide tab and import
+  if (name.match(/\.(pptx|ppt)$/)) {
     try {
       const { switchTab } = await import('../ui/tabs.js');
       switchTab('slide');
