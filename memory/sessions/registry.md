@@ -99,3 +99,6 @@
 | P11.47wc | 레거시 포맷 호환성 심화 + 전체 임포트 감사 | 2026-03-28 | P11.46wc | 종료 |
 | P11.48wc | 자율개발병렬모드 3차 메가세션 (5라운드, 2026테스트) | 2026-03-28 | P11.47wc | 종료 |
 | P11.49wc | Bundle Lazy-Load Optimization (Mermaid/CM-Langs) | 2026-03-28 | P11.48wc | 진행중 |
+| P11.50wc | Editor Registry Refactor (app.js if/else cleanup) | 2026-03-28 | P11.49wc | 진행중 |
+| P11.51wc | Photo Editor Module Split (4183→5 modules) | 2026-03-28 | P11.50wc | 진행중 |
+| P11.52wc | Slide Editor Module Split (5141→6 modules) | 2026-03-28 | P11.51wc | 진행중 |

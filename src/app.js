@@ -23,49 +23,19 @@ import { exportHTML } from './export/html.js';
 import { exportPDF } from './export/pdf.js';
 import { trackFileOpen, trackFileSave, trackExport, trackThemeToggle, trackFolderOpen, initSessionTracking, measureStartup, measureTabSwitch, initPerfMonitoring } from './analytics.js';
 import { initTabs, onTabChange, getCurrentTab, switchTab, switchNextTab, switchPrevTab, switchToTabN, setTabDirty, isTabDirty } from './ui/tabs.js';
-// Heavy editors — lazy-loaded on first tab activation (dynamic import)
-// Lightweight proxy getters for use in closures before modules load
-let _docEditorMod = null;
-let _docFileMod = null;
-let _sheetUiMod = null;
-let _sheetFileMod = null;
-let _slideEditorMod = null;
-let _slideFileMod = null;
-let _pdfViewerMod = null;
-let _photoEditorMod = null;
-let _calculatorMod = null;
-
-const loadDocEditor = () => _docEditorMod || (_docEditorMod = import('./document/doc-editor.js'));
-const loadDocFile = () => _docFileMod || (_docFileMod = import('./document/doc-file.js'));
-const loadSheetUi = () => _sheetUiMod || (_sheetUiMod = import('./sheet/sheet-ui.js'));
-const loadSheetFile = () => _sheetFileMod || (_sheetFileMod = import('./sheet/sheet-file.js'));
-const loadSlideEditor = () => _slideEditorMod || (_slideEditorMod = import('./slide/slide-editor.js'));
-const loadSlideFile = () => _slideFileMod || (_slideFileMod = import('./slide/slide-file.js'));
-const loadPdfViewer = () => _pdfViewerMod || (_pdfViewerMod = import('./pdf/pdf-viewer.js'));
-const loadPhotoEditor = () => _photoEditorMod || (_photoEditorMod = import('./photo/photo-editor.js'));
-const loadCalculator = () => _calculatorMod || (_calculatorMod = import('./calculator/calculator.js'));
-
-// Proxy getters — safe to call before module loads (return fallback)
-const getDocContent = async () => { const m = await loadDocEditor(); return m.getDocContent(); };
-const getSheetsData = async () => { const m = await loadSheetUi(); return m.getSheetsData(); };
-const getDocFileName = async () => { const m = await loadDocFile(); return m.getDocFileName(); };
-const setDocFileName = async (n) => { const m = await loadDocFile(); return m.setDocFileName(n); };
-const getSheetFileName = async () => { const m = await loadSheetFile(); return m.getSheetFileName(); };
-const getSlideFileName = async () => { const m = await loadSlideFile(); return m.getSlideFileName(); };
-const getPdfFileName = async () => { const m = await loadPdfViewer(); return m.getPdfFileName(); };
-const getPdfText = async () => { const m = await loadPdfViewer(); return m.getPdfText(); };
-const getPdfPageImages = async () => { const m = await loadPdfViewer(); return m.getPdfPageImages(); };
-const getPhotoFileName = async () => { const m = await loadPhotoEditor(); return m.getPhotoFileName(); };
-const openDocFile = async () => { const m = await loadDocFile(); return m.openDocFile(); };
-const saveDocFile = async () => { const m = await loadDocFile(); return m.saveDocFile(); };
-const quickSaveDoc = async () => { const m = await loadDocFile(); return m.quickSaveDoc(); };
-const openSheetFile = async () => { const m = await loadSheetFile(); return m.openSheetFile(); };
-const saveSheetFile = async () => { const m = await loadSheetFile(); return m.saveSheetFile(); };
-const openSlideFile = async () => { const m = await loadSlideFile(); return m.openSlideFile(); };
-const saveSlideFile = async () => { const m = await loadSlideFile(); return m.saveSlideFile(); };
-const saveSlideAsPptx = async () => { const m = await loadSlideFile(); return m.saveSlideAsPptx(); };
-const openPdf = async () => { const m = await loadPdfViewer(); return m.openPdf(); };
-const openPhotoFile = async () => { const m = await loadPhotoEditor(); return m.openPhotoFile(); };
+// Heavy editors — centralized in editor-registry.js (lazy-loaded on first tab activation)
+import {
+  EDITORS, ALL_TABS, getEditor, getEditorForFile,
+  loadDocEditor, loadDocFile, loadSheetUi, loadSheetFile,
+  loadSlideEditor, loadSlideFile, loadPdfViewer, loadPhotoEditor, loadCalculator,
+  getDocContent, getSheetsData,
+  getDocFileName, setDocFileName, getSheetFileName, getSlideFileName,
+  getPdfFileName, getPdfText, getPdfPageImages, getPhotoFileName,
+  openDocFile, saveDocFile, quickSaveDoc,
+  openSheetFile, saveSheetFile,
+  openSlideFile, saveSlideFile, saveSlideAsPptx,
+  openPdf, openPhotoFile,
+} from './editor-registry.js';
 
 // AI modules — lazy-loaded (heavy: ollama-client, ai-chat, ai-cowork)
 let _aiChatMod = null;
@@ -409,19 +379,14 @@ export async function initApp() {
     openBtn.addEventListener('click', async () => {
       try {
         const tab = getCurrentTab();
+        const editor = getEditor(tab);
         let result;
-        if (tab === 'document') {
-          result = await openDocFile();
-        } else if (tab === 'sheet') {
-          result = await openSheetFile();
-        } else if (tab === 'slide') {
-          result = await openSlideFile();
-        } else if (tab === 'pdf') {
-          await openPdf();
-          return; // openPdf handles its own filename update
-        } else if (tab === 'photo') {
-          await openPhotoFile();
-          return; // openPhotoFile handles its own flow
+        if (editor && editor.open) {
+          if (editor.openSelf) {
+            await editor.open();
+            return; // editor handles its own filename update
+          }
+          result = await editor.open();
         } else {
           result = await openFile();
           if (result) loadFile(result);
@@ -445,13 +410,10 @@ export async function initApp() {
     saveBtn.addEventListener('click', async () => {
       try {
         const tab = getCurrentTab();
+        const editor = getEditor(tab);
         let result;
-        if (tab === 'document') {
-          result = await saveDocFile();
-        } else if (tab === 'sheet') {
-          result = await saveSheetFile();
-        } else if (tab === 'slide') {
-          result = await saveSlideFile();
+        if (editor && editor.save) {
+          result = await editor.save();
         } else {
           result = await saveFile(getContent());
         }
@@ -528,13 +490,15 @@ export async function initApp() {
     open: async () => {
       try {
         const tab = getCurrentTab();
+        const editor = getEditor(tab);
         let result;
-        if (tab === 'document') result = await openDocFile();
-        else if (tab === 'sheet') result = await openSheetFile();
-        else if (tab === 'slide') result = await openSlideFile();
-        else if (tab === 'pdf') { await openPdf(); return; }
-        else if (tab === 'photo') { await openPhotoFile(); return; }
-        else { result = await openFile(); if (result) loadFile(result); }
+        if (editor && editor.open) {
+          if (editor.openSelf) { await editor.open(); return; }
+          result = await editor.open();
+        } else {
+          result = await openFile();
+          if (result) loadFile(result);
+        }
         if (result) {
           updateFileName(result.name);
           toastSuccess(`Opened: ${result.name}`);
@@ -547,11 +511,15 @@ export async function initApp() {
       try {
         saveVersionSnapshot('save');
         const tab = getCurrentTab();
+        const editor = getEditor(tab);
         let result;
-        if (tab === 'document') result = await quickSaveDoc();
-        else if (tab === 'sheet') result = await saveSheetFile();
-        else if (tab === 'slide') result = await saveSlideFile();
-        else { result = await quickSave(getContent()); }
+        if (editor && editor.quickSave) {
+          result = await editor.quickSave();
+        } else if (editor && editor.save) {
+          result = await editor.save();
+        } else {
+          result = await quickSave(getContent());
+        }
         if (result) {
           updateFileName(result.name);
           setTabDirty(tab, false);
@@ -566,11 +534,13 @@ export async function initApp() {
     saveAs: async () => {
       try {
         const tab = getCurrentTab();
+        const editor = getEditor(tab);
         let result;
-        if (tab === 'document') result = await saveDocFile();
-        else if (tab === 'sheet') result = await saveSheetFile();
-        else if (tab === 'slide') result = await saveSlideFile();
-        else result = await saveFile(getContent());
+        if (editor && editor.save) {
+          result = await editor.save();
+        } else {
+          result = await saveFile(getContent());
+        }
         if (result) {
           updateFileName(result.name);
           setTabDirty(tab, false);
@@ -654,53 +624,17 @@ export async function initApp() {
   // 17. Tab navigation
   initTabs();
 
-  // Lazy-load all heavy editors on first tab activation
+  // Lazy-load all heavy editors on first tab activation (registry-driven)
   const _editorInited = new Set();
   const _lazyInitEditor = async (tab) => {
     if (_editorInited.has(tab)) return;
     _editorInited.add(tab);
+    const editor = getEditor(tab);
+    if (!editor || !editor.init) return;
     try {
-      if (tab === 'document') {
-        showTabLoading('document', 'Loading document editor...');
-        const m = await loadDocEditor();
-        m.initDocEditor();
-        hideTabLoading('document');
-      } else if (tab === 'sheet') {
-        showTabLoading('sheet', 'Loading spreadsheet...');
-        const m = await loadSheetUi();
-        m.initSheetEditor();
-        hideTabLoading('sheet');
-      } else if (tab === 'slide') {
-        showTabLoading('slide', 'Loading slide editor...');
-        const m = await loadSlideEditor();
-        m.initSlideEditorEnhanced();
-        hideTabLoading('slide');
-      } else if (tab === 'pdf') {
-        showTabLoading('pdf', 'Loading PDF viewer...');
-        const m = await loadPdfViewer();
-        m.initPdfViewer();
-        hideTabLoading('pdf');
-      } else if (tab === 'photo') {
-        showTabLoading('photo', 'Loading photo editor...');
-        const m = await loadPhotoEditor();
-        m.initPhotoEditor();
-        hideTabLoading('photo');
-      } else if (tab === 'calculator') {
-        showTabLoading('calculator', 'Loading calculator...');
-        const m = await loadCalculator();
-        m.initCalculator();
-        hideTabLoading('calculator');
-      } else if (tab === 'cad') {
-        showTabLoading('cad', 'Loading 3D engine...');
-        const m = await import('./cad/cad-editor.js');
-        m.initCadEditor();
-        hideTabLoading('cad');
-      } else if (tab === 'draw') {
-        showTabLoading('draw', 'Loading canvas...');
-        const m = await import('./draw/draw-editor.js');
-        m.initDrawEditor();
-        hideTabLoading('draw');
-      }
+      showTabLoading(tab, editor.loadingText);
+      await editor.init();
+      hideTabLoading(tab);
     } catch (e) {
       console.warn(`[lazy-init] ${tab} init skipped:`, e.message);
       hideTabLoading(tab);
@@ -717,13 +651,15 @@ export async function initApp() {
 
     const endTabSwitch = measureTabSwitch(tab);
 
-    if (tab === 'document') updateFileName(await getDocFileName());
-    else if (tab === 'sheet') updateFileName(await getSheetFileName());
-    else if (tab === 'slide') updateFileName(await getSlideFileName());
-    else if (tab === 'pdf') updateFileName(await getPdfFileName());
-    else if (tab === 'photo') updateFileName(await getPhotoFileName());
-    else if (tab === 'ai') updateFileName('AI Assistant');
-    else updateFileName(getCurrentFileName());
+    // Update filename from editor registry or fallback
+    const tabEditor = getEditor(tab);
+    if (tabEditor && tabEditor.getFileName) {
+      updateFileName(await tabEditor.getFileName());
+    } else if (tab === 'ai') {
+      updateFileName('AI Assistant');
+    } else {
+      updateFileName(getCurrentFileName());
+    }
 
     // Auto-save: stop timer when leaving markdown, restart when returning
     if (tab === 'markdown') {
@@ -756,13 +692,12 @@ export async function initApp() {
 
   // Handle browser back/forward for tab routing
   window.addEventListener('popstate', (e) => {
-    const VALID_TABS_POP = ['markdown', 'document', 'sheet', 'slide', 'pdf', 'photo', 'cad', 'draw', 'calculator', 'ai'];
-    if (e.state && e.state.tab && VALID_TABS_POP.includes(e.state.tab)) {
+    if (e.state && e.state.tab && ALL_TABS.includes(e.state.tab)) {
       switchTab(e.state.tab);
     } else {
       const p = new URLSearchParams(window.location.search);
       const t = p.get('tab');
-      switchTab(VALID_TABS_POP.includes(t) ? t : 'markdown');
+      switchTab(ALL_TABS.includes(t) ? t : 'markdown');
     }
   });
 
@@ -1052,9 +987,8 @@ export async function initApp() {
 
   // 24. URL query: auto-switch tab (for PWA shortcuts & deep links)
   const params = new URLSearchParams(window.location.search);
-  const VALID_TABS = ['markdown', 'document', 'sheet', 'slide', 'pdf', 'photo', 'cad', 'draw', 'calculator', 'ai'];
   const rawTabParam = params.get('tab');
-  const tabParam = VALID_TABS.includes(rawTabParam) ? rawTabParam : null;
+  const tabParam = ALL_TABS.includes(rawTabParam) ? rawTabParam : null;
   if (tabParam) {
     switchTab(tabParam);
     if (params.get('fullscreen') === '1') {
@@ -1078,8 +1012,7 @@ export async function initApp() {
 
   // 32. Tab-close confirmation on beforeunload
   window.addEventListener('beforeunload', (e) => {
-    const tabs = ['markdown', 'document', 'sheet', 'slide', 'pdf', 'photo', 'cad', 'draw', 'calculator'];
-    const hasDirty = tabs.some((t) => isTabDirty(t));
+    const hasDirty = ALL_TABS.filter((t) => t !== 'ai').some((t) => isTabDirty(t));
     if (hasDirty) {
       e.preventDefault();
       e.returnValue = '';
