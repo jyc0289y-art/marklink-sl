@@ -925,7 +925,8 @@ const _escapeAttr = (str) => str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').
  */
 export async function exportDocx(fileName) {
   const { Document, Packer, Paragraph, TextRun, convertInchesToTwip,
-          LevelFormat, AlignmentType } = await getDocxLib();
+          LevelFormat, AlignmentType, Header, Footer, PageNumber,
+          TabStopPosition, TabStopType } = await getDocxLib();
   const content = getDocContent();
   const parser = new DOMParser();
   const doc = parser.parseFromString(`<body>${content}</body>`, 'text/html');
@@ -940,6 +941,57 @@ export async function exportDocx(fileName) {
   if (children.length === 0) {
     children.push(new Paragraph({ children: [new TextRun('')] }));
   }
+
+  // Extract document title from first H1 heading for the header
+  const docTitle = _extractDocTitle(body);
+
+  // Build header — document title (left-aligned, gray, smaller font)
+  const headerChildren = [];
+  if (docTitle) {
+    headerChildren.push(new Paragraph({
+      children: [
+        new TextRun({
+          text: docTitle,
+          size: 18, // 9pt in half-points
+          color: '888888',
+          font: 'Calibri',
+        }),
+      ],
+    }));
+  }
+
+  // Build footer — page number centered: "Page X of Y"
+  const footerChildren = [
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [
+        new TextRun({
+          text: 'Page ',
+          size: 18,
+          color: '888888',
+          font: 'Calibri',
+        }),
+        new TextRun({
+          children: [PageNumber.CURRENT],
+          size: 18,
+          color: '888888',
+          font: 'Calibri',
+        }),
+        new TextRun({
+          text: ' of ',
+          size: 18,
+          color: '888888',
+          font: 'Calibri',
+        }),
+        new TextRun({
+          children: [PageNumber.TOTAL_PAGES],
+          size: 18,
+          color: '888888',
+          font: 'Calibri',
+        }),
+      ],
+    }),
+  ];
 
   const docx = new Document({
     numbering: {
@@ -978,6 +1030,12 @@ export async function exportDocx(fileName) {
             footer: convertInchesToTwip(0.5),
           },
         },
+      },
+      headers: {
+        default: new Header({ children: headerChildren.length > 0 ? headerChildren : [new Paragraph('')] }),
+      },
+      footers: {
+        default: new Footer({ children: footerChildren }),
       },
       children,
     }],
@@ -1221,6 +1279,27 @@ async function convertNode(node) {
 /**
  * Extract paragraph-level formatting from an HTML element's inline styles
  */
+/**
+ * Extract document title from the first H1 heading in the DOM body.
+ * Used for the DOCX export header.
+ * @param {Element} body - parsed HTML body element
+ * @returns {string} title text, or empty string if no H1 found
+ */
+function _extractDocTitle(body) {
+  const h1 = body.querySelector('h1');
+  if (h1) {
+    const text = h1.textContent.trim();
+    if (text) return text;
+  }
+  // Fallback: try h2 if no h1
+  const h2 = body.querySelector('h2');
+  if (h2) {
+    const text = h2.textContent.trim();
+    if (text) return text;
+  }
+  return '';
+}
+
 function _extractParagraphFormatting(el, AlignmentType, convertInchesToTwip) {
   const opts = {};
   const style = el.style;

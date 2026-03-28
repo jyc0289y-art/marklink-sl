@@ -2,7 +2,7 @@
 // 30+ languages sorted by internet user count
 // Searchable overlay modal + IP-based language recommendation
 
-import { TRANSLATIONS } from '../i18n/translations.js';
+import { TRANSLATIONS, loadLanguage, setLanguage, t as loaderT } from '../i18n/translations.js';
 import { activateFocusTrap } from '../utils/focus-trap.js';
 
 const LANG_KEY = 'marklink-lang';
@@ -67,10 +67,8 @@ const COUNTRY_LANG_MAP = {
   MM: 'my', KH: 'km', ET: 'am', NG: 'ha',
 };
 
-// Translation dictionary: merged from translations.js + inline legacy entries
-// Falls back: currentLang → en → key
-// TRANSLATIONS from the external file take priority; legacy T entries serve as fallback for extra languages
-const T = { ...TRANSLATIONS };
+// Translation uses the lazy-loading translations.js loader
+// ko + en are available synchronously; other langs load on demand
 
 let currentLang = 'en'; // Default: English
 const changeListeners = [];
@@ -82,6 +80,11 @@ export function initI18n() {
   const saved = localStorage.getItem(LANG_KEY);
   if (saved && LANGUAGES[saved]) {
     currentLang = saved;
+    // Sync the loader's currentLang and load dict (async for non-ko/en)
+    setLanguage(saved).then(() => {
+      applyTranslations();
+    });
+    // Apply immediately with fallback to en (instant render)
     applyTranslations();
     applyDirection(saved);
   } else {
@@ -183,24 +186,25 @@ export function getLanguages() {
 }
 
 /**
- * Translate a key to current language
+ * Translate a key to current language (synchronous)
+ * Delegates to the translations.js loader which handles fallback chain
  */
 export function t(key) {
-  const entry = T[key];
-  if (!entry) return key;
-  return entry[currentLang] || entry.en || key;
+  return loaderT(key);
 }
 
 /**
- * Switch language
+ * Switch language (handles async loading for lazy-loaded languages)
  */
-export function setLang(lang) {
+export async function setLang(lang) {
   if (!LANGUAGES[lang]) return;
   currentLang = lang;
   localStorage.setItem(LANG_KEY, lang);
+  // Load language dict and sync loader's currentLang (async for ja/zh/es/fr/de)
+  await setLanguage(lang);
   applyTranslations();
   applyDirection(lang);
-  changeListeners.forEach(fn => fn(lang));
+  changeListeners.forEach((fn) => fn(lang));
 }
 
 /**

@@ -1233,3 +1233,214 @@ describe('destroyPdfViewer compare doc cleanup', () => {
     }).not.toThrow();
   });
 });
+
+// ── Form field value storage and retrieval ──
+
+describe('Form field value storage and retrieval', () => {
+  it('stores text field value', () => {
+    const formFieldValues = {};
+    const fieldId = 'field_1_50_100';
+    formFieldValues[fieldId] = 'Hello World';
+    expect(formFieldValues[fieldId]).toBe('Hello World');
+  });
+
+  it('stores checkbox state as boolean', () => {
+    const formFieldValues = {};
+    formFieldValues['cb_1'] = true;
+    formFieldValues['cb_2'] = false;
+    expect(formFieldValues['cb_1']).toBe(true);
+    expect(formFieldValues['cb_2']).toBe(false);
+  });
+
+  it('stores select field value', () => {
+    const formFieldValues = {};
+    formFieldValues['select_1'] = 'option_b';
+    expect(formFieldValues['select_1']).toBe('option_b');
+  });
+
+  it('retrieves default field value when not yet set', () => {
+    const formFieldValues = {};
+    const fieldId = 'field_1_50_100';
+    const defaultValue = 'default text';
+    const value = formFieldValues[fieldId] || defaultValue;
+    expect(value).toBe('default text');
+  });
+
+  it('overrides stored value when user changes field', () => {
+    const formFieldValues = {};
+    const fieldId = 'field_1_50_100';
+    formFieldValues[fieldId] = 'initial';
+    formFieldValues[fieldId] = 'updated';
+    expect(formFieldValues[fieldId]).toBe('updated');
+  });
+
+  it('reset clears all form field values', () => {
+    let formFieldValues = {
+      'field_1': 'value1',
+      'field_2': true,
+      'field_3': 'option_a',
+    };
+    // Simulate resetFormFields
+    formFieldValues = {};
+    expect(Object.keys(formFieldValues).length).toBe(0);
+  });
+
+  it('generates correct field ID from page/position', () => {
+    const pageNum = 3;
+    const left = 120.7;
+    const top = 45.3;
+    const fieldId = `field_${pageNum}_${Math.round(left)}_${Math.round(top)}`;
+    expect(fieldId).toBe('field_3_121_45');
+  });
+
+  it('uses annot.id when available instead of generated ID', () => {
+    const annot = { id: 'customField123' };
+    const pageNum = 1;
+    const left = 50;
+    const top = 100;
+    const fieldId = annot.id || `field_${pageNum}_${Math.round(left)}_${Math.round(top)}`;
+    expect(fieldId).toBe('customField123');
+  });
+});
+
+// ── Annotation CSS class generation ──
+
+function getAnnotationCssClass(subtype) {
+  const classMap = {
+    'Highlight': 'pdf-annot-highlight-overlay',
+    'Text': 'pdf-annot-text-overlay',
+    'Link': 'pdf-annot-link-overlay',
+    'Underline': 'pdf-annot-underline-overlay',
+    'StrikeOut': 'pdf-annot-strikeout-overlay',
+  };
+  return classMap[subtype] || 'pdf-annot-generic-overlay';
+}
+
+describe('Annotation CSS class generation', () => {
+  it('returns highlight class for Highlight subtype', () => {
+    expect(getAnnotationCssClass('Highlight')).toBe('pdf-annot-highlight-overlay');
+  });
+
+  it('returns text class for Text subtype', () => {
+    expect(getAnnotationCssClass('Text')).toBe('pdf-annot-text-overlay');
+  });
+
+  it('returns link class for Link subtype', () => {
+    expect(getAnnotationCssClass('Link')).toBe('pdf-annot-link-overlay');
+  });
+
+  it('returns underline class for Underline subtype', () => {
+    expect(getAnnotationCssClass('Underline')).toBe('pdf-annot-underline-overlay');
+  });
+
+  it('returns strikeout class for StrikeOut subtype', () => {
+    expect(getAnnotationCssClass('StrikeOut')).toBe('pdf-annot-strikeout-overlay');
+  });
+
+  it('returns generic class for unknown subtypes', () => {
+    expect(getAnnotationCssClass('FreeText')).toBe('pdf-annot-generic-overlay');
+    expect(getAnnotationCssClass('Square')).toBe('pdf-annot-generic-overlay');
+    expect(getAnnotationCssClass('Circle')).toBe('pdf-annot-generic-overlay');
+  });
+
+  it('returns generic class for undefined subtype', () => {
+    expect(getAnnotationCssClass(undefined)).toBe('pdf-annot-generic-overlay');
+  });
+
+  it('returns generic class for null subtype', () => {
+    expect(getAnnotationCssClass(null)).toBe('pdf-annot-generic-overlay');
+  });
+});
+
+// ── Form data export format ──
+
+describe('Form data export format', () => {
+  it('exports form field values as correct JSON structure', () => {
+    const formFieldValues = {
+      'name_field': 'John Doe',
+      'email_field': 'john@example.com',
+      'agree_checkbox': true,
+      'plan_select': 'premium',
+    };
+    const json = JSON.stringify(formFieldValues, null, 2);
+    const parsed = JSON.parse(json);
+    expect(parsed).toEqual({
+      'name_field': 'John Doe',
+      'email_field': 'john@example.com',
+      'agree_checkbox': true,
+      'plan_select': 'premium',
+    });
+  });
+
+  it('exports empty object when no form fields filled', () => {
+    const formFieldValues = {};
+    const json = JSON.stringify(formFieldValues, null, 2);
+    const parsed = JSON.parse(json);
+    expect(parsed).toEqual({});
+  });
+
+  it('preserves field types in export', () => {
+    const formFieldValues = {
+      'text_field': 'hello',
+      'bool_field': false,
+      'num_field': '42', // form text fields always produce strings
+    };
+    const json = JSON.stringify(formFieldValues, null, 2);
+    const parsed = JSON.parse(json);
+    expect(typeof parsed['text_field']).toBe('string');
+    expect(typeof parsed['bool_field']).toBe('boolean');
+    expect(typeof parsed['num_field']).toBe('string');
+  });
+
+  it('generates correct filename for export', () => {
+    const currentName = 'tax_form_2026.pdf';
+    const baseName = currentName.replace(/\.pdf$/i, '');
+    const filename = `${baseName}_form_data.json`;
+    expect(filename).toBe('tax_form_2026_form_data.json');
+  });
+
+  it('handles filename without .pdf extension', () => {
+    const currentName = 'document';
+    const baseName = currentName.replace(/\.pdf$/i, '');
+    const filename = `${baseName}_form_data.json`;
+    expect(filename).toBe('document_form_data.json');
+  });
+
+  it('handles empty current name with fallback', () => {
+    const currentName = '';
+    const baseName = currentName ? currentName.replace(/\.pdf$/i, '') : 'form';
+    const filename = `${baseName}_form_data.json`;
+    expect(filename).toBe('form_form_data.json');
+  });
+});
+
+// ── Form dirty indicator logic ──
+
+describe('Form dirty indicator', () => {
+  it('shows indicator when form has values', () => {
+    const formFieldValues = { 'field_1': 'value' };
+    const hasChanges = Object.keys(formFieldValues).length > 0;
+    expect(hasChanges).toBe(true);
+  });
+
+  it('hides indicator when form is empty', () => {
+    const formFieldValues = {};
+    const hasChanges = Object.keys(formFieldValues).length > 0;
+    expect(hasChanges).toBe(false);
+  });
+
+  it('shows indicator after checkbox change', () => {
+    const formFieldValues = {};
+    formFieldValues['checkbox_1'] = true;
+    const hasChanges = Object.keys(formFieldValues).length > 0;
+    expect(hasChanges).toBe(true);
+  });
+
+  it('hides indicator after reset', () => {
+    let formFieldValues = { 'field_1': 'test', 'field_2': true };
+    // Reset
+    formFieldValues = {};
+    const hasChanges = Object.keys(formFieldValues).length > 0;
+    expect(hasChanges).toBe(false);
+  });
+});

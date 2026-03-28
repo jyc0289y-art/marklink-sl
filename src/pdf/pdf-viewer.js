@@ -244,6 +244,10 @@ function bindEvents() {
 
   document.getElementById('pdf-clear-annot')?.addEventListener('click', () => clearAnnotationsOnPage());
 
+  // Form Reset & Export
+  document.getElementById('pdf-reset-form')?.addEventListener('click', () => resetFormFields());
+  document.getElementById('pdf-export-form')?.addEventListener('click', () => exportFormData());
+
   // OCR
   document.getElementById('pdf-ocr')?.addEventListener('click', () => runOcr());
 
@@ -643,6 +647,9 @@ async function renderSinglePage(wrapper, idx) {
 
     // Form filling: always detect and render form fields for interactive PDFs
     await detectAndRenderFormFields(wrapper, page, viewport, pageNum);
+
+    // Non-Widget annotation overlays (highlight, text, link)
+    await renderAnnotationOverlays(wrapper, page, viewport, pageNum);
 
     // Bind page wrapper events for signature/stamp placement
     bindPageWrapperEvents(wrapper, pageNum);
@@ -1770,14 +1777,14 @@ async function detectAndRenderFormFields(wrapper, page, viewport, pageNum) {
           const textarea = document.createElement('textarea');
           textarea.style.cssText = `width:${width}px;height:${height}px`;
           textarea.value = formFieldValues[fieldId] || annot.fieldValue || '';
-          textarea.addEventListener('input', () => { formFieldValues[fieldId] = textarea.value; persistAnnotationsToStorage(); });
+          textarea.addEventListener('input', () => { formFieldValues[fieldId] = textarea.value; persistAnnotationsToStorage(); updateFormDirtyIndicator(); });
           fieldWrap.appendChild(textarea);
         } else {
           const input = document.createElement('input');
           input.type = 'text';
           input.style.cssText = `width:${width}px;height:${height}px`;
           input.value = formFieldValues[fieldId] || annot.fieldValue || '';
-          input.addEventListener('input', () => { formFieldValues[fieldId] = input.value; persistAnnotationsToStorage(); });
+          input.addEventListener('input', () => { formFieldValues[fieldId] = input.value; persistAnnotationsToStorage(); updateFormDirtyIndicator(); });
           fieldWrap.appendChild(input);
         }
       } else if (annot.fieldType === 'Btn') {
@@ -1785,7 +1792,7 @@ async function detectAndRenderFormFields(wrapper, page, viewport, pageNum) {
           const cb = document.createElement('input');
           cb.type = 'checkbox';
           cb.checked = formFieldValues[fieldId] !== undefined ? formFieldValues[fieldId] : !!annot.fieldValue;
-          cb.addEventListener('change', () => { formFieldValues[fieldId] = cb.checked; persistAnnotationsToStorage(); });
+          cb.addEventListener('change', () => { formFieldValues[fieldId] = cb.checked; persistAnnotationsToStorage(); updateFormDirtyIndicator(); });
           fieldWrap.appendChild(cb);
         } else if (annot.radioButton) {
           const rb = document.createElement('input');
@@ -1793,7 +1800,7 @@ async function detectAndRenderFormFields(wrapper, page, viewport, pageNum) {
           rb.name = annot.fieldName || `radio_${pageNum}`;
           rb.value = annot.buttonValue || '';
           rb.checked = formFieldValues[fieldId] !== undefined ? formFieldValues[fieldId] : !!annot.fieldValue;
-          rb.addEventListener('change', () => { formFieldValues[fieldId] = rb.checked; persistAnnotationsToStorage(); });
+          rb.addEventListener('change', () => { formFieldValues[fieldId] = rb.checked; persistAnnotationsToStorage(); updateFormDirtyIndicator(); });
           fieldWrap.appendChild(rb);
         }
       } else if (annot.fieldType === 'Ch') {
@@ -1808,7 +1815,7 @@ async function detectAndRenderFormFields(wrapper, page, viewport, pageNum) {
           });
         }
         select.value = formFieldValues[fieldId] || annot.fieldValue || '';
-        select.addEventListener('change', () => { formFieldValues[fieldId] = select.value; persistAnnotationsToStorage(); });
+        select.addEventListener('change', () => { formFieldValues[fieldId] = select.value; persistAnnotationsToStorage(); updateFormDirtyIndicator(); });
         fieldWrap.appendChild(select);
       }
 
@@ -1818,9 +1825,148 @@ async function detectAndRenderFormFields(wrapper, page, viewport, pageNum) {
 
       wrapper.appendChild(fieldWrap);
     }
+
+    // Show Reset/Export buttons and unsaved indicator when form fields are present
+    updateFormToolbarVisibility(true);
   } catch (_e) {
     // Silently ignore form detection errors
   }
+}
+
+/**
+ * Render non-Widget annotations (highlight, text note, link) as interactive overlays
+ */
+async function renderAnnotationOverlays(wrapper, page, viewport, pageNum) {
+  try {
+    const annotations = await page.getAnnotations();
+    const nonWidgetAnnots = annotations.filter(a =>
+      a.subtype !== 'Widget' && a.rect && a.rect.length === 4
+    );
+    if (nonWidgetAnnots.length === 0) return;
+
+    for (const annot of nonWidgetAnnots) {
+      const [x1Raw, y1Raw] = pdfjsLib.Util.applyTransform([annot.rect[0], annot.rect[1]], viewport.transform);
+      const [x2Raw, y2Raw] = pdfjsLib.Util.applyTransform([annot.rect[2], annot.rect[3]], viewport.transform);
+      const left = Math.min(x1Raw, x2Raw);
+      const top = Math.min(y1Raw, y2Raw);
+      const width = Math.abs(x2Raw - x1Raw);
+      const height = Math.abs(y2Raw - y1Raw);
+
+      if (width < 1 || height < 1) continue;
+
+      const overlay = document.createElement('div');
+      overlay.style.cssText = `position:absolute;left:${left}px;top:${top}px;width:${width}px;height:${height}px;`;
+
+      if (annot.subtype === 'Highlight') {
+        overlay.className = 'pdf-annot-highlight-overlay';
+      } else if (annot.subtype === 'Text') {
+        overlay.className = 'pdf-annot-text-overlay';
+        if (annot.contents) {
+          overlay.dataset.tooltip = annot.contents;
+          overlay.title = annot.contents;
+        }
+      } else if (annot.subtype === 'Link') {
+        overlay.className = 'pdf-annot-link-overlay';
+        if (annot.url) {
+          overlay.addEventListener('click', () => { window.open(annot.url, '_blank', 'noopener'); });
+        } else if (annot.dest) {
+          overlay.addEventListener('click', () => {
+            // Navigate to internal destination page
+            if (typeof annot.dest === 'string') {
+              pdfDoc.getDestination(annot.dest).then((dest) => {
+                if (dest) {
+                  pdfDoc.getPageIndex(dest[0]).then((idx) => {
+                    currentPage = idx + 1;
+                    scrollToPageIdx(idx);
+                    updatePageInfo();
+                  });
+                }
+              });
+            } else if (Array.isArray(annot.dest) && annot.dest[0]) {
+              pdfDoc.getPageIndex(annot.dest[0]).then((idx) => {
+                currentPage = idx + 1;
+                scrollToPageIdx(idx);
+                updatePageInfo();
+              });
+            }
+          });
+        }
+      } else if (annot.subtype === 'Underline') {
+        overlay.className = 'pdf-annot-underline-overlay';
+      } else if (annot.subtype === 'StrikeOut') {
+        overlay.className = 'pdf-annot-strikeout-overlay';
+      } else {
+        // Generic annotation overlay
+        overlay.className = 'pdf-annot-generic-overlay';
+      }
+
+      wrapper.appendChild(overlay);
+    }
+  } catch (_e) {
+    // Silently ignore annotation rendering errors
+  }
+}
+
+/**
+ * Show/hide form toolbar buttons based on whether form fields are present
+ */
+function updateFormToolbarVisibility(hasFields) {
+  const resetBtn = document.getElementById('pdf-reset-form');
+  const exportBtn = document.getElementById('pdf-export-form');
+  if (resetBtn) resetBtn.style.display = hasFields ? '' : 'none';
+  if (exportBtn) exportBtn.style.display = hasFields ? '' : 'none';
+}
+
+/**
+ * Update the form dirty indicator to show unsaved changes
+ */
+function updateFormDirtyIndicator() {
+  const indicator = document.getElementById('pdf-form-dirty');
+  if (!indicator) return;
+  const hasChanges = Object.keys(formFieldValues).length > 0;
+  indicator.style.display = hasChanges ? '' : 'none';
+}
+
+/**
+ * Reset all form field values and re-render
+ */
+function resetFormFields() {
+  formFieldValues = {};
+  persistAnnotationsToStorage();
+  updateFormDirtyIndicator();
+  // Re-render form fields on all pages
+  if (pdfDoc) {
+    renderAllPages().then(() => renderThumbnails());
+  }
+}
+
+/**
+ * Export form field values as a JSON file
+ */
+function exportFormData() {
+  const data = {};
+  for (const [fieldId, value] of Object.entries(formFieldValues)) {
+    data[fieldId] = value;
+  }
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const baseName = currentName ? currentName.replace(/\.pdf$/i, '') : 'form';
+  downloadBlob(blob, `${baseName}_form_data.json`);
+}
+
+/**
+ * Get annotation CSS class for a given PDF annotation subtype.
+ * Used for generating overlay classes during annotation rendering.
+ */
+function getAnnotationCssClass(subtype) {
+  const classMap = {
+    'Highlight': 'pdf-annot-highlight-overlay',
+    'Text': 'pdf-annot-text-overlay',
+    'Link': 'pdf-annot-link-overlay',
+    'Underline': 'pdf-annot-underline-overlay',
+    'StrikeOut': 'pdf-annot-strikeout-overlay',
+  };
+  return classMap[subtype] || 'pdf-annot-generic-overlay';
 }
 
 // ─── Digital Signature ──────────────────────────────────────

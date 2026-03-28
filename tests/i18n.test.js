@@ -1,11 +1,17 @@
-import { describe, it, expect } from 'vitest';
-import { TRANSLATIONS } from '../src/i18n/translations.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { TRANSLATIONS, loadLanguage } from '../src/i18n/translations.js';
+
+// Load all 7 core languages before tests run
+const CORE_LANGUAGES = ['en', 'ko', 'ja', 'zh', 'es', 'fr', 'de'];
+
+beforeAll(async () => {
+  // en and ko are embedded inline; load the rest async
+  await Promise.all(CORE_LANGUAGES.map((lang) => loadLanguage(lang)));
+});
 
 // ─── 1. Translation Key Coverage ───
 
 describe('Translation key coverage', () => {
-  const CORE_LANGUAGES = ['en', 'ko', 'ja', 'zh', 'es', 'fr', 'de'];
-
   it('all translation keys have an English (en) entry', () => {
     const missingEn = [];
     for (const [key, entry] of Object.entries(TRANSLATIONS)) {
@@ -36,11 +42,11 @@ describe('Translation key coverage', () => {
 
 describe('Translation function (t) logic', () => {
   // Replicate the t() logic from i18n.js for isolated testing
-  function t(key, lang, translations) {
+  const t = (key, lang, translations) => {
     const entry = translations[key];
     if (!entry) return key;
     return entry[lang] || entry.en || key;
-  }
+  };
 
   it('returns English value for en language', () => {
     const result = t('tab.document', 'en', TRANSLATIONS);
@@ -106,7 +112,7 @@ describe('Language switching logic', () => {
 describe('Translation key format', () => {
   it('uses dot-separated namespace format', () => {
     const keys = Object.keys(TRANSLATIONS);
-    const dotSeparated = keys.filter(k => k.includes('.'));
+    const dotSeparated = keys.filter((k) => k.includes('.'));
     // Vast majority of keys should use dot notation
     expect(dotSeparated.length / keys.length).toBeGreaterThan(0.8);
   });
@@ -117,5 +123,26 @@ describe('Translation key format', () => {
       expect(TRANSLATIONS[key]).toBeDefined();
       expect(TRANSLATIONS[key].en).toBeDefined();
     }
+  });
+});
+
+// ─── 5. Lazy Loading ───
+
+describe('Lazy loading', () => {
+  it('ko and en are available synchronously (embedded inline)', () => {
+    // These should work without any async loading
+    const entry = TRANSLATIONS['tab.document'];
+    expect(entry.en).toBe('Document');
+    expect(entry.ko).toBe('문서');
+  });
+
+  it('loadLanguage returns cached dict for already-loaded languages', async () => {
+    const dict = await loadLanguage('en');
+    expect(dict['tab.document']).toBe('Document');
+  });
+
+  it('loadLanguage loads and caches lazy languages', async () => {
+    const dict = await loadLanguage('de');
+    expect(dict['tab.document']).toBe('Dokument');
   });
 });

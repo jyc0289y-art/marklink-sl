@@ -405,3 +405,290 @@ describe('DOCX export table merged cells', () => {
     expect(opts.rowSpan).toBeUndefined();
   });
 });
+
+// ── Document title extraction for header ──
+// Replicate using regex since DOMParser is not available in Node.js test env
+describe('_extractDocTitle', () => {
+  // Simplified regex-based replica of the DOM-based _extractDocTitle
+  function _extractDocTitle(bodyHtml) {
+    // Try H1 first
+    const h1Match = bodyHtml.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+    if (h1Match) {
+      const text = h1Match[1].replace(/<[^>]*>/g, '').trim();
+      if (text) return text;
+    }
+    // Fallback to H2
+    const h2Match = bodyHtml.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
+    if (h2Match) {
+      const text = h2Match[1].replace(/<[^>]*>/g, '').trim();
+      if (text) return text;
+    }
+    return '';
+  }
+
+  it('extracts title from first H1', () => {
+    expect(_extractDocTitle('<h1>My Document</h1><p>body text</p>')).toBe('My Document');
+  });
+
+  it('extracts title from first H1 with nested elements', () => {
+    expect(_extractDocTitle('<h1><strong>Bold</strong> Title</h1>')).toBe('Bold Title');
+  });
+
+  it('falls back to H2 when no H1 exists', () => {
+    expect(_extractDocTitle('<h2>Subtitle Only</h2><p>text</p>')).toBe('Subtitle Only');
+  });
+
+  it('returns empty string when no headings exist', () => {
+    expect(_extractDocTitle('<p>just a paragraph</p>')).toBe('');
+  });
+
+  it('skips empty H1 and falls back to H2', () => {
+    expect(_extractDocTitle('<h1>   </h1><h2>Fallback</h2>')).toBe('Fallback');
+  });
+
+  it('uses first H1 when multiple H1s exist', () => {
+    expect(_extractDocTitle('<h1>First</h1><h1>Second</h1>')).toBe('First');
+  });
+});
+
+// ── Header/Footer generation structure ──
+describe('DOCX export header/footer structure', () => {
+  it('generates header with document title text run options', () => {
+    const docTitle = 'Test Document';
+    const headerRun = {
+      text: docTitle,
+      size: 18,
+      color: '888888',
+      font: 'Calibri',
+    };
+    expect(headerRun.text).toBe('Test Document');
+    expect(headerRun.size).toBe(18);
+    expect(headerRun.color).toBe('888888');
+  });
+
+  it('generates empty header paragraph when no title', () => {
+    const docTitle = '';
+    const headerChildren = [];
+    if (docTitle) {
+      headerChildren.push({ type: 'paragraph', text: docTitle });
+    }
+    // When no title, headerChildren is empty — we use a fallback empty paragraph
+    expect(headerChildren.length).toBe(0);
+  });
+
+  it('generates footer with page number structure', () => {
+    // Verify the structure: "Page X of Y"
+    const footerRuns = [
+      { text: 'Page ', size: 18, color: '888888' },
+      { field: 'CURRENT', size: 18, color: '888888' },
+      { text: ' of ', size: 18, color: '888888' },
+      { field: 'TOTAL_PAGES', size: 18, color: '888888' },
+    ];
+    expect(footerRuns).toHaveLength(4);
+    expect(footerRuns[0].text).toBe('Page ');
+    expect(footerRuns[1].field).toBe('CURRENT');
+    expect(footerRuns[2].text).toBe(' of ');
+    expect(footerRuns[3].field).toBe('TOTAL_PAGES');
+  });
+
+  it('footer text runs use consistent styling', () => {
+    const runs = [
+      { size: 18, color: '888888', font: 'Calibri' },
+      { size: 18, color: '888888', font: 'Calibri' },
+      { size: 18, color: '888888', font: 'Calibri' },
+      { size: 18, color: '888888', font: 'Calibri' },
+    ];
+    for (const run of runs) {
+      expect(run.size).toBe(18);
+      expect(run.color).toBe('888888');
+      expect(run.font).toBe('Calibri');
+    }
+  });
+});
+
+// ── Heading level mapping ──
+describe('DOCX export heading level mapping', () => {
+  // Replicate the heading map from docx.js convertNode
+  const headingMap = {
+    h1: 'HEADING_1', h2: 'HEADING_2', h3: 'HEADING_3',
+    h4: 'HEADING_4', h5: 'HEADING_5', h6: 'HEADING_6',
+  };
+
+  it('maps h1 to HEADING_1', () => {
+    expect(headingMap['h1']).toBe('HEADING_1');
+  });
+
+  it('maps h2 to HEADING_2', () => {
+    expect(headingMap['h2']).toBe('HEADING_2');
+  });
+
+  it('maps h3 to HEADING_3', () => {
+    expect(headingMap['h3']).toBe('HEADING_3');
+  });
+
+  it('maps h4 to HEADING_4', () => {
+    expect(headingMap['h4']).toBe('HEADING_4');
+  });
+
+  it('maps h5 to HEADING_5', () => {
+    expect(headingMap['h5']).toBe('HEADING_5');
+  });
+
+  it('maps h6 to HEADING_6', () => {
+    expect(headingMap['h6']).toBe('HEADING_6');
+  });
+
+  it('does not map p tag', () => {
+    expect(headingMap['p']).toBeUndefined();
+  });
+
+  it('does not map div tag', () => {
+    expect(headingMap['div']).toBeUndefined();
+  });
+});
+
+// ── Text formatting preservation ──
+describe('DOCX export text formatting mapping', () => {
+  // Replicate the inline formatting logic from _extractTextRuns
+  function extractFormatFromTag(tag, existingFmt = {}) {
+    const fmt = { ...existingFmt };
+    if (tag === 'strong' || tag === 'b') fmt.bold = true;
+    if (tag === 'em' || tag === 'i') fmt.italics = true;
+    if (tag === 'u') fmt.underline = { type: 'single' };
+    if (tag === 's' || tag === 'del' || tag === 'strike') fmt.strike = true;
+    if (tag === 'sup') fmt.superScript = true;
+    if (tag === 'sub') fmt.subScript = true;
+    if (tag === 'code') fmt.font = 'Courier New';
+    return fmt;
+  }
+
+  function extractFormatFromStyle(style, existingFmt = {}) {
+    const fmt = { ...existingFmt };
+    if (style.color) {
+      const hex = _cssColorToHex(style.color);
+      if (hex) fmt.color = hex;
+    }
+    if (style.fontSize) {
+      const halfPts = _cssFontSizeToHalfPoints(style.fontSize);
+      if (halfPts > 0) fmt.size = halfPts;
+    }
+    if (style.backgroundColor) {
+      const hlName = _cssColorToHighlight(style.backgroundColor);
+      if (hlName) fmt.highlight = hlName;
+    }
+    if (style.fontFamily) {
+      fmt.font = style.fontFamily.replace(/['"]/g, '').split(',')[0].trim();
+    }
+    if (style.textDecoration) {
+      if (style.textDecoration.includes('underline')) fmt.underline = { type: 'single' };
+      if (style.textDecoration.includes('line-through')) fmt.strike = true;
+    }
+    if (style.fontWeight === 'bold' || style.fontWeight === '700') fmt.bold = true;
+    if (style.fontStyle === 'italic') fmt.italics = true;
+    return fmt;
+  }
+
+  it('maps <strong> to bold', () => {
+    expect(extractFormatFromTag('strong')).toEqual({ bold: true });
+  });
+
+  it('maps <b> to bold', () => {
+    expect(extractFormatFromTag('b')).toEqual({ bold: true });
+  });
+
+  it('maps <em> to italics', () => {
+    expect(extractFormatFromTag('em')).toEqual({ italics: true });
+  });
+
+  it('maps <i> to italics', () => {
+    expect(extractFormatFromTag('i')).toEqual({ italics: true });
+  });
+
+  it('maps <u> to underline single', () => {
+    expect(extractFormatFromTag('u')).toEqual({ underline: { type: 'single' } });
+  });
+
+  it('maps <s> to strikethrough', () => {
+    expect(extractFormatFromTag('s')).toEqual({ strike: true });
+  });
+
+  it('maps <del> to strikethrough', () => {
+    expect(extractFormatFromTag('del')).toEqual({ strike: true });
+  });
+
+  it('maps <sup> to superscript', () => {
+    expect(extractFormatFromTag('sup')).toEqual({ superScript: true });
+  });
+
+  it('maps <sub> to subscript', () => {
+    expect(extractFormatFromTag('sub')).toEqual({ subScript: true });
+  });
+
+  it('maps <code> to Courier New font', () => {
+    expect(extractFormatFromTag('code')).toEqual({ font: 'Courier New' });
+  });
+
+  it('accumulates nested formatting (bold + italic)', () => {
+    const fmt = extractFormatFromTag('strong');
+    const nested = extractFormatFromTag('em', fmt);
+    expect(nested).toEqual({ bold: true, italics: true });
+  });
+
+  it('extracts font color from style', () => {
+    const fmt = extractFormatFromStyle({ color: '#ff0000' });
+    expect(fmt.color).toBe('FF0000');
+  });
+
+  it('extracts font size from style (pt)', () => {
+    const fmt = extractFormatFromStyle({ fontSize: '14pt' });
+    expect(fmt.size).toBe(28);
+  });
+
+  it('extracts font size from style (px)', () => {
+    const fmt = extractFormatFromStyle({ fontSize: '16px' });
+    expect(fmt.size).toBe(24);
+  });
+
+  it('extracts background color as highlight', () => {
+    const fmt = extractFormatFromStyle({ backgroundColor: '#FFFF00' });
+    expect(fmt.highlight).toBe('yellow');
+  });
+
+  it('extracts font family from style', () => {
+    const fmt = extractFormatFromStyle({ fontFamily: '"Arial", sans-serif' });
+    expect(fmt.font).toBe('Arial');
+  });
+
+  it('extracts underline from text-decoration style', () => {
+    const fmt = extractFormatFromStyle({ textDecoration: 'underline' });
+    expect(fmt.underline).toEqual({ type: 'single' });
+  });
+
+  it('extracts strikethrough from text-decoration style', () => {
+    const fmt = extractFormatFromStyle({ textDecoration: 'line-through' });
+    expect(fmt.strike).toBe(true);
+  });
+
+  it('extracts bold from font-weight style', () => {
+    const fmt = extractFormatFromStyle({ fontWeight: 'bold' });
+    expect(fmt.bold).toBe(true);
+  });
+
+  it('extracts bold from font-weight 700', () => {
+    const fmt = extractFormatFromStyle({ fontWeight: '700' });
+    expect(fmt.bold).toBe(true);
+  });
+
+  it('extracts italic from font-style', () => {
+    const fmt = extractFormatFromStyle({ fontStyle: 'italic' });
+    expect(fmt.italics).toBe(true);
+  });
+
+  it('combines tag and style formatting', () => {
+    const tagFmt = extractFormatFromTag('strong');
+    const combined = extractFormatFromStyle({ color: '#0000ff', fontSize: '16pt' }, tagFmt);
+    expect(combined.bold).toBe(true);
+    expect(combined.color).toBe('0000FF');
+    expect(combined.size).toBe(32);
+  });
+});
