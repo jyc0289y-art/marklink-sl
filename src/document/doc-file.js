@@ -73,20 +73,25 @@ async function processDocFile(file) {
   if (isHwpFile(file) || /\.hwp$/i.test(file.name)) {
     const isOle = await hasOleMagicBytes(file);
     if (isOle) {
-      // Binary HWP detected — show clear conversion message
-      setDocContent(
-        '<div style="text-align:center;padding:60px 20px">' +
-        '<p style="font-size:48px;margin-bottom:16px">📄</p>' +
-        '<p style="color:#c62828;font-size:18px;font-weight:600;margin-bottom:12px">' +
-        '이 파일은 바이너리 HWP 형식입니다.</p>' +
-        '<p style="color:#555;font-size:14px;line-height:1.8">' +
-        '한컴오피스에서 HWPX 형식으로 다시 저장해 주세요.<br>' +
-        '<strong>파일 → 다른 이름으로 저장 → HWPX</strong></p>' +
-        '<p style="color:#888;font-size:12px;margin-top:20px">' +
-        'This file is in binary HWP format. Please re-save as HWPX in Hancom Office.</p>' +
-        '</div>'
-      );
-      return { name: file.name, content: '' };
+      // Binary HWP detected — parse with OLE2 parser
+      try {
+        const { importHwpBinary } = await import('./hwp-binary.js');
+        return await importHwpBinary(file);
+      } catch (e) {
+        console.error('Binary HWP import error:', e);
+        setDocContent(
+          '<div style="text-align:center;padding:60px 20px">' +
+          '<p style="font-size:48px;margin-bottom:16px">📄</p>' +
+          '<p style="color:#c62828;font-size:18px;font-weight:600;margin-bottom:12px">' +
+          'HWP 파일을 열 수 없습니다.</p>' +
+          '<p style="color:#555;font-size:14px;line-height:1.8">' +
+          escapeHtml(e.message) + '<br><br>' +
+          '한컴오피스에서 HWPX 형식으로 다시 저장하면 더 정확하게 열 수 있습니다.<br>' +
+          '<strong>파일 → 다른 이름으로 저장 → HWPX</strong></p>' +
+          '</div>'
+        );
+        return { name: file.name, content: '' };
+      }
     }
     // .hwp file but ZIP-based — could be HWPX saved with .hwp extension
     if (isZip) {
@@ -106,12 +111,33 @@ async function processDocFile(file) {
     return await importHwpx(file);
   }
 
+  // Legacy .doc (OLE2 compound file) — extract text
+  if (/\.doc$/i.test(file.name)) {
+    const isOle = await hasOleMagicBytes(file);
+    if (isOle) {
+      try {
+        const { importDocLegacy } = await import('./doc-legacy.js');
+        return await importDocLegacy(file);
+      } catch (e) {
+        console.error('Legacy DOC import error:', e);
+        setDocContent(
+          '<div style="text-align:center;padding:60px 20px">' +
+          '<p style="color:#c62828;font-size:18px;font-weight:600;margin-bottom:12px">' +
+          'DOC 파일을 열 수 없습니다.</p>' +
+          '<p style="color:#555;font-size:14px">' + escapeHtml(e.message) + '</p>' +
+          '</div>'
+        );
+        return { name: file.name, content: '' };
+      }
+    }
+  }
+
   // Check if file content looks like binary (not text/HTML)
   const firstBytes = new Uint8Array(await file.slice(0, 512).arrayBuffer());
   const nullCount = firstBytes.filter((b) => b === 0).length;
   if (nullCount > 50) {
     // Binary file detected — show helpful message instead of garbage
-    setDocContent('<p style="color:#c62828;text-align:center;padding:40px"><strong>This file appears to be in a binary format that cannot be displayed directly.</strong><br>Supported formats: HTML, DOCX, HWPX</p>');
+    setDocContent('<p style="color:#c62828;text-align:center;padding:40px"><strong>This file appears to be in a binary format that cannot be displayed directly.</strong><br>Supported formats: HTML, DOCX, DOC, HWP, HWPX</p>');
     return { name: file.name, content: '' };
   }
 
@@ -134,6 +160,7 @@ export async function openDocFile() {
           { description: 'Document Files', accept: {
             'text/html': ['.html', '.htm'],
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+            'application/msword': ['.doc'],
             'application/hwpx': ['.hwpx'],
             'application/x-hwp': ['.hwp'],
           }},
@@ -147,7 +174,7 @@ export async function openDocFile() {
     const [handle] = handles;
     const file = await handle.getFile();
     const result = await processDocFile(file);
-    currentHandle = isDocxFile(file) || isHwpxFile(file) || isHwpFile(file) ? null : handle;
+    currentHandle = isDocxFile(file) || isHwpxFile(file) || isHwpFile(file) || /\.doc$/i.test(file.name) ? null : handle;
     currentName = file.name;
     return result;
   }
@@ -156,7 +183,7 @@ export async function openDocFile() {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.html,.htm,.docx,.hwpx,.hwp';
+    input.accept = '.html,.htm,.docx,.doc,.hwpx,.hwp';
     input.onchange = async () => {
       const file = input.files[0];
       if (!file) return resolve(null);

@@ -24,11 +24,10 @@ async function isBinaryHwp(file) {
  * Import a .hwpx or .hwp file → Document editor
  */
 export async function importHwpx(file) {
-  // Check for binary HWP format first
+  // Check for binary HWP format — route to binary parser
   if (await isBinaryHwp(file)) {
-    throw new Error(
-      'Binary HWP files (.hwp) are not supported. Please save as HWPX format in Hancom Office (File → Save As → HWPX).'
-    );
+    const { importHwpBinary } = await import('./hwp-binary.js');
+    return await importHwpBinary(file);
   }
 
   let zip;

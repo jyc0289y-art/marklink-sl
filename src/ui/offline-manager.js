@@ -213,9 +213,10 @@ const injectOfflineStyles = () => {
 const showOfflineBanner = () => {
   // Remove any existing online banner
   if (onlineBanner && onlineBanner.parentNode) {
-    onlineBanner.classList.remove('visible');
-    setTimeout(() => onlineBanner.remove(), 350);
+    const ob = onlineBanner;
     onlineBanner = null;
+    ob.classList.remove('visible');
+    setTimeout(() => ob.parentNode && ob.remove(), 350);
   }
 
   if (offlineBanner && offlineBanner.parentNode) return; // already showing
@@ -227,7 +228,7 @@ const showOfflineBanner = () => {
     <span>You're offline — changes saved locally</span>
   `;
   document.body.appendChild(offlineBanner);
-  requestAnimationFrame(() => offlineBanner.classList.add('visible'));
+  requestAnimationFrame(() => { if (offlineBanner) offlineBanner.classList.add('visible'); });
 
   updateStatusBarIndicator(false);
 };
@@ -238,9 +239,10 @@ const showOfflineBanner = () => {
 const showOnlineBanner = () => {
   // Remove offline banner
   if (offlineBanner && offlineBanner.parentNode) {
-    offlineBanner.classList.remove('visible');
-    setTimeout(() => offlineBanner.remove(), 350);
+    const banner = offlineBanner;
     offlineBanner = null;
+    banner.classList.remove('visible');
+    setTimeout(() => banner.parentNode && banner.remove(), 350);
   }
 
   onlineBanner = document.createElement('div');
@@ -250,13 +252,15 @@ const showOnlineBanner = () => {
     <span>Back online</span>
   `;
   document.body.appendChild(onlineBanner);
-  requestAnimationFrame(() => onlineBanner.classList.add('visible'));
+  requestAnimationFrame(() => { if (onlineBanner) onlineBanner.classList.add('visible'); });
 
   // Auto-dismiss after 3 seconds
   setTimeout(() => {
     if (onlineBanner && onlineBanner.parentNode) {
-      onlineBanner.classList.remove('visible');
-      setTimeout(() => { onlineBanner.remove(); onlineBanner = null; }, 350);
+      const ob = onlineBanner;
+      onlineBanner = null;
+      ob.classList.remove('visible');
+      setTimeout(() => ob.parentNode && ob.remove(), 350);
     }
   }, 3000);
 

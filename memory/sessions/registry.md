@@ -51,7 +51,7 @@
 | P11.41wc | CAD Editor Onshape UX Overhaul | 2026-03-26 | P11.40wc | 진행중 |
 | P11.42wc | CAD Sketch Mode + Extrude/Revolve Workflow | 2026-03-26 | P11.41wc | 진행중 |
 | P11.43wc | CAD OpenCascade.js B-Rep Integration | 2026-03-26 | P11.42wc | 진행중 |
-| P11.44wc | P11.26wc 포크 — 후속 작업 | 2026-03-26 | P11.26wc | 진행중 |
+| P11.44wc | 자율개발병렬모드 2차 메가세션 (사이클 11~18, 168버그, 1459테스트) | 2026-03-26 | P11.26wc | 종료 |
 | P11.45wc | HWPX/HWP Import Bugfix & Enhancement | 2026-03-26 | P11.44wc | 진행중 |
 | P9.8wc | DOCX Import Quality Enhancement | 2026-03-26 | 없음 | 진행중 |
 | P9.9wc | Sheet UI Imported Styles Rendering Fix | 2026-03-26 | 없음 | 진행중 |
@@ -95,3 +95,4 @@
 | P9.45wc | Sheet Print/Page Layout & Rendering Quality | 2026-03-27 | 없음 | 진행중 |
 | P9.46wc | Doc Editor Table Features Audit & Enhancement | 2026-03-27 | 없음 | 진행중 |
 | P9.47wc | Markdown Export & Advanced Features Audit | 2026-03-27 | 없음 | 진행중 |
+| P11.46wc | (작업 미정) | 2026-03-27 | P11.44wc | 진행중 |

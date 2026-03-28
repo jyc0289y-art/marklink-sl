@@ -29,6 +29,7 @@ export async function openSheetFile() {
           description: 'Spreadsheet Files',
           accept: {
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+            'application/vnd.ms-excel': ['.xls'],
             'text/csv': ['.csv'],
             'text/tab-separated-values': ['.tsv'],
           },
@@ -49,7 +50,7 @@ export async function openSheetFile() {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.xlsx,.csv,.tsv';
+    input.accept = '.xlsx,.xls,.csv,.tsv';
     input.onchange = async () => {
       const file = input.files[0];
       if (!file) return resolve(null);
@@ -242,7 +243,7 @@ async function importFile(file) {
     return;
   }
 
-  // XLSX: use SheetJS XLSX library
+  // XLSX/XLS: use SheetJS library (auto-detects format from magic bytes)
   try {
     const XLSX = await getXLSX();
     const data = await file.arrayBuffer();

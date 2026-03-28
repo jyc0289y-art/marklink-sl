@@ -27,6 +27,7 @@ export async function openSlideFile() {
       handles = await window.showOpenFilePicker({
         types: [{ description: 'Presentation Files', accept: {
           'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+          'application/vnd.ms-powerpoint': ['.ppt'],
           'text/html': ['.html'],
           'application/json': ['.json'],
         } }],
@@ -43,6 +44,8 @@ export async function openSlideFile() {
     }
     if (/\.pptx$/i.test(file.name)) {
       await importPptx(file);
+    } else if (/\.ppt$/i.test(file.name)) {
+      await importPptLegacy(file);
     } else {
       const text = await file.text();
       importSlideContent(file.name, text);
@@ -54,7 +57,7 @@ export async function openSlideFile() {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.html,.json,.pptx';
+    input.accept = '.html,.json,.pptx,.ppt';
     input.onchange = async () => {
       const file = input.files[0];
       if (!file) return resolve(null);
@@ -64,6 +67,8 @@ export async function openSlideFile() {
       }
       if (/\.pptx$/i.test(file.name)) {
         await importPptx(file);
+      } else if (/\.ppt$/i.test(file.name)) {
+        await importPptLegacy(file);
       } else {
         const text = await file.text();
         importSlideContent(file.name, text);
@@ -84,6 +89,114 @@ function importSlideContent(name, text) {
   } else {
     parsePresentation(text);
   }
+}
+
+/* ─── Legacy PPT Import (OLE2 Compound File — text extraction) ── */
+
+/**
+ * Import a legacy .ppt file (binary OLE2 format).
+ * Extracts text content from the PowerPoint Document stream.
+ * Full formatting is not preserved, but text content is recovered.
+ */
+async function importPptLegacy(file) {
+  const buffer = await file.arrayBuffer();
+  const u8 = new Uint8Array(buffer);
+
+  // Verify OLE2 magic bytes
+  if (u8[0] !== 0xD0 || u8[1] !== 0xCF || u8[2] !== 0x11 || u8[3] !== 0xE0) {
+    alert('This file does not appear to be a valid PowerPoint file.');
+    return;
+  }
+
+  // Extract text using UTF-16LE string scanning approach
+  // PPT binary format stores text as UTF-16LE in TextCharsAtom (0x0FA0) and
+  // TextBytesAtom (0x0FA8) records
+  const texts = [];
+  const view = new DataView(buffer);
+
+  for (let pos = 0; pos + 8 <= buffer.byteLength; pos += 1) {
+    // PPT record header: recVer(4) + recInstance(12) + recType(16) + recLen(32)
+    const recType = view.getUint16(pos + 2, true);
+    const recLen = view.getUint32(pos + 4, true);
+
+    // TextCharsAtom (0x0FA0) — UTF-16LE text
+    if (recType === 0x0FA0 && recLen > 0 && recLen < 100000 && pos + 8 + recLen <= buffer.byteLength) {
+      let text = '';
+      for (let i = 0; i < recLen; i += 2) {
+        const ch = view.getUint16(pos + 8 + i, true);
+        if (ch === 0x0D) text += '\n';
+        else if (ch >= 32 || ch === 9) text += String.fromCharCode(ch);
+      }
+      text = text.trim();
+      if (text.length > 0 && !texts.includes(text)) texts.push(text);
+      pos += 7 + recLen; // advance past this record
+      continue;
+    }
+
+    // TextBytesAtom (0x0FA8) — Latin-1 text
+    if (recType === 0x0FA8 && recLen > 0 && recLen < 100000 && pos + 8 + recLen <= buffer.byteLength) {
+      let text = '';
+      for (let i = 0; i < recLen; i++) {
+        const ch = u8[pos + 8 + i];
+        if (ch === 0x0D) text += '\n';
+        else if (ch >= 32 || ch === 9) text += String.fromCharCode(ch);
+      }
+      text = text.trim();
+      if (text.length > 0 && !texts.includes(text)) texts.push(text);
+      pos += 7 + recLen;
+      continue;
+    }
+  }
+
+  if (texts.length === 0) {
+    alert('PPT 파일에서 텍스트를 추출할 수 없습니다. PPTX 형식으로 다시 저장해 주세요.');
+    return;
+  }
+
+  // Group texts into slides (heuristic: split by larger text blocks)
+  // Each substantial text block becomes a slide
+  const slides = [];
+  let currentSlide = [];
+  for (const text of texts) {
+    currentSlide.push(text);
+    // If text looks like a title (short, no newlines) and we have content, start new slide
+    if (currentSlide.length >= 2) {
+      const content = currentSlide.map(t => {
+        const lines = t.split('\n');
+        if (lines.length === 1 && t.length < 80) {
+          return `<h2 style="margin:0 0 12px 0">${escapeHTML(t)}</h2>`;
+        }
+        return `<p style="margin:4px 0;white-space:pre-wrap">${escapeHTML(t)}</p>`;
+      }).join('');
+      slides.push({
+        content,
+        notes: '',
+        style: 'background:#fff;color:#333',
+      });
+      currentSlide = [];
+    }
+  }
+  // Flush remaining
+  if (currentSlide.length > 0) {
+    const content = currentSlide.map(t => {
+      const lines = t.split('\n');
+      if (lines.length === 1 && t.length < 80) {
+        return `<h2 style="margin:0 0 12px 0">${escapeHTML(t)}</h2>`;
+      }
+      return `<p style="margin:4px 0;white-space:pre-wrap">${escapeHTML(t)}</p>`;
+    }).join('');
+    slides.push({ content, notes: '', style: 'background:#fff;color:#333' });
+  }
+
+  if (slides.length === 0) {
+    slides.push({
+      content: '<p style="text-align:center;color:#888">No extractable content found in this PPT file.</p>',
+      notes: '',
+      style: 'background:#fff;color:#333',
+    });
+  }
+
+  setSlidesData(slides);
 }
 
 /* ─── PPTX Import (Office Open XML) ─────────────────────────── */
@@ -1782,6 +1895,8 @@ export async function openSlideFromFile(file) {
   }
   if (/\.pptx$/i.test(file.name)) {
     await importPptx(file);
+  } else if (/\.ppt$/i.test(file.name)) {
+    await importPptLegacy(file);
   } else {
     const text = await file.text();
     importSlideContent(file.name, text);

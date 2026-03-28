@@ -10,7 +10,9 @@ const FILE_ICONS = {
   markdown: { icon: '📝', label: 'Markdown' },
   txt: { icon: '📄', label: 'Text' },
   docx: { icon: '📘', label: 'Word' },
+  doc: { icon: '📘', label: 'Word' },
   hwpx: { icon: '📙', label: 'Hangul' },
+  hwp: { icon: '📙', label: 'Hangul' },
   html: { icon: '🌐', label: 'HTML' },
   htm: { icon: '🌐', label: 'HTML' },
   pdf: { icon: '📕', label: 'PDF' },
@@ -172,38 +174,69 @@ const _processFile = async (file, onFileLoad) => {
 
   const name = file.name.toLowerCase();
 
-  // DOCX -> switch to document tab and import via mammoth
-  if (name.endsWith('.docx')) {
+  // DOCX/DOC -> switch to document tab and import
+  if (name.endsWith('.docx') || name.endsWith('.doc')) {
     try {
       const { switchTab } = await import('../ui/tabs.js');
       switchTab('document');
-      const { importDocx } = await import('../document/docx.js');
-      const result = await importDocx(file);
+      let result;
+      if (name.endsWith('.doc')) {
+        // Legacy DOC (OLE2) — check magic bytes
+        const header = await file.slice(0, 4).arrayBuffer();
+        const bytes = new Uint8Array(header);
+        const isOle = bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0;
+        if (isOle) {
+          const { importDocLegacy } = await import('../document/doc-legacy.js');
+          result = await importDocLegacy(file);
+        } else {
+          // Might be DOCX with wrong extension
+          const { importDocx } = await import('../document/docx.js');
+          result = await importDocx(file);
+        }
+      } else {
+        const { importDocx } = await import('../document/docx.js');
+        result = await importDocx(file);
+      }
       const { setDocFileName } = await import('../document/doc-file.js');
       setDocFileName(file.name);
       const fileNameEl = document.getElementById('file-name');
       if (fileNameEl) fileNameEl.textContent = result.name;
     } catch (err) {
-      console.error('DOCX drag-drop import error:', err);
-      alert('DOCX import error: ' + err.message);
+      console.error('DOC/DOCX drag-drop import error:', err);
+      alert('Document import error: ' + err.message);
     }
     return;
   }
 
-  // HWPX -> switch to document tab and import
-  if (name.endsWith('.hwpx')) {
+  // HWPX / HWP (binary or ZIP-based) -> switch to document tab and import
+  if (name.endsWith('.hwpx') || name.endsWith('.hwp')) {
     try {
       const { switchTab } = await import('../ui/tabs.js');
       switchTab('document');
-      const { importHwpx } = await import('../document/hwpx.js');
-      const result = await importHwpx(file);
+      let result;
+      if (name.endsWith('.hwp')) {
+        // Check magic bytes to distinguish binary HWP vs ZIP-based HWPX
+        const header = await file.slice(0, 4).arrayBuffer();
+        const bytes = new Uint8Array(header);
+        const isOle = bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0;
+        if (isOle) {
+          const { importHwpBinary } = await import('../document/hwp-binary.js');
+          result = await importHwpBinary(file);
+        } else {
+          const { importHwpx } = await import('../document/hwpx.js');
+          result = await importHwpx(file);
+        }
+      } else {
+        const { importHwpx } = await import('../document/hwpx.js');
+        result = await importHwpx(file);
+      }
       const { setDocFileName } = await import('../document/doc-file.js');
       setDocFileName(file.name);
       const fileNameEl = document.getElementById('file-name');
       if (fileNameEl) fileNameEl.textContent = result.name;
     } catch (err) {
-      console.error('HWPX drag-drop import error:', err);
-      alert('HWPX import error: ' + err.message);
+      console.error('HWP/HWPX drag-drop import error:', err);
+      alert('HWP import error: ' + err.message);
     }
     return;
   }
