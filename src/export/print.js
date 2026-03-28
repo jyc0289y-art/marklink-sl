@@ -2,6 +2,7 @@
 
 import { render } from '../preview/renderer.js';
 import { getCurrentTab } from '../ui/tabs.js';
+import { escapeHtml } from '../utils/sanitize.js';
 
 /* ==================== Page Size Definitions ==================== */
 const PAGE_SIZES = {
@@ -184,10 +185,10 @@ const _buildModalHTML = (title, tab) => `
     </div>
     <div class="print-preview-body" id="print-preview-body">
       <div class="print-preview-page" id="print-preview-page">
-        <div class="print-page-header">${_escapeHtml(title)}</div>
+        <div class="print-page-header">${escapeHtml(title)}</div>
         <div class="print-page-content" id="print-page-content"></div>
         <div class="print-page-footer">
-          <span>${_escapeHtml(title)}</span>
+          <span>${escapeHtml(title)}</span>
           <span>Page 1</span>
         </div>
       </div>
@@ -195,11 +196,7 @@ const _buildModalHTML = (title, tab) => `
   </div>
 `;
 
-const _escapeHtml = (s) => {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-};
+// escapeHtml: imported from utils/sanitize.js
 
 /* ==================== Render Preview ==================== */
 
@@ -315,7 +312,7 @@ const _executePrint = (content, tab, title) => {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${_escapeHtml(title)}</title>
+  <title>${escapeHtml(title)}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
   <style>
     @page {
@@ -361,7 +358,7 @@ const _executePrint = (content, tab, title) => {
   </style>
 </head>
 <body>
-  <div class="print-header">${_escapeHtml(title)}</div>
+  <div class="print-header">${escapeHtml(title)}</div>
   ${content}
 </body>
 </html>`);

@@ -3,7 +3,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { t } from '../ui/i18n.js';
-import { escapeHtml as _esc } from '../utils/sanitize.js';
+import { escapeHtml } from '../utils/sanitize.js';
 import { downloadBlob } from '../utils/download.js';
 
 // Set worker source
@@ -970,7 +970,7 @@ async function printPdf() {
 
   printWindow.document.write(`
     <!DOCTYPE html>
-    <html><head><title>Print - ${_esc(currentName)}</title>
+    <html><head><title>Print - ${escapeHtml(currentName)}</title>
     <style>
       * { margin: 0; padding: 0; }
       body { background: #fff; }
@@ -2568,8 +2568,8 @@ const renderMergeFileList = () => {
 
     item.innerHTML = `
       <span class="merge-drag-handle">☰</span>
-      <span class="merge-file-name">${_esc(file.name)}</span>
-      <input type="text" class="merge-page-range" placeholder="All" data-idx="${idx}" value="${_esc(file.pageRange || '')}" title="e.g. 1-3, 5" />
+      <span class="merge-file-name">${escapeHtml(file.name)}</span>
+      <input type="text" class="merge-page-range" placeholder="All" data-idx="${idx}" value="${escapeHtml(file.pageRange || '')}" title="e.g. 1-3, 5" />
       <span class="merge-page-info">(${file.pageCount}p)</span>
       <button class="merge-file-remove" data-idx="${idx}">&times;</button>
     `;

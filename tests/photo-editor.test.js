@@ -788,3 +788,101 @@ describe('spot heal blend function', () => {
     }
   });
 });
+
+/* ==================== Export Format Helpers ==================== */
+
+// Replicate the export logic from photo-editor.js exportImage()
+
+function getExportMimeType(format) {
+  return `image/${format}`;
+}
+
+function getExportExtension(format) {
+  return format === 'jpeg' ? 'jpg' : format;
+}
+
+function getExportQuality(format, sliderValue) {
+  if (format === 'png') return undefined;
+  return sliderValue / 100;
+}
+
+function getExportFilename(baseName, format) {
+  const ext = getExportExtension(format);
+  return `${baseName}_edit.${ext}`;
+}
+
+const FORMAT_QUALITY_DEFAULTS = { jpeg: 85, webp: 80 };
+
+function getDefaultQuality(format) {
+  return FORMAT_QUALITY_DEFAULTS[format] || null;
+}
+
+describe('export format MIME type', () => {
+  it('PNG produces image/png', () => {
+    expect(getExportMimeType('png')).toBe('image/png');
+  });
+  it('JPEG produces image/jpeg', () => {
+    expect(getExportMimeType('jpeg')).toBe('image/jpeg');
+  });
+  it('WebP produces image/webp', () => {
+    expect(getExportMimeType('webp')).toBe('image/webp');
+  });
+});
+
+describe('export file extension', () => {
+  it('PNG uses .png', () => {
+    expect(getExportExtension('png')).toBe('png');
+  });
+  it('JPEG uses .jpg (not .jpeg)', () => {
+    expect(getExportExtension('jpeg')).toBe('jpg');
+  });
+  it('WebP uses .webp', () => {
+    expect(getExportExtension('webp')).toBe('webp');
+  });
+});
+
+describe('export quality parameter', () => {
+  it('PNG quality is undefined (lossless)', () => {
+    expect(getExportQuality('png', 85)).toBeUndefined();
+  });
+  it('JPEG quality is slider value / 100', () => {
+    expect(getExportQuality('jpeg', 85)).toBeCloseTo(0.85, 5);
+    expect(getExportQuality('jpeg', 50)).toBeCloseTo(0.50, 5);
+    expect(getExportQuality('jpeg', 100)).toBeCloseTo(1.0, 5);
+  });
+  it('WebP quality is slider value / 100', () => {
+    expect(getExportQuality('webp', 80)).toBeCloseTo(0.80, 5);
+    expect(getExportQuality('webp', 10)).toBeCloseTo(0.10, 5);
+  });
+  it('quality boundaries are correct', () => {
+    expect(getExportQuality('jpeg', 10)).toBeCloseTo(0.1, 5);
+    expect(getExportQuality('webp', 100)).toBeCloseTo(1.0, 5);
+  });
+});
+
+describe('export filename generation', () => {
+  it('PNG filename ends with .png', () => {
+    expect(getExportFilename('photo', 'png')).toBe('photo_edit.png');
+  });
+  it('JPEG filename ends with .jpg', () => {
+    expect(getExportFilename('photo', 'jpeg')).toBe('photo_edit.jpg');
+  });
+  it('WebP filename ends with .webp', () => {
+    expect(getExportFilename('photo', 'webp')).toBe('photo_edit.webp');
+  });
+  it('preserves base name correctly', () => {
+    expect(getExportFilename('my_vacation_2026', 'jpeg')).toBe('my_vacation_2026_edit.jpg');
+  });
+});
+
+describe('format-specific quality defaults', () => {
+  it('JPEG default quality is 85', () => {
+    expect(getDefaultQuality('jpeg')).toBe(85);
+  });
+  it('WebP default quality is 80', () => {
+    expect(getDefaultQuality('webp')).toBe(80);
+  });
+  it('PNG has no quality default (lossless)', () => {
+    expect(getDefaultQuality('png')).toBeNull();
+  });
+});

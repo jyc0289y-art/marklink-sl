@@ -1,7 +1,7 @@
 // OfficeLink SL — Document Editor (WYSIWYG)
 
 import { t } from '../ui/i18n.js';
-import { escapeHtml as _escapeHtmlShared } from '../utils/sanitize.js';
+import { escapeHtml } from '../utils/sanitize.js';
 
 let editorEl = null;
 let dirty = false;
@@ -4248,8 +4248,7 @@ function showDocCompare() {
   };
 }
 
-// escapeHtml: use shared import directly
-const escapeHtml = _escapeHtmlShared;
+// escapeHtml: imported directly from utils/sanitize.js
 
 function computeWordDiff(oldText, newText) {
   const oldWords = oldText.split(/(\s+)/);

@@ -844,4 +844,4 @@ async function exportToWorkbook() {
 }
 
 // Exported for unit testing
-export { parseDelimited, extractColor, cssBorderToXlsx, xlsxBorderToCss };
+export { parseDelimited, extractColor, cssBorderToXlsx, xlsxBorderToCss, exportToWorkbook };

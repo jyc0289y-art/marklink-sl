@@ -4,11 +4,11 @@ import { getSlidesData, setSlidesData } from './slide-editor.js';
 import { generateTimestampFilename } from '../export/filename-utils.js';
 import { downloadBlob } from '../utils/download.js';
 import { escapeHtml } from '../utils/sanitize.js';
+import { uint8ToBase64, detectImageMime } from '../utils/image-utils.js';
 
 let currentName = 'untitled-presentation.html';
 
-// Alias escapeHtml for local compat — must be at top since used throughout the file
-const escapeHTML = escapeHtml;
+// escapeHtml: imported directly from utils/sanitize.js
 
 const THEMES = {
   default: 'background:#fff;color:#333',
@@ -120,24 +120,6 @@ const PPT_PIC_TYPE = {
 // Record types with two 16-byte MD4 hashes (32 bytes) instead of one (16 bytes)
 const PPT_PIC_DOUBLE_HASH = new Set([0xF01A, 0xF01B, 0xF01C]);
 
-/** Convert Uint8Array to base64 string */
-const uint8ToBase64 = (u8) => {
-  let binary = '';
-  for (let i = 0; i < u8.length; i++) {
-    binary += String.fromCharCode(u8[i]);
-  }
-  return btoa(binary);
-};
-
-/** Detect MIME type from first few bytes of binary image data */
-const detectImageMime = (data) => {
-  if (data.length < 4) return 'image/png';
-  if (data[0] === 0xFF && data[1] === 0xD8) return 'image/jpeg';
-  if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47) return 'image/png';
-  if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return 'image/gif';
-  if (data[0] === 0x42 && data[1] === 0x4D) return 'image/bmp';
-  return 'image/png'; // fallback
-};
 
 /**
  * Parse the OLE2 "Pictures" stream to extract embedded images.
@@ -383,9 +365,9 @@ async function importPptLegacy(file) {
         if (group.texts.length === 0) continue;
         const textContent = group.texts.map((t) => {
           if ((t.type === TEXT_TYPE.TITLE || t.type === TEXT_TYPE.CENTER_TITLE) && t.text.length < 120) {
-            return `<h2 style="margin:0 0 12px 0">${escapeHTML(t.text)}</h2>`;
+            return `<h2 style="margin:0 0 12px 0">${escapeHtml(t.text)}</h2>`;
           }
-          return `<p style="margin:4px 0;white-space:pre-wrap">${escapeHTML(t.text)}</p>`;
+          return `<p style="margin:4px 0;white-space:pre-wrap">${escapeHtml(t.text)}</p>`;
         }).join('');
 
         // Append images allocated to this slide
@@ -399,7 +381,7 @@ async function importPptLegacy(file) {
 
         slides.push({
           content: textContent + imageContent,
-          notes: group.notes.map((n) => escapeHTML(n)).join('\n'),
+          notes: group.notes.map((n) => escapeHtml(n)).join('\n'),
           style: 'background:#fff;color:#333',
         });
         slideIdx++;
@@ -451,9 +433,9 @@ async function importPptLegacy(file) {
       if (currentSlide.length >= 2) {
         const content = currentSlide.map(t => {
           if (t.split('\n').length === 1 && t.length < 80) {
-            return `<h2 style="margin:0 0 12px 0">${escapeHTML(t)}</h2>`;
+            return `<h2 style="margin:0 0 12px 0">${escapeHtml(t)}</h2>`;
           }
-          return `<p style="margin:4px 0;white-space:pre-wrap">${escapeHTML(t)}</p>`;
+          return `<p style="margin:4px 0;white-space:pre-wrap">${escapeHtml(t)}</p>`;
         }).join('');
         slides.push({ content, notes: '', style: 'background:#fff;color:#333' });
         currentSlide = [];
@@ -462,9 +444,9 @@ async function importPptLegacy(file) {
     if (currentSlide.length > 0) {
       const content = currentSlide.map(t => {
         if (t.split('\n').length === 1 && t.length < 80) {
-          return `<h2 style="margin:0 0 12px 0">${escapeHTML(t)}</h2>`;
+          return `<h2 style="margin:0 0 12px 0">${escapeHtml(t)}</h2>`;
         }
-        return `<p style="margin:4px 0;white-space:pre-wrap">${escapeHTML(t)}</p>`;
+        return `<p style="margin:4px 0;white-space:pre-wrap">${escapeHtml(t)}</p>`;
       }).join('');
       slides.push({ content, notes: '', style: 'background:#fff;color:#333' });
     }
@@ -950,7 +932,7 @@ function parseParagraphRuns(paraEl, themeColors) {
 
       // Extract formatting from <a:rPr>
       const rPr = getFirstByLocalName(child, 'rPr');
-      let formattedText = escapeHTML(runText);
+      let formattedText = escapeHtml(runText);
 
       if (rPr) {
         const bold = rPr.getAttribute('b') === '1';
@@ -1216,7 +1198,7 @@ async function parseSmartArt(frameEl, slideRelMap, zip, themeColors) {
     // Render as a structured list
     let html = '<ul style="list-style:disc;padding-left:24px">';
     textItems.forEach((item) => {
-      html += `<li>${escapeHTML(item)}</li>`;
+      html += `<li>${escapeHtml(item)}</li>`;
     });
     html += '</ul>';
     return html;
@@ -2203,7 +2185,7 @@ function buildPresHTML() {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapeHTML(currentName.replace(/\.html?$/i, ''))}</title>
+<title>${escapeHtml(currentName.replace(/\.html?$/i, ''))}</title>
 <meta name="generator" content="OfficeLink SL">
 <!-- MARKLINK_SLIDE_DATA:${btoa(JSON.stringify(slides))} -->
 <style>

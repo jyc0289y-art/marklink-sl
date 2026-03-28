@@ -9,7 +9,7 @@ import {
   measureLatency, getServerVersion, getModelInfo, streamChat
 } from './ollama-client.js';
 import { t } from '../ui/i18n.js';
-import { escapeHtml as _escapeHtml, sanitizeAiResponse, sanitizeUrl } from '../utils/sanitize.js';
+import { escapeHtml, sanitizeAiResponse, sanitizeUrl } from '../utils/sanitize.js';
 import { downloadBlob } from '../utils/download.js';
 
 let panelEl, chatListEl, chatInputEl, modelSelectEl, statusDotEl;
@@ -201,7 +201,7 @@ function initUrlSettings() {
             showCorsHelp();
           });
         } else {
-          resultEl.innerHTML = `<span style="color:#f44336">${_escapeHtml(result.message || 'Connection failed')}</span>`;
+          resultEl.innerHTML = `<span style="color:#f44336">${escapeHtml(result.message || 'Connection failed')}</span>`;
         }
       }
     });
@@ -1190,7 +1190,7 @@ async function sendMessage() {
     if (e.name === 'AbortError') {
       streamDiv.innerHTML = '<span class="ai-msg-system">Generation stopped.</span>';
     } else {
-      streamDiv.innerHTML = `<span class="ai-error">Error: ${_escapeHtml(e.message)}</span>`;
+      streamDiv.innerHTML = `<span class="ai-error">Error: ${escapeHtml(e.message)}</span>`;
       // Add retry button
       const retryBtn = document.createElement('button');
       retryBtn.className = 'ai-retry-btn';
@@ -1918,8 +1918,7 @@ function showSessionsModal() {
   });
 }
 
-// escapeHtml: use shared import directly
-const escapeHtml = _escapeHtml;
+// escapeHtml: imported directly from utils/sanitize.js
 
 // Auto-restore last session on init
 function restoreLastSession() {

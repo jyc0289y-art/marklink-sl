@@ -1,4 +1,5 @@
 // OfficeLink SL — Export Progress Indicator
+import { escapeHtml } from '../utils/sanitize.js';
 
 /**
  * Show an export progress overlay.
@@ -41,7 +42,7 @@ export const showExportProgress = (label = 'Exporting...') => {
       font-size: 15px; font-weight: 600;
       color: var(--text-primary, #1d1d1f);
       margin-bottom: 12px;
-    ">${_esc(label)}</div>
+    ">${escapeHtml(label)}</div>
     <div class="export-progress-bar-wrap" style="
       width: 100%; height: 6px; border-radius: 3px;
       background: var(--bg-secondary, #f4f4f8);
@@ -92,8 +93,4 @@ export const showExportProgress = (label = 'Exporting...') => {
   return { update, close };
 };
 
-const _esc = (s) => {
-  const d = document.createElement('span');
-  d.textContent = s;
-  return d.innerHTML;
-};
+// escapeHtml: imported from utils/sanitize.js

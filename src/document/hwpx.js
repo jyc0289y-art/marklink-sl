@@ -582,7 +582,7 @@ function parseRunsContent(pNode, binDataMap, footnoteCollector = null, fontMap =
       content += parseRun(child, binDataMap, footnoteCollector, fontMap);
     } else if (tag === 't') {
       // Direct text element
-      content += escapeHTML(child.textContent);
+      content += escapeHtml(child.textContent);
     } else if (tag === 'tbl') {
       // Inline table (rare, but handle)
       content += parseTable(child, binDataMap);
@@ -595,7 +595,7 @@ function parseRunsContent(pNode, binDataMap, footnoteCollector = null, fontMap =
       if (footnoteCollector) {
         const fnNum = footnoteCollector.notes.length + 1;
         const fnText = child.textContent.trim() || '';
-        footnoteCollector.notes.push({ num: fnNum, text: escapeHTML(fnText) });
+        footnoteCollector.notes.push({ num: fnNum, text: escapeHtml(fnText) });
         content += `<sup><a href="#fn-${fnNum}" style="color:#1565c0;text-decoration:none">${fnNum}</a></sup>`;
       }
     } else if (tag === 'en' || tag === 'endnote') {
@@ -603,16 +603,16 @@ function parseRunsContent(pNode, binDataMap, footnoteCollector = null, fontMap =
       if (footnoteCollector) {
         const fnNum = footnoteCollector.notes.length + 1;
         const fnText = child.textContent.trim() || '';
-        footnoteCollector.notes.push({ num: fnNum, text: escapeHTML(fnText) });
+        footnoteCollector.notes.push({ num: fnNum, text: escapeHtml(fnText) });
         content += `<sup><a href="#fn-${fnNum}" style="color:#1565c0;text-decoration:none">${fnNum}</a></sup>`;
       }
     } else if (tag === 'a') {
       // Hyperlink element (<hp:a href="...">) — extract href and inner content
       const href = child.getAttribute('href') || child.getAttribute('url') || '';
       const innerContent = parseRunsContent(child, binDataMap, footnoteCollector, fontMap);
-      const linkText = innerContent || escapeHTML(child.textContent.trim()) || escapeHTML(href);
+      const linkText = innerContent || escapeHtml(child.textContent.trim()) || escapeHtml(href);
       if (href) {
-        content += `<a href="${escapeHTML(href)}" target="_blank" rel="noopener">${linkText}</a>`;
+        content += `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${linkText}</a>`;
       } else {
         content += linkText;
       }
@@ -706,7 +706,7 @@ function parseRun(runNode, binDataMap, footnoteCollector = null, fontMap = {}) {
     const tag = localName(child);
 
     if (tag === 't') {
-      html += escapeHTML(child.textContent);
+      html += escapeHtml(child.textContent);
     } else if (tag === 'lineBreak' || tag === 'br') {
       html += '<br>';
     } else if (tag === 'tab') {
@@ -725,7 +725,7 @@ function parseRun(runNode, binDataMap, footnoteCollector = null, fontMap = {}) {
       if (footnoteCollector) {
         const fnNum = footnoteCollector.notes.length + 1;
         const fnText = child.textContent.trim() || '';
-        footnoteCollector.notes.push({ num: fnNum, text: escapeHTML(fnText) });
+        footnoteCollector.notes.push({ num: fnNum, text: escapeHtml(fnText) });
         html += `<sup><a href="#fn-${fnNum}" style="color:#1565c0;text-decoration:none">${fnNum}</a></sup>`;
       }
     } else if (tag === 'en' || tag === 'endnote') {
@@ -733,7 +733,7 @@ function parseRun(runNode, binDataMap, footnoteCollector = null, fontMap = {}) {
       if (footnoteCollector) {
         const fnNum = footnoteCollector.notes.length + 1;
         const fnText = child.textContent.trim() || '';
-        footnoteCollector.notes.push({ num: fnNum, text: escapeHTML(fnText) });
+        footnoteCollector.notes.push({ num: fnNum, text: escapeHtml(fnText) });
         html += `<sup><a href="#fn-${fnNum}" style="color:#1565c0;text-decoration:none">${fnNum}</a></sup>`;
       }
     } else if (tag === 'fieldBegin') {
@@ -743,7 +743,7 @@ function parseRun(runNode, binDataMap, footnoteCollector = null, fontMap = {}) {
         // Extract URL from command — format: HYPERLINK "url"
         const urlMatch = command.match(/["']([^"']+)["']/);
         if (urlMatch) {
-          html += `<a href="${escapeHTML(urlMatch[1])}">`;
+          html += `<a href="${escapeHtml(urlMatch[1])}">`;
         }
       }
     } else if (tag === 'fieldEnd') {
@@ -1064,7 +1064,7 @@ function parseShape(shapeNode, binDataMap, footnoteCollector = null, fontMap = {
     // If no paragraphs found, fall back to text content
     if (!inner.trim()) {
       const text = textBox.textContent?.trim() || '';
-      if (text) inner = `<p>${escapeHTML(text)}</p>`;
+      if (text) inner = `<p>${escapeHtml(text)}</p>`;
     }
 
     if (inner.trim()) {
@@ -1075,7 +1075,7 @@ function parseShape(shapeNode, binDataMap, footnoteCollector = null, fontMap = {
   // Fallback: if shape has text content but no textBox, render as inline
   const textContent = shapeNode.textContent?.trim() || '';
   if (textContent) {
-    return `<span class="hwpx-shape">${escapeHTML(textContent)}</span>`;
+    return `<span class="hwpx-shape">${escapeHtml(textContent)}</span>`;
   }
 
   return '';
@@ -1291,8 +1291,7 @@ function findChildren(parent, name) {
   return result;
 }
 
-// escapeHTML: use shared escapeHtml from utils/sanitize.js, aliased for local compat
-const escapeHTML = escapeHtml;
+// escapeHtml: imported directly from utils/sanitize.js
 
 function escapeXML(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');

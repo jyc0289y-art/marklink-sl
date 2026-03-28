@@ -5,6 +5,7 @@
 
 import { setDocContent } from './doc-editor.js';
 import { sanitizeImportedHtml } from '../utils/sanitize.js';
+import { uint8ToBase64, detectImageMime } from '../utils/image-utils.js';
 
 /* ========== OLE2 Compound File Parser ========== */
 
@@ -637,26 +638,6 @@ function parseShapeComponent(data) {
   return result;
 }
 
-/** Convert Uint8Array to base64 string */
-function uint8ToBase64(u8) {
-  let binary = '';
-  const len = u8.length;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(u8[i]);
-  }
-  return btoa(binary);
-}
-
-/** Detect MIME type from first few bytes of binary data */
-function detectImageMime(data) {
-  if (data.length < 4) return 'image/png';
-  if (data[0] === 0xFF && data[1] === 0xD8) return 'image/jpeg';
-  if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47) return 'image/png';
-  if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return 'image/gif';
-  if (data[0] === 0x42 && data[1] === 0x4D) return 'image/bmp';
-  if (data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46) return 'image/webp';
-  return 'image/png'; // fallback
-}
 
 /**
  * Convert body text records to HTML.

@@ -5,7 +5,7 @@
 
 import { WebGLEngine, DEFAULT_PARAMS, cloneParams } from './webgl-engine.js';
 import { analyzeLocal, analyzeWithOllama, analyzeWithClaude, checkOllamaStatus, getApiKey, setApiKey } from './auto-edit.js';
-import { escapeHtml as _esc } from '../utils/sanitize.js';
+import { escapeHtml } from '../utils/sanitize.js';
 import { downloadBlob } from '../utils/download.js';
 import { t } from '../ui/i18n.js';
 
@@ -2035,7 +2035,7 @@ async function generateGif(modal) {
     };
     preview.appendChild(dlBtn);
   } catch (e) {
-    preview.innerHTML = `<p style="color:#e74c3c">Error: ${_esc(e.message)}</p>`;
+    preview.innerHTML = `<p style="color:#e74c3c">Error: ${escapeHtml(e.message)}</p>`;
   }
 }
 
@@ -2239,7 +2239,7 @@ function showBatchModal() {
         batchFiles.push(f);
         const item = document.createElement('div');
         item.className = 'batch-file-item';
-        item.innerHTML = `<span>${_esc(f.name)}</span><span>${(f.size / 1024).toFixed(0)} KB</span>`;
+        item.innerHTML = `<span>${escapeHtml(f.name)}</span><span>${(f.size / 1024).toFixed(0)} KB</span>`;
         list.appendChild(item);
       });
       input.remove();
@@ -2506,8 +2506,8 @@ function exportImage() {
       </div>
       <div class="resize-row" id="export-quality-row">
         <label>Quality</label>
-        <input type="range" id="export-quality" min="10" max="100" value="92" style="flex:1">
-        <span id="export-quality-val" style="width:36px;text-align:right">92%</span>
+        <input type="range" id="export-quality" min="10" max="100" value="85" style="flex:1">
+        <span id="export-quality-val" style="width:36px;text-align:right">85%</span>
       </div>
       <div class="resize-row">
         <label>Dimensions</label>
@@ -2531,9 +2531,15 @@ function exportImage() {
   const qualityVal = modal.querySelector('#export-quality-val');
   const sizeVal = modal.querySelector('#export-size-val');
 
+  const FORMAT_QUALITY_DEFAULTS = { jpeg: 85, webp: 80 };
+
   const updateQualityVisibility = () => {
     const fmt = formatSelect.value;
     qualityRow.style.display = fmt === 'png' ? 'none' : '';
+    if (FORMAT_QUALITY_DEFAULTS[fmt]) {
+      qualityInput.value = FORMAT_QUALITY_DEFAULTS[fmt];
+      qualityVal.textContent = FORMAT_QUALITY_DEFAULTS[fmt] + '%';
+    }
     updateSizeEstimate();
   };
 
@@ -3734,7 +3740,7 @@ function showBatchResizeDialog() {
         brFiles.push(f);
         const item = document.createElement('div');
         item.style.cssText = 'display:flex;justify-content:space-between;padding:4px 8px;font-size:12px;border-bottom:1px solid var(--border-color,#eee);';
-        item.innerHTML = `<span>${_esc(f.name)}</span><span>${(f.size / 1024).toFixed(0)} KB</span>`;
+        item.innerHTML = `<span>${escapeHtml(f.name)}</span><span>${(f.size / 1024).toFixed(0)} KB</span>`;
         list.appendChild(item);
       });
       modal.querySelector('#br-count').textContent = `${brFiles.length} ${t('photo.images')}`;
@@ -3977,8 +3983,8 @@ function buildImageInfoPanel() {
   container.innerHTML = `
     <div class="photo-info-row"><span class="photo-info-label">Dimensions</span><span class="photo-info-value">${imageInfo.width} x ${imageInfo.height} px</span></div>
     <div class="photo-info-row"><span class="photo-info-label">File Size</span><span class="photo-info-value">${fileSizeStr}</span></div>
-    <div class="photo-info-row"><span class="photo-info-label">Format</span><span class="photo-info-value">${_esc(format)}</span></div>
-    <div class="photo-info-row"><span class="photo-info-label">Color Space</span><span class="photo-info-value">${_esc(colorSpace)}</span></div>
+    <div class="photo-info-row"><span class="photo-info-label">Format</span><span class="photo-info-value">${escapeHtml(format)}</span></div>
+    <div class="photo-info-row"><span class="photo-info-label">Color Space</span><span class="photo-info-value">${escapeHtml(colorSpace)}</span></div>
     <div class="photo-info-row"><span class="photo-info-label">Megapixels</span><span class="photo-info-value">${((imageInfo.width * imageInfo.height) / 1e6).toFixed(2)} MP</span></div>
     <div class="photo-info-row"><span class="photo-info-label">Aspect Ratio</span><span class="photo-info-value">${_calcAspectRatioLabel(imageInfo.width, imageInfo.height)}</span></div>
   `;

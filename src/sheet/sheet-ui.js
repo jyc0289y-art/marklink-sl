@@ -201,7 +201,7 @@ const _renderRowHtml = (sheet, r) => {
     const w = getColWidth(c);
     const noteKey = `${r},${c}`;
     const hasNote = cellNotes[noteKey];
-    const noteIndicator = hasNote ? '<span class="cell-note-indicator" title="' + escapeHTML(hasNote) + '"></span>' : '';
+    const noteIndicator = hasNote ? '<span class="cell-note-indicator" title="' + escapeHtml(hasNote) + '"></span>' : '';
     const commentIndicator = hasComment(r, c) ? `<span class="cell-comment-indicator" data-comment-row="${r}" data-comment-col="${c}" title="Click to view comments"></span>` : '';
     const sparkline = cell?.format?.sparkline;
     const hyperlink = cell?.format?.hyperlink;
@@ -216,13 +216,13 @@ const _renderRowHtml = (sheet, r) => {
       cellContent = `<img src="${sparkline}" style="width:100%;height:100%;object-fit:contain" alt="sparkline">`;
     } else if (hyperlink) {
       const linkLabel = cellHyperlinks[`${r},${c}`]?.label || val;
-      cellContent = `<a href="${escapeHTML(hyperlink)}" target="_blank" rel="noopener" style="color:#1a73e8;text-decoration:underline;cursor:pointer" onclick="event.stopPropagation()">${escapeHTML(String(linkLabel))}</a>`;
+      cellContent = `<a href="${escapeHtml(hyperlink)}" target="_blank" rel="noopener" style="color:#1a73e8;text-decoration:underline;cursor:pointer" onclick="event.stopPropagation()">${escapeHtml(String(linkLabel))}</a>`;
     } else if (cell?.format?.isArrayFormula && cell.raw.startsWith('=')) {
-      cellContent = escapeHTML(String(val));
+      cellContent = escapeHtml(String(val));
     } else if (cell?.format?.spillSource) {
-      cellContent = escapeHTML(String(val));
+      cellContent = escapeHtml(String(val));
     } else {
-      cellContent = escapeHTML(String(val));
+      cellContent = escapeHtml(String(val));
     }
     const filterBtn = (filterRow === r)
       ? `<span class="sheet-filter-btn" data-filter-col="${c}" style="cursor:pointer;font-size:9px;float:right;color:${filterValues[c] ? 'var(--accent-color)' : 'var(--text-secondary)'};margin-left:2px" title="Filter">▼</span>`
@@ -387,8 +387,7 @@ function cellStyle(cell, r, c) {
   return parts.join(';');
 }
 
-// escapeHTML: use shared escapeHtml from utils/sanitize.js, aliased for local compat
-const escapeHTML = escapeHtml;
+// escapeHtml: imported directly from utils/sanitize.js
 
 /* ==================== Events ==================== */
 
@@ -1491,7 +1490,7 @@ function startEdit(initialChar) {
   td.classList.add('editing');
   const raw = initialChar != null ? initialChar : getRawValue(getSheet(), selectedRow, selectedCol);
   isFormulaMode = raw.startsWith('=');
-  td.innerHTML = `<input type="text" value="${escapeHTML(raw)}" class="sheet-cell-input" />`;
+  td.innerHTML = `<input type="text" value="${escapeHtml(raw)}" class="sheet-cell-input" />`;
   const input = td.querySelector('input');
   input.focus();
   if (initialChar != null) {
@@ -2467,7 +2466,7 @@ function showAutocomplete(inputEl) {
 
     acIndex = 0;
     acEl.innerHTML = suggestions.map((s, i) =>
-      `<div class="sheet-ac-item${i === 0 ? ' active' : ''}" data-fn="${escapeHTML(s)}" data-colval="1">${escapeHTML(s)}</div>`
+      `<div class="sheet-ac-item${i === 0 ? ' active' : ''}" data-fn="${escapeHtml(s)}" data-colval="1">${escapeHtml(s)}</div>`
     ).join('');
   }
 
@@ -2912,8 +2911,8 @@ function showFilterDropdown(colIdx, anchorEl) {
   sorted.forEach(v => {
     const checked = allSelected || currentFilter.has(v);
     const displayVal = v || '(Blank)';
-    html += `<label style="display:flex;align-items:center;gap:6px;padding:2px 4px;cursor:pointer" data-val="${escapeHTML(v)}">
-      <input type="checkbox" class="filter-item" value="${escapeHTML(v)}" ${checked ? 'checked' : ''}> ${escapeHTML(displayVal)}
+    html += `<label style="display:flex;align-items:center;gap:6px;padding:2px 4px;cursor:pointer" data-val="${escapeHtml(v)}">
+      <input type="checkbox" class="filter-item" value="${escapeHtml(v)}" ${checked ? 'checked' : ''}> ${escapeHtml(displayVal)}
     </label>`;
   });
   html += `<div style="display:flex;gap:4px;margin-top:8px;justify-content:flex-end">
@@ -3759,7 +3758,7 @@ function executePrint(sheet, opts) {
   </div>`;
 
   if (headerText) {
-    html += `<div class="page-header">${escapeHTML(headerText)}</div>`;
+    html += `<div class="page-header">${escapeHtml(headerText)}</div>`;
   }
 
   html += '<table>';
@@ -3787,14 +3786,14 @@ function executePrint(sheet, opts) {
       const style = showFormatting ? printCellStyle(cell) : (typeof cell?.value === 'number' ? 'text-align:right' : '');
       const mergeSpan = cell?.format?.mergeSpan;
       const spanAttrs = mergeSpan ? ` rowspan="${mergeSpan.rows}" colspan="${mergeSpan.cols}"` : '';
-      html += `<td style="${style}"${spanAttrs}>${escapeHTML(String(val))}</td>`;
+      html += `<td style="${style}"${spanAttrs}>${escapeHtml(String(val))}</td>`;
     }
     html += '</tr>';
   }
   html += '</tbody></table>';
 
   if (footerText) {
-    html += `<div class="page-footer">${escapeHTML(footerText).replace(/\{page\}/g, '<span class="page-num"></span>')}</div>`;
+    html += `<div class="page-footer">${escapeHtml(footerText).replace(/\{page\}/g, '<span class="page-num"></span>')}</div>`;
     // Use CSS counters for page numbers
     html += `<style>
       @media print {
@@ -7265,10 +7264,10 @@ function showCommentPanel(r, c) {
       : comment.threads.map((t, i) => `
         <div class="comment-thread-item" style="padding:8px 12px;border-bottom:1px solid var(--border-color);${t.resolved ? 'opacity:0.5' : ''}">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-            <span style="font-weight:600;font-size:11px;color:var(--text-primary)">${escapeHTML(t.author)}</span>
+            <span style="font-weight:600;font-size:11px;color:var(--text-primary)">${escapeHtml(t.author)}</span>
             <span style="font-size:10px;color:var(--text-tertiary)">${new Date(t.timestamp).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
           </div>
-          <div style="font-size:12px;color:var(--text-primary);line-height:1.4;white-space:pre-wrap">${escapeHTML(t.text)}</div>
+          <div style="font-size:12px;color:var(--text-primary);line-height:1.4;white-space:pre-wrap">${escapeHtml(t.text)}</div>
           <div style="display:flex;gap:6px;margin-top:4px">
             <button class="comment-resolve-btn" data-idx="${i}" style="font-size:10px;color:var(--accent-color);background:none;border:none;cursor:pointer;padding:0">${t.resolved ? 'Reopen' : 'Resolve'}</button>
             <button class="comment-delete-btn" data-idx="${i}" style="font-size:10px;color:#ef4444;background:none;border:none;cursor:pointer;padding:0">Delete</button>
@@ -7388,7 +7387,7 @@ function showSlicerDialog() {
     <h3 style="margin:0 0 12px">Insert Slicer</h3>
     <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Select a column to create a slicer filter:</p>
     <select id="slicer-col" style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:13px;margin-bottom:12px">
-      ${headers.map(h => `<option value="${h.col}">${escapeHTML(h.label)} (Col ${colToLetter(h.col)})</option>`).join('')}
+      ${headers.map(h => `<option value="${h.col}">${escapeHtml(h.label)} (Col ${colToLetter(h.col)})</option>`).join('')}
     </select>
     <div style="display:flex;justify-content:flex-end;gap:8px">
       <button class="toolbar-btn" id="slicer-cancel" style="padding:6px 16px">Cancel</button>
@@ -7446,7 +7445,7 @@ function renderSlicerWidget(slicer) {
 
   widget.innerHTML = `
     <div class="slicer-header" style="padding:6px 10px;background:var(--accent-color);color:white;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;cursor:move;border-radius:10px 10px 0 0">
-      <span>${escapeHTML(slicer.title)}</span>
+      <span>${escapeHtml(slicer.title)}</span>
       <div style="display:flex;gap:4px">
         <button class="slicer-toggle-all" title="${allSelected ? 'Clear All' : 'Select All'}" style="background:none;border:none;color:white;cursor:pointer;font-size:11px;padding:0 2px">${allSelected ? '☐' : '☑'}</button>
         <button class="slicer-close" title="Remove slicer" style="background:none;border:none;color:white;cursor:pointer;font-size:14px;padding:0 2px;line-height:1">&times;</button>
@@ -7455,8 +7454,8 @@ function renderSlicerWidget(slicer) {
     <div class="slicer-items" style="overflow-y:auto;flex:1;padding:4px 0">
       ${slicer.allValues.map(v => `
         <label class="slicer-item" style="display:flex;align-items:center;gap:6px;padding:3px 10px;cursor:pointer;font-size:12px;color:var(--text-primary)">
-          <input type="checkbox" data-val="${escapeHTML(v)}" ${slicer.selectedValues.has(v) ? 'checked' : ''} style="margin:0">
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHTML(v)}</span>
+          <input type="checkbox" data-val="${escapeHtml(v)}" ${slicer.selectedValues.has(v) ? 'checked' : ''} style="margin:0">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(v)}</span>
         </label>
       `).join('')}
     </div>
@@ -7951,6 +7950,9 @@ function _saveSheetState() {
   sheet.hiddenRows = [...hiddenRows];
   sheet.hiddenCols = [...hiddenCols];
   sheet.rowGroups = rowGroups;
+  // Persist column widths and row heights so XLSX export preserves them
+  sheet.colWidths = { ...colWidths };
+  sheet.rowHeights = { ...rowHeights };
 }
 
 /** Load per-sheet UI state from the sheet data model into module-level vars */

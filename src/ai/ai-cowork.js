@@ -3,7 +3,7 @@
 // Uses Ollama local LLM via ollama-client.js
 
 import { chat, streamChat, checkOllamaStatus, listModels } from './ollama-client.js';
-import { escapeHtml as _escapeHtmlBase, sanitizeAiResponse } from '../utils/sanitize.js';
+import { escapeHtml, sanitizeAiResponse } from '../utils/sanitize.js';
 import { t } from '../ui/i18n.js';
 
 /** Sanitize AI-generated HTML for insertion into slide/doc DOM */
@@ -140,13 +140,13 @@ async function aiCallStreaming(systemPrompt, userContent, targetEl, editorType) 
       [{ role: 'user', content: userContent }],
       systemPrompt,
       (token, full) => {
-        targetEl.innerHTML = escapeHtml(full) + '<span class="ai-stream-cursor">|</span>';
+        targetEl.innerHTML = escapeHtmlBr(full) + '<span class="ai-stream-cursor">|</span>';
       },
       currentAbortController.signal
     );
 
     targetEl.classList.remove('ai-streaming');
-    targetEl.innerHTML = escapeHtml(result.content);
+    targetEl.innerHTML = escapeHtmlBr(result.content);
 
     if (result.tokenStats) {
       const statsSpan = document.createElement('div');
@@ -231,7 +231,7 @@ function showDiffApproval(original, result, onAccept, onReject, anchorEl, stream
   const bodyId = 'ai-diff-body-' + Date.now();
   el.innerHTML = `
     <div class="ai-cowork-diff-header">AI Result${streamMode ? ' <span class="ai-stream-badge">STREAMING</span>' : ''}</div>
-    <div class="ai-cowork-diff-body" id="${bodyId}">${streamMode ? '<span class="ai-cowork-spinner"></span>' : escapeHtml(result)}</div>
+    <div class="ai-cowork-diff-body" id="${bodyId}">${streamMode ? '<span class="ai-cowork-spinner"></span>' : escapeHtmlBr(result)}</div>
     <div class="ai-cowork-diff-actions">
       <button class="ai-cowork-btn accept">Accept</button>
       <button class="ai-cowork-btn reject">Reject</button>
@@ -290,8 +290,8 @@ function showAiPanel(title, bodyHtml, onSubmit) {
   return el;
 }
 
-function escapeHtml(s) {
-  return _escapeHtmlBase(s || '').replace(/\n/g, '<br>');
+function escapeHtmlBr(s) {
+  return escapeHtml(s || '').replace(/\n/g, '<br>');
 }
 
 
@@ -517,7 +517,7 @@ function showSheetAiPanel() {
         desc
       );
       if (result) {
-        resultEl.innerHTML = `<code class="ai-formula-code">${escapeHtml(result.trim())}</code>
+        resultEl.innerHTML = `<code class="ai-formula-code">${escapeHtmlBr(result.trim())}</code>
           <button class="ai-cowork-btn small copy-formula">Copy</button>
           <button class="ai-cowork-btn small insert-formula">Insert to Cell</button>`;
         resultEl.querySelector('.copy-formula')?.addEventListener('click', () => {
@@ -544,7 +544,7 @@ function showSheetAiPanel() {
         'Explain this spreadsheet formula in simple terms. Break down each part. Be concise.',
         formula
       );
-      resultEl.innerHTML = result ? escapeHtml(result) : '<span style="color:#e74c3c">Failed.</span>';
+      resultEl.innerHTML = result ? escapeHtmlBr(result) : '<span style="color:#e74c3c">Failed.</span>';
     });
 
     // Generate data
@@ -558,7 +558,7 @@ function showSheetAiPanel() {
         desc
       );
       if (result) {
-        resultEl.innerHTML = `<pre class="ai-data-preview">${escapeHtml(result.trim())}</pre>
+        resultEl.innerHTML = `<pre class="ai-data-preview">${escapeHtmlBr(result.trim())}</pre>
           <button class="ai-cowork-btn small insert-csv">Insert into Sheet</button>
           <button class="ai-cowork-btn small copy-formula">Copy CSV</button>`;
         resultEl.querySelector('.insert-csv')?.addEventListener('click', () => {
@@ -590,7 +590,7 @@ function showSheetAiPanel() {
         'Analyze this spreadsheet data. Provide: 1) Statistical summary (count, mean, min, max for numeric columns) 2) Key insights and patterns 3) Data quality issues if any. Be concise.',
         data
       );
-      resultEl.innerHTML = result ? escapeHtml(result) : '<span style="color:#e74c3c">Failed.</span>';
+      resultEl.innerHTML = result ? escapeHtmlBr(result) : '<span style="color:#e74c3c">Failed.</span>';
     });
   });
 }
@@ -750,13 +750,13 @@ function showSlideAiPanel() {
         content
       );
       if (result) {
-        resultEl.innerHTML = `<div class="ai-notes-preview">${escapeHtml(result)}</div>
+        resultEl.innerHTML = `<div class="ai-notes-preview">${escapeHtmlBr(result)}</div>
           <button class="ai-cowork-btn small insert-notes">Insert as Speaker Notes</button>`;
         resultEl.querySelector('.insert-notes')?.addEventListener('click', () => {
           const notesEl = document.getElementById('slide-notes');
           if (notesEl) {
             if (notesEl.tagName === 'TEXTAREA') notesEl.value = result;
-            else notesEl.innerHTML = escapeHtml(result);
+            else notesEl.innerHTML = escapeHtmlBr(result);
             notesEl.dispatchEvent(new Event('input'));
           }
           removeOverlay();
@@ -777,7 +777,7 @@ function showSlideAiPanel() {
         'Based on the slide content, suggest: 1) Best layout type (title, content, two-column, comparison, quote, big-number) 2) Color scheme (2-3 colors with hex codes) 3) Font pairing suggestion 4) Visual elements to add. Be concise and actionable.',
         content || 'Empty slide — suggest a general professional design'
       );
-      resultEl.innerHTML = result ? escapeHtml(result) : '<span style="color:#e74c3c">Failed.</span>';
+      resultEl.innerHTML = result ? escapeHtmlBr(result) : '<span style="color:#e74c3c">Failed.</span>';
     });
 
     // Create outline
@@ -796,7 +796,7 @@ Format as structured text with "Slide N: Title" headers.`,
         desc
       );
       if (result) {
-        resultEl.innerHTML = `<pre class="ai-outline-preview">${escapeHtml(result)}</pre>
+        resultEl.innerHTML = `<pre class="ai-outline-preview">${escapeHtmlBr(result)}</pre>
           <button class="ai-cowork-btn small apply-outline">Apply (Create All Slides)</button>`;
         resultEl.querySelector('.apply-outline')?.addEventListener('click', () => {
           applySlideOutline(result);
@@ -823,7 +823,7 @@ function applySlideOutline(outlineText) {
     const title = lines[0]?.replace(/^[\-\*#]+\s*/, '').trim() || `Slide ${i + 1}`;
     const bullets = lines.slice(1).map((l) => l.replace(/^[\-\*•]\s*/, '').trim()).filter((l) => l);
 
-    const html = `<h2>${_escapeHtmlBase(title)}</h2><ul>${bullets.map((b) => `<li>${_escapeHtmlBase(b)}</li>`).join('')}</ul>`;
+    const html = `<h2>${escapeHtml(title)}</h2><ul>${bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('')}</ul>`;
     setTimeout(() => {
       canvas.innerHTML = html;
       canvas.dispatchEvent(new Event('input'));
@@ -908,7 +908,7 @@ function showMarkdownAiPanel() {
     <details style="margin-top:12px">
       <summary style="font-size:11px;color:var(--text-secondary);cursor:pointer">Recent AI History (${historyItems.length})</summary>
       <div class="ai-cowork-history-list">${historyItems.slice(-10).reverse().map((h) =>
-        `<div class="ai-cowork-history-item"><span class="ai-hist-role">${h.role}</span> ${escapeHtml(h.content.substring(0, 80))}...</div>`
+        `<div class="ai-cowork-history-item"><span class="ai-hist-role">${h.role}</span> ${escapeHtmlBr(h.content.substring(0, 80))}...</div>`
       ).join('')}</div>
     </details>` : ''}`;
 
@@ -1131,7 +1131,7 @@ function showPdfAiPanel() {
         'Summarize this page from a PDF document. Provide key points in bullet format. Be concise.',
         pageText
       );
-      resultEl.innerHTML = result ? escapeHtml(result) : '<span style="color:#e74c3c">Failed.</span>';
+      resultEl.innerHTML = result ? escapeHtmlBr(result) : '<span style="color:#e74c3c">Failed.</span>';
     });
 
     // Summarize document
@@ -1144,7 +1144,7 @@ function showPdfAiPanel() {
         'Summarize this entire PDF document. Provide: 1) Main topic/purpose 2) Key points (5-7 bullet points) 3) Conclusions if any. Be concise.',
         text.substring(0, 5000)
       );
-      resultEl.innerHTML = result ? escapeHtml(result) : '<span style="color:#e74c3c">Failed.</span>';
+      resultEl.innerHTML = result ? escapeHtmlBr(result) : '<span style="color:#e74c3c">Failed.</span>';
     });
 
     // Extract data
@@ -1158,7 +1158,7 @@ function showPdfAiPanel() {
         text.substring(0, 4000)
       );
       if (result) {
-        resultEl.innerHTML = `<pre style="white-space:pre-wrap;font-size:12px">${escapeHtml(result)}</pre>
+        resultEl.innerHTML = `<pre style="white-space:pre-wrap;font-size:12px">${escapeHtmlBr(result)}</pre>
           <button class="ai-cowork-btn small copy-formula">Copy</button>`;
         resultEl.querySelector('.copy-formula')?.addEventListener('click', () => {
           navigator.clipboard.writeText(result);
@@ -1184,7 +1184,7 @@ PDF Content:
 ${text.substring(0, 4000)}`,
         question
       );
-      resultEl.innerHTML = result ? escapeHtml(result) : '<span style="color:#e74c3c">Failed.</span>';
+      resultEl.innerHTML = result ? escapeHtmlBr(result) : '<span style="color:#e74c3c">Failed.</span>';
     });
   });
 }
@@ -1253,7 +1253,7 @@ function showPhotoAiPanel() {
         'You are a photo editing assistant. Based on the image information and current settings, suggest specific adjustments to improve the photo. Suggest values for: brightness, contrast, saturation, shadows, highlights, temperature, sharpness. Give specific numeric values (0-200 range, 100 = neutral). Format as a clear list.',
         `${getImageDesc()}\nCurrent settings: ${JSON.stringify(sliders)}`
       );
-      resultEl.innerHTML = result ? escapeHtml(result) : '<span style="color:#e74c3c">Failed.</span>';
+      resultEl.innerHTML = result ? escapeHtmlBr(result) : '<span style="color:#e74c3c">Failed.</span>';
     });
 
     // Generate caption
@@ -1265,7 +1265,7 @@ function showPhotoAiPanel() {
         getImageDesc()
       );
       if (result) {
-        resultEl.innerHTML = `${escapeHtml(result)}<br><button class="ai-cowork-btn small copy-formula" style="margin-top:8px">Copy</button>`;
+        resultEl.innerHTML = `${escapeHtmlBr(result)}<br><button class="ai-cowork-btn small copy-formula" style="margin-top:8px">Copy</button>`;
         resultEl.querySelector('.copy-formula')?.addEventListener('click', () => {
           navigator.clipboard.writeText(result);
           showToast('Caption copied');
@@ -1284,7 +1284,7 @@ function showPhotoAiPanel() {
         getImageDesc()
       );
       if (result) {
-        resultEl.innerHTML = `${escapeHtml(result)}<br><button class="ai-cowork-btn small copy-formula" style="margin-top:8px">Copy</button>`;
+        resultEl.innerHTML = `${escapeHtmlBr(result)}<br><button class="ai-cowork-btn small copy-formula" style="margin-top:8px">Copy</button>`;
         resultEl.querySelector('.copy-formula')?.addEventListener('click', () => {
           navigator.clipboard.writeText(result);
           showToast('Description copied');
@@ -1344,7 +1344,7 @@ function showCalculatorAiPanel() {
       ${templates.map((t) => `<button class="ai-cowork-btn accent wide ai-calc-tpl-btn" data-tpl="${t.id}">${t.icon} ${t.label}</button>`).join('')}
     </div>
     <label style="margin-top:12px">Or describe your question:</label>
-    <textarea id="ai-calc-custom" rows="2" placeholder="e.g., How do I calculate compound interest?">${escapeHtml(calcContent)}</textarea>
+    <textarea id="ai-calc-custom" rows="2" placeholder="e.g., How do I calculate compound interest?">${escapeHtmlBr(calcContent)}</textarea>
     <button class="ai-cowork-btn accent" id="ai-calc-ask">Ask AI</button>
     <div id="ai-calc-result" class="ai-cowork-result" style="margin-top:12px"></div>`;
 

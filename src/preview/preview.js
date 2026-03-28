@@ -1,6 +1,6 @@
 // OfficeLink SL — Preview Pane Controller
 import { render } from './renderer.js';
-import { escapeHtml as _esc } from '../utils/sanitize.js';
+import { escapeHtml } from '../utils/sanitize.js';
 import { t as i18nT } from '../ui/i18n.js';
 
 let previewElement = null;
@@ -301,7 +301,7 @@ async function renderMermaidBlocks() {
     mermaidBlocks.forEach((block) => {
       if (!block.querySelector('svg')) {
         const originalText = block.textContent;
-        block.innerHTML = `<div class="mermaid-error">\u26A0\uFE0F Mermaid render error: ${_esc(e.message)}<br><pre>${_esc(originalText)}</pre></div>`;
+        block.innerHTML = `<div class="mermaid-error">\u26A0\uFE0F Mermaid render error: ${escapeHtml(e.message)}<br><pre>${escapeHtml(originalText)}</pre></div>`;
       }
     });
   }

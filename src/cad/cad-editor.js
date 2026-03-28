@@ -4,7 +4,7 @@
 
 // Three.js loaded from CDN via dynamic import with retry logic
 // Uses string concat to prevent Vite from analyzing these imports
-import { escapeHtml as _esc } from '../utils/sanitize.js';
+import { escapeHtml } from '../utils/sanitize.js';
 import { downloadBlob } from '../utils/download.js';
 import * as OCCT from './occt-engine.js';
 import { t } from '../ui/i18n.js';
@@ -55,7 +55,7 @@ async function loadThreeJS() {
         <div style="font-size:2rem;margin-bottom:1rem;">&#9888;</div>
         <div style="font-size:1.1rem;font-weight:600;margin-bottom:0.5rem;color:var(--text-primary,#fff);">3D Engine Unavailable</div>
         <div>Failed to load Three.js from CDN after multiple retries.</div>
-        <div style="margin-top:0.5rem;font-size:0.85rem;opacity:0.7;">${_esc(err.message)}</div>
+        <div style="margin-top:0.5rem;font-size:0.85rem;opacity:0.7;">${escapeHtml(err.message)}</div>
         <div style="margin-top:1rem;font-size:0.85rem;">Check your internet connection and reload the page.</div>
       </div>`;
       target.style.position = 'relative';
@@ -1850,7 +1850,7 @@ function showExtrudeDialog() {
   // Populate profile dropdown
   const profileSelect = document.getElementById('cad-extrude-profile');
   if (profileSelect) {
-    profileSelect.innerHTML = allSketches.map((s) => `<option value="${s.id}">${_esc(s.name)} (${s.entities.length} entities)</option>`).join('');
+    profileSelect.innerHTML = allSketches.map((s) => `<option value="${s.id}">${escapeHtml(s.name)} (${s.entities.length} entities)</option>`).join('');
   }
 
   dialog.style.display = 'flex';
@@ -1991,7 +1991,7 @@ function showRevolveDialog() {
 
   const profileSelect = document.getElementById('cad-revolve-profile');
   if (profileSelect) {
-    profileSelect.innerHTML = allSketches.map((s) => `<option value="${s.id}">${_esc(s.name)} (${s.entities.length} entities)</option>`).join('');
+    profileSelect.innerHTML = allSketches.map((s) => `<option value="${s.id}">${escapeHtml(s.name)} (${s.entities.length} entities)</option>`).join('');
   }
 
   dialog.style.display = 'flex';
@@ -2172,7 +2172,7 @@ function updateFeatureTree() {
     item.dataset.featureId = feat.id;
     item.innerHTML = `
       <span class="tree-icon">${featureIcons[feat.type] || '🔲'}</span>
-      <span class="tree-name" title="${_esc(feat.name)}">${_esc(feat.name)}</span>
+      <span class="tree-name" title="${escapeHtml(feat.name)}">${escapeHtml(feat.name)}</span>
       <span class="tree-feat-actions">
         ${feat.type !== 'sketch' ? `<button class="cad-feat-btn" data-action="suppress" title="${feat.suppressed ? 'Unsuppress' : 'Suppress'}">${feat.suppressed ? '👁' : '🚫'}</button>` : ''}
         <button class="cad-feat-btn" data-action="delete" title="Delete">✕</button>
@@ -2467,7 +2467,7 @@ function updateSceneTree() {
     item.className = 'cad-tree-item' + (obj === selectedObject ? ' selected' : '');
     item.innerHTML = `
       <span class="tree-icon">${getObjectIcon(obj.userData.type)}</span>
-      <span class="tree-name" title="${_esc(obj.name)}">${_esc(obj.name)}</span>
+      <span class="tree-name" title="${escapeHtml(obj.name)}">${escapeHtml(obj.name)}</span>
       <span class="tree-vis">${obj.visible ? '👁' : '🚫'}</span>
     `;
 
@@ -3137,9 +3137,9 @@ function showRadialMenu(e) {
     const angle = (i / items.length) * Math.PI * 2 - Math.PI / 2;
     const x = Math.cos(angle) * radius + 100 - 24;
     const y = Math.sin(angle) * radius + 100 - 24;
-    html += `<button class="radial-item" data-idx="${i}" style="left:${x}px;top:${y}px" title="${_esc(item.label)}">
+    html += `<button class="radial-item" data-idx="${i}" style="left:${x}px;top:${y}px" title="${escapeHtml(item.label)}">
       <span class="radial-icon">${item.icon}</span>
-      <span class="radial-label">${_esc(item.label)}</span>
+      <span class="radial-label">${escapeHtml(item.label)}</span>
     </button>`;
   });
   menu.innerHTML = html;
